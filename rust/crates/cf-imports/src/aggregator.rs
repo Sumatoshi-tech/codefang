@@ -1,9 +1,8 @@
 //! Cross-file aggregation for the static analyzer.
 //!
-//! Port of `internal/analyzers/imports/aggregator.go`. The [`Aggregator`]
-//! combines per-file static reports into a single report holding the unique
-//! import set, per-import counts, the unique-import count, and the total file
-//! count.
+//! The [`Aggregator`] combines per-file static reports into a single report
+//! holding the unique import set, per-import counts, the unique-import count,
+//! and the total file count.
 
 use std::collections::BTreeMap;
 
@@ -11,8 +10,7 @@ use crate::report::ReportValue;
 
 /// Aggregates import analysis results across multiple files.
 ///
-/// Mirrors Go `Aggregator` (minus the `PerFileRetainer` mixin, which is a
-/// framework concern). `all_imports` maps import path -> occurrence count.
+/// `all_imports` maps import path -> occurrence count.
 #[derive(Debug, Default, Clone)]
 pub struct Aggregator {
     /// Import path -> count across all files.
@@ -22,16 +20,14 @@ pub struct Aggregator {
 }
 
 impl Aggregator {
-    /// Creates a new aggregator. Mirrors Go `NewAggregator`.
+    /// Creates a new aggregator.
+    #[must_use]
     pub fn new() -> Self {
-        Aggregator::default()
+        Self::default()
     }
 
-    /// Aggregates one file's report.
-    ///
-    /// Mirrors the per-report body of Go `(*Aggregator).Aggregate`: increments
-    /// the file count and, for each entry in the report's `imports` list,
-    /// increments that import's count.
+    /// Aggregates one file's report: increments the file count and, for each
+    /// entry in the report's `imports` list, increments that import's count.
     pub fn aggregate_report(&mut self, report: &ReportValue) {
         self.total_files += 1;
         if let Some(map) = report.as_map() {
@@ -45,12 +41,13 @@ impl Aggregator {
         }
     }
 
-    /// Returns the aggregated report.
+    /// Returns the aggregated report: `imports` (the unique import keys),
+    /// `import_counts`, `count` (number of unique imports), and `total_files`.
     ///
-    /// Mirrors Go `(*Aggregator).GetResult`, producing `imports` (the unique
-    /// import keys), `import_counts`, `count` (number of unique imports), and
-    /// `total_files`. Go iterates a map for `imports` (nondeterministic order);
-    /// this port emits them sorted (the [`BTreeMap`] key order) for determinism.
+    /// The reference implementation iterates a hash map for `imports`
+    /// (nondeterministic order); this implementation emits them sorted (the
+    /// [`BTreeMap`] key order) for determinism.
+    #[must_use]
     pub fn get_result(&self) -> ReportValue {
         let imports: Vec<ReportValue> = self
             .all_imports

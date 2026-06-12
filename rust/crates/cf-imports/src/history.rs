@@ -1,36 +1,28 @@
 //! Per-developer import history (`ImportsPerDeveloper`, id `history/imports`).
 //!
-//! Port of `internal/analyzers/imports/history.go`. The history analyzer tracks
-//! import usage across commit history, attributing each import to the commit
-//! author, language, and tick. The accumulated state is a 4-level map
-//! ([`ImportsMap`]: author -> lang -> import -> tick -> count) that merges
-//! **additively** (counts are summed), which is the defining behaviour named in
-//! the task brief.
+//! The history analyzer tracks import usage across commit history, attributing
+//! each import to the commit author, language, and tick. The accumulated state
+//! is a 4-level map ([`ImportsMap`]: author -> lang -> import -> tick -> count)
+//! that merges **additively** (counts are summed) — the analyzer's defining
+//! behaviour.
 //!
-//! The Go analyzer plugs into the framework's `GenericAggregator` and UAST
-//! pipeline (`BaseHistoryAnalyzer`, `UASTChangesAnalyzer`, `TicksSinceStart`,
-//! identity mixin). Those framework types live in not-yet-ported crates
-//! (cf-framework / cf-analyze / cf-plumbing), so this module ports the
-//! self-contained data model and the merge/aggregation/attribution logic, and
-//! defines the analyzer surface (name/flag/extract-commit-timeseries) over it.
-//! The pipeline wiring (`Consume`/`Fork`/snapshotting) is documented in the
-//! crate todos for when those crates land.
+//! This module owns the self-contained data model and the
+//! merge/aggregation/attribution logic, and defines the analyzer surface
+//! (name/flag/extract-commit-timeseries) over it. The pipeline wiring
+//! (consume/fork/snapshotting) lives in the framework crates.
 
 use std::collections::BTreeMap;
 
-/// Default tick length, in hours. Mirrors Go `defaultTickHours`.
+/// Default tick length, in hours.
 pub const DEFAULT_TICK_HOURS: u64 = 24;
 
 /// 4-level import-usage map: author -> lang -> import -> tick -> count.
 ///
-/// Mirrors Go `Map = map[int]map[string]map[string]map[int]int64`. Every level
-/// uses a [`BTreeMap`] so iteration is deterministic (sorted), which matters for
-/// reproducible aggregation/serialization.
+/// Every level uses a [`BTreeMap`] so iteration is deterministic (sorted),
+/// which matters for reproducible aggregation/serialization.
 pub type ImportsMap = BTreeMap<i64, BTreeMap<String, BTreeMap<String, BTreeMap<i64, i64>>>>;
 
 /// A single import extracted from a commit, carrying its language.
-///
-/// Mirrors Go `ImportEntry`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportEntry {
     /// The language the import was found in (e.g. `go`, `uast`).
@@ -41,7 +33,7 @@ pub struct ImportEntry {
 
 /// Per-commit summary for timeseries output.
 ///
-/// Mirrors Go `CommitSummary`. `languages` maps language -> import count.
+/// `languages` maps language -> import count.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CommitSummary {
     /// Total number of imports in the commit.
@@ -51,8 +43,6 @@ pub struct CommitSummary {
 }
 
 /// Per-tick aggregated payload.
-///
-/// Mirrors Go `TickData` (the value stored in `analyze.TICK.Data`).
 #[derive(Debug, Clone, Default)]
 pub struct TickData {
     /// The accumulated 4-level imports map for the tick.
@@ -63,13 +53,13 @@ pub struct TickData {
 
 /// The per-developer import history analyzer.
 ///
-/// Mirrors Go `HistoryAnalyzer`. Stateless config holder here; mutable per-tick
-/// state lives in [`TickData`]/[`ImportsMap`].
+/// Stateless config holder; mutable per-tick state lives in
+/// [`TickData`]/[`ImportsMap`].
 #[derive(Debug, Clone)]
 pub struct HistoryAnalyzer {
     /// Tick size in hours (defaults to [`DEFAULT_TICK_HOURS`]).
     pub tick_hours: u64,
-    /// Author index: author id -> name (Go `ReversedPeopleDict`).
+    /// Author index: author id -> name.
     pub reversed_people_dict: Vec<String>,
 }
 
@@ -83,31 +73,34 @@ impl Default for HistoryAnalyzer {
 }
 
 impl HistoryAnalyzer {
-    /// Creates a new history analyzer. Mirrors Go `NewHistoryAnalyzer`.
+    /// Creates a new history analyzer.
+    #[must_use]
     pub fn new() -> Self {
-        HistoryAnalyzer::default()
+        Self::default()
     }
 
-    /// Returns the analyzer name. Mirrors Go `(*HistoryAnalyzer).Name`.
+    /// Returns the analyzer name.
+    #[must_use]
     pub fn name(&self) -> &'static str {
         "ImportsPerDeveloper"
     }
 
-    /// Returns the CLI flag. Mirrors Go `(*HistoryAnalyzer).Flag`.
+    /// Returns the CLI flag.
+    #[must_use]
     pub fn flag(&self) -> &'static str {
         "imports-per-dev"
     }
 
-    /// Returns the stable analyzer id. Mirrors the Go descriptor `ID`.
+    /// Returns the stable analyzer id.
+    #[must_use]
     pub fn id(&self) -> &'static str {
         "history/imports"
     }
 
-    /// Extracts per-commit timeseries data from a report's `commit_stats`.
-    ///
-    /// Mirrors Go `(*HistoryAnalyzer).ExtractCommitTimeSeries`: returns `None`
-    /// when there are no commit stats, otherwise a map of commit hash ->
+    /// Extracts per-commit timeseries data from a report's `commit_stats`:
+    /// `None` when there are no commit stats, otherwise a map of commit hash ->
     /// `{import_count, languages}`.
+    #[must_use]
     pub fn extract_commit_time_series(
         &self,
         commit_stats: &BTreeMap<String, CommitSummary>,
@@ -119,10 +112,8 @@ impl HistoryAnalyzer {
     }
 }
 
-/// Adds extracted entries to the 4-level map under one author/tick.
-///
-/// Mirrors Go `addEntriesToMap`: each entry increments
-/// `map[author][lang][import][tick]` by one.
+/// Adds extracted entries to the 4-level map under one author/tick: each entry
+/// increments `map[author][lang][import][tick]` by one.
 pub fn add_entries_to_map(m: &mut ImportsMap, entries: &[ImportEntry], author_id: i64, tick: i64) {
     let langs = m.entry(author_id).or_default();
     for entry in entries {
@@ -132,10 +123,9 @@ pub fn add_entries_to_map(m: &mut ImportsMap, entries: &[ImportEntry], author_id
     }
 }
 
-/// Merges `src` into `dst` additively (summing counts).
+/// Merges `src` into `dst` additively (summing counts) across all four levels.
 ///
-/// Mirrors Go `mergeImportMaps` -> `mergeLangImports` -> `mergeTicks`. This is
-/// the additive-merge behaviour central to the analyzer.
+/// This is the additive-merge behaviour central to the analyzer.
 pub fn merge_import_maps(dst: &mut ImportsMap, src: &ImportsMap) {
     for (auth, src_langs) in src {
         let dst_langs = dst.entry(*auth).or_default();
@@ -151,10 +141,9 @@ pub fn merge_import_maps(dst: &mut ImportsMap, src: &ImportsMap) {
     }
 }
 
-/// Aggregates the 4-level map into per-import total counts.
-///
-/// Mirrors Go `aggregateImportCounts`: sums counts across all authors,
-/// languages, and ticks for each import path.
+/// Aggregates the 4-level map into per-import total counts: sums counts across
+/// all authors, languages, and ticks for each import path.
+#[must_use]
 pub fn aggregate_import_counts(imports: &ImportsMap) -> BTreeMap<String, i64> {
     let mut counts: BTreeMap<String, i64> = BTreeMap::new();
     for lang_map in imports.values() {
@@ -168,15 +157,15 @@ pub fn aggregate_import_counts(imports: &ImportsMap) -> BTreeMap<String, i64> {
     counts
 }
 
-/// Maximum number of imports returned by [`top_imports`]. Mirrors Go
-/// `topImportsLimit`.
+/// Maximum number of imports returned by [`top_imports`].
 pub const TOP_IMPORTS_LIMIT: usize = 20;
 
 /// Returns the top imports by count (descending), capped at [`TOP_IMPORTS_LIMIT`].
 ///
-/// Mirrors Go `topImports`. Go uses an unstable `sort.Slice` by count desc; for
-/// determinism this port breaks ties by import name ascending. Returns parallel
-/// `(labels, data)` vectors.
+/// The reference implementation sorts unstably by count descending with
+/// unspecified tie order; this implementation breaks ties by import name
+/// ascending for determinism. Returns parallel `(labels, data)` vectors.
+#[must_use]
 pub fn top_imports(counts: &BTreeMap<String, i64>) -> (Vec<String>, Vec<i64>) {
     let mut items: Vec<(String, i64)> =
         counts.iter().map(|(k, v)| (k.clone(), *v)).collect();
@@ -192,8 +181,6 @@ pub fn top_imports(counts: &BTreeMap<String, i64>) -> (Vec<String>, Vec<i64>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // --- ported from history_test.go ---
 
     #[test]
     fn test_history_analyzer_name() {
@@ -246,7 +233,6 @@ mod tests {
 
     // --- additive-merge / aggregation coverage (the core behaviour) ---
 
-    /// Mirrors `buildTestImportTicks` from store_writer_test.go.
     fn build_test_import_ticks() -> Vec<TickData> {
         let mk = |pairs: &[(i64, &str, &str, i64, i64)]| -> ImportsMap {
             let mut m: ImportsMap = BTreeMap::new();

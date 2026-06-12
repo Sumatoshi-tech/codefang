@@ -1,31 +1,25 @@
 //! Language name → tree-sitter `Language` dispatch.
 //!
-//! Port of Go `pkg/uast/languages.go`, which maps each supported language name
-//! to its `go-sitter-forest` `GetLanguage` function and caches the resulting
-//! `*sitter.Language`. In Rust the equivalent is a per-language grammar crate
-//! (`tree-sitter-<lang>`) whose `LANGUAGE`/`language()` returns a
-//! [`tree_sitter::Language`].
+//! Maps each supported language name to its vendored tree-sitter grammar's
+//! entry point.
 //!
-//! # Grammar integration is centralized (and pending)
+//! # Grammar pinning
 //!
 //! Per DESIGN §5, node positions/types flow into machine output, so every
-//! grammar must be pinned to the exact `go-sitter-forest v1.9.x` commit the Go
-//! build vendors. The per-language grammar crates (and, for grammars without a
-//! Rust crate, vendored `parser.c`/`scanner.c` compiled via `cc`) are integrated
-//! centrally in the workspace and surfaced to this crate behind Cargo features.
+//! grammar is vendored at the exact `go-sitter-forest v1.9.x` revision the
+//! reference build links (pinned by the differential gate). Grammars are
+//! compiled from the vendored `parser.c`/`scanner.c` sources by `build.rs`.
 //!
-//! Until that central integration lands, [`get_language`] recognizes the full
-//! supported-language set (so callers and the loader behave correctly w.r.t.
-//! *which* languages exist) but returns [`None`] for the actual
-//! [`tree_sitter::Language`]. Wiring a grammar is then a localized change here:
-//! add the feature + `extern` binding and return `Some(lang)`.
+//! [`get_language`] recognizes the full supported-language set (so callers and
+//! the loader behave correctly w.r.t. *which* languages exist) but returns
+//! [`None`] for languages whose grammar is not vendored yet. Wiring a grammar
+//! is a localized change: vendor the sources, list them in `build.rs`, add the
+//! `extern` binding, and return `Some(lang)` here.
 
-/// The complete set of language names with embedded `.uastmap` mappings, in the
-/// same order as Go's `languageFuncs` map literal (`languages.go`).
+/// The complete set of language names with embedded `.uastmap` mappings.
 ///
-/// This is the authoritative dispatch key set: the 68 keys of Go's
-/// `languageFuncs` (`languages.go`), one per embedded `.uastmap` data file in
-/// `cf-uast-uastmaps` (the two sets are identical).
+/// This is the authoritative dispatch key set: 68 names, one per embedded
+/// `.uastmap` data file in `cf-uast-uastmaps` (the two sets are identical).
 pub const SUPPORTED_LANGUAGES: &[&str] = &[
     "ansible",
     "bash",
@@ -98,6 +92,7 @@ pub const SUPPORTED_LANGUAGES: &[&str] = &[
 ];
 
 /// Returns whether `name` is a supported language.
+#[must_use]
 pub fn is_supported_language(name: &str) -> bool {
     SUPPORTED_LANGUAGES.contains(&name)
 }
@@ -139,14 +134,14 @@ mod ffi {
 
 /// Returns the tree-sitter [`tree_sitter::Language`] for `name`, or [`None`].
 ///
-/// Port of Go `GetLanguage`. The Go version caches the constructed language in a
-/// `sync.Map`; here each call returns the grammar's static table via the
-/// vendored FFI entry point, which is cheap (a pointer), so no cache is needed.
+/// Each call returns the grammar's static table via the vendored FFI entry
+/// point, which is cheap (a pointer), so no cache is needed.
 ///
 /// Languages whose grammar C sources are not yet vendored resolve to [`None`];
 /// wiring one is a localized edit: vendor its `vendor/tree-sitter-<lang>/`
 /// sources, list them in `build.rs`'s `GRAMMARS`, add an `ffi` extern, and a
 /// match arm here.
+#[must_use]
 pub fn get_language(name: &str) -> Option<tree_sitter::Language> {
     match name {
         // SAFETY: `tree_sitter_go` is the entry point of the vendored
@@ -160,7 +155,7 @@ pub fn get_language(name: &str) -> Option<tree_sitter::Language> {
         #[allow(unsafe_code)]
         "html" => Some(unsafe { ffi::tree_sitter_html() }),
         // The compat-corpus grammars, vendored at the exact go-sitter-forest
-        // revisions the Go build's go.mod pins. Each entry point returns the
+        // revisions the reference build pins. Each entry point returns the
         // grammar's static `TSLanguage` table compiled by `build.rs`.
         #[allow(unsafe_code)]
         "python" => Some(unsafe { ffi::tree_sitter_python() }),
@@ -187,17 +182,18 @@ pub fn get_language(name: &str) -> Option<tree_sitter::Language> {
         #[allow(unsafe_code)]
         "java" => Some(unsafe { ffi::tree_sitter_java() }),
         // cmake is the grammar `.cmake`/`CMakeLists.txt` resolves to (go-sitter-
-        // forest cmake@v1.9.5, parser.c + scanner.c). Wiring it lets Rust parse
-        // CMake files into a UAST with Function nodes for `function()`/`macro()`
-        // definitions, matching Go's per-file report + function counts on repos
-        // like ioq3.
+        // forest cmake@v1.9.5, parser.c + scanner.c). It parses CMake files
+        // into a UAST with Function nodes for `function()`/`macro()`
+        // definitions, contributing per-file reports + function counts on
+        // repos like ioq3.
         #[allow(unsafe_code)]
         "cmake" => Some(unsafe { ffi::tree_sitter_cmake() }),
-        // Non-code corpus grammars Go links (go-sitter-forest): xml@v1.9.5,
-        // toml@v1.9.2, perl@v1.9.9 (.pl), gitignore@v1.9.0, gitattributes@v1.9.1.
-        // They produce function-free UASTs, but each parsed file is counted in the
-        // static aggregators' reportCount divisor, so Rust must parse them too to
-        // match Go's averaged metrics.
+        // Non-code corpus grammars (go-sitter-forest): xml@v1.9.5,
+        // toml@v1.9.2, perl@v1.9.9 (.pl), gitignore@v1.9.0,
+        // gitattributes@v1.9.1. They produce function-free UASTs, but each
+        // parsed file is counted in the static aggregators' report-count
+        // divisor, so they must be parsed for the averaged metrics to match
+        // the reference reports.
         #[allow(unsafe_code)]
         "xml" => Some(unsafe { ffi::tree_sitter_xml() }),
         #[allow(unsafe_code)]
@@ -213,10 +209,10 @@ pub fn get_language(name: &str) -> Option<tree_sitter::Language> {
         // function counts (e.g. kubernetes cluster/gce/windows).
         #[allow(unsafe_code)]
         "powershell" => Some(unsafe { ffi::tree_sitter_powershell() }),
-        // markdown_inline is the grammar `.md`/`.markdown` resolves to (Go's
-        // loader registers it after the block `markdown` mapping, so it wins the
-        // shared extensions). Wiring it lets Rust parse Markdown files into a
-        // (function-free) UAST, matching Go's per-file report count.
+        // markdown_inline is the grammar `.md`/`.markdown` resolves to (the
+        // loader registers it after the block `markdown` mapping, so it wins
+        // the shared extensions). It parses Markdown files into a
+        // (function-free) UAST that contributes to the per-file report count.
         #[allow(unsafe_code)]
         "markdown_inline" => Some(unsafe { ffi::tree_sitter_markdown_inline() }),
         _ => None,
@@ -229,8 +225,7 @@ mod tests {
 
     #[test]
     fn supported_set_has_68_entries() {
-        // Go's `languageFuncs` map literal has exactly 68 keys, one per embedded
-        // `.uastmap` data file.
+        // One dispatch key per embedded `.uastmap` data file.
         assert_eq!(SUPPORTED_LANGUAGES.len(), 68);
     }
 

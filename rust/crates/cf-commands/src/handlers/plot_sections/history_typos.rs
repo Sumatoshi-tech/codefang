@@ -1,18 +1,17 @@
-//! `history/typos` plot sections — port of Go
-//! `internal/analyzers/typos/store_reader.go` (`GenerateStoreSections` →
+//! `history/typos` plot sections  (`GenerateStoreSections` →
 //! `buildStoreSections` over the `file_typos` store kind).
 //!
-//! The store records are the pre-sorted [`cf_typos::FileTypoData`] list (Go
+//! The store records are the pre-sorted [`cf_typos::FileTypoData`] list (reference:
 //! `computeFileTypos`, typo-count descending), exactly what
 //! `cf_typos::compute_file_typos` produces over the run's report data.
 
 use cf_plotpage::{build_bar_chart, get_chart_palette, BarSeries, Hint, Section, SeriesValue, Theme};
 
-/// store_reader.go `topFilesLimit` (typos plot.go:8).
+/// The reference `topFilesLimit`.
 const TOP_FILES_LIMIT: usize = 20;
 
-/// Go `GenerateStoreSections`: `None` is never returned — an empty typo list
-/// yields zero sections (Go `buildStoreSections` returns `nil, nil`).
+/// The reference `GenerateStoreSections`: `None` is never returned — an empty typo list
+/// yields zero sections (the reference `buildStoreSections` returns `nil, nil`).
 pub fn sections(file_typos: &[cf_typos::metrics::FileTypoData]) -> Vec<Section> {
     if file_typos.is_empty() {
         return Vec::new();
@@ -37,7 +36,7 @@ pub fn sections(file_typos: &[cf_typos::metrics::FileTypoData]) -> Vec<Section> 
     }]
 }
 
-/// Go `buildBarChartFromFileTypos`: top-20 of the pre-sorted records, one
+/// The reference `buildBarChartFromFileTypos`: top-20 of the pre-sorted records, one
 /// warning-colored "Typos" bar series through `BuildBarChart`.
 fn build_bar_chart_from_file_typos(
     file_typos: &[cf_typos::metrics::FileTypoData],

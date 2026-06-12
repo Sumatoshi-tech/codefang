@@ -1,11 +1,8 @@
-//! The MinHash + LSH clone-detection core.
+//! The `MinHash` + LSH clone-detection core.
 //!
-//! Ports the signature-building and pair-finding logic that is spread across
-//! `analyzer.go` (`buildSignatures`, `extractFuncName`, `extractReceiverType`,
-//! `countNodes`) and `visitor.go` (`findClonePairs`, `matchCandidates`,
-//! `computeClonePair`, `clonePairResult`, `buildSignatureMap`). Keeping it in one
-//! module mirrors how those functions form a single detection pipeline shared by
-//! the [`crate::Analyzer`] (per-file) and the [`crate::Aggregator`] (cross-file).
+//! Signature building and pair finding live in one module because they form a
+//! single detection pipeline shared by the [`crate::Analyzer`] (per-file) and
+//! the [`crate::Aggregator`] (cross-file).
 
 use std::collections::{HashMap, HashSet};
 
@@ -20,16 +17,16 @@ use crate::uast::{
 };
 use crate::{MIN_FUNCTION_NODES, NUM_HASHES};
 
-/// A function's name plus its MinHash signature. Mirrors Go `funcEntry`.
+/// A function's name plus its `MinHash` signature.
 #[derive(Debug, Clone)]
 pub struct FuncEntry {
     /// The (possibly receiver-qualified) function name.
     pub name: String,
-    /// The function's MinHash signature.
+    /// The function's `MinHash` signature.
     pub sig: Signature,
 }
 
-/// Output of [`find_clone_pairs`]. Mirrors Go `clonePairResult`.
+/// Output of [`find_clone_pairs`].
 #[derive(Default)]
 pub struct ClonePairResult {
     /// The stored clone pairs (may be capped; see [`find_clone_pairs`]).
@@ -42,14 +39,14 @@ pub struct ClonePairResult {
     pub cloned_func: HashSet<String>,
 }
 
-/// Returns `true` if `n` represents a function. Mirrors Go `isFunctionNode`.
+/// Returns `true` if `n` represents a function.
 #[must_use]
 pub fn is_function_node(n: &Node) -> bool {
     n.has_any_type(&[UAST_FUNCTION, UAST_METHOD])
         || n.has_all_roles(&[ROLE_FUNCTION, ROLE_DECLARATION])
 }
 
-/// Returns the total number of nodes in a subtree. Mirrors Go `countNodes`.
+/// Returns the total number of nodes in a subtree.
 #[must_use]
 pub fn count_nodes(n: &Node) -> usize {
     let mut count = 1;
@@ -59,19 +56,19 @@ pub fn count_nodes(n: &Node) -> usize {
     count
 }
 
-/// Extracts a unique function name from a node. Mirrors Go `extractFuncName`.
+/// Extracts a unique function name from a node.
 ///
-/// Uses the entity name (the first child with the `Name` role, falling back to
-/// the node token, then the type); for methods, qualifies with the receiver type
-/// (e.g. `"Foo.DoWork"`).
+/// Uses the entity name (see [`extract_entity_name`], falling back to the node
+/// token, then the type); for methods, qualifies with the receiver type (e.g.
+/// `"Foo.DoWork"`).
 #[must_use]
 pub fn extract_func_name(fn_node: &Node) -> String {
     let mut name = extract_entity_name(fn_node).unwrap_or_default();
     if name.is_empty() {
-        name = if !fn_node.token.is_empty() {
-            fn_node.token.clone()
-        } else {
+        name = if fn_node.token.is_empty() {
             fn_node.node_type.clone()
+        } else {
+            fn_node.token.clone()
         };
     }
 
@@ -87,25 +84,23 @@ pub fn extract_func_name(fn_node: &Node) -> String {
 
 /// Extracts the entity (function/identifier) name from a node.
 ///
-/// Mirrors Go `common.ExtractEntityName` exactly, in its precedence order:
-///  1. the node's `props["name"]` (`ExtractNameFromProps`);
-///  2. the node's OWN token (`ExtractNameFromToken`);
-///  3. the **first child** (index 0): its token, then its `props["name"]`
-///     (`ExtractNameFromChildren(n, 0)`).
+/// Precedence order (report contract; pinned by the differential gate):
+///  1. the node's `name` prop;
+///  2. the node's OWN token;
+///  3. the **first child** (index 0): its token, then its `name` prop.
 ///
-/// Go checks the node's own token BEFORE descending to a child, and the child
-/// step looks only at `Children[0]` (not "the first child with the Name role").
-/// Both points matter: e.g. C `Function` nodes whose token is the full function
+/// The node's own token is checked BEFORE descending to a child, and the child
+/// step looks only at index 0 (not "the first child with the Name role"). Both
+/// points matter: e.g. C `Function` nodes whose token is the full function
 /// text must keep that text as the name so distinct functions stay distinct in
-/// the LSH index. Returns `None` when nothing usable is found. (Go returns
-/// `("", false)` only when all three steps fail; an empty `props["name"]` value
-/// is still returned by Go as `("", true)`, but `extract_func_name` treats an
-/// empty result identically to `None`, so the observable name is the same.)
+/// the LSH index. Returns `None` when nothing usable is found; a present-but-
+/// empty `name` prop yields `Some("")`, which `extract_func_name` treats
+/// identically to `None`, so the observable name is the same.
 #[must_use]
 fn extract_entity_name(n: &Node) -> Option<String> {
-    // 1. props["name"] — present-key wins even if empty (Go returns ("", true)).
+    // 1. the "name" prop — present-key wins even if empty.
     if let Some(name) = n.props.get("name") {
-        return Some(name.to_string());
+        return Some(name.clone());
     }
 
     // 2. node's own token.
@@ -113,21 +108,20 @@ fn extract_entity_name(n: &Node) -> Option<String> {
         return Some(n.token.clone());
     }
 
-    // 3. first child (index 0): token, then props["name"].
+    // 3. first child (index 0): token, then its "name" prop.
     if let Some(child) = n.children.first() {
         if !child.token.is_empty() {
             return Some(child.token.clone());
         }
         if let Some(name) = child.props.get("name") {
-            return Some(name.to_string());
+            return Some(name.clone());
         }
     }
 
     None
 }
 
-/// Extracts the receiver type name from a method node. Mirrors Go
-/// `extractReceiverType`.
+/// Extracts the receiver type name from a method node.
 ///
 /// The receiver is the first child with the `Parameter` role whose token looks
 /// like `"(v *T)"` / `"(v T)"`; the type `T` is the last whitespace-separated
@@ -167,10 +161,10 @@ pub fn extract_receiver_type(fn_node: &Node) -> String {
     String::new()
 }
 
-/// Builds a MinHash signature for one function subtree, or `None` when the
-/// function is too small or produces no shingles. Mirrors the per-function body
-/// of Go `buildSignatures`.
+/// Builds a `MinHash` signature for one function subtree, or `None` when the
+/// function is too small or produces no shingles.
 #[must_use]
+#[allow(clippy::similar_names)] // `shingler` / `shingles` is the clearest naming
 pub fn build_signature(fn_node: &Node, shingler: &Shingler, num_hashes: usize) -> Option<FuncEntry> {
     if count_nodes(fn_node) < MIN_FUNCTION_NODES {
         return None;
@@ -206,9 +200,8 @@ pub fn build_signatures(functions: &[&Node], shingler: &Shingler, num_hashes: us
     entries
 }
 
-/// Returns a canonical key for a clone pair so `(A,B)` and `(B,A)` collide.
-///
-/// Mirrors Go `clonePairKey`: the two names are ordered lexicographically.
+/// Returns a canonical key for a clone pair so `(A,B)` and `(B,A)` collide:
+/// the two names are ordered lexicographically.
 #[must_use]
 fn clone_pair_key(func_a: &str, func_b: &str) -> (String, String) {
     if func_a > func_b {
@@ -219,7 +212,7 @@ fn clone_pair_key(func_a: &str, func_b: &str) -> (String, String) {
 }
 
 /// Computes a clone pair between an entry and a candidate, or `None` if the
-/// candidate is unknown or below `min_similarity`. Mirrors Go `computeClonePair`.
+/// candidate is unknown or below `min_similarity`.
 #[must_use]
 fn compute_clone_pair(
     entry: &FuncEntry,
@@ -241,7 +234,7 @@ fn compute_clone_pair(
     })
 }
 
-/// Builds a name → signature lookup. Mirrors Go `buildSignatureMap`.
+/// Builds a name → signature lookup.
 #[must_use]
 fn build_signature_map(entries: &[FuncEntry]) -> HashMap<String, Signature> {
     let mut sig_map = HashMap::with_capacity(entries.len());
@@ -254,9 +247,8 @@ fn build_signature_map(entries: &[FuncEntry]) -> HashMap<String, Signature> {
 /// Queries the LSH index for every entry, collects unique clone pairs, and sorts
 /// the stored pairs by similarity descending.
 ///
-/// `pair_cap` limits the *stored* `pairs` slice (`0` = unlimited); `total_count`
-/// always reflects all unique pairs found. Mirrors Go `findClonePairs` +
-/// `matchCandidates`.
+/// `pair_cap` limits the *stored* `pairs` slice (`0` = unlimited);
+/// `total_count` always reflects all unique pairs found.
 #[must_use]
 pub fn find_clone_pairs(
     entries: &[FuncEntry],
@@ -273,16 +265,15 @@ pub fn find_clone_pairs(
             continue;
         };
 
-        // Go's `lsh.Query` collects candidates via Go map iteration (`for id :=
-        // range seen`), whose order is randomized per run; the Rust LSH `query`
-        // likewise iterates a `HashMap`. That randomness propagates into the
+        // The LSH query collects candidates by iterating a `HashMap`, whose
+        // order is randomized per run (the reference implementation is equally
+        // order-nondeterministic here). That randomness propagates into the
         // discovery order, which (a) decides which pairs survive the
         // `pair_cap`, and (b) is the tie-break order among equal-similarity
         // pairs after the final sort. Sorting the candidates here makes
         // discovery order deterministic, so the stored pair SET and ORDER are
-        // reproducible run-to-run. (Go is order-nondeterministic here; the
-        // compat harness canonicalizes that away, but it requires Rust to be
-        // deterministic.)
+        // reproducible run-to-run (the compat harness canonicalizes the
+        // reference's nondeterminism away, but requires our determinism).
         candidates.sort_unstable();
 
         for candidate_id in candidates {
@@ -309,14 +300,14 @@ pub fn find_clone_pairs(
         }
     }
 
-    // Go: sort.Slice(pairs, |i,j| pairs[i].Similarity > pairs[j].Similarity).
-    // Go's `sort.Slice` is UNSTABLE, so equal-similarity pairs keep whatever
-    // (randomized) discovery order they had — Go is order-nondeterministic for
-    // this list, which the compat harness canonicalizes by sorting. To be
-    // deterministic on the Rust side we give equal-similarity pairs a stable
-    // tie-break on the qualified names, so two identical Rust runs are
-    // byte-identical (the harness requires Rust determinism). The membership of
-    // the list still matches Go; only the within-tier order is pinned.
+    // The reference sorts pairs by similarity descending with an UNSTABLE
+    // sort, so equal-similarity pairs keep whatever (randomized) discovery
+    // order they had — the list is order-nondeterministic there, which the
+    // compat harness canonicalizes by sorting. To be deterministic on our side
+    // we give equal-similarity pairs a stable tie-break on the qualified
+    // names, so two identical runs are byte-identical (the harness requires
+    // our determinism). The membership of the list still matches the
+    // reference; only the within-tier order is pinned.
     result.pairs.sort_by(|a, b| {
         b.similarity
             .total_cmp(&a.similarity)
@@ -327,10 +318,9 @@ pub fn find_clone_pairs(
     result
 }
 
-/// Builds an LSH index over `entries`, inserting each signature under its name.
-///
-/// Insert errors are skipped (mirroring Go's `continue` on `idx.Insert` error).
-/// Returns `None` if the index parameters are invalid.
+/// Builds an LSH index over `entries`, inserting each signature under its
+/// name. Insert errors are skipped. Returns `None` if the index parameters are
+/// invalid.
 #[must_use]
 pub fn build_index(entries: &[FuncEntry], num_bands: usize, num_rows: usize) -> Option<Index> {
     let mut idx = Index::new(num_bands, num_rows).ok()?;
@@ -340,8 +330,7 @@ pub fn build_index(entries: &[FuncEntry], num_bands: usize, num_rows: usize) -> 
     Some(idx)
 }
 
-/// Number of distinct function names across all pairs. Mirrors Go
-/// `countDistinctFuncs`.
+/// Number of distinct function names across all pairs.
 #[must_use]
 pub fn count_distinct_funcs(pairs: &[ClonePair]) -> usize {
     let mut unique: HashSet<&str> = HashSet::with_capacity(pairs.len());
@@ -404,11 +393,11 @@ mod tests {
 
     #[test]
     fn extract_func_name_qualifies_methods() {
-        // Go `ExtractEntityName` precedence: props["name"] -> own token ->
-        // Children[0]'s token. Here the method's name comes from Children[0]
-        // ("DoWork"); the receiver type is discovered separately by
-        // `extract_receiver_type` (which scans all children for the Parameter
-        // role), yielding "Foo.DoWork".
+        // Entity-name precedence: "name" prop -> own token -> children[0]'s
+        // token. Here the method's name comes from children[0] ("DoWork"); the
+        // receiver type is discovered separately by `extract_receiver_type`
+        // (which scans all children for the Parameter role), yielding
+        // "Foo.DoWork".
         let name = NodeBuilder::new("Identifier").role("Name").token("DoWork").build();
         let recv = NodeBuilder::new("Parameter").role("Parameter").token("(f *Foo)").build();
         let m = NodeBuilder::new("Method").child(name).child(recv).build();
@@ -417,9 +406,9 @@ mod tests {
 
     #[test]
     fn extract_func_name_own_token_beats_children() {
-        // Go checks the node's OWN token before any child. A C `Function` node
-        // whose token is the full function text keeps that text as its name, so
-        // distinct functions stay distinct in the LSH index.
+        // The node's OWN token is checked before any child. A C `Function`
+        // node whose token is the full function text keeps that text as its
+        // name, so distinct functions stay distinct in the LSH index.
         let child = NodeBuilder::new("Identifier").role("Name").token("U16").build();
         let f = NodeBuilder::new("Function").token("static U16 LZ4_read16(...)").child(child).build();
         assert_eq!(extract_func_name(&f), "static U16 LZ4_read16(...)");

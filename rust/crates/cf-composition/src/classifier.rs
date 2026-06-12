@@ -1,51 +1,48 @@
 //! File classifier.
 //!
-//! Ported from Go `internal/analyzers/file_history/classify.go`, whose
-//! `(*Classifier).Classify` is a fixed-priority cascade over `src-d/enry`
-//! predicates plus `pkg/pathfilter` generated-file checks:
+//! [`Classifier::classify`] is a fixed-priority cascade over enry-style
+//! predicates plus generated-file checks:
 //!
 //! ```text
 //! // first match wins:
-//! if len(content) > 0 && enry.IsBinary(content):    Binary
-//! if enry.IsImage(path):                            Image
-//! if enry.IsVendor(path):                           Vendor
-//! if filter.IsGeneratedPath(path):                  Generated
-//! if len(content) > 0 && filter.IsGeneratedContent: Generated
-//! if enry.IsDocumentation(path):                    Documentation
-//! if enry.IsConfiguration(path):                    Configuration
-//! if enry.IsDotFile(path):                          DotFile
-//! else:                                             Source
+//! if content is non-empty and looks binary:        Binary
+//! if the path has an image extension:              Image
+//! if the path matches a vendoring convention:      Vendor
+//! if the path matches a generated-file rule:       Generated
+//! if non-empty content carries a generated marker: Generated
+//! if the path matches a documentation convention:  Documentation
+//! if the extension maps to a config language:      Configuration
+//! if the base name is a dotfile:                   DotFile
+//! else:                                            Source
 //! ```
 //!
 //! The branch ORDER is load-bearing (a file matching several predicates is
-//! classified by the first matching branch), so the Rust port preserves the
-//! exact sequence.
+//! classified by the first matching branch) and is part of the pinned
+//! classification behaviour — preserve the exact sequence.
 //!
-//! # Data parity (DESIGN rule 7)
+//! # Data parity
 //!
-//! enry's `IsVendor` / `IsDocumentation` predicates are driven by generated
-//! regex tables (`src-d/enry/v2/data/{vendor,documentation}.go`), and the
-//! generated-file rules come from `pkg/pathfilter`. For full byte-identity on a
-//! real corpus those tables should be sourced from the workspace's already-
-//! vendored copies — `cf-pathfilter` (which vendors enry's `vendor.go` regexes
-//! via its `build.rs`, and ports the pathfilter generated rules) and
-//! `cf-langpath` (which ships the enry v2.1.0 extension TSV). See the crate
-//! `todos`. The predicates below reproduce enry's algorithms and the
-//! high-frequency data subset exercised by the ported Go tests; widening the
-//! embedded tables changes only the data slices these functions consult, not
-//! their structure.
+//! The `is_vendor` / `is_documentation` predicates are driven by generated
+//! regex tables from `src-d/enry` v2.1.0 (extracted from github/linguist), and
+//! the generated-file rules match the ones `cf-pathfilter` vendors. For full
+//! byte-identity on a real corpus those tables should be sourced from the
+//! workspace's already-vendored copies — `cf-pathfilter` (enry vendor regexes +
+//! generated rules) and `cf-langpath` (the enry v2.1.0 extension table). The
+//! predicates below reproduce enry's algorithms and the high-frequency data
+//! subset exercised by the unit tests; widening the embedded tables changes
+//! only the data slices these functions consult, not their structure.
 //!
-//! The fully-data-exact predicates here are the ones enry implements *without* a
-//! data table: [`enry::is_image`] (4 hard-coded extensions), [`enry::is_dotfile`]
-//! (`filepath.Base(filepath.Clean(path))` dot-prefix), [`enry::is_binary`]
-//! (8000-byte NUL sniff), and [`enry::is_configuration`] (extension → one of
-//! `{INI, JSON, TOML, YAML, XML}`).
+//! The fully-data-exact predicates here are the ones enry implements *without*
+//! a data table: [`enry::is_image`] (4 hard-coded extensions),
+//! [`enry::is_dotfile`] (dot-prefixed cleaned base name), [`enry::is_binary`]
+//! (8000-byte NUL sniff), and [`enry::is_configuration`] (extension -> one of
+//! `{INI, JSON, TOML, YAML, XML, SQL}`).
 
 use crate::category::Category;
 
 /// Classifies files into categories using enry heuristics.
 ///
-/// Zero-sized, like the Go `Classifier` (whose only field is a `*pathfilter`).
+/// Zero-sized; all state lives in the static rule tables.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Classifier;
 
@@ -58,14 +55,13 @@ impl Classifier {
 
     /// Determines the category of a file from its path and content.
     ///
-    /// Mirrors Go `(*Classifier).Classify` branch-for-branch, including the
-    /// `len(content) > 0` guards on the binary and generated-content checks
-    /// (so an empty/`nil` content never triggers Binary or content-Generated).
+    /// The cascade runs branch-for-branch in the pinned order, including the
+    /// non-empty-content guards on the binary and generated-content checks (so
+    /// empty content never triggers Binary or content-Generated).
     #[must_use]
-    // The cascade is deliberately kept branch-for-branch identical to Go's
-    // `(*Classifier).Classify`; two arms both yield `Category::Generated`
-    // (generated-by-path then generated-by-content), which clippy flags but is
-    // load-bearing for parity and readability.
+    // Two arms both yield `Category::Generated` (generated-by-path then
+    // generated-by-content), which clippy flags but is load-bearing for the
+    // pinned branch order and readability.
     #[allow(clippy::if_same_then_else)]
     pub fn classify(&self, path: &str, content: &[u8]) -> Category {
         if !content.is_empty() && enry::is_binary(content) {
@@ -90,9 +86,9 @@ impl Classifier {
     }
 }
 
-/// Returns the final path element of `path` after cleaning, equivalent to Go's
-/// `filepath.Base(filepath.Clean(path))` for the `/`-separated inputs this
-/// classifier sees on its Linux golden target.
+/// Returns the final path element of `path` after cleaning (trailing-slash
+/// trimming), for the `/`-separated inputs this classifier sees on its Linux
+/// golden target. An empty path yields `"."`; an all-slash path yields `"/"`.
 fn base_clean(path: &str) -> &str {
     if path.is_empty() {
         return ".";
@@ -107,11 +103,11 @@ fn base_clean(path: &str) -> &str {
     }
 }
 
-/// Returns the file extension including the leading dot, **case-preserving**,
-/// equivalent to Go's `filepath.Ext` (the suffix from the final dot in the base
-/// name). Empty when the base name has no dot. Use this where the Go predicate
-/// compares the raw extension (e.g. `enry.IsImage`'s case-sensitive check), so an
-/// upper-case `.GIF` is not misclassified the way a lower-cased compare would.
+/// Returns the file extension including the leading dot, **case-preserving**
+/// (the suffix from the final dot in the base name). Empty when the base name
+/// has no dot. Use this where the predicate compares the raw extension (e.g.
+/// `enry::is_image`'s case-sensitive check), so an upper-case `.GIF` is not
+/// misclassified the way a lower-cased compare would.
 fn ext(path: &str) -> String {
     let base = base_clean(path);
     match base.rfind('.') {
@@ -120,54 +116,44 @@ fn ext(path: &str) -> String {
     }
 }
 
-/// Port of the subset of `src-d/enry` v2.1.0 predicates used by the classifier.
+/// The subset of `src-d/enry` v2.1.0 predicates used by the classifier.
 mod enry {
     use super::base_clean;
 
-    /// `enry.IsBinary` — content is detected as binary.
+    /// Content is detected as binary.
     ///
-    /// Exact port: read up to `sniffLen` (8000) bytes and return true iff a NUL
-    /// byte appears in that window (git's binary detection).
+    /// Exact rule: read up to 8000 bytes and return true iff a NUL byte appears
+    /// in that window (git's binary detection).
     pub fn is_binary(content: &[u8]) -> bool {
         const SNIFF_LEN: usize = 8000;
         let window = &content[..content.len().min(SNIFF_LEN)];
         window.contains(&0u8)
     }
 
-    /// `enry.IsImage` — exact port: extension is exactly `.png`, `.jpg`,
-    /// `.jpeg`, or `.gif`. Go compares the **raw** `filepath.Ext`, so the match
-    /// is case-sensitive: an upper-case `.GIF` (e.g. ioq3's `RADIANT3.GIF`) is
-    /// NOT an image and falls through to `source`, which is what Go reports.
+    /// Path has an image extension: exactly `.png`, `.jpg`, `.jpeg`, or `.gif`.
+    ///
+    /// The raw extension is compared, so the match is case-sensitive: an
+    /// upper-case `.GIF` (e.g. ioq3's `RADIANT3.GIF`) is NOT an image and falls
+    /// through to `source`, which is what the reference binary reports.
     pub fn is_image(path: &str) -> bool {
         matches!(super::ext(path).as_str(), ".png" | ".jpg" | ".jpeg" | ".gif")
     }
 
-    /// `enry.IsDotFile` — exact port: `filepath.Base(filepath.Clean(path))`
-    /// starts with `.` and is not exactly `.`.
+    /// The cleaned base name starts with `.` and is not exactly `.`.
     pub fn is_dotfile(path: &str) -> bool {
         let base = base_clean(path);
         base.starts_with('.') && base != "."
     }
 
-    /// `enry.IsConfiguration` — exact port:
+    /// The path's extension-only language is a configuration language.
     ///
-    /// ```go
-    /// func IsConfiguration(path string) bool {
-    ///     language, _ := GetLanguageByExtension(path)
-    ///     _, is := configurationLanguages[language]
-    ///     return is
-    /// }
-    /// var configurationLanguages = map[string]bool{
-    ///     "XML": true, "JSON": true, "TOML": true, "YAML": true, "INI": true, "SQL": true,
-    /// }
-    /// ```
-    ///
-    /// We resolve the extension-only language via enry's real
-    /// `data.LanguagesByExtension` table (vendored in `cf-langpath`) through
-    /// [`cf_langpath::language_by_extension`], then test membership in the exact
-    /// `configurationLanguages` set. This replaces the previous hand-curated
-    /// extension list, which both missed entries (`SQL`, and the long XML-family
-    /// tail) and added wrong ones, so files now bucket exactly as Go does.
+    /// Resolves the language via enry's real extension table (vendored in
+    /// `cf-langpath`) through [`cf_langpath::language_by_extension`], then
+    /// tests membership in the exact configuration-language set
+    /// `{XML, JSON, TOML, YAML, INI, SQL}`. This replaced an earlier
+    /// hand-curated extension list, which both missed entries (`SQL`, and the
+    /// long XML-family tail) and added wrong ones, so files now bucket exactly
+    /// as the reference binary does.
     pub fn is_configuration(path: &str) -> bool {
         const CONFIGURATION_LANGUAGES: [&str; 6] =
             ["XML", "JSON", "TOML", "YAML", "INI", "SQL"];
@@ -177,9 +163,9 @@ mod enry {
         }
     }
 
-    /// `enry.IsVendor` — path matches a vendoring convention.
+    /// Path matches a vendoring convention.
     ///
-    /// enry tests the path against `data.VendorMatchers` (compiled regexes). The
+    /// enry tests the path against its compiled vendor regex table. The
     /// high-frequency conventions are reproduced here; the full regex list is a
     /// vendoring follow-up that should reuse `cf-pathfilter::is_vendor`.
     pub fn is_vendor(path: &str) -> bool {
@@ -212,11 +198,11 @@ mod enry {
         path == "vendor" || path == "node_modules"
     }
 
-    /// `enry.IsDocumentation` — exact port of `data.DocumentationMatchers`.
+    /// Path matches a documentation convention — an exact reproduction of
+    /// enry's documentation matchers.
     ///
-    /// enry's matcher is a `substring.Or` of unanchored `regexp.MatchString`
-    /// patterns (verbatim from `src-d/enry/v2@v2.1.0/data/documentation.go`,
-    /// extracted from github/linguist):
+    /// The matcher is an OR of unanchored regex patterns (verbatim from
+    /// `src-d/enry/v2@v2.1.0`, extracted from github/linguist):
     ///
     /// ```text
     /// ^[Dd]ocs?/                  (^|/)[Dd]ocumentation/   (^|/)[Gg]roovydoc/
@@ -227,10 +213,10 @@ mod enry {
     /// (^|/)README(\.|$)          (^|/)[Rr]eadme(\.|$)      ^[Ss]amples?/
     /// ```
     ///
-    /// These are PATH-only (no prose extensions such as `.md`/`.rst` — the
-    /// previous port wrongly added those, over-classifying source files as
-    /// documentation). The patterns are reproduced exactly below without a regex
-    /// dependency.
+    /// These are PATH-only (no prose extensions such as `.md`/`.rst` — an
+    /// earlier version wrongly added those, over-classifying source files as
+    /// documentation). The patterns are reproduced exactly below without a
+    /// regex dependency.
     pub fn is_documentation(path: &str) -> bool {
         // `^[Dd]ocs?/` — starts with Doc/ Docs/ doc/ docs/.
         if dir_prefix(path, &["Doc/", "Docs/", "doc/", "docs/"]) {
@@ -297,20 +283,20 @@ mod enry {
     }
 
     /// Tests `^(prefix)` for any of the given directory prefixes (each ending in
-    /// `/`), matching enry's anchored `^[Xx].../` patterns.
+    /// `/`), matching the anchored `^[Xx].../` patterns.
     fn dir_prefix(path: &str, prefixes: &[&str]) -> bool {
         prefixes.iter().any(|p| path.starts_with(p))
     }
 
     /// Tests `(^|/)segment` for any of the given directory segments (each ending
-    /// in `/`), matching enry's `(^|/)X/` patterns.
+    /// in `/`), matching the `(^|/)X/` patterns.
     fn dir_segment(path: &str, segments: &[&str]) -> bool {
         segments
             .iter()
             .any(|s| path.starts_with(s) || path.contains(&format!("/{s}")))
     }
 
-    /// Tests `(^|/)NAME(\.|$)` exactly as enry's regex does: NAME anchored at a
+    /// Tests `(^|/)NAME(\.|$)` exactly as the regex does: NAME anchored at a
     /// component start, immediately followed by a literal `.` (any component,
     /// even a directory like `NAME.d/`) **or by the end of the whole path** (the
     /// `$` — i.e. the final component equals NAME exactly).
@@ -338,14 +324,13 @@ mod enry {
     }
 }
 
-/// Port of the `pkg/pathfilter` generated-file checks (`IsGeneratedPath` /
-/// `IsGeneratedContent`), mirroring the rules `cf-pathfilter` already vendors
+/// Generated-file checks, mirroring the rules `cf-pathfilter` vendors
 /// (`DEFAULT_SUFFIXES`, `DEFAULT_FILENAME_PREFIXES`, `GENERATED_MARKERS`).
 mod pathfilter {
     use super::base_clean;
 
-    /// File suffixes indicating generated code. Mirrors `cf-pathfilter`'s
-    /// `DEFAULT_SUFFIXES` (Go `defaultSuffixes`).
+    /// File suffixes indicating generated code (matches `cf-pathfilter`'s
+    /// `DEFAULT_SUFFIXES`).
     const DEFAULT_SUFFIXES: &[&str] = &[
         ".pb.go",
         ".pb.gw.go",
@@ -366,11 +351,11 @@ mod pathfilter {
     ];
 
     /// Filename prefixes (matched against the base name) indicating generated
-    /// code. Mirrors `cf-pathfilter`'s `DEFAULT_FILENAME_PREFIXES`.
+    /// code (matches `cf-pathfilter`'s `DEFAULT_FILENAME_PREFIXES`).
     const DEFAULT_FILENAME_PREFIXES: &[&str] = &["zz_generated", "mock_", "fake_", "wire_gen"];
 
-    /// Byte markers found near the top of generated files. Mirrors
-    /// `cf-pathfilter`'s `GENERATED_MARKERS`.
+    /// Byte markers found near the top of generated files (matches
+    /// `cf-pathfilter`'s `GENERATED_MARKERS`).
     const GENERATED_MARKERS: &[&[u8]] = &[
         b"DO NOT EDIT",
         b"Code generated",
@@ -380,12 +365,11 @@ mod pathfilter {
         b"@generated",
     ];
 
-    /// How many header bytes to scan for a generated marker. Mirrors
-    /// `cf-pathfilter`'s `GENERATED_MARKER_SCAN_LIMIT`.
+    /// How many header bytes to scan for a generated marker (matches
+    /// `cf-pathfilter`'s `GENERATED_MARKER_SCAN_LIMIT`).
     const GENERATED_MARKER_SCAN_LIMIT: usize = 512;
 
-    /// `pathfilter.IsGeneratedPath` — the path's name matches a generated suffix
-    /// or filename prefix.
+    /// The path's name matches a generated suffix or filename prefix.
     pub fn is_generated_path(path: &str) -> bool {
         let lower = path.to_ascii_lowercase();
         if DEFAULT_SUFFIXES.iter().any(|s| lower.ends_with(s)) {
@@ -395,8 +379,8 @@ mod pathfilter {
         DEFAULT_FILENAME_PREFIXES.iter().any(|p| base.starts_with(p))
     }
 
-    /// `pathfilter.IsGeneratedContent` — a generated marker appears within the
-    /// first [`GENERATED_MARKER_SCAN_LIMIT`] bytes of `content`.
+    /// A generated marker appears within the first
+    /// [`GENERATED_MARKER_SCAN_LIMIT`] bytes of `content`.
     pub fn is_generated_content(content: &[u8]) -> bool {
         let window = &content[..content.len().min(GENERATED_MARKER_SCAN_LIMIT)];
         GENERATED_MARKERS.iter().any(|m| contains_subslice(window, m))

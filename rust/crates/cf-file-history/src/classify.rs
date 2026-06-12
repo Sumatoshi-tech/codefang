@@ -1,28 +1,26 @@
 //! File classification by category.
 //!
-//! Ports `internal/analyzers/file_history/classify.go`.
-//!
-//! Files are classified into one of eight [`Category`] values using `enry`
-//! (language/vendor/documentation heuristics) plus `pathfilter` (generated-path
-//! and generated-content detection). Categories are checked in a fixed priority
+//! Files are classified into one of eight [`Category`] values using
+//! enry-style language/vendor/documentation heuristics plus generated-path and
+//! generated-content detection. Categories are checked in a fixed priority
 //! order; the first match wins.
 //!
-//! # enry parity
+//! # Backend parity
 //!
-//! The Go classifier delegates to `github.com/src-d/enry/v2`. The full enry
-//! predicate set (`IsImage`/`IsVendor`/`IsDocumentation`/`IsConfiguration`/
-//! `IsDotFile`) is not yet available in the Rust tree, so this module routes
-//! every predicate through the [`Enry`] and [`GeneratedDetector`] traits. The
-//! category *set* and *priority order* are reproduced exactly; a faithful enry
-//! port is dropped in by implementing those traits, with no change to the
-//! classifier itself. The [`PlaceholderEnry`] backend reproduces only the
-//! NUL-byte binary heuristic, classifying everything else as
-//! [`Category::Source`]. Tracked as a roadmap item, not a code marker.
+//! The reference classifier delegates its predicates to the `enry` library.
+//! The full predicate set (image/vendor/documentation/configuration/dotfile)
+//! is not yet available in this tree, so this module routes every predicate
+//! through the [`Enry`] and [`GeneratedDetector`] traits. The category *set*
+//! and *priority order* are final; a faithful enry port is dropped in by
+//! implementing those traits, with no change to the classifier itself. The
+//! [`PlaceholderEnry`] backend reproduces only the NUL-byte binary heuristic,
+//! classifying everything else as [`Category::Source`]. Tracked as a roadmap
+//! item.
 
 /// A file classification category.
 ///
-/// The string values match the Go `Category` constants exactly (these strings
-/// appear verbatim in machine report keys such as the composition breakdown).
+/// The string values are part of the report contract (they appear verbatim in
+/// machine report keys such as the composition breakdown).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Category {
     /// First-party project source code.
@@ -44,7 +42,7 @@ pub enum Category {
 }
 
 impl Category {
-    /// Returns the lowercase string identifier, matching the Go constant value.
+    /// Returns the lowercase string identifier used in report keys.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
@@ -60,10 +58,9 @@ impl Category {
     }
 }
 
-/// The canonical order of categories for display and charting.
-///
-/// Mirrors `AllCategories` in `classify.go`:
-/// source, documentation, configuration, vendor, generated, dotfile, image, binary.
+/// The canonical order of categories for display and charting:
+/// source, documentation, configuration, vendor, generated, dotfile, image,
+/// binary.
 pub const ALL_CATEGORIES: [Category; 8] = [
     Category::Source,
     Category::Documentation,
@@ -81,39 +78,35 @@ pub fn all_categories() -> &'static [Category] {
     &ALL_CATEGORIES
 }
 
-/// Backwards-compatible alias used by callers expecting a Go-style name.
-#[allow(non_upper_case_globals)]
-pub const AllCategories: [Category; 8] = ALL_CATEGORIES;
-
-/// Heuristic predicates supplied by an `enry`-equivalent backend.
+/// Heuristic predicates supplied by an enry-equivalent backend.
 ///
-/// These map one-to-one onto the `enry.Is*` functions used by the Go
-/// classifier. A faithful Rust enry port implements this trait so [`Classifier`]
-/// reproduces Go classification byte-for-byte.
+/// These map one-to-one onto the predicates used by the reference classifier.
+/// A faithful enry port implements this trait so [`Classifier`] reproduces the
+/// contract classification byte-for-byte.
 pub trait Enry {
-    /// `enry.IsBinary(content)`.
+    /// Whether `content` is binary.
     fn is_binary(&self, content: &[u8]) -> bool;
-    /// `enry.IsImage(path)`.
+    /// Whether `path` is an image asset.
     fn is_image(&self, path: &str) -> bool;
-    /// `enry.IsVendor(path)`.
+    /// Whether `path` is vendored third-party code.
     fn is_vendor(&self, path: &str) -> bool;
-    /// `enry.IsDocumentation(path)`.
+    /// Whether `path` is documentation.
     fn is_documentation(&self, path: &str) -> bool;
-    /// `enry.IsConfiguration(path)`.
+    /// Whether `path` is configuration.
     fn is_configuration(&self, path: &str) -> bool;
-    /// `enry.IsDotFile(path)`.
+    /// Whether `path` is a dotfile.
     fn is_dot_file(&self, path: &str) -> bool;
 }
 
-/// Generated-path / generated-content predicates supplied by `pathfilter`.
+/// Generated-path / generated-content predicates.
 pub trait GeneratedDetector {
-    /// `Filter.IsGeneratedPath(path)`.
+    /// Whether the path denotes generated code.
     fn is_generated_path(&self, path: &str) -> bool;
-    /// `Filter.IsGeneratedContent(content)`.
+    /// Whether the content carries a generated-code marker.
     fn is_generated_content(&self, content: &[u8]) -> bool;
 }
 
-/// Categorizes files using an `enry` backend and a `pathfilter` filter.
+/// Categorizes files using an [`Enry`] backend and a [`GeneratedDetector`].
 ///
 /// Construct with [`Classifier::new`] for the default backends, or
 /// [`Classifier::with_backends`] to inject a faithful enry/pathfilter port.
@@ -131,11 +124,10 @@ impl<E: Enry, G: GeneratedDetector> Classifier<E, G> {
     /// Returns the category for a file.
     ///
     /// `content` may be empty for path-only classification. Categories are
-    /// checked in priority order (first match wins), exactly as in
-    /// `classify.go`:
+    /// checked in priority order (first match wins):
     ///
     /// Binary > Image > Vendor > Generated(path) > Generated(content) >
-    /// Documentation > Configuration > DotFile > Source.
+    /// Documentation > Configuration > `DotFile` > Source.
     pub fn classify(&self, file_path: &str, content: &[u8]) -> Category {
         if !content.is_empty() && self.enry.is_binary(content) {
             return Category::Binary;
@@ -197,7 +189,7 @@ impl Enry for PlaceholderEnry {
 
 /// Default generated-content detector (always `false`).
 ///
-/// Replace by implementing [`GeneratedDetector`] over the `pathfilter` port.
+/// Replace by implementing [`GeneratedDetector`] over a pathfilter port.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PlaceholderGenerated;
 
@@ -231,14 +223,13 @@ impl Default for Classifier<PlaceholderEnry, PlaceholderGenerated> {
 mod tests {
     use super::*;
 
-    // Ported from classify_test.go. Cases that require real enry/pathfilter
-    // heuristics are gated behind #[ignore] until the data tables are vendored;
-    // the binary detection and priority-scaffold cases run against the default
-    // backend.
+    // Cases that require real enry/pathfilter heuristics are gated behind
+    // #[ignore] until the data tables are vendored; the binary detection and
+    // priority-scaffold cases run against the default backend.
 
     #[test]
     fn classify_binary_content() {
-        // From TestClassify_Binary: NUL-containing content -> Binary.
+        // NUL-containing content -> Binary.
         let c = Classifier::new();
         let binary = b"hello\x00world";
         assert_eq!(c.classify("data.bin", binary), Category::Binary);
@@ -248,7 +239,7 @@ mod tests {
 
     #[test]
     fn classify_source_default() {
-        // From TestClassify_Source: plain source files (default => Source).
+        // Plain source files (default => Source).
         let c = Classifier::new();
         assert_eq!(c.classify("main.go", b""), Category::Source);
         assert_eq!(c.classify("internal/server/handler.go", b""), Category::Source);
@@ -257,7 +248,6 @@ mod tests {
 
     #[test]
     fn all_categories_contains_all() {
-        // From TestAllCategories_ContainsAll.
         let expected = [
             Category::Source,
             Category::Vendor,
@@ -275,7 +265,7 @@ mod tests {
     }
 
     #[test]
-    fn category_as_str_matches_go() {
+    fn category_as_str_is_stable() {
         assert_eq!(Category::Source.as_str(), "source");
         assert_eq!(Category::Vendor.as_str(), "vendor");
         assert_eq!(Category::Generated.as_str(), "generated");
@@ -289,7 +279,7 @@ mod tests {
     #[test]
     #[ignore = "requires vendored enry data tables (roadmap item)"]
     fn classify_vendor_documentation_image_dotfile() {
-        // Mirrors classify_test.go cases that need the real enry backend; build a
-        // classifier with the real enry implementation here once available.
+        // Covers the cases that need the real enry backend; build a classifier
+        // with the real enry implementation here once available.
     }
 }

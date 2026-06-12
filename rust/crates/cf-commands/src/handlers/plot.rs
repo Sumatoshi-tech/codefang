@@ -1,8 +1,7 @@
-//! `--format plot` static-phase orchestration — the Rust analogue of Go
-//! `runStaticPlotAnalyzers` (run.go:953) → `StaticService.FormatPlotPages`
-//! (static.go:992).
+//! `--format plot` static-phase orchestration — the Rust analogue of the reference
+//! `runStaticPlotAnalyzers` → `StaticService.FormatPlotPages` flow.
 //!
-//! Flow (per Go):
+//! Flow (matching the reference implementation):
 //!
 //! 1. run the selected static analyzers and gather each one's AGGREGATED RAW
 //!    report (the `analyze.Report` value — the same map `report.json` carries);
@@ -13,7 +12,7 @@
 //! 4. `writeReportJSON`: write `<output>/report.json` — the results map keyed
 //!    by the analyzer's short name, two-space-indented `encoding/json` with
 //!    the `Encoder.Encode` trailing newline, 0o640 file mode, atomic
-//!    temp+rename (Go `storage.WriteAtomic`).
+//!    temp+rename.
 
 use std::fs;
 use std::io;
@@ -29,21 +28,21 @@ use crate::handlers::{
 };
 use crate::pipeline::RunContext;
 
-/// Project title shown on every plot page (Go `plotPageTitle`, static.go:912).
+/// Project title shown on every plot page (the reference `plotPageTitle`).
 const PLOT_PAGE_TITLE: &str = "Codefang";
 
-/// Output directory mode (Go `plotDirPerm`, static.go:921).
+/// Output directory mode (the reference `plotDirPerm`).
 #[cfg(unix)]
 const PLOT_DIR_MODE: u32 = 0o750;
 
-/// report.json file mode (Go `reportJSONPerm`, static.go:987).
+/// report.json file mode (the reference `reportJSONPerm`).
 #[cfg(unix)]
 const REPORT_JSON_MODE: u32 = 0o640;
 
 /// One plot-capable static analyzer: its registry id, the short name keying
-/// the `report.json` results map (Go analyzer `Name()`), the builder of its
+/// the `report.json` results map (reference: analyzer `Name()`), the builder of its
 /// aggregated raw report, and its optional section renderer. Analyzers whose
-/// sections are not yet ported keep `sections: None` — Go renders no page for
+/// sections are not yet ported keep `sections: None` — the reference implementation renders no page for
 /// them but still includes their report in `report.json`.
 pub struct PlotAnalyzer {
     /// Full analyzer id (`static/complexity`).
@@ -52,7 +51,7 @@ pub struct PlotAnalyzer {
     pub name: &'static str,
     /// Builds the aggregated raw `analyze.Report` value.
     pub raw_report: fn(&RunContext) -> Option<GoValue>,
-    /// The registered section renderer (Go `PlotSectionsFor(id)`).
+    /// The registered section renderer.
     pub sections: Option<SectionsFn>,
 }
 
@@ -84,11 +83,11 @@ fn composition_raw(ctx: &RunContext) -> Option<GoValue> {
     static_json::composition_raw_report_value(&ctx.path, &static_path_policy(ctx))
 }
 
-/// The plot-capable static analyzers in registry order (Go
-/// `defaultUASTAnalyzers ++ defaultRawFileAnalyzers`, run.go:2092: clones,
+/// The plot-capable static analyzers in registry order (reference:
+/// `defaultUASTAnalyzers ++ defaultRawFileAnalyzers`: clones,
 /// complexity, comments, halstead, cohesion, imports, then composition). One
 /// line per analyzer; see `plot_sections/mod.rs` for the porting recipe.
-/// Composition registers no plot sections in Go (no page; report.json only).
+/// Composition registers no plot sections in the reference implementation (no page; report.json only).
 pub const PLOT_ANALYZERS: &[PlotAnalyzer] = &[
     PlotAnalyzer {
         id: "static/clones",
@@ -138,12 +137,12 @@ pub const PLOT_ANALYZERS: &[PlotAnalyzer] = &[
 /// the page set + `report.json` into `output_dir`. Returns `None` when any
 /// selected id has no plot entry yet (caller falls through to the
 /// dispatch-blocked diagnostic), `Some(0)` on success, `Some(1)` on an I/O
-/// failure (Go surfaces the render error through cobra, rc 1).
+/// failure (reference: surfaces the render error through cobra, rc 1).
 #[must_use]
 pub fn run_static_plot(ctx: &RunContext, static_ids: &[String], output_dir: &str) -> Option<i32> {
-    // Resolve every selected id to its plot entry in SELECTION order — Go
+    // Resolve every selected id to its plot entry in SELECTION order — the reference implementation
     // renders pages (and collects the index metas) in the resolved
-    // `analyzerNames` order (run.go `AnalyzerNamesByID(analyzerIDs)` →
+    // `analyzerNames` order (reference `AnalyzerNamesByID(analyzerIDs)` →
     // `RenderPlotPages` ranges that list), which is the CLI selection order; a
     // glob selection arrives here already expanded in registry order.
     let mut selected: Vec<&PlotAnalyzer> = Vec::new();
@@ -155,7 +154,7 @@ pub fn run_static_plot(ctx: &RunContext, static_ids: &[String], output_dir: &str
         return None;
     }
 
-    // Run the analyzers (Go service.AnalyzeFolder over the shared folder walk).
+    // Run the analyzers (reference: service.AnalyzeFolder over the shared folder walk).
     let mut results: Vec<(&'static str, GoValue)> = Vec::new();
     for entry in &selected {
         let report = (entry.raw_report)(ctx)?;
@@ -171,7 +170,7 @@ pub fn run_static_plot(ctx: &RunContext, static_ids: &[String], output_dir: &str
     }
 }
 
-/// Renders pages + index + report.json (Go `FormatPlotPages`).
+/// Renders pages + index + report.json.
 fn render_plot_output(
     selected: &[&PlotAnalyzer],
     results: &[(&'static str, GoValue)],
@@ -186,7 +185,7 @@ fn render_plot_output(
     };
 
     // RenderPlotPages: pages only for analyzers with a section renderer whose
-    // sections build successfully (Go skips section errors silently).
+    // sections build successfully (the reference implementation skips section errors silently).
     let mut pages: Vec<PageMeta> = Vec::new();
     for (entry, (_, report)) in selected.iter().zip(results) {
         let Some(section_fn) = entry.sections else {
@@ -208,8 +207,8 @@ fn render_plot_output(
     write_report_json(results, output_dir)
 }
 
-/// Go `os.MkdirAll(outputDir, 0o750)` — apply the Go mode to directories this
-/// run creates; pre-existing directories keep their mode (as in Go).
+/// The reference `os.MkdirAll(outputDir, 0o750)` — apply the reference mode to directories this
+/// run creates; pre-existing directories keep their mode (as in the reference implementation).
 fn create_output_dir(output_dir: &str) -> io::Result<()> {
     let existed = Path::new(output_dir).is_dir();
     fs::create_dir_all(output_dir)?;
@@ -223,7 +222,7 @@ fn create_output_dir(output_dir: &str) -> io::Result<()> {
     Ok(())
 }
 
-/// Go `writeReportJSON` (static.go:1017): the results map (analyzer short name
+/// The reference `writeReportJSON`: the results map (analyzer short name
 /// → raw report) as two-space-indented JSON + the `Encoder.Encode` trailing
 /// newline, written atomically (temp file + rename) with mode 0o640.
 fn write_report_json(results: &[(&'static str, GoValue)], output_dir: &str) -> io::Result<()> {

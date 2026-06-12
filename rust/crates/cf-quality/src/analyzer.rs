@@ -1,56 +1,52 @@
-//! The composite quality analyzer (Go `quality.Analyzer`).
+//! The composite quality analyzer.
 //!
 //! Runs the four static component analyzers — complexity, Halstead, comments,
 //! cohesion — on each changed file's UAST per commit, recording **scalars only**,
 //! and aggregates them order-independently (per-commit results keyed by hash;
-//! `Merge` is a no-op). Analyzer ID is `history/quality`.
+//! merging is a no-op). Analyzer ID is `history/quality`.
 //!
-//! # Component coupling (DESIGN rule 5)
+//! # Component coupling
 //!
 //! The component analyzers (`cf-complexity`, `cf-halstead`, `cf-comments`,
 //! `cf-cohesion`) each expose `Analyzer::new()` + `analyze(&root) -> Result<Report, _>`
 //! returning a per-crate report map. This module consumes only the documented
 //! scalar keys via the [`ScalarReport`] accessor trait, so it is decoupled from
 //! each crate's concrete `Report`/`ReportValue` representation. The framework
-//! plumbing (`UASTChangesAnalyzer`, `TicksSinceStart`, `BaseHistoryAnalyzer`,
-//! `Aggregator`) is abstracted behind [`ComponentSet`] until the exact
-//! `cf-analyze` / `cf-plumbing` surfaces are wired in.
+//! plumbing (UAST change feed, tick assignment, aggregation) is abstracted
+//! behind [`ComponentSet`].
 
 use std::collections::BTreeMap;
 
 use crate::data::TickQuality;
 
-/// Analyzer identifier (Go `Descriptor.ID`).
+/// Analyzer identifier.
 pub const ID: &str = "history/quality";
 
-/// Analyzer description (Go `Descriptor.Description`).
+/// Analyzer description.
 pub const DESCRIPTION: &str =
     "Tracks complexity, Halstead, comment quality, and cohesion metrics over commit history.";
 
-/// Estimated bytes of TC payload per commit (Go `qualityAvgTCSize`).
+/// Estimated bytes of per-commit payload (pre-allocation hint).
 pub const ESTIMATED_TC_SIZE: usize = 2 * 1024;
 
 /// Read-side accessor over a component analyzer's report map.
 ///
-/// Mirrors Go `reportutil.GetInt` / `reportutil.GetFloat64`: a missing or
-/// wrong-typed key yields `0`. Each component crate's report type implements
-/// this (or is adapted to it) so the quality analyzer can pull scalars uniformly.
+/// A missing or wrong-typed key yields `0` (the report-accessor convention).
+/// Each component crate's report type implements this (or is adapted to it) so
+/// the quality analyzer can pull scalars uniformly.
 pub trait ScalarReport {
-    /// Returns the integer value at `key`, truncating floats toward zero
-    /// (`reportutil.GetInt`); `0` when absent or non-numeric.
+    /// Returns the integer value at `key`, truncating floats toward zero;
+    /// `0` when absent or non-numeric.
     fn get_int(&self, key: &str) -> i64;
-    /// Returns the float value at `key` (`reportutil.GetFloat64`); `0.0` when
-    /// absent or non-numeric.
+    /// Returns the float value at `key`; `0.0` when absent or non-numeric.
     fn get_float(&self, key: &str) -> f64;
 }
 
-/// The four component analyzers, run per changed file (Go static analyzers held
-/// on `quality.Analyzer`).
+/// The four component analyzers, run per changed file.
 ///
 /// Implementors invoke each component's `analyze` and return its report (or
-/// `None` on error, matching the Go code which silently skips a component whose
-/// `Analyze` errored). The default [`accumulate_file`] glue records the same
-/// scalars the Go `analyzeComplexity/Halstead/Comments/Cohesion` helpers do.
+/// `None` on error — a component that errors is silently skipped). The
+/// [`accumulate_file`] glue records the documented scalar keys from each.
 pub trait ComponentSet {
     /// The complexity report type (e.g. `cf_complexity::Report`).
     type Complexity: ScalarReport;
@@ -63,7 +59,7 @@ pub trait ComponentSet {
     /// The UAST node type fed to each component analyzer.
     type Node;
 
-    /// Runs the complexity analyzer; `None` mirrors a Go error return.
+    /// Runs the complexity analyzer; `None` signals an analyzer error.
     fn analyze_complexity(&self, root: &Self::Node) -> Option<Self::Complexity>;
     /// Runs the Halstead analyzer.
     fn analyze_halstead(&self, root: &Self::Node) -> Option<Self::Halstead>;
@@ -73,11 +69,10 @@ pub trait ComponentSet {
     fn analyze_cohesion(&self, root: &Self::Node) -> Option<Self::Cohesion>;
 }
 
-/// Accumulates one file's scalars into `tq` (Go `(*Analyzer).analyzeNode`).
+/// Accumulates one file's scalars into `tq`.
 ///
-/// Order of the four component calls matches Go
-/// (`complexity, halstead, comments, cohesion`). A component that errored
-/// (`None`) contributes nothing — exactly like the Go helpers' early `return`.
+/// The four components run in the fixed order `complexity, halstead, comments,
+/// cohesion`. A component that errored (`None`) contributes nothing.
 pub fn accumulate_file<C: ComponentSet>(components: &C, root: &C::Node, tq: &mut TickQuality) {
     if let Some(r) = components.analyze_complexity(root) {
         tq.complexities
@@ -102,11 +97,10 @@ pub fn accumulate_file<C: ComponentSet>(components: &C, root: &C::Node, tq: &mut
     }
 }
 
-/// Builds the per-commit [`TickQuality`] for one commit's changed UAST roots
-/// (Go `(*Analyzer).Consume`).
+/// Builds the per-commit [`TickQuality`] for one commit's changed UAST roots.
 ///
-/// `roots` are the `change.After` nodes (callers skip deletions where
-/// `After == nil`). Each root is analyzed by all four components.
+/// `roots` are the post-change nodes (callers skip deletions, which have
+/// none). Each root is analyzed by all four components.
 pub fn consume_commit<C: ComponentSet>(components: &C, roots: &[&C::Node]) -> TickQuality {
     let mut tq = TickQuality::new();
     for root in roots {
@@ -118,8 +112,7 @@ pub fn consume_commit<C: ComponentSet>(components: &C, roots: &[&C::Node]) -> Ti
 /// Folds per-commit results into the canonical `commit_quality` map
 /// (the order-independent core of the framework aggregator).
 ///
-/// Later writes for the same hash overwrite earlier ones, matching Go's
-/// `acc.commitQuality[hash] = tq` and `maps.Copy`.
+/// Later writes for the same hash overwrite earlier ones (last write wins).
 #[must_use]
 pub fn fold_commits<I>(per_commit: I) -> BTreeMap<String, TickQuality>
 where
@@ -212,7 +205,7 @@ mod tests {
         assert_eq!(tq.files_analyzed(), 0);
     }
 
-    // A component that errors contributes nothing (Go early-return).
+    // A component that errors contributes nothing.
     #[test]
     fn consume_skips_errored_components() {
         let c = FakeComponents { ok: false };

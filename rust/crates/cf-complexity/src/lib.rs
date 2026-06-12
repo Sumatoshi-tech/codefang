@@ -1,12 +1,10 @@
 //! Static complexity analyzer (cyclomatic / cognitive / nesting).
 //!
-//! Faithful port of the Go package `internal/analyzers/complexity`
-//! (`complexity.go`, `cognitive_complexity.go`, `flow_helpers.go`). It walks a
-//! UAST tree, computes per-function cyclomatic complexity, cognitive complexity
-//! (SonarSource methodology), nesting depth, decision points, and lines of
-//! code, and returns a deterministic result map matching Go.
+//! Walks a UAST tree, computes per-function cyclomatic complexity, cognitive
+//! complexity (`SonarSource` methodology), nesting depth, decision points,
+//! and lines of code, and returns a deterministic result map.
 //!
-//! # Output shape (mirrors `(*Analyzer).Analyze` -> `analyze.Report`)
+//! # Output shape
 //!
 //! On success the returned [`cf_gojson::GoValue`] object carries the keys
 //! `analyzer_name`, `total_functions`, `average_complexity`, `max_complexity`,
@@ -14,23 +12,24 @@
 //! `decision_points`, `functions`, and `message`. The `functions` array holds
 //! one object per function with the per-function metric keys plus the
 //! assessment strings (`complexity_assessment`, `cognitive_assessment`,
-//! `nesting_assessment`), exactly as `convertFunctionReportItems` builds them.
+//! `nesting_assessment`).
 //!
-//! For a nil root or a tree with no functions, the empty-result shape is
+//! For a missing root or a tree with no functions, the empty-result shape is
 //! returned (`total_functions`, `average_complexity`, `max_complexity`,
-//! `total_complexity`, `message`), mirroring `buildEmptyResult`.
+//! `total_complexity`, `message`).
 //!
 //! Because [`cf_gojson::GoValue`] objects are map-origin here, their keys
-//! byte-sort on encode, exactly as Go's `encoding/json` orders `map[string]any`
-//! keys. Serialization itself is owned by the report layer; this crate only
-//! builds the value tree.
+//! byte-sort on encode (report-format contract). Serialization itself is owned
+//! by the report layer; this crate only builds the value tree. The static
+//! pipeline's aggregated rendering view lives in [`report`].
 //!
-//! # Differences from the framework path
-//!
-//! The Go analyzer's `FormatReportJSON`/`FormatReportYAML`/`FormatReportBinary`
-//! derive a separate `ComputedMetrics` view; that rendering view and the
-//! visitor/aggregator streaming path are not ported here (they depend on
-//! not-yet-ported framework crates). See the crate todos.
+//! Compatibility: output bytes are pinned against the reference implementation
+//! by the differential gate in `rust/tests/compat`.
+
+// Metric counts (function counts, line counts, complexity sums) are far below
+// the f64 mantissa / i64 range, and the int->float divisions are part of the
+// frozen report math; the pedantic cast lints add noise without value here.
+#![allow(clippy::cast_possible_wrap, clippy::cast_precision_loss)]
 
 pub mod gosort;
 pub mod node;
@@ -39,19 +38,19 @@ pub mod report;
 use cf_gojson::{GoMap, GoValue, MapOrigin};
 use node::{uast, Node};
 
-/// The complexity analyzer. Stateless, like Go's `Analyzer` struct (its Go
-/// fields are traverser/extractor helpers with no configurable state).
+/// The complexity analyzer. Stateless: all configuration is fixed by the
+/// report contract.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Analyzer;
 
-/// Per-function complexity metrics. Mirrors Go's `FunctionMetrics`.
+/// Per-function complexity metrics.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionMetrics {
     /// Function name (or `"anonymous"`).
     pub name: String,
     /// Cyclomatic complexity (1 + decision points).
     pub cyclomatic_complexity: i64,
-    /// Cognitive complexity (SonarSource, nesting-weighted).
+    /// Cognitive complexity (`SonarSource`, nesting-weighted).
     pub cognitive_complexity: i64,
     /// Maximum nesting depth.
     pub nesting_depth: i64,
@@ -63,7 +62,7 @@ pub struct FunctionMetrics {
 
 const ANONYMOUS_FUNCTION_NAME: &str = "anonymous";
 
-// Threshold constants, mirroring complexity.go.
+// Assessment thresholds (report contract).
 const CYCLOMATIC_GREEN: i64 = 1;
 const CYCLOMATIC_YELLOW: i64 = 5;
 const COMPLEXITY_THRESHOLD_HIGH: i64 = 5; // cognitive "low" boundary
@@ -79,26 +78,24 @@ const MSG_FAIR: &str = "Fair complexity - some functions could be simplified";
 const MSG_HIGH: &str = "High complexity - functions are complex and should be refactored";
 
 impl Analyzer {
-    /// Analyzer name, matching Go's `(*Analyzer).Name`.
+    /// Analyzer name.
     #[must_use]
     pub fn name(&self) -> &'static str {
         "complexity"
     }
 
-    /// CLI flag, matching Go's `(*Analyzer).Flag`.
+    /// CLI flag.
     #[must_use]
     pub fn flag(&self) -> &'static str {
         "complexity-analysis"
     }
 
-    /// Performs complexity analysis, mirroring `(*Analyzer).Analyze`.
-    ///
-    /// Returns the report object as a [`GoValue`].
+    /// Performs complexity analysis and returns the report object as a
+    /// [`GoValue`].
     #[must_use]
     pub fn analyze(&self, root: Option<&Node>) -> GoValue {
-        let root = match root {
-            Some(r) => r,
-            None => return build_empty_result("No AST provided"),
+        let Some(root) = root else {
+            return build_empty_result("No AST provided");
         };
 
         let functions = find_functions(root);
@@ -119,7 +116,7 @@ impl Analyzer {
         )
     }
 
-    /// Computes per-function metrics (in Go's deterministic sorted order)
+    /// Computes per-function metrics (in the deterministic report sort order)
     /// without building the report map. Useful for the quality analyzer and
     /// for direct testing.
     #[must_use]
@@ -134,7 +131,7 @@ impl Analyzer {
     }
 }
 
-/// Aggregated totals across all functions, mirroring Go's `totals` map.
+/// Aggregated totals across all functions.
 #[derive(Debug, Default, Clone, Copy)]
 struct Totals {
     cyclomatic: i64,
@@ -198,13 +195,14 @@ fn build_result(
     GoValue::Map(m)
 }
 
-/// Finds all function nodes, mirroring `findFunctions` + `isFunctionNode`.
+/// Finds all function nodes.
 ///
-/// Go collects nodes by type (`Function`, `Method`) and by role (`Function`),
-/// deduplicates via a set, then keeps those satisfying `isFunctionNode`. The Go
-/// set iteration order is nondeterministic, but the caller sorts the resulting
-/// metrics deterministically, so we collect in a stable pre-order with identity
-/// dedup; the final order is fixed by [`calculate_all_function_metrics`].
+/// Nodes are collected by type (`Function`, `Method`) and by role (`Function`),
+/// deduplicated by identity, then filtered through [`is_function_node`]. The
+/// reference implementation's dedup-set iteration order is nondeterministic,
+/// but the caller sorts the resulting metrics deterministically, so collecting
+/// in a stable pre-order is equivalent; the final order is fixed by
+/// [`calculate_all_function_metrics`].
 fn find_functions(root: &Node) -> Vec<&Node> {
     let mut by_type: Vec<&Node> = Vec::new();
     root.find_nodes_by_type(&[uast::FUNCTION, uast::METHOD], &mut by_type);
@@ -226,15 +224,15 @@ fn find_functions(root: &Node) -> Vec<&Node> {
     functions
 }
 
-/// Mirrors `isFunctionNode`: a `Function`/`Method` type, OR both `Function` and
-/// `Declaration` roles.
+/// A function node is a `Function`/`Method` type, OR carries both the
+/// `Function` and `Declaration` roles.
 fn is_function_node(n: &Node) -> bool {
     n.has_any_type(&[uast::FUNCTION, uast::METHOD])
         || n.has_all_roles(&[node::role::FUNCTION, node::role::DECLARATION])
 }
 
-/// Mirrors `calculateAllFunctionMetrics`: per-function metrics + totals, with
-/// the exact Go sort (cyclomatic desc, then cognitive desc, then name asc).
+/// Computes per-function metrics plus totals, sorted by the report contract's
+/// exact predicate (cyclomatic desc, then cognitive desc, then name asc).
 fn calculate_all_function_metrics(functions: &[&Node]) -> (Vec<FunctionMetrics>, Totals) {
     let mut metrics: Vec<FunctionMetrics> = Vec::with_capacity(functions.len());
     let mut totals = Totals::default();
@@ -245,14 +243,14 @@ fn calculate_all_function_metrics(functions: &[&Node]) -> (Vec<FunctionMetrics>,
         metrics.push(m);
     }
 
-    // Go's `calculateAllFunctionMetrics` uses `sort.Slice` (UNSTABLE pdqsort),
-    // not a stable sort. For functions that tie on every key (same cyclomatic,
-    // cognitive, and name — e.g. several identically-named methods in one file),
-    // Rust's stable `sort_by` would preserve input order while Go's pdqsort
-    // permutes them. Reproduce Go's exact element movement with the shared
-    // pdqsort port so tie ordering matches byte-for-byte in formats whose final
-    // sort key (e.g. the YAML `function_complexity` cyclomatic-only sort) does
-    // not otherwise break those ties.
+    // The report contract is pinned to an UNSTABLE sort (pdqsort), not a stable
+    // one. For functions that tie on every key (same cyclomatic, cognitive, and
+    // name — e.g. several identically-named methods in one file), a stable
+    // `sort_by` would preserve input order while pdqsort permutes them.
+    // Reproduce the exact element movement with the shared pdqsort port so tie
+    // ordering matches byte-for-byte in formats whose final sort key (e.g. the
+    // YAML `function_complexity` cyclomatic-only sort) does not otherwise break
+    // those ties.
     gosort::go_sort_slice(&mut metrics, |left, right| {
         if left.cyclomatic_complexity != right.cyclomatic_complexity {
             return left.cyclomatic_complexity > right.cyclomatic_complexity;
@@ -276,7 +274,6 @@ fn update_totals(totals: &mut Totals, m: &FunctionMetrics) {
     }
 }
 
-/// Mirrors `calculateFunctionMetrics`.
 fn calculate_function_metrics(fn_node: &Node) -> FunctionMetrics {
     let name = extract_function_name(fn_node);
     let cyclomatic = calculate_cyclomatic_complexity(fn_node);
@@ -297,7 +294,7 @@ fn calculate_average_complexity(totals: &Totals, function_count: usize) -> f64 {
     totals.cyclomatic as f64 / function_count as f64
 }
 
-// --- Cyclomatic complexity (mirrors calculateCyclomaticComplexity) ---
+// --- Cyclomatic complexity ---
 
 fn calculate_cyclomatic_complexity(fn_node: &Node) -> i64 {
     let ctx = function_source_context(fn_node);
@@ -313,7 +310,7 @@ fn calculate_cyclomatic_complexity(fn_node: &Node) -> i64 {
     complexity
 }
 
-/// Builds the source context from a function node (Go `newFunctionSourceContext`).
+/// Builds the source context from a function node.
 fn function_source_context(fn_node: &Node) -> FunctionSourceContext<'_> {
     match &fn_node.pos {
         Some(pos) if !fn_node.token.is_empty() => FunctionSourceContext {
@@ -327,8 +324,8 @@ fn function_source_context(fn_node: &Node) -> FunctionSourceContext<'_> {
     }
 }
 
-/// Mirrors `isDecisionPointWithSource`: like [`is_decision_point`] but recovers a
-/// `BinaryOp`'s operator from the function source slice when token/props omit it.
+/// Like [`is_decision_point`] but recovers a `BinaryOp`'s operator from the
+/// function source slice when token/props omit it.
 fn is_decision_point_with_source(target: &Node, ctx: &FunctionSourceContext) -> bool {
     match target.node_type.as_str() {
         uast::IF | uast::LOOP | uast::CATCH => true,
@@ -341,12 +338,10 @@ fn is_decision_point_with_source(target: &Node, ctx: &FunctionSourceContext) -> 
     }
 }
 
-/// Mirrors `isDecisionPoint` (the AST-metadata variant used by the analyzer's
-/// own tests): reads the `BinaryOp` operator only from `Props["operator"]`.
-///
-/// In Go this helper is defined in `complexity_test.go` (test-file scope), so
-/// the Rust port is `#[cfg(test)]` to mirror that placement; production code
-/// uses [`is_decision_point_with_source`].
+/// The AST-metadata variant of the decision-point predicate: reads the
+/// `BinaryOp` operator only from the `operator` prop. Production code uses
+/// [`is_decision_point_with_source`]; this variant exists for the unit tests
+/// that exercise the prop-only classification.
 #[cfg(test)]
 fn is_decision_point(target: &Node) -> bool {
     match target.node_type.as_str() {
@@ -363,24 +358,23 @@ fn is_decision_point(target: &Node) -> bool {
     }
 }
 
-// --- Cognitive complexity (faithful port of CognitiveComplexityCalculator) ---
+// --- Cognitive complexity (SonarSource / gocognit model) ---
 //
-// Ports `cognitive_complexity.go` (the SonarSource / gocognit model). The Go
-// calculator walks the function's children with a `walkNode` recursion that
-// tracks structural nesting, recovers binary operators (from token, props, or
-// the function source slice via `functionSourceContext`), and counts:
-//   * a `nesting + 1` increment for each `if` (non-else-if), loop, switch, try,
-//     catch, match (structural + nesting penalty);
+// The calculator walks the function's children with a `walk_node` recursion
+// that tracks structural nesting, recovers binary operators (from token,
+// props, or the function source slice via the source context), and counts:
+//   * a `nesting + 1` increment for each `if` (non-else-if), loop, switch,
+//     try, catch, match (structural + nesting penalty);
 //   * a flat `+1` for an `else if` and for an `else` block;
-//   * logical-operator *sequence* increments (`addLogicalSequenceComplexity`):
-//     +1 for the first run of logical operators in an if condition, +1 for each
-//     change of operator kind along the flattened operator stream;
+//   * logical-operator *sequence* increments
+//     (`add_logical_sequence_complexity`): +1 for the first run of logical
+//     operators in an if condition, +1 for each change of operator kind along
+//     the flattened operator stream;
 //   * `+1` for a recursive call (call whose name equals the function name);
 //   * lambda bodies raise nesting by one.
 
 /// Holds the function's original source bytes and its start offset, so binary
-/// operators can be recovered from the source when the UAST omits them. Mirrors
-/// Go's `functionSourceContext`.
+/// operators can be recovered from the source when the UAST omits them.
 struct FunctionSourceContext<'a> {
     source: &'a [u8],
     start_offset: u32,
@@ -465,23 +459,16 @@ fn process_if_node(
 
     for idx in 2..if_node.children.len() {
         let child = &if_node.children[idx];
-        match child.node_type.as_str() {
-            uast::IF => {
-                walk_node(child, if_node, idx, nesting, ctx, function_name, complexity);
-            }
-            uast::BLOCK => {
-                // Sonar/gocognit: an `else` branch adds one structural increment.
-                *complexity += 1;
-                walk_node(child, if_node, idx, nesting, ctx, function_name, complexity);
-            }
-            _ => {
-                walk_node(child, if_node, idx, nesting, ctx, function_name, complexity);
-            }
+        // Sonar/gocognit: an `else` branch (a Block in the else slot) adds one
+        // structural increment; an `else if` is handled by the nested walk.
+        if child.node_type == uast::BLOCK {
+            *complexity += 1;
         }
+        walk_node(child, if_node, idx, nesting, ctx, function_name, complexity);
     }
 }
 
-/// Mirrors `addLogicalSequenceComplexity`: +1 for the first logical-operator run
+/// Adds the logical-sequence increments: +1 for the first logical-operator run
 /// in the condition, +1 for each change of operator kind along the flattened
 /// left-to-right operator stream.
 fn add_logical_sequence_complexity(
@@ -499,7 +486,7 @@ fn add_logical_sequence_complexity(
     for op in &operators[1..] {
         if *op != last_op {
             *complexity += 1;
-            last_op = op.clone();
+            last_op.clone_from(op);
         }
     }
 }
@@ -524,8 +511,8 @@ fn collect_logical_operators(
 }
 
 impl FunctionSourceContext<'_> {
-    /// Mirrors `functionSourceContext.binaryOperator`: token, then props, then a
-    /// best-effort recovery from the source slice between the operands.
+    /// Recovers a `BinaryOp`'s operator: token, then props, then a best-effort
+    /// recovery from the source slice between the operands.
     fn binary_operator(&self, n: &Node) -> String {
         if !n.token.is_empty() {
             let op = normalize_operator_text(&n.token);
@@ -563,16 +550,15 @@ impl FunctionSourceContext<'_> {
     }
 }
 
-/// Mirrors the cognitive calculator's OWN `extractFunctionName`
-/// (`cognitive_complexity.go`), used only for recursive-call detection.
+/// Extracts the function name for recursive-call detection only.
 ///
-/// Go's cognitive name extraction is NARROWER than the analyzer's
-/// `complexity.extractFunctionName`: it is `common.ExtractEntityName(fn)`
-/// (props["name"] -> token -> child0.token -> child0.props["name"]) followed by
-/// a `fn.Props["name"]` check, and returns `""` otherwise. Critically it does
-/// NOT consult a `Name`-role child token. Using the broader analyzer name here
-/// surfaces a name for functions that Go treats as unnamed, which over-counts
-/// recursive calls and inflates the cognitive total.
+/// This is deliberately NARROWER than [`extract_function_name`]: it consults
+/// only the entity-name chain (`name` prop -> token -> first child's token ->
+/// first child's `name` prop) plus a final `name`-prop check, and returns `""`
+/// otherwise. Critically it does NOT consult a `Name`-role child token. Using
+/// the broader extraction here would surface a name for functions the report
+/// contract treats as unnamed, which over-counts recursive calls and inflates
+/// the cognitive total.
 fn extract_cognitive_function_name(fn_node: &Node) -> String {
     if let Some(n) = extract_entity_name(fn_node) {
         if !n.is_empty() {
@@ -595,7 +581,8 @@ fn is_recursive_call(call_node: &Node, function_name: &str) -> bool {
     !call_name.is_empty() && call_name == function_name
 }
 
-/// Mirrors `extractCallName`.
+/// Extracts a call's target name: `name` prop, then a `Name`-role child token,
+/// then the first child's token.
 fn extract_call_name(call_node: &Node) -> String {
     if let Some(name) = call_node.prop("name") {
         if !name.is_empty() {
@@ -615,7 +602,7 @@ fn extract_call_name(call_node: &Node) -> String {
     String::new()
 }
 
-/// Mirrors `normalizeOperatorText`: trim, strip all whitespace, then keep only
+/// Normalizes raw operator text: trim, strip all whitespace, then keep only
 /// the recognized logical/comparison operators.
 fn normalize_operator_text(raw: &str) -> String {
     if raw.is_empty() {
@@ -630,7 +617,7 @@ fn normalize_operator_text(raw: &str) -> String {
     }
 }
 
-// --- Nesting depth (mirrors calculateNestingDepth) ---
+// --- Nesting depth ---
 
 fn calculate_nesting_depth(fn_node: &Node) -> i64 {
     let mut max_depth: i64 = 0;
@@ -659,7 +646,7 @@ fn walk_nesting(
     }
 }
 
-/// Mirrors `isNestingNode`: `If`, `Loop`, `Switch`, `Try`, `Catch`.
+/// Nesting nodes: `If`, `Loop`, `Switch`, `Try`, `Catch`.
 fn is_nesting_node(target: &Node) -> bool {
     matches!(
         target.node_type.as_str(),
@@ -667,7 +654,7 @@ fn is_nesting_node(target: &Node) -> bool {
     )
 }
 
-// --- Lines of code (mirrors estimateLinesOfCode) ---
+// --- Lines of code ---
 
 fn estimate_lines_of_code(fn_node: &Node) -> i64 {
     if let Some(pos) = &fn_node.pos {
@@ -685,19 +672,18 @@ fn estimate_lines_of_code(fn_node: &Node) -> i64 {
     loc
 }
 
-// --- Name extraction (mirrors extractFunctionName, simplified) ---
-//
-// The Go path consults common.ExtractEntityName and a DataExtractor before
-// falling back to props and to a Name-role child token. Those helpers are not
-// yet ported (cf-analyzers-common); this reproduces the prop-based and
-// Name-role-child branches plus the "anonymous" fallback, which covers the
-// analyzer's own tests. See crate todos.
+// --- Name extraction ---
+
+/// Extracts the display name for a function node.
+///
+/// The FIRST branch is the entity-name chain (`name` prop -> token -> first
+/// child's token -> first child's `name` prop). For anonymous functions whose
+/// props lack `name`, this surfaces the first child's token (the full
+/// parameter/receiver signature, e.g. `"(action cgotesting.Action)"` or
+/// `"()"`) — reference-implementation behavior, pinned by the differential
+/// gate. Then the prop fallbacks, then a `Name`-role child token, then
+/// `"anonymous"`.
 fn extract_function_name(fn_node: &Node) -> String {
-    // Mirror Go `complexity.extractFunctionName`: the FIRST branch is
-    // `common.ExtractEntityName(fn)` (props["name"] -> token -> first child's
-    // token -> first child's props["name"]). For anonymous Go functions whose
-    // props lack "name", this surfaces the first child's token (the full
-    // parameter/receiver signature, e.g. "(action cgotesting.Action)" or "()").
     if let Some(n) = extract_entity_name(fn_node) {
         if !n.is_empty() {
             return n;
@@ -706,7 +692,7 @@ fn extract_function_name(fn_node: &Node) -> String {
     if let Some(n) = extract_name_from_props(fn_node) {
         return n;
     }
-    // Name-role child token (mirrors the FindNodesByRoles(RoleName) fallback).
+    // Name-role child token fallback.
     let mut name_nodes: Vec<&Node> = Vec::new();
     fn_node.find_nodes_by_roles(&[node::role::NAME], &mut name_nodes);
     if let Some(first) = name_nodes.first() {
@@ -718,12 +704,12 @@ fn extract_function_name(fn_node: &Node) -> String {
     ANONYMOUS_FUNCTION_NAME.to_string()
 }
 
-/// Faithful port of `common.ExtractEntityName`: props["name"] -> own token ->
-/// first child's token -> first child's props["name"]. Each branch returns
-/// `Some(value)` when the source is present (even empty), so the caller's
-/// `!is_empty()` guard matches Go's `ok && name != ""` semantics. Note: unlike
-/// `extract_name_from_props`, the prop lookup here is NOT trimmed and does not
-/// consider "function_name"/"method_name".
+/// The shared entity-name chain: `name` prop -> own token -> first child's
+/// token -> first child's `name` prop. Each branch returns `Some(value)` when
+/// the source is present (even empty), so the caller's `!is_empty()` guard
+/// preserves the "present but empty means stop" semantics. Note: unlike
+/// [`extract_name_from_props`], the prop lookup here is NOT trimmed and does
+/// not consider `function_name`/`method_name`.
 fn extract_entity_name(n: &Node) -> Option<String> {
     if let Some(v) = n.prop("name") {
         return Some(v.to_string());
@@ -754,50 +740,48 @@ fn extract_name_from_props(fn_node: &Node) -> Option<String> {
     None
 }
 
-// --- flow_helpers.go ---
+// --- Flow helpers ---
 
-/// Mirrors `isDefaultCase`.
+/// True for a switch `default` case: trim + LOWERCASE the case node's OWN
+/// token, then test for the `default` prefix. It must NOT inspect children: a
+/// non-default `case X:` whose body begins with an identifier like
+/// `defaultedPod` would otherwise be misclassified as the default case and
+/// dropped from the cyclomatic decision count (an off-by-1 observed on real
+/// input before this was pinned).
 fn is_default_case(n: &Node) -> bool {
-    // Go `isDefaultCase` (flow_helpers.go): trim + LOWERCASE the case node's OWN
-    // token, then `HasPrefix(token, "default")`. It does NOT inspect children.
-    // The earlier port both skipped the lowercase AND scanned children, so a
-    // non-default `case X:` whose body began with an identifier like
-    // `defaultedPod` was misclassified as the default case and dropped from the
-    // cyclomatic decision count (off-by-1 on such functions, e.g. kubernetes
-    // kubelet makeEnvironmentVariables).
     n.token.trim().to_lowercase().starts_with("default")
 }
 
-/// Mirrors `isElseIfNode`: an `If` nested as a non-first child of another `If`.
+/// True if `curr` is the else-if continuation of a parent `If`.
+///
+/// An `If` is an else-if continuation only at child index >= 2 (after
+/// [condition(0), then-block(1)]). Using `> 0` would wrongly treat a braceless
+/// nested `if (a) if (b)` (inner `If` at index 1) as an else-if, skipping its
+/// nesting increment and under-counting `nesting_depth` by 1 on C-style code.
+/// Matches [`is_else_if_cognitive`].
 fn is_else_if_node(parent: Option<&Node>, curr: &Node, child_idx: usize) -> bool {
-    let parent = match parent {
-        Some(p) => p,
-        None => return false,
+    let Some(parent) = parent else {
+        return false;
     };
     if parent.node_type != uast::IF || curr.node_type != uast::IF {
         return false;
     }
-    // Go `isElseIfNode` (flow_helpers.go): an `If` is the else-if continuation of
-    // a parent `If` only at child index >= 2 (after [condition(0), then-block(1)]).
-    // Using `> 0` wrongly treated a braceless nested `if (a) if (b)` (inner `If` at
-    // index 1) as an else-if, skipping its nesting increment and under-counting
-    // nesting_depth by 1 vs Go on C code. Matches `is_else_if_cognitive`.
     child_idx >= 2
 }
 
-/// Mirrors `isLogicalOperatorToken` (flow_helpers.go): also accepts the
-/// uppercase `AND`/`OR` forms used by some languages.
+/// Logical operators, including the uppercase `AND`/`OR` forms used by some
+/// languages.
 fn is_logical_operator_token(op: &str) -> bool {
     matches!(op.trim(), "&&" | "||" | "and" | "or" | "AND" | "OR")
 }
 
-/// Mirrors `isElseIfNode` for the cognitive calculator: an `If` nested as the
+/// The else-if predicate for the cognitive calculator: an `If` nested as the
 /// third-or-later child (index >= 2) of another `If` (the else-if slot).
 fn is_else_if_cognitive(parent: &Node, child: &Node, child_idx: usize) -> bool {
     parent.node_type == uast::IF && child.node_type == uast::IF && child_idx >= 2
 }
 
-// --- Assessment / message helpers (mirror complexity.go) ---
+// --- Assessment / message helpers ---
 
 fn get_complexity_level(complexity: i64) -> &'static str {
     if complexity <= CYCLOMATIC_GREEN {
@@ -809,9 +793,8 @@ fn get_complexity_level(complexity: i64) -> &'static str {
     }
 }
 
-/// Cyclomatic-complexity assessment label (Go `getComplexityAssessment`,
-/// complexity.go) — exported for the aggregated raw-report builder used by
-/// `--format plot` / report.json.
+/// Cyclomatic-complexity assessment label — exported for the aggregated
+/// raw-report builder used by `--format plot` / report.json.
 #[must_use]
 pub fn get_complexity_assessment(complexity: i64) -> &'static str {
     match get_complexity_level(complexity) {
@@ -822,8 +805,8 @@ pub fn get_complexity_assessment(complexity: i64) -> &'static str {
     }
 }
 
-/// Cognitive-complexity assessment label (Go `getCognitiveAssessment`,
-/// complexity.go) — exported for the aggregated raw-report builder.
+/// Cognitive-complexity assessment label — exported for the aggregated
+/// raw-report builder.
 #[must_use]
 pub fn get_cognitive_assessment(complexity: i64) -> &'static str {
     if complexity <= COMPLEXITY_THRESHOLD_HIGH {
@@ -835,8 +818,8 @@ pub fn get_cognitive_assessment(complexity: i64) -> &'static str {
     }
 }
 
-/// Nesting-depth assessment label (Go `getNestingAssessment`,
-/// complexity.go) — exported for the aggregated raw-report builder.
+/// Nesting-depth assessment label — exported for the aggregated raw-report
+/// builder.
 #[must_use]
 pub fn get_nesting_assessment(depth: i64) -> &'static str {
     if depth <= DEPTH_THRESHOLD_HIGH {
@@ -889,26 +872,22 @@ mod tests {
         }
     }
 
-    /// Mirrors `TestAnalyzer_Basic` (name).
     #[test]
     fn analyzer_basic_name() {
         assert_eq!(Analyzer.name(), "complexity");
     }
 
-    /// Mirrors `TestAnalyzer_MetadataAndFormatting` flag check.
     #[test]
     fn analyzer_flag() {
         assert_eq!(Analyzer.flag(), "complexity-analysis");
     }
 
-    /// Mirrors `TestAnalyzer_NilRoot`.
     #[test]
     fn nil_root_total_functions_zero() {
         let result = Analyzer.analyze(None);
         assert_eq!(as_int(obj_get(&result, "total_functions")), 0);
     }
 
-    /// Mirrors `TestAnalyzer_SimpleFunction`.
     #[test]
     fn simple_function() {
         let mut function_node =
@@ -925,7 +904,6 @@ mod tests {
         assert_eq!(as_int(obj_get(&result, "total_complexity")), 1);
     }
 
-    /// Mirrors `TestAnalyzer_ExtractFunctionName`.
     #[test]
     fn extract_function_name_with_and_without_name() {
         let mut function_node = Node::new(uast::FUNCTION);
@@ -938,7 +916,6 @@ mod tests {
         assert_eq!(extract_function_name(&anon), "anonymous");
     }
 
-    /// Mirrors `TestAnalyzer_IsDecisionPoint`.
     #[test]
     fn is_decision_point_classification() {
         for t in [uast::IF, uast::LOOP, uast::CASE, uast::CATCH] {
@@ -959,7 +936,6 @@ mod tests {
         assert!(!is_decision_point(&arithmetic));
     }
 
-    /// Mirrors `TestAnalyzer_WithIfStatement` (total_complexity == 2).
     #[test]
     fn with_if_statement() {
         let mut function_node =
@@ -976,11 +952,11 @@ mod tests {
         assert_eq!(as_int(obj_get(&result, "total_complexity")), 2);
     }
 
-    /// Mirrors `TestCognitiveComplexityCalculator_NestedStructures`. The Go
-    /// `processIfNode` walks an `If`'s first child (its condition slot) at the
-    /// SAME nesting level, so a nested `If` placed at index 0 receives no nesting
-    /// penalty: outer `if` (+1) + inner `if` at nesting 0 (+1) = 2. Verified
-    /// against the Go `CognitiveComplexityCalculator` for this exact tree.
+    /// The if-processing walks an `If`'s first child (its condition slot) at
+    /// the SAME nesting level, so a nested `If` placed at index 0 receives no
+    /// nesting penalty: outer `if` (+1) + inner `if` at nesting 0 (+1) = 2.
+    /// Verified against the reference cognitive-complexity calculator for this
+    /// exact tree.
     #[test]
     fn cognitive_nested_ifs() {
         let inner_if = Node::new(uast::IF).with_roles(vec![crate::node::role::CONDITION]);
@@ -995,11 +971,11 @@ mod tests {
     }
 
     /// Cyclomatic/cognitive/nesting parity for the canonical `if{loop{if}}`
-    /// body, reproducing the SonarSource model exactly as Go does. The loop sits
-    /// in the outer-if's first-child (condition) slot, walked at nesting 0; its
-    /// inner `if` is in the loop's first-child slot, walked at nesting 1.
+    /// body, reproducing the SonarSource model. The loop sits in the outer-if's
+    /// first-child (condition) slot, walked at nesting 0; its inner `if` is in
+    /// the loop's first-child slot, walked at nesting 1.
     /// cognitive = if(+1) + loop(+1) + inner-if(nesting 1 → +2) = 4. Verified
-    /// against the Go `CognitiveComplexityCalculator`.
+    /// against the reference cognitive-complexity calculator.
     #[test]
     fn nested_if_loop_if_metrics() {
         let inner_if = Node::new(uast::IF);
@@ -1017,9 +993,9 @@ mod tests {
         assert_eq!(calculate_nesting_depth(&func), 3);
     }
 
-    /// Else-if chains are not counted as additional nesting (mirrors
-    /// `isElseIfNode`, flow_helpers.go: a child `If` is an else-if continuation
-    /// only at child index >= 2, after [condition(0), then-block(1)]).
+    /// Else-if chains are not counted as additional nesting: a child `If` is an
+    /// else-if continuation only at child index >= 2, after
+    /// [condition(0), then-block(1)].
     #[test]
     fn else_if_does_not_increase_nesting() {
         // outer if with child0 = condition, child1 = then-block, child2 =
@@ -1056,9 +1032,10 @@ mod tests {
         assert_eq!(calculate_cognitive_complexity(&func), 1);
     }
 
-    /// The success result carries the Go report keys, including assessments.
+    /// The success result carries the report-contract keys, including
+    /// assessments.
     #[test]
-    fn result_shape_has_go_keys_and_assessments() {
+    fn result_shape_has_report_keys_and_assessments() {
         let mut func =
             Node::new(uast::FUNCTION).with_roles(vec![crate::node::role::FUNCTION, crate::node::role::DECLARATION]);
         func.add_child(Node::new(uast::IF));
@@ -1090,7 +1067,7 @@ mod tests {
 
     /// Sort order: cyclomatic desc, then cognitive desc, then name asc.
     #[test]
-    fn functions_sorted_by_go_predicate() {
+    fn functions_sorted_by_report_predicate() {
         // aaa: cyclomatic 1; bbb: cyclomatic 2 (one if).
         let func_a = Node::new(uast::FUNCTION)
             .with_roles(vec![crate::node::role::FUNCTION, crate::node::role::DECLARATION])

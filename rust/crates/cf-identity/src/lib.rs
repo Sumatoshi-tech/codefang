@@ -1,83 +1,62 @@
 //! Author/committer identity resolution and merging.
 //!
-//! Ported from the Go package `internal/identity`. On this branch the Go package
-//! exposes two things:
+//! Exposes two things:
 //!
-//! * a set of identity constants and fact/config key names (`keys.go`), and
-//! * [`split_identity`], which parses an identity string into a name and email
-//!   (`split.go`).
+//! * a set of identity constants and fact/config key names, and
+//! * [`split_identity`], which parses an identity string into a name and email.
 //!
 //! Used by plumbing and the history analyzers (burndown, couples, devs,
-//! file_history, sentiment).
+//! `file_history`, sentiment).
 //!
-//! The Go package performs no machine-format report serialization (no JSON,
-//! YAML, NDJSON, or `bin` output), so nothing here is routed through the shared
-//! `cf-gojson` / `cf-goyaml` serialization crates — there are no report bytes to
-//! make byte-identical. Behavior is otherwise reproduced exactly, including the
-//! deliberately-not-`(1 << 18) - 1` value of [`AUTHOR_MISSING`].
+//! This crate performs no machine-format report serialization itself, but the
+//! constants and parsing behavior feed analyzer output downstream, so they are
+//! reproduced exactly — including the deliberately-not-`(1 << 18) - 1` value of
+//! [`AUTHOR_MISSING`]. Output bytes are pinned against the reference binary by
+//! `rust/tests/compat`.
 
 #![forbid(unsafe_code)]
 
 /// Bit shift used to compute [`AUTHOR_MISSING`].
-///
-/// Mirrors the Go unexported constant `authorMissingShift`.
 const AUTHOR_MISSING_SHIFT: u32 = 18;
 
-/// The internal author index which denotes any unmatched identities
-/// (`Detector.Consume()` in Go).
+/// The internal author index which denotes any unmatched identities.
 ///
-/// It is deliberately `(1 << 18) - 2` and **not** `(1 << 18) - 1`; see the Go
-/// comment referencing `BurndownAnalysis.packPersonWithDay()`. Reproducing this
-/// exact value matters because the index is packed into burndown person/day
-/// values downstream.
+/// It is deliberately `(1 << 18) - 2` and **not** `(1 << 18) - 1`: the index is
+/// packed into burndown person/day values downstream, where the `- 1` pattern
+/// is reserved. Reproducing this exact value is part of the report contract.
 pub const AUTHOR_MISSING: i32 = (1 << AUTHOR_MISSING_SHIFT) - 2;
 
 /// The string name which corresponds to [`AUTHOR_MISSING`].
-///
-/// Mirrors the Go constant `AuthorMissingName`.
 pub const AUTHOR_MISSING_NAME: &str = "<unmatched>";
 
-/// Name of the fact inserted in `Detector.Configure()` corresponding to
-/// `Detector.PeopleDict` — the mapping from signatures to author indices.
-///
-/// Mirrors the Go constant `FactIdentityDetectorPeopleDict`.
+/// Name of the fact corresponding to the identity detector's people dictionary
+/// — the mapping from signatures to author indices.
 pub const FACT_IDENTITY_DETECTOR_PEOPLE_DICT: &str = "IdentityDetector.PeopleDict";
 
-/// Name of the fact inserted in `Detector.Configure()` corresponding to
-/// `Detector.ReversedPeopleDict` — the mapping from author indices to the main
-/// signature.
-///
-/// Mirrors the Go constant `FactIdentityDetectorReversedPeopleDict`.
+/// Name of the fact corresponding to the identity detector's reversed people
+/// dictionary — the mapping from author indices to the main signature.
 pub const FACT_IDENTITY_DETECTOR_REVERSED_PEOPLE_DICT: &str =
     "IdentityDetector.ReversedPeopleDict";
 
-/// Name of the configuration option (`Detector.Configure()`) which allows
-/// setting the external `PeopleDict` mapping from a file.
-///
-/// Mirrors the Go constant `ConfigIdentityDetectorPeopleDictPath`.
+/// Name of the configuration option which allows setting the external people
+/// dictionary mapping from a file.
 pub const CONFIG_IDENTITY_DETECTOR_PEOPLE_DICT_PATH: &str = "IdentityDetector.PeopleDictPath";
 
-/// Name of the configuration option (`Detector.Configure()`) which changes the
-/// matching algorithm to exact signature (name + email) correspondence.
-///
-/// Mirrors the Go constant `ConfigIdentityDetectorExactSignatures`.
+/// Name of the configuration option which changes the matching algorithm to
+/// exact signature (name + email) correspondence.
 pub const CONFIG_IDENTITY_DETECTOR_EXACT_SIGNATURES: &str = "IdentityDetector.ExactSignatures";
 
-/// Name of the fact inserted in `Detector.Configure()` equal to the overall
-/// number of unique authors (the length of `ReversedPeopleDict`).
-///
-/// Mirrors the Go constant `FactIdentityDetectorPeopleCount`.
+/// Name of the fact equal to the overall number of unique authors (the length
+/// of the reversed people dictionary).
 pub const FACT_IDENTITY_DETECTOR_PEOPLE_COUNT: &str = "IdentityDetector.PeopleCount";
 
-/// Name of the dependency provided by `Detector`.
-///
-/// Mirrors the Go constant `DependencyAuthor`.
+/// Name of the dependency provided by the identity detector.
 pub const DEPENDENCY_AUTHOR: &str = "author";
 
 /// Splits a pipe-delimited or exact-format identity string into a canonical name
 /// and email.
 ///
-/// Ported from Go `identity.SplitIdentity`. The three recognized forms are:
+/// The three recognized forms are:
 ///
 /// * **Exact format** — `"name <email>"` ⇒ trimmed `name` and the `email`
 ///   between `" <"` and a trailing `">"`.
@@ -102,6 +81,7 @@ pub const DEPENDENCY_AUTHOR: &str = "author";
 /// assert_eq!(split_identity("daniel smith"),
 ///            ("daniel smith".to_string(), String::new()));
 /// ```
+#[must_use]
 pub fn split_identity(s: &str) -> (String, String) {
     if s.is_empty() {
         return (String::new(), String::new());
@@ -109,9 +89,9 @@ pub fn split_identity(s: &str) -> (String, String) {
 
     // Exact format: "name <email>".
     //
-    // Go uses `strings.Index(s, " <") > 0` (strictly positive, so the marker
-    // must not be at byte offset 0) together with a trailing ">". Byte offsets
-    // are used for the slice bounds, matching Go's byte-based string slicing.
+    // The " <" marker must not sit at byte offset 0 and the string must end
+    // with ">". Slice bounds are byte offsets (reference-implementation
+    // behavior; pinned by the differential gate).
     if let Some(idx) = s.find(" <") {
         if idx > 0 && s.ends_with('>') {
             let name = s[..idx].trim().to_string();
@@ -132,7 +112,7 @@ pub fn split_identity(s: &str) -> (String, String) {
 
 /// Splits a pipe-delimited identity string into a name and email.
 ///
-/// Ported from Go `splitPipeIdentity`. Iterates the `|`-separated parts in order,
+/// Iterates the `|`-separated parts in order,
 /// taking the first part **without** an `@` as the name and the first part
 /// **with** an `@` as the email, stopping once both have been found.
 ///
@@ -166,7 +146,7 @@ mod tests {
     const TEST_NAME: &str = "daniel smith";
     const TEST_EMAIL: &str = "dbsmith@google.com";
 
-    // Ported from Go: TestSplitIdentity_PipeDelimited.
+    // Mirrors reference test TestSplitIdentity_PipeDelimited.
     #[test]
     fn split_identity_pipe_delimited() {
         let (name, email) = split_identity("daniel smith|dbsmith@google.com");
@@ -174,7 +154,7 @@ mod tests {
         assert_eq!(email, TEST_EMAIL);
     }
 
-    // Ported from Go: TestSplitIdentity_ExactFormat.
+    // Mirrors reference test TestSplitIdentity_ExactFormat.
     #[test]
     fn split_identity_exact_format() {
         let (name, email) = split_identity("daniel smith <dbsmith@google.com>");
@@ -182,7 +162,7 @@ mod tests {
         assert_eq!(email, TEST_EMAIL);
     }
 
-    // Ported from Go: TestSplitIdentity_NameOnly.
+    // Mirrors reference test TestSplitIdentity_NameOnly.
     #[test]
     fn split_identity_name_only() {
         let (name, email) = split_identity("daniel smith");
@@ -190,7 +170,7 @@ mod tests {
         assert!(email.is_empty());
     }
 
-    // Ported from Go: TestSplitIdentity_Empty.
+    // Mirrors reference test TestSplitIdentity_Empty.
     #[test]
     fn split_identity_empty() {
         let (name, email) = split_identity("");
@@ -198,7 +178,7 @@ mod tests {
         assert!(email.is_empty());
     }
 
-    // Ported from Go: TestSplitIdentity_MultipleAliases.
+    // Mirrors reference test TestSplitIdentity_MultipleAliases.
     #[test]
     fn split_identity_multiple_aliases() {
         let (name, email) = split_identity("alice|bob|alice@example.com|bob@example.com");
@@ -206,7 +186,7 @@ mod tests {
         assert_eq!(email, "alice@example.com");
     }
 
-    // Ported from Go: TestSplitIdentity_UnmatchedAuthor.
+    // Mirrors reference test TestSplitIdentity_UnmatchedAuthor.
     #[test]
     fn split_identity_unmatched_author() {
         let (name, email) = split_identity(AUTHOR_MISSING_NAME);
@@ -214,18 +194,18 @@ mod tests {
         assert!(email.is_empty());
     }
 
-    // --- Additional parity tests (behavior implied by the Go source) ---
+    // --- Additional parity tests (behavior implied by the reference implementation) ---
 
     #[test]
     fn author_missing_is_not_one_less_than_pow() {
-        // The Go comment warns this must NOT be (1 << 18) - 1.
+        // The contract requires this NOT be (1 << 18) - 1.
         assert_eq!(AUTHOR_MISSING, (1 << 18) - 2);
         assert_eq!(AUTHOR_MISSING, 262_142);
         assert_ne!(AUTHOR_MISSING, (1 << 18) - 1);
     }
 
     #[test]
-    fn constant_strings_match_go() {
+    fn constant_strings_match_contract() {
         assert_eq!(AUTHOR_MISSING_NAME, "<unmatched>");
         assert_eq!(FACT_IDENTITY_DETECTOR_PEOPLE_DICT, "IdentityDetector.PeopleDict");
         assert_eq!(
@@ -249,7 +229,7 @@ mod tests {
 
     #[test]
     fn exact_format_trims_name_only() {
-        // Go trims the name with TrimSpace but takes the email verbatim.
+        // The name is whitespace-trimmed; the email is taken verbatim.
         let (name, email) = split_identity("  spaced name   <  e@x.com  >");
         assert_eq!(name, "spaced name");
         assert_eq!(email, "  e@x.com  ");

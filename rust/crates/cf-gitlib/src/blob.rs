@@ -1,28 +1,26 @@
-//! Blob access, ported from `pkg/gitlib/blob.go` and `pkg/gitlib/cached_blob.go`.
+//! Blob access.
 //!
-//! [`Blob`] is a thin borrow over a libgit2 [`git2::Blob`]; RAII [`Drop`]
-//! replaces the Go `Free()`. [`Blob::contents`] returns an owned `Vec<u8>` via
-//! `content().to_vec()`, mirroring the design directive to copy blob bytes out
-//! of libgit2-owned memory.
+//! [`Blob`] is a thin borrow over a libgit2 [`git2::Blob`], freed via RAII
+//! [`Drop`]. [`Blob::contents`] returns an owned `Vec<u8>` via
+//! `content().to_vec()`, per the design directive to copy blob bytes out of
+//! libgit2-owned memory.
 //!
 //! [`CachedBlob`] caches a blob's bytes plus a lazily-computed, memoized line
-//! count, ported from `cached_blob.go` including the `ErrBinary` sentinel and
-//! the `sync.Once`-guarded `CountLines`.
+//! count, with [`GitError::Binary`] signalling binary content.
 
 use std::cell::Cell;
 
 use crate::error::{GitError, Result};
 use crate::hash::Hash;
 
-/// Sentinel line-count value meaning "binary" (Go `lineCountBinary = -1`).
+/// Sentinel line-count value meaning "binary".
 const LINE_COUNT_BINARY: i64 = -1;
 
 /// A libgit2 blob.
 ///
-/// Mirrors Go's `gitlib.Blob`. The underlying [`git2::Blob`] is freed on
-/// [`Drop`] (replacing Go's explicit `Free()`), so this type borrows its parent
-/// [`crate::Repository`] for the blob's lifetime — `!Send`/`!Sync`, single
-/// thread, matching libgit2's threading model.
+/// The underlying [`git2::Blob`] is freed on [`Drop`], so this type borrows
+/// its parent [`crate::Repository`] for the blob's lifetime — `!Send`/`!Sync`,
+/// single thread, matching libgit2's threading model.
 pub struct Blob<'repo> {
     blob: git2::Blob<'repo>,
 }
@@ -33,19 +31,19 @@ impl<'repo> Blob<'repo> {
         Blob { blob }
     }
 
-    /// Returns the blob hash (Go `Blob.Hash`).
+    /// Returns the blob hash.
     #[must_use]
     pub fn hash(&self) -> Hash {
         Hash::from_oid(&self.blob.id())
     }
 
-    /// Returns the blob size in bytes (Go `Blob.Size`).
+    /// Returns the blob size in bytes.
     #[must_use]
     pub fn size(&self) -> i64 {
         self.blob.size() as i64
     }
 
-    /// Returns an owned copy of the blob contents (Go `Blob.Contents`).
+    /// Returns an owned copy of the blob contents.
     ///
     /// Uses `content().to_vec()` per the design: blob bytes are copied out of
     /// libgit2-owned storage so the returned `Vec` outlives the blob.
@@ -56,15 +54,14 @@ impl<'repo> Blob<'repo> {
 
     /// Borrows the blob contents without copying.
     ///
-    /// The Go `Blob.Reader()` wraps `Contents()` in a `bytes.Reader`; in Rust a
-    /// slice is the idiomatic reader source. The slice is valid only while the
-    /// blob is alive.
+    /// A slice is the idiomatic reader source; it is valid only while the blob
+    /// is alive.
     #[must_use]
     pub fn content(&self) -> &[u8] {
         self.blob.content()
     }
 
-    /// Returns the underlying libgit2 blob (Go `Blob.Native`).
+    /// Returns the underlying libgit2 blob.
     #[must_use]
     pub fn native(&self) -> &git2::Blob<'repo> {
         &self.blob
@@ -73,27 +70,24 @@ impl<'repo> Blob<'repo> {
 
 /// A cached blob: its hash, size, owned bytes, and a memoized line count.
 ///
-/// Mirrors Go's `gitlib.CachedBlob`. `Data` is public (Go exposes the `Data`
-/// field). [`CachedBlob::count_lines`] computes the line count once and caches
-/// it, returning [`GitError::Binary`] for binary content — the Rust analogue of
-/// Go's `sync.Once` + `ErrBinary`.
+/// [`CachedBlob::count_lines`] computes the line count once and caches it,
+/// returning [`GitError::Binary`] for binary content.
 ///
-/// The line-count cache uses [`Cell`], so `count_lines` takes `&self` exactly
-/// like Go's pointer-receiver method that mutates through `sync.Once`. This type
-/// owns its data and is therefore `Send`able (no libgit2 handle), matching how
-/// Go passes cached blobs across goroutines.
+/// The line-count cache uses [`Cell`], so `count_lines` takes `&self`. This
+/// type owns its data and carries no libgit2 handle, so it can move freely
+/// across threads.
 #[derive(Debug, Clone)]
 pub struct CachedBlob {
     hash: Hash,
     size: i64,
-    /// The read contents of the blob object (Go exported field `Data`).
+    /// The read contents of the blob object.
     pub data: Vec<u8>,
     /// Cached line count: `None` = not yet computed, `Some(-1)` = binary.
     line_count: Cell<Option<i64>>,
 }
 
 impl CachedBlob {
-    /// Creates a [`CachedBlob`] from raw data (Go `NewCachedBlobForTest`).
+    /// Creates a [`CachedBlob`] from raw data.
     #[must_use]
     pub fn for_test(data: Vec<u8>) -> Self {
         CachedBlob {
@@ -104,7 +98,7 @@ impl CachedBlob {
         }
     }
 
-    /// Creates a [`CachedBlob`] with a given hash (Go `NewCachedBlobWithHashForTest`).
+    /// Creates a [`CachedBlob`] with a given hash.
     #[must_use]
     pub fn with_hash_for_test(hash: Hash, data: Vec<u8>) -> Self {
         CachedBlob {
@@ -115,17 +109,18 @@ impl CachedBlob {
         }
     }
 
-    /// Loads and caches a blob from the repository (Go `NewCachedBlobFromRepo`).
+    /// Loads and caches a blob from the repository.
     ///
     /// # Errors
     ///
-    /// Returns [`GitError::CachedBlobLookup`] (Go `looking up blob <hash>: %w`)
+    /// Returns [`GitError::CachedBlobLookup`]
     /// when the blob cannot be found.
     pub fn from_repo(repo: &crate::Repository, blob_hash: Hash) -> Result<Self> {
         let blob = repo.lookup_blob(blob_hash).map_err(|e| {
-            // Match Go's wrapper text exactly: "looking up blob <hex>: <cause>".
-            // The inner lookup error is GitError::LookupBlob(git2::Error); unwrap
-            // it to the underlying libgit2 error to reproduce the Go message.
+            // The wrapper text "looking up blob <hex>: <cause>" is a frozen
+            // error string. The inner lookup error is
+            // GitError::LookupBlob(git2::Error); unwrap it to the underlying
+            // libgit2 error so the message carries the raw cause.
             match e {
                 GitError::LookupBlob(src) => GitError::CachedBlobLookup {
                     hash: blob_hash.to_string(),
@@ -146,8 +141,7 @@ impl CachedBlob {
     /// Constructs a [`CachedBlob`] from already-loaded batch fields.
     ///
     /// Used by the batch worker (`worker.rs`) where blob bytes and a precomputed
-    /// line count are produced together, mirroring the Go worker building a
-    /// `CachedBlob` from a `BlobResult`.
+    /// line count are produced together.
     #[must_use]
     pub(crate) fn from_parts(hash: Hash, size: i64, data: Vec<u8>, line_count: i64) -> Self {
         CachedBlob {
@@ -158,23 +152,22 @@ impl CachedBlob {
         }
     }
 
-    /// Returns the blob hash (Go `CachedBlob.Hash`).
+    /// Returns the blob hash.
     #[must_use]
     pub fn hash(&self) -> Hash {
         self.hash
     }
 
-    /// Returns the blob size (Go `CachedBlob.Size`).
+    /// Returns the blob size.
     #[must_use]
     pub fn size(&self) -> i64 {
         self.size
     }
 
-    /// Deep-copies the blob, detaching the data slice (Go `CachedBlob.Clone`).
+    /// Deep-copies the blob, detaching the data slice.
     ///
-    /// Go clones to detach `Data` from a shared arena. In Rust [`Vec`] already
-    /// owns its bytes, so this is a straightforward deep copy that also carries
-    /// the memoized line count forward (matching Go, which copies `lineCount`).
+    /// A [`Vec`] already owns its bytes, so this is a straightforward deep copy
+    /// that also carries the memoized line count forward.
     #[must_use]
     pub fn clone_detached(&self) -> Self {
         CachedBlob {
@@ -187,9 +180,8 @@ impl CachedBlob {
 
     /// Returns the number of lines, or [`GitError::Binary`] for binary content.
     ///
-    /// Mirrors Go's `CachedBlob.CountLines`: the result is computed once and
-    /// cached. Binary blobs cache the sentinel and always return
-    /// [`GitError::Binary`].
+    /// The result is computed once and cached. Binary blobs cache the sentinel
+    /// and always return [`GitError::Binary`].
     ///
     /// # Errors
     ///
@@ -211,7 +203,7 @@ impl CachedBlob {
         Ok(cached as usize)
     }
 
-    /// Computes the line count or the binary sentinel (Go `computeLineCount`).
+    /// Computes the line count or the binary sentinel.
     fn compute_line_count(&self) -> i64 {
         if cf_textutil::is_binary(&self.data) {
             return LINE_COUNT_BINARY;
@@ -219,7 +211,7 @@ impl CachedBlob {
         cf_textutil::count_lines(&self.data) as i64
     }
 
-    /// Reports whether the blob looks binary (Go `CachedBlob.IsBinary`).
+    /// Reports whether the blob looks binary.
     #[must_use]
     pub fn is_binary(&self) -> bool {
         cf_textutil::is_binary(&self.data)
@@ -230,7 +222,7 @@ impl CachedBlob {
 mod tests {
     use super::*;
 
-    // Ported from cached_blob_test.go::TestCachedBlob_CountLines_Caching.
+    // Mirrors reference test TestCachedBlob_CountLines_Caching.
     #[test]
     fn count_lines_caches() {
         let blob = CachedBlob::for_test(b"line1\nline2\nline3\n".to_vec());
@@ -238,7 +230,7 @@ mod tests {
         assert_eq!(blob.count_lines().unwrap(), 3);
     }
 
-    // Ported from cached_blob_test.go::TestCachedBlob_CountLines_BinaryCaching.
+    // Mirrors reference test TestCachedBlob_CountLines_BinaryCaching.
     #[test]
     fn count_lines_binary_caches() {
         let blob = CachedBlob::for_test(b"binary\x00data".to_vec());
@@ -246,14 +238,14 @@ mod tests {
         assert!(matches!(blob.count_lines(), Err(GitError::Binary)));
     }
 
-    // Ported from cached_blob_test.go::TestCachedBlob_CountLines_EmptyBlob.
+    // Mirrors reference test TestCachedBlob_CountLines_EmptyBlob.
     #[test]
     fn count_lines_empty() {
         let blob = CachedBlob::for_test(Vec::new());
         assert_eq!(blob.count_lines().unwrap(), 0);
     }
 
-    // Ported from cached_blob_test.go::TestCachedBlob_CountLines_NoTrailingNewline.
+    // Mirrors reference test TestCachedBlob_CountLines_NoTrailingNewline.
     #[test]
     fn count_lines_no_trailing_newline() {
         let blob = CachedBlob::for_test(b"line1\nline2".to_vec());

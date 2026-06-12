@@ -1,39 +1,41 @@
 //! File history analyzer (`history/file-history`).
 //!
-//! Ports `internal/analyzers/file_history` (Go). The analyzer maps each file
-//! path to the list of commits which touch that file together with the mapping
-//! from involved developers to their line statistics. From that raw per-file
-//! history it derives churn, contributor, hotspot, aggregate and file-composition
-//! metrics.
+//! Maps each file path to the list of commits which touch that file together
+//! with the mapping from involved developers to their line statistics. From
+//! that raw per-file history it derives churn, contributor, hotspot, aggregate
+//! and file-composition metrics.
 //!
-//! # Byte-identity
+//! # Compatibility
 //!
-//! All machine-format report serialization is routed through [`cf_gojson`]
-//! rather than raw serde, per `specs/rust-rewrite/DESIGN.md` section 2. The pure
-//! metric computation in [`metrics`] reproduces the Go behavior exactly
-//! (including the descending churn-score and risk-then-commit-count sort orders);
-//! the byte rendering of [`metrics::ComputedMetrics`] to a Go
-//! `encoding/json`-compatible value lives in [`report`].
+//! Output bytes are pinned against the reference implementation by
+//! `rust/tests/compat`. All machine-format report serialization is routed
+//! through [`cf_gojson`] rather than raw serde. The pure metric computation in
+//! [`metrics`] preserves the contract's sort orders (descending churn score;
+//! risk then commit count); the byte rendering of [`metrics::ComputedMetrics`]
+//! lives in [`report`].
 //!
 //! # Nondeterminism note
 //!
-//! Per the Go source and DESIGN.md section 2.8, the `hashes` slice of a
-//! [`metrics::FileHistory`] has Go-side nondeterministic order (it is appended
-//! during a map-iteration-order traversal). Only its **length** (commit count)
-//! feeds the metrics, so the derived metrics are deterministic; any report path
-//! that emits raw hashes must be canonicalized (sorted) on both sides before
-//! diffing.
+//! The `hashes` slice of a [`metrics::FileHistory`] has nondeterministic order
+//! in the reference implementation (it is appended during a hash-map
+//! traversal). Only its **length** (commit count) feeds the metrics, so the
+//! derived metrics are deterministic; any report path that emits raw hashes
+//! must be canonicalized (sorted) on both sides before diffing.
 //!
 //! # Scope of this crate
 //!
-//! The fully self-contained, byte-identity-critical pieces are ported here: the
-//! file classifier scaffold ([`classify`]), the per-commit transport payload
-//! types ([`tc`]), the metric computation ([`metrics`]) and its Go-JSON
-//! rendering ([`report`]). The streaming framework integration (the
-//! `Aggregator`/`SpillStore`, checkpointing, hibernation and the git2
-//! commit-tree traversal that filters deleted files) depends on framework crates
-//! that are not yet stable in the Rust tree and is tracked as a roadmap item; the
-//! corresponding interfaces are sketched in [`framework`].
+//! The fully self-contained, byte-contract-critical pieces live here: the file
+//! classifier scaffold ([`classify`]), the per-commit transport payload types
+//! ([`tc`]), the metric computation ([`metrics`]) and its report rendering
+//! ([`report`]). The streaming framework integration (aggregator, spill store,
+//! checkpointing, hibernation and the commit-tree traversal that filters
+//! deleted files) depends on framework crates that are not yet stable in this
+//! tree and is tracked as a roadmap item; the corresponding interfaces are
+//! sketched in [`framework`].
+
+// Deliberate parity casts (usize -> i64 lengths, i64 -> f64 averages) are part
+// of the report contract; the lossy-cast lints would only add noise.
+#![allow(clippy::cast_possible_wrap, clippy::cast_precision_loss)]
 
 pub mod classify;
 pub mod framework;
@@ -56,15 +58,15 @@ pub use tc::{CategoryCounts, LineStats};
 /// The analyzer identifier reported by [`metrics::ComputedMetrics::analyzer_name`].
 pub const ANALYZER_NAME: &str = "file_history";
 
-/// Stable analyzer descriptor identifier (`Descriptor.ID` in Go).
+/// Stable analyzer descriptor identifier.
 pub const DESCRIPTOR_ID: &str = "history/file-history";
 
-/// The CLI flag for the analyzer (`Flag()` in Go).
+/// The CLI flag for the analyzer.
 pub const FLAG: &str = "file-history";
 
-/// The human-readable analyzer name (`Name()` in Go).
+/// The human-readable analyzer name.
 pub const NAME: &str = "FileHistoryAnalysis";
 
-/// The analyzer description (`Descriptor.Description` in Go).
+/// The analyzer description shown in CLI help.
 pub const DESCRIPTION: &str = "Each file path is mapped to the list of commits which touch that file \
 and the mapping from involved developers to the corresponding line statistics.";

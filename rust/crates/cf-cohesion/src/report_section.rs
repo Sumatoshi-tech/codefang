@@ -1,16 +1,16 @@
-//! Terminal report section — port of `internal/analyzers/cohesion/report_section.go`.
+//! Terminal report section.
 //!
-//! This is **non-binding / cosmetic** output (DESIGN §2.7): byte-identity is not
-//! required for the terminal renderer. The data extraction (distribution buckets,
-//! top issues, severities) is ported so the integrated `cf-renderer` can produce an
-//! equivalent section, but the actual table/ANSI rendering is delegated to the
-//! renderer crate.
+//! This is **non-binding / cosmetic** output (DESIGN §2.7): byte-identity is
+//! not required for the terminal renderer. The data extraction (distribution
+//! buckets, top issues, severities) lives here so `cf-renderer` can produce
+//! the section; the actual table/ANSI rendering is delegated to the renderer
+//! crate.
 
 use crate::report_value::{Report, ReportValue};
 
-/// Section title (Go `SectionTitle`).
+/// Section title.
 pub const SECTION_TITLE: &str = "COHESION";
-/// Default status message (Go `DefaultStatusMessage`).
+/// Default status message.
 pub const DEFAULT_STATUS_MESSAGE: &str = "No cohesion data available";
 
 /// Distribution thresholds.
@@ -18,7 +18,7 @@ const DIST_EXCELLENT_MIN: f64 = 0.6;
 const DIST_GOOD_MIN: f64 = 0.4;
 const DIST_FAIR_MIN: f64 = 0.3;
 
-/// Distribution labels (Go `DistLabel*`).
+/// Distribution labels.
 pub const DIST_LABEL_EXCELLENT: &str = "Excellent (>0.6)";
 /// See [`DIST_LABEL_EXCELLENT`].
 pub const DIST_LABEL_GOOD: &str = "Good (0.4-0.6)";
@@ -27,18 +27,18 @@ pub const DIST_LABEL_FAIR: &str = "Fair (0.3-0.4)";
 /// See [`DIST_LABEL_EXCELLENT`].
 pub const DIST_LABEL_POOR: &str = "Poor (<0.3)";
 
-/// Issue severity thresholds (Go `IssueSeverity*`).
+/// Issue severity thresholds.
 const ISSUE_SEVERITY_FAIR_MAX: f64 = 0.4;
 const ISSUE_SEVERITY_POOR_MAX: f64 = 0.3;
 
-/// Severity labels mirroring `analyze.Severity*`.
+/// Severity labels.
 pub const SEVERITY_POOR: &str = "poor";
 /// See [`SEVERITY_POOR`].
 pub const SEVERITY_FAIR: &str = "fair";
 /// See [`SEVERITY_POOR`].
 pub const SEVERITY_GOOD: &str = "good";
 
-/// A distribution bucket as rendered in the section (Go `analyze.DistributionItem`).
+/// A distribution bucket as rendered in the section.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DistributionItem {
     /// Bucket label.
@@ -49,20 +49,21 @@ pub struct DistributionItem {
     pub count: usize,
 }
 
-/// A single issue row (Go `analyze.Issue`).
+/// A single issue row.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Issue {
     /// Function name.
     pub name: String,
     /// Source location.
     pub location: String,
-    /// Formatted cohesion value (string, to mirror Go's `FormatFloat`).
+    /// Formatted cohesion value (a fixed two-decimal string; the *string* is
+    /// also the sort key, see [`ReportSection::all_issues`]).
     pub value: String,
     /// Severity label.
     pub severity: String,
 }
 
-/// The cohesion terminal section (Go `ReportSection`).
+/// The cohesion terminal section.
 #[derive(Debug, Clone)]
 pub struct ReportSection {
     /// Section title.
@@ -75,7 +76,7 @@ pub struct ReportSection {
 }
 
 impl ReportSection {
-    /// Builds a section from a cohesion report (Go `NewReportSection`).
+    /// Builds a section from a cohesion report.
     #[must_use]
     pub fn new(report: Report) -> Self {
         let score = report
@@ -102,7 +103,7 @@ impl ReportSection {
             .unwrap_or(&[])
     }
 
-    /// Distribution buckets (Go `Distribution`). Returns empty when no functions.
+    /// Distribution buckets. Returns empty when no functions.
     #[must_use]
     pub fn distribution(&self) -> Vec<DistributionItem> {
         let functions = self.functions();
@@ -154,13 +155,13 @@ impl ReportSection {
         ]
     }
 
-    /// All issues, sorted by cohesion ascending (Go `AllIssues`).
+    /// All issues, sorted by formatted cohesion value ascending.
     #[must_use]
     pub fn all_issues(&self) -> Vec<Issue> {
         self.sorted_issues(0)
     }
 
-    /// Top `n` issues (Go `TopIssues`); `n == 0` means all.
+    /// Top `n` issues; `n == 0` means all.
     #[must_use]
     pub fn top_issues(&self, n: usize) -> Vec<Issue> {
         self.sorted_issues(n)
@@ -196,9 +197,9 @@ impl ReportSection {
                 }
             })
             .collect();
-        // Go (`cohesionLess`) orders issues by the formatted string `Value`
-        // ascending via `sort.Slice` (unstable pdqsort). Replicate both the
-        // string key and Go's exact tie permutation so the emitted byte order
+        // The report contract orders issues by the formatted string `value`
+        // ascending via the pinned unstable sort (pdqsort). Replicate both the
+        // string key and the exact tie permutation so the emitted byte order
         // matches; numeric sorting or a stable sort diverges on ties.
         cf_gosort::go_sort_slice(&mut out, |a, b| a.value < b.value);
         if limit > 0 && out.len() > limit {
@@ -208,7 +209,7 @@ impl ReportSection {
     }
 }
 
-/// Maps a cohesion value to a severity label (Go `severityForCohesion`).
+/// Maps a cohesion value to a severity label.
 #[must_use]
 pub fn severity_for_cohesion(coh: f64) -> &'static str {
     if coh < ISSUE_SEVERITY_POOR_MAX {
@@ -220,8 +221,7 @@ pub fn severity_for_cohesion(coh: f64) -> &'static str {
     }
 }
 
-/// Formats a float the way the Go terminal renderer's `reportutil.FormatFloat`
-/// does (two decimals). Cosmetic only.
+/// Formats a float with two decimals for the terminal renderer. Cosmetic only.
 #[must_use]
 pub fn format_float(v: f64) -> String {
     format!("{v:.2}")

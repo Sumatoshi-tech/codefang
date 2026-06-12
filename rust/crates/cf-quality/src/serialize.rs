@@ -1,35 +1,31 @@
-//! Go-byte-compatible serialization for the quality machine reports.
+//! Report-contract serialization for the quality machine reports.
 //!
-//! All machine output is routed through [`cf_gojson`] (the Go-`encoding/json`
-//! byte-compatible encoder) — never serde defaults — per
-//! `specs/rust-rewrite/DESIGN.md` §2. The CFB1 "bin" envelope is produced via
+//! All machine output is routed through [`cf_gojson`] (the report-format JSON
+//! encoder) — never serde defaults; the bytes are pinned against the reference
+//! binary by `rust/tests/compat`. The CFB1 "bin" envelope is produced via
 //! [`cf_reportutil::encode_binary_envelope`].
 //!
-//! The YAML report path (`conversion.go:315` `yaml.Marshal`) is owned by the
-//! `cf-analyze` cross-format conversion hub, which builds the YAML value tree
-//! through `cf-goyaml`; the per-analyzer code only ever produces the dynamic
-//! report map (it is then routed to JSON / YAML / NDJSON / CFB1 by `cf-analyze`).
-//! So this module exposes JSON + CFB1 helpers over the same [`GoValue`] tree the
-//! conversion hub will consume; a `to_yaml` convenience is intentionally omitted
-//! here to avoid binding the `cf-goyaml` value type at this layer.
+//! The YAML report path is owned by the `cf-analyze` cross-format conversion
+//! hub, which builds the YAML value tree through `cf-goyaml`; the per-analyzer
+//! code only ever produces the dynamic report map (it is then routed to JSON /
+//! YAML / NDJSON / CFB1 by `cf-analyze`). So this module exposes JSON + CFB1
+//! helpers over the same [`GoValue`] tree the conversion hub consumes; a
+//! `to_yaml` convenience is intentionally omitted here to avoid binding the
+//! `cf-goyaml` value type at this layer.
 //!
-//! # Origin classification (the load-bearing rule, DESIGN §2.2)
+//! # Origin classification (the load-bearing rule)
 //!
 //! * [`TickStats`], [`TimeSeriesEntry`], [`AggregateData`], [`ComputedMetrics`]
-//!   are **struct-origin**: their fields are emitted in Go declaration order
+//!   are **struct-origin**: their fields are emitted in declaration order
 //!   (honoring `omitempty` on `start_time` / `end_time`). They are built with a
 //!   [`GoMap`] in [`MapOrigin::Struct`] mode (insertion order preserved).
 //! * The per-commit summary map ([`commit_summary_value`]) is **map-origin**:
-//!   its keys are byte-sorted on encode (Go `map[string]any`). It is built with a
-//!   [`GoMap`] in [`MapOrigin::Map`] mode.
+//!   its keys are byte-sorted on encode. It is built with a [`GoMap`] in
+//!   [`MapOrigin::Map`] mode.
 
 use cf_gojson::{marshal, marshal_indent, GoMap, GoValue, MapOrigin};
 
 use crate::metrics::{AggregateData, CommitSummary, ComputedMetrics, TickStats, TimeSeriesEntry};
-
-// `AggregateData` is referenced by `aggregate_value`'s signature below; the
-// other metric types are referenced by their builder fns. Re-exported here for
-// the cross-format conversion hub.
 
 fn struct_map() -> GoMap {
     GoMap::new(MapOrigin::Struct)
@@ -37,7 +33,7 @@ fn struct_map() -> GoMap {
 
 /// Builds the struct-origin [`GoValue`] for a [`TickStats`].
 ///
-/// Field order matches the Go `TickStats` struct declaration / `json` tags.
+/// Field order matches the [`TickStats`] declaration order (the wire order).
 #[must_use]
 pub fn tick_stats_value(ts: &TickStats) -> GoValue {
     let mut m = struct_map();
@@ -126,8 +122,8 @@ pub fn computed_metrics_value(c: &ComputedMetrics) -> GoValue {
 
 /// Builds the **map-origin** [`GoValue`] for a per-commit [`CommitSummary`].
 ///
-/// The keys are byte-sorted on encode (Go `map[string]any`); build order is
-/// irrelevant because [`MapOrigin::Map`] reorders.
+/// The keys are byte-sorted on encode; build order is irrelevant because
+/// [`MapOrigin::Map`] reorders.
 #[must_use]
 pub fn commit_summary_value(s: &CommitSummary) -> GoValue {
     let mut m = GoMap::new(MapOrigin::Map);
@@ -148,10 +144,10 @@ pub fn commit_summary_value(s: &CommitSummary) -> GoValue {
     GoValue::Object(m)
 }
 
-/// Encodes a [`ComputedMetrics`] as indented JSON (Go `json.MarshalIndent`).
+/// Encodes a [`ComputedMetrics`] as indented JSON.
 ///
 /// indent `"  "`, HTML-escape ON, **no trailing newline**. This matches the
-/// analyzer-level `FormatReportJSON` path used by the sibling analyzers; the
+/// analyzer-level `format_report_json` path used by the sibling analyzers; the
 /// run/render dispatch that adds a trailing newline lives in the `cf-analyze`
 /// `Encoder` builder.
 #[must_use]
@@ -159,9 +155,9 @@ pub fn to_json_pretty(c: &ComputedMetrics) -> Vec<u8> {
     marshal_indent(&computed_metrics_value(c))
 }
 
-/// Encodes a [`ComputedMetrics`] as compact JSON (Go `json.Marshal`).
+/// Encodes a [`ComputedMetrics`] as compact JSON.
 ///
-/// compact, HTML-escape ON, no trailing newline. This is the CFB1 payload and
+/// Compact, HTML-escape ON, no trailing newline. This is the CFB1 payload and
 /// the per-NDJSON-line body.
 #[must_use]
 pub fn to_json_compact(c: &ComputedMetrics) -> Vec<u8> {
@@ -170,10 +166,10 @@ pub fn to_json_compact(c: &ComputedMetrics) -> Vec<u8> {
 
 /// Encodes a [`ComputedMetrics`] as a single CFB1 "bin" record.
 ///
-/// `b"CFB1"` + LE u32 payload length + compact-JSON payload
-/// (`reportutil/binary.go`). [`cf_reportutil::encode_binary_envelope`] marshals
-/// the [`GoValue`] tree internally via `cf_gojson::marshal`, so the payload is
-/// the same compact, HTML-escaped Go-JSON bytes as [`to_json_compact`].
+/// `b"CFB1"` + LE u32 payload length + compact-JSON payload.
+/// [`cf_reportutil::encode_binary_envelope`] marshals the [`GoValue`] tree
+/// internally via `cf_gojson::marshal`, so the payload is the same compact,
+/// HTML-escaped JSON bytes as [`to_json_compact`].
 ///
 /// # Errors
 ///

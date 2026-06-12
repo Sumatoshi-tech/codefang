@@ -1,5 +1,4 @@
-//! `history/burndown` plot sections — port of Go
-//! `internal/analyzers/burndown/store_reader.go` + `plot.go`
+//! `history/burndown` plot sections.
 //! (`GenerateStoreSections` → `buildStoreSections` over the `chart_data` and
 //! `metrics` store kinds).
 //!
@@ -8,7 +7,7 @@
 //! aggregation (`aggregateByYear`) does calendar arithmetic on `time.Unix(0,
 //! EndTime)` in the process TZ. The oracle pins `TZ=UTC`, and these civil-time
 //! helpers implement exactly the UTC calendar (days-from-civil), so the year
-//! bands match Go's under the pinned environment.
+//! bands match the reference implementation's under the pinned environment.
 
 use cf_analyzer_burndown::DenseHistory;
 use cf_gojson::GoValue;
@@ -18,7 +17,7 @@ use cf_plotpage::{ChartOpts, Hint, Section};
 
 use crate::handlers::plot_sections::history_shared::{format_int64, GridStats};
 
-/// burndown plot.go constants.
+/// Reference burndown plot-section constants.
 const HOURS_PER_DAY: i64 = 24;
 const DAYS_PER_MONTH: i64 = 30;
 const MONTHS_PER_YEAR: i64 = 12;
@@ -30,9 +29,9 @@ const MIN_INTERPOLATION_LEN: usize = 2;
 const PLOT_MAX_STATS_COLUMNS: usize = 4;
 const NS_PER_HOUR: i64 = 3_600_000_000_000;
 
-/// The `chart_data` store kind (Go `burndown.ChartData`).
+/// The `chart_data` store kind.
 pub struct ChartData {
-    /// Dense global history (negatives clamped to zero, Go `buildChartData`).
+    /// Dense global history (negatives clamped to zero, the reference `buildChartData`).
     pub global_history: DenseHistory,
     /// Ticks per sample.
     pub sampling: i64,
@@ -46,7 +45,7 @@ pub struct ChartData {
     pub project_name: String,
 }
 
-/// Go `GenerateStoreSections` → `buildStoreSections`: the summary stats grid,
+/// The reference `GenerateStoreSections` → `buildStoreSections`: the summary stats grid,
 /// plus the burndown chart when the dense history is non-empty.
 pub fn sections(
     chart_data: &ChartData,
@@ -77,7 +76,7 @@ pub fn sections(
     result
 }
 
-/// Go `buildStoreSummarySection`.
+/// The reference `buildStoreSummarySection`.
 fn build_summary_section(metrics: &cf_analyzer_burndown::ComputedMetrics) -> Section {
     let agg = &metrics.aggregate;
     let survival_pct = format!("{:.1}%", agg.overall_survival_rate * 100.0);
@@ -104,7 +103,7 @@ fn build_summary_section(metrics: &cf_analyzer_burndown::ComputedMetrics) -> Sec
     }
 }
 
-/// Go `survivalBadgeColor`.
+/// The reference `survivalBadgeColor`.
 fn survival_badge_color(rate: f64) -> BadgeColor {
     if rate >= 0.7 {
         BadgeColor::Success
@@ -115,7 +114,7 @@ fn survival_badge_color(rate: f64) -> BadgeColor {
     }
 }
 
-/// Go `buildChartFromStoreData` → `createLineChart` + `addSeries`.
+/// The reference `buildChartFromStoreData` → `createLineChart` + `addSeries`.
 fn build_chart(data: &ChartData) -> Chart {
     let project_name =
         if data.project_name.is_empty() { "project" } else { &data.project_name };
@@ -163,7 +162,7 @@ fn build_chart(data: &ChartData) -> Chart {
     line
 }
 
-/// Go `getColorPalette`.
+/// The reference `getColorPalette`.
 fn color_palette() -> Vec<String> {
     [
         "#8B4513", "#2f4554", "#9370DB", "#808080", "#DAA520", "#90EE90", "#FFB6C1", "#c23531",
@@ -174,7 +173,7 @@ fn color_palette() -> Vec<String> {
     .collect()
 }
 
-/// Go `buildXLabels` (interpolationFactor == 1).
+/// The reference `buildXLabels` (interpolationFactor == 1).
 fn build_x_labels(data: &ChartData) -> Vec<String> {
     let n = data.global_history.len() as i64;
     let points = ((n - 1) + 1).max(1);
@@ -187,7 +186,7 @@ fn build_x_labels(data: &ChartData) -> Vec<String> {
         .collect()
 }
 
-/// Go `computeMaxLines`.
+/// The reference `computeMaxLines`.
 fn compute_max_lines(history: &DenseHistory) -> i64 {
     let mut max_lines = 0i64;
     for sample in history {
@@ -199,7 +198,7 @@ fn compute_max_lines(history: &DenseHistory) -> i64 {
     max_lines
 }
 
-/// Go `addSeries`: year aggregation when the span allows it, else raw bands.
+/// The reference `addSeries`: year aggregation when the span allows it, else raw bands.
 fn add_series(line: &mut Chart, data: &ChartData) {
     if let Some((years, year_data)) = aggregate_by_year(data) {
         for (year, values) in years.iter().zip(year_data) {
@@ -223,7 +222,7 @@ fn add_series(line: &mut Chart, data: &ChartData) {
     }
 }
 
-/// One stacked smooth area series (Go `addYearSeries` / `addBandSeries`).
+/// One stacked smooth area series.
 fn push_band_series(line: &mut Chart, name: &str, values: &[i64]) {
     let data = GoValue::Array(
         values
@@ -247,7 +246,7 @@ fn push_band_series(line: &mut Chart, name: &str, values: &[i64]) {
     });
 }
 
-/// Go `interpolate` (interpolationFactor == 1: every point lands on a sample,
+/// The reference `interpolate` (interpolationFactor == 1: every point lands on a sample,
 /// so the result is `int64(v + 0.5)` per sample).
 fn interpolate(values: &[f64]) -> Vec<i64> {
     if values.len() < MIN_INTERPOLATION_LEN {
@@ -304,7 +303,7 @@ fn year_start_ns(year: i64) -> i64 {
     days_from_civil(year, 1, 1) * 86_400_000_000_000
 }
 
-/// Go `aggregateByYear`: returns `(years, per-year sample data)` or `None`
+/// The reference `aggregateByYear`: returns `(years, per-year sample data)` or `None`
 /// when aggregation does not apply.
 fn aggregate_by_year(data: &ChartData) -> Option<(Vec<i64>, Vec<Vec<f64>>)> {
     // canAggregateByYear.
@@ -369,7 +368,7 @@ fn aggregate_by_year(data: &ChartData) -> Option<(Vec<i64>, Vec<Vec<f64>>)> {
     Some((years, year_data))
 }
 
-/// Go `bandLabel`.
+/// The reference `bandLabel`.
 fn band_label(band_idx: i64, data: &ChartData) -> String {
     let upper_ticks = (band_idx + 1) * data.granularity;
     let age_ns = upper_ticks * data.tick_size_ns;

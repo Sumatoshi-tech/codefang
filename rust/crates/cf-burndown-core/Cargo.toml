@@ -1,6 +1,6 @@
 [package]
 name = "cf-burndown-core"
-description = "Burndown matrix core data model (Hercules-style line-survival treaps). Rust port of Go internal/burndown; used by the burndown analyzer."
+description = "Burndown matrix core data model: line-survival treaps used by the burndown analyzer."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,12 +8,12 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
-# No runtime dependencies: this is a pure data-model/algorithm crate. The Go
-# package `internal/burndown` performs no report serialization (it imports no
-# encoding/json or yaml), so per DESIGN §2 there is intentionally no dependency
-# on cf-gojson/cf-goyaml here — the downstream burndown analyzer routes Segment
-# data through those crates. The Go dep on pkg/alg/interval is vendored in
-# src/interval.rs until the shared cf-alg-interval crate is ported (see TODOs).
+# No runtime dependencies: this is a pure data-model/algorithm crate that
+# performs no report serialization. Machine-format report bytes must always be
+# produced by the shared cf-gojson/cf-goyaml crates, so the downstream burndown
+# analyzer routes Segment data through those and this crate stays
+# serialization-free. The interval tree used for range queries is a local,
+# u32-specialized implementation (src/interval.rs); see its module docs.
 [dependencies]
 
 [dev-dependencies]

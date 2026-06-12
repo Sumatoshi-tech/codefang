@@ -1,9 +1,9 @@
 //! Static-analysis report paths for the UAST `static/cohesion` analyzer.
 //!
-//! Reproduces the Go static pipeline for the single-analyzer
+//! Reproduces the reference static pipeline for the single-analyzer
 //! `codefang run --analyzers static/cohesion --format {json,yaml,bin}` captures.
 //!
-//! Pipeline (mirrors `complexity` and the Go `StaticService.uastPhase`):
+//! Pipeline (mirrors `complexity` and the reference `StaticService.uastPhase`):
 //!
 //!  1. `filepath.WalkDir` in lexical order — directories recursed (except `.git`),
 //!     every regular file that is UAST-supported, matches `--languages` (none →
@@ -23,13 +23,13 @@
 //!     * collects the `functions` items deduplicated by the composite key
 //!       (`_source_file`, `name`) — last write wins — then sorted by `name`
 //!       (`GetSortedData` sorts on the last identifier key),
-//!     * builds the `message` from the first numeric average (Go map-iteration
+//!     * builds the `message` from the first numeric average (reference map-iteration
 //!       order; canonicalized by the harness when it varies).
 //!  5. JSON goes through the renderer section (`FormatJSON` → `SectionsToJSON`);
 //!     YAML/bin go through `FormatPerAnalyzer` → `cohesion.FormatReportYAML` /
 //!     `FormatReportBinary`, which marshal `ComputedMetrics`.
 //!
-//! The per-function `functions` table order is nondeterministic in Go (map
+//! The per-function `functions` table order is nondeterministic in the reference implementation (map
 //! dedup + unstable `sort.Slice` on `name`), and the issues list is re-sorted by
 //! the FormatFloat string of cohesion (again unstable). The compat harness
 //! measures this variance and compares those lists as sorted multisets, so only
@@ -46,7 +46,7 @@ use cf_gojson::{Encoder, GoMap, GoValue, MapOrigin};
 use cf_pathpolicy::{exclude, Options};
 use cf_uast::Parser;
 
-// --- Section rendering constants (report_section.go) ---
+// --- Section rendering constants ---
 
 const SECTION_TITLE: &str = "COHESION";
 
@@ -72,7 +72,7 @@ const SEVERITY_POOR: &str = "poor";
 
 const DEFAULT_STATUS_MESSAGE: &str = "No cohesion data available";
 
-// Aggregator message thresholds (aggregator.go cohesionMessageLabeler).
+// Aggregator message thresholds (reference cohesionMessageLabeler).
 const MSG_SCORE_HIGH: f64 = 0.7;
 const MSG_SCORE_MEDIUM: f64 = 0.4;
 const MSG_SCORE_LOW: f64 = 0.3;
@@ -81,8 +81,8 @@ const MSG_GOOD: &str = "Good overall cohesion with room for improvement";
 const MSG_FAIR: &str = "Fair overall cohesion - consider refactoring some functions";
 const MSG_POOR: &str = "Poor overall cohesion - significant refactoring recommended";
 
-/// One collected per-function item, carrying the full Go
-/// `convertCohesionFunctionItems` map (cohesion.go:220) the raw aggregated
+/// One collected per-function item, carrying the full the reference implementation
+/// `convertCohesionFunctionItems` map the raw aggregated
 /// report serializes, plus the stamped `_source_file`.
 #[derive(Clone)]
 struct FnItem {
@@ -96,7 +96,7 @@ struct FnItem {
     size_assessment: String,
 }
 
-/// The cross-file aggregated state (Go `common.Aggregator`).
+/// The cross-file aggregated state.
 #[derive(Default)]
 struct Aggregated {
     report_count: i64,
@@ -105,7 +105,7 @@ struct Aggregated {
     cohesion_score_sum: f64,
     function_cohesion_sum: f64,
     /// Functions keyed by the composite `(_source_file, name)` dedup key; last
-    /// write wins (Go buffer overwrite).
+    /// write wins (reference: buffer overwrite).
     functions: BTreeMap<String, FnItem>,
 }
 
@@ -166,7 +166,7 @@ fn walk(
         return;
     };
     let mut entries: Vec<_> = read.filter_map(Result::ok).collect();
-    entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
         let path = entry.path();
@@ -206,7 +206,7 @@ fn walk(
     }
 }
 
-/// Folds one per-file report into the aggregate (Go `MetricsProcessor.ProcessReport`
+/// Folds one per-file report into the aggregate (the reference `MetricsProcessor.ProcessReport`
 /// + `SpillableDataCollector.CollectFromReport`).
 fn accumulate(agg: &mut Aggregated, report: &Report, source_file: &str) {
     if let Some(v) = report.get("total_functions").and_then(ReportValue::as_int) {
@@ -261,8 +261,8 @@ fn accumulate(agg: &mut Aggregated, report: &Report, source_file: &str) {
     }
 }
 
-/// The collected functions sorted by `name` (Go `GetSortedData`, last identifier
-/// key). Equal-name order is nondeterministic in Go and canonicalized by the
+/// The collected functions sorted by `name` (the reference `GetSortedData`, last identifier
+/// key). Equal-name order is nondeterministic in the reference implementation and canonicalized by the
 /// harness; a stable secondary order keeps our output deterministic.
 fn sorted_functions(agg: &Aggregated) -> Vec<FnItem> {
     let mut out: Vec<FnItem> = agg.functions.values().cloned().collect();
@@ -274,7 +274,7 @@ fn sorted_functions(agg: &Aggregated) -> Vec<FnItem> {
     out
 }
 
-/// Go `filepath.Rel(rootPath, filePath)` (flat repos → path under the root).
+/// The reference `filepath.Rel(rootPath, filePath)` (flat repos → path under the root).
 fn make_relative_path(file_path: &str, root_path: &str) -> String {
     if root_path.is_empty() {
         return file_path.to_string();
@@ -307,7 +307,7 @@ pub fn cohesion_report_value(root_path: &str) -> Option<GoValue> {
     Some(build_json_report(&agg))
 }
 
-/// Builds the `static/cohesion` section tree in Go's `AggregationModeSummaryOnly`
+/// Builds the `static/cohesion` section tree in the reference implementation's `AggregationModeSummaryOnly`
 /// shape (`text` / `compact`): the detailed `functions` collection is a no-op, so
 /// the distribution + issues sections (both derived from the collected functions)
 /// are absent while the averaged scalar metrics are unchanged.
@@ -319,22 +319,22 @@ pub fn cohesion_report_value_summary(root_path: &str) -> Option<GoValue> {
 }
 
 /// Builds the AGGREGATED RAW `analyze.Report` GoValue for `static/cohesion` —
-/// the value Go's `cohesion.Aggregator` (a plain `common.Aggregator`) returns
+/// the value the reference implementation's `cohesion.Aggregator` (a plain `common.Aggregator`) returns
 /// from `GetResult()` (`ResultBuilder.BuildCollectionResult`), which is what
 /// `--format plot` consumes and what `writeReportJSON` serializes into
 /// `report.json`:
 ///
-/// * `analyzer_name`, `message` (Go keys it off a RANDOM numeric average —
+/// * `analyzer_name`, `message` (reference keys it off a RANDOM numeric average —
 ///   measured-nondeterministic; we use `cohesion_score` like the section),
 /// * count: `total_functions` (summed; overwrites the collection length),
 /// * averages: `lcom` / `cohesion_score` / `function_cohesion`,
 /// * `functions`: the dedup-by-`(_source_file, name)` collection sorted by
-///   `name` (`GetSortedData`; the equal-name tie order is Go-nondeterministic
+///   `name` (`GetSortedData`; the equal-name tie order is nondeterministic in the reference binary
 ///   and canonicalized by the harness), each item the
 ///   `convertCohesionFunctionItems` map + the `_source_file` stamp only (the
 ///   base collector never stamps `_language`/`_directory`).
 ///
-/// With no parsed files Go returns `createEmptyResult` instead (5 keys, no
+/// With no parsed files the reference implementation returns `createEmptyResult` instead (5 keys, no
 /// `analyzer_name`/`functions`).
 #[must_use]
 pub fn cohesion_raw_report_value(root_path: &str, opts: &Options) -> Option<GoValue> {
@@ -383,7 +383,7 @@ pub fn cohesion_raw_report_value(root_path: &str, opts: &Options) -> Option<GoVa
     Some(GoValue::Map(m))
 }
 
-/// Aggregator message keyed by the first numeric average (Go `getCohesionMessage`).
+/// Aggregator message keyed by the first numeric average.
 fn cohesion_message(score: f64) -> &'static str {
     if score >= MSG_SCORE_HIGH {
         MSG_EXCELLENT
@@ -400,10 +400,10 @@ fn build_json_report(agg: &Aggregated) -> GoValue {
     let cohesion_score = agg.cohesion_score_avg();
     let functions = sorted_functions(agg);
 
-    // status: the cohesion section message. Go's aggregator picks the message
+    // status: the cohesion section message. the reference implementation's aggregator picks the message
     // from the FIRST numeric average in map-iteration order; the numeric keys are
     // {lcom, cohesion_score, function_cohesion} and the harness canonicalizes the
-    // status when Go's choice varies run-to-run. We key it on cohesion_score, the
+    // status when the reference implementation's choice varies run-to-run. We key it on cohesion_score, the
     // score the section's NewReportSection also reads.
     let status = if agg.report_count == 0 {
         DEFAULT_STATUS_MESSAGE.to_string()
@@ -489,8 +489,7 @@ fn build_json_report(agg: &Aggregated) -> GoValue {
 
 // === YAML / binary (ComputedMetrics machine format) ===
 
-/// Builds the cross-file aggregated [`Report`] that the machine formats marshal
-/// (Go `aggregator.GetResult`).
+/// Builds the cross-file aggregated [`Report`] that the machine formats marshal.
 fn aggregated_report(agg: &Aggregated) -> Report {
     let mut r = Report::new();
     r.insert(
@@ -514,7 +513,7 @@ fn aggregated_report(agg: &Aggregated) -> Report {
     let functions: Vec<BTreeMap<String, ReportValue>> = sorted_functions(agg)
         .into_iter()
         .map(|f| {
-            // Only `_source_file` is propagated into the collected map items: Go's
+            // Only `_source_file` is propagated into the collected map items: the reference implementation's
             // `convertCohesionFunctionItems` (the `TypedCollection.ToMaps` callback)
             // stamps ONLY `analyze.SourceFileKey`, NOT `_directory`/`_language`,
             // even though `StampSourceFile`/`StampLanguage` set those on the
@@ -533,7 +532,7 @@ fn aggregated_report(agg: &Aggregated) -> Report {
 
 /// Builds the `static/cohesion --format yaml` report bytes, or `None`.
 ///
-/// Go `cohesion.FormatReportYAML` = `yaml.Marshal(*ComputedMetrics)`. Routed
+/// The reference `cohesion.FormatReportYAML` = `yaml.Marshal(*ComputedMetrics)`. Routed
 /// through the go-compatible `cf-goyaml` serializer over a `cf-gojson::GoValue`
 /// tree of the struct (declaration-order fields, `omitempty`, byte-sorted map
 /// keys for `distribution`).
@@ -547,7 +546,7 @@ pub fn cohesion_report_yaml(root_path: &str) -> Option<Vec<u8>> {
 
 /// Builds the `static/cohesion --format bin` report bytes, or `None`.
 ///
-/// Go `cohesion.FormatReportBinary` = `reportutil.EncodeBinaryEnvelope(metrics)`
+/// The reference `cohesion.FormatReportBinary` = `reportutil.EncodeBinaryEnvelope(metrics)`
 /// = `"CFB1"` + u32-LE len + compact `json.Marshal(*ComputedMetrics)`. Routed
 /// through `cf-reportutil` over the same `cf-gojson::GoValue` tree.
 #[must_use]
@@ -558,7 +557,7 @@ pub fn cohesion_report_bin(root_path: &str) -> Option<Vec<u8>> {
     cf_reportutil::encode_binary_envelope(&computed_metrics_go_value(&metrics)).ok()
 }
 
-/// Builds the `cf-gojson::GoValue` tree for [`ComputedMetrics`] (Go struct field
+/// Builds the `cf-gojson::GoValue` tree for [`ComputedMetrics`] (reference struct field
 /// order + `omitempty`), the single value all machine formats encode.
 fn computed_metrics_go_value(m: &cf_cohesion::ComputedMetrics) -> GoValue {
     let mut root = GoMap::new(MapOrigin::Struct);
@@ -649,7 +648,7 @@ fn dist_item(label: &str, percent: f64, count: i64) -> GoValue {
     GoValue::Map(d)
 }
 
-/// Go `reportutil.Pct`: fraction in [0,1].
+/// The reference `reportutil.Pct`: fraction in [0,1].
 fn pct(count: i64, total: i64) -> f64 {
     if total == 0 {
         0.0
@@ -658,7 +657,7 @@ fn pct(count: i64, total: i64) -> f64 {
     }
 }
 
-/// Go `reportutil.FormatFloat`: `%.1f`.
+/// The reference `reportutil.FormatFloat`: `%.1f`.
 fn format_float(v: f64) -> String {
     format!("{v:.1}")
 }
@@ -673,7 +672,7 @@ fn severity_for_cohesion(coh: f64) -> &'static str {
     }
 }
 
-/// Renders a score as the `N/10` label (Go `terminal.FormatScore`).
+/// Renders a score as the `N/10` label.
 fn score_label(score: f64) -> String {
     let n = (score * 10.0).round() as i64;
     format!("{n}/10")

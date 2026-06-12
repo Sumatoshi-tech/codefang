@@ -8,12 +8,12 @@
 //! (cf-complexity, cf-halstead, cf-comments, cf-imports, cf-couples,
 //! cf-shotness, cf-analyzer-burndown, …); this module owns only the
 //! pipeline-tier orchestration + serialization (cf-gojson / cf-goyaml /
-//! cf-reportutil), exactly as Go `internal/framework` + `run.go` do.
+//! cf-reportutil), exactly as the reference framework + run command do.
 //!
 //! [`default_registry`] builds the single [`crate::pipeline::Registry`] mapping
 //! every analyzer id to ONE [`crate::pipeline::RunHandler`]. Each handler owns
 //! its own `match format` (mirroring an analyzer's `FormatReport*` family in
-//! Go); dispatch in [`crate::pipeline::run_pipeline`] is a keyed lookup by id,
+//! the reference implementation); dispatch in [`crate::pipeline::run_pipeline`] is a keyed lookup by id,
 //! NOT a per-format branch ladder.
 
 pub mod burndown_ndjson;
@@ -41,12 +41,12 @@ use crate::pipeline::{AnalyzerEntry, Mode, Registry, RunContext};
 
 // ---------------------------------------------------------------------------
 // Shared pipeline helpers (path resolution, tick floor, RFC3339 formatting).
-// These mirror the Go run.go / plumbing helpers and are shared by the static
+// These mirror the reference implementation / plumbing helpers and are shared by the static
 // and history handlers.
 // ---------------------------------------------------------------------------
 
 /// Resolves the repository path from `run`'s positional arg or `-p/--path`
-/// (Go run.go: the positional wins when present, else `--path`, default `.`).
+/// (the reference implementation: the positional wins when present, else `--path`, default `.`).
 #[must_use]
 pub fn run_repo_path(sub: &clap::ArgMatches) -> String {
     if let Some(p) = sub.get_one::<String>("path-positional") {
@@ -57,27 +57,22 @@ pub fn run_repo_path(sub: &clap::ArgMatches) -> String {
     sub.get_one::<String>("path").cloned().unwrap_or_else(|| ".".to_string())
 }
 
-/// The effective first-parent mode for the shared history revwalk, mirroring Go
-/// `run.go` `initHistoryPipeline`:
+/// The effective first-parent mode for the shared history revwalk, mirroring
+/// the reference `initHistoryPipeline`: when the resolved leaf set contains
+/// `burndown` and `--first-parent` is off, first-parent is forced on.
 ///
-/// ```go
-/// if slices.Contains(analyzerKeys, "burndown") && !opts.FirstParent {
-///     opts.FirstParent = true
-/// }
-/// ```
-///
-/// Go forces first-parent for the WHOLE history run (the single shared revwalk
+/// The reference implementation forces first-parent for the WHOLE history run (the single shared revwalk
 /// that feeds every selected history analyzer) whenever `history/burndown` is in
 /// the resolved leaf set, regardless of the `--first-parent` flag. Because every
 /// history analyzer in one `run` shares that revwalk, the window selection — and
 /// therefore each analyzer's tick assignment and commit set — must observe the
 /// same forced flag. A handler that read only `--first-parent` would diverge from
-/// Go whenever burndown is co-selected (e.g. `--analyzers history/devs,history/burndown`,
+/// the reference implementation whenever burndown is co-selected (e.g. `--analyzers history/devs,history/burndown`,
 /// `history/*`, or `*`), even though it is not the burndown handler.
 ///
 /// The burndown membership is computed over the RESOLVED leaf set, so literal ids
 /// and globs (`history/*`, `*`) that select burndown all force the flag, exactly
-/// as Go's `slices.Contains(analyzerKeys, "burndown")` does after glob expansion.
+/// as the reference implementation's `slices.Contains(analyzerKeys, "burndown")` does after glob expansion.
 #[must_use]
 pub fn effective_first_parent(sub: &clap::ArgMatches) -> bool {
     if sub.get_flag("first-parent") {
@@ -92,11 +87,11 @@ pub fn effective_first_parent(sub: &clap::ArgMatches) -> bool {
     history_ids.iter().any(|id| id == "history/burndown")
 }
 
-/// Replicates Go `run.go` `initHistoryPipeline` (the iterator path the real
+/// Replicates the reference implementation `initHistoryPipeline` (the iterator path the real
 /// `run` command uses — NOT `gitlib.LoadCommits`): walks history oldest-first
 /// (`SortTime|SortTopological|SortReverse`) and feeds the analyzer the FIRST
 /// `commitCount = min(limit, total)` commits. That selects the N OLDEST
-/// reachable commits, oldest-first (oracle-verified against the live Go binary —
+/// reachable commits, oldest-first (oracle-verified against the live reference binary —
 /// `--limit 20` on hercules yields the repo's first 20 commits, with ascending
 /// composition ticks). `limit <= 0` returns the full oldest-first history.
 #[must_use]
@@ -107,11 +102,11 @@ pub fn load_history_commit_hashes(
 ) -> Option<Vec<cf_gitlib::Hash>> {
     use cf_gitlib::repository::LogOptions;
     // ORACLE-VERIFIED window selection. The real `run` command uses
-    // `run.go::initStreamingIterator`, which sets `logOpts.Reverse = true`
+    // the reference `initStreamingIterator`, which sets `logOpts.Reverse = true`
     // (oldest-first walk) and then streams the FIRST `commitCount =
     // min(limit, total)` commits — i.e. the `limit` OLDEST reachable commits,
     // oldest-first. (NOT `gitlib.loadHistoryCommits`'s newest-N+reverse: the live
-    // Go binary at `--limit 2` on hercules emits the repo's first two commits —
+    // reference binary at `--limit 2` on hercules emits the repo's first two commits —
     // analyser.go/LICENSE — proving the OLDEST set is selected, even though the
     // repo has 1006 commits.) Do NOT switch to `reverse: false` + post-reverse.
     let log_opts = LogOptions { reverse: true, first_parent, ..LogOptions::default() };
@@ -126,29 +121,29 @@ pub fn load_history_commit_hashes(
     Some(hashes)
 }
 
-/// Returns Go's streaming-pipeline *consume* order for an oldest-first commit
+/// Returns the reference implementation's streaming-pipeline *consume* order for an oldest-first commit
 /// window: the IDENTITY (oldest-first revwalk order).
 ///
 /// At `--workers 1` (the only config the differential gate exercises) every
-/// stage of the Go coordinator pipeline preserves input order, so the leaf
+/// stage of the reference coordinator pipeline preserves input order, so the leaf
 /// analyzers consume commits in exactly the oldest-first order they are fed:
 ///
-/// * `framework/commit_streamer.go` `Stream` emits contiguous oldest-first
+/// * the reference `Stream` emits contiguous oldest-first
 ///   batches (`commits[i:end]`) from a single goroutine.
-/// * `framework/blob_pipeline.go` and `framework/diff_pipeline.go` use
-///   `pipeline.RunPC` (`pkg/pipeline/runpc.go`): a single producer emits jobs
+/// * the reference blob and diff pipelines use
+///   `pipeline.RunPC`: a single producer emits jobs
 ///   in input order onto one FIFO channel, and a single consumer reads and
 ///   emits them in that same order — the parallel blob/diff prefetch only
 ///   shares one batched worker request, it never resequences commits.
-/// * `framework/uast_pipeline.go` `Process` is explicitly order-preserving
+/// * the reference `Process` is explicitly order-preserving
 ///   ("Output order matches input order via a slot-based approach"): the
 ///   `emit` goroutine waits on each slot's `done` in dispatch order.
-/// * `framework/coordinator.go` `Process` and `pkg/pipeline/drain.go`
-///   `SignalOnDrain` each forward items one-for-one from a single goroutine.
-/// * `framework/runner.go` `processCommitsSerial`/`hybridCommitLoop` range over
+/// * the reference coordinator `Process` and drain stage
+///   `SignalOnDrain` each forward items one-for-one from a single worker.
+/// * the reference `processCommitsSerial`/`hybridCommitLoop` range over
 ///   the coordinator's `dataChan` in arrival order, and the per-commit `Index`
 ///   carried through is the plain oldest-first revwalk index
-///   (`blob_pipeline.go`: `batch.StartIndex + job.index`).
+///   (`batch.StartIndex + job.index`).
 ///
 /// So the order in which the COORDINATOR pipeline yields commits is the identity
 /// of the oldest-first window. Earlier code reordered into round-robin
@@ -160,32 +155,33 @@ pub fn load_history_commit_hashes(
 /// is NOT necessarily the order in which a LEAF analyzer's order-sensitive state
 /// is updated: at the default `LeafWorkers = max(NumCPU / 3, 4)` (which
 /// `--workers` does NOT override — that flag only sets the blob/diff `Workers`
-/// pool), Go's hybrid leaf path (`runner.go` `processCommitsHybrid`) forks the
+/// pool), the reference implementation's hybrid leaf path (the reference `processCommitsHybrid`) forks the
 /// leaf across workers, dispatching consume position `p` to worker `p % W`. The
 /// effect is leaf-specific and handled at the leaf consumer, not here:
 ///   - couples: each fork has an INDEPENDENT seen-files Bloom; commits stay in
 ///     oldest-first order WITHIN a worker (see `couples_run`).
 ///   - file-history: forked TCs are drained worker-by-worker into one aggregator
-///     whose `applyInsert` resets a path's hash list, so its add-order is the
+///     whose insert handling resets a path's hash list, so its add-order is the
 ///     commits stably reordered by `(p % W, p)` (see `file_history_run`).
-/// Both use [`leaf_worker_count`] for `W`, reproducing the live binary on this
-/// machine.
+///
+/// Both use [`leaf_worker_count`] for `W`, reproducing the reference binary on
+/// this machine.
 #[must_use]
 pub fn pipeline_consume_order(hashes: Vec<cf_gitlib::Hash>) -> Vec<cf_gitlib::Hash> {
     hashes
 }
 
-/// Go leaf-worker divisor (`framework` `leafWorkerDivisor`): `LeafWorkers =
+/// Reference leaf-worker divisor (`framework` `leafWorkerDivisor`): `LeafWorkers =
 /// NumCPU / divisor`.
 const LEAF_WORKER_DIVISOR: usize = 3;
-/// Go minimum leaf-worker count (`framework` `minLeafWorkers`).
+/// Reference minimum leaf-worker count (`framework` `minLeafWorkers`).
 const MIN_LEAF_WORKERS: usize = 4;
 
-/// Number of forked leaf-analyzer workers Go dispatches commits across, mirroring
+/// Number of forked leaf-analyzer workers the reference implementation dispatches commits across, mirroring
 /// `framework.DefaultCoordinatorConfig`: `max(NumCPU / 3, 4)`, where `NumCPU` is
-/// the machine's logical CPU count (Go `runtime.NumCPU`).
+/// the machine's logical CPU count.
 ///
-/// Go's hybrid leaf path (`runner.go` `processCommitsHybrid`, taken for a single
+/// The reference implementation's hybrid leaf path (the reference `processCommitsHybrid`, taken for a single
 /// non-`SequentialOnly` leaf when `0 < CoreCount < len(Analyzers)`) forks the
 /// leaf across this many workers and dispatches consume position `p` to worker
 /// `p % count`, each worker holding INDEPENDENT analyzer state (e.g. couples'
@@ -200,7 +196,7 @@ pub fn leaf_worker_count() -> usize {
     (num_cpu / LEAF_WORKER_DIVISOR).max(MIN_LEAF_WORKERS)
 }
 
-/// Rounds Unix `secs` down to the start of its 24-hour tick (Go
+/// Rounds Unix `secs` down to the start of its 24-hour tick (reference:
 /// `plumbing.FloorTime(when, 24h)`). `time.Round` rounds half away from zero;
 /// the post-round correction yields the floor.
 #[must_use]
@@ -214,7 +210,7 @@ pub fn floor_tick_secs(secs: i64) -> i64 {
     }
 }
 
-/// Formats Unix seconds as Go `time.RFC3339` in the zone given by
+/// Formats Unix seconds as the reference `time.RFC3339` in the zone given by
 /// `offset_minutes`; a zero offset prints the literal `Z`.
 #[must_use]
 pub fn format_rfc3339_offset(unix_secs: i64, offset_minutes: i32) -> String {
@@ -236,7 +232,7 @@ pub fn format_rfc3339_offset(unix_secs: i64, offset_minutes: i32) -> String {
 }
 
 /// Serializes a history analyzer's report value across the json/yaml/bin
-/// machine formats, mirroring Go `OutputHistoryResults` +
+/// machine formats, mirroring the reference `OutputHistoryResults` +
 /// `BaseHistoryAnalyzer.Serialize` (`writeMetricsToFormat`): the *same* report
 /// value is encoded each way, so a handler computes the value once and routes
 /// it here rather than re-deriving per format.
@@ -250,7 +246,7 @@ pub fn format_rfc3339_offset(unix_secs: i64, offset_minutes: i32) -> String {
 ///
 /// `analyzer_name` is the history analyzer's `Name()` (the YAML section header,
 /// e.g. `ImportsPerDeveloper`). Returns `None` for any non-machine format, so
-/// the caller surfaces the same dispatch error Go does.
+/// the caller surfaces the same dispatch error the reference implementation does.
 #[must_use]
 pub fn serialize_history_metrics(
     format: &str,
@@ -295,7 +291,7 @@ pub fn civil_from_days(z: i64) -> (i64, u32, u32) {
 // Static analyzer glob/bin helpers (registry-ordered multi-analyzer bin output).
 // ---------------------------------------------------------------------------
 
-/// The static analyzers in registry order (Go `defaultUASTAnalyzers ++
+/// The static analyzers in registry order (reference `defaultUASTAnalyzers ++
 /// defaultRawFileAnalyzers`). `bin_ported` is true for the analyzers whose
 /// `--format bin` payload is reproduced byte-for-byte; cohesion is not yet
 /// ported. clones IS ported: its bin payload is the CFB1 envelope of
@@ -341,7 +337,7 @@ pub fn history_glob_matches(pat: &str) -> bool {
 }
 
 /// Expands the requested patterns over the registry-ordered static analyzers and
-/// concatenates each selected analyzer's CFB1 bin envelope (Go
+/// concatenates each selected analyzer's CFB1 bin envelope (reference:
 /// `FormatPerAnalyzer(FormatBinary)`). Returns `None` if any selected analyzer
 /// is not ported (clones/cohesion) or any folder walk fails.
 #[must_use]
@@ -374,9 +370,9 @@ pub fn static_multi_bin(patterns: &[&str], path: &str) -> Option<Vec<u8>> {
 }
 
 // ---------------------------------------------------------------------------
-// Static analyzer multi-analyzer JSON merge (Go `renderer.SectionsToJSON` over
+// Static analyzer multi-analyzer JSON merge (the reference `renderer.SectionsToJSON` over
 // several analyzers). For `codefang run --format json` with more than one static
-// analyzer (or a glob that selects several), Go renders ONE `renderer.JSONReport`
+// analyzer (or a glob that selects several), the reference implementation renders ONE `renderer.JSONReport`
 // whose `sections` are the per-analyzer sections in REGISTRY order and whose
 // `overall_score` is the executive-summary average of the scored sections
 // (info-only sections, score < 0, are excluded; all-info ⇒ overall is -1 / Info).
@@ -385,7 +381,7 @@ pub fn static_multi_bin(patterns: &[&str], path: &str) -> Option<Vec<u8>> {
 // no analyzer math and every format follows the same report value.
 // ---------------------------------------------------------------------------
 
-/// Registry-ordered (Go `defaultUASTAnalyzers ++ defaultRawFileAnalyzers`) map of
+/// Registry-ordered map of
 /// static analyzer id → the crate-owned builder of that analyzer's single-section
 /// `renderer.JSONReport` GoValue. Used by [`static_multi_json`] to merge several
 /// analyzers' sections; the merge never branches per format — the same GoValue
@@ -422,7 +418,7 @@ fn extract_sections(report: &GoValue) -> Vec<GoValue> {
         .unwrap_or_default()
 }
 
-/// Reads a section's numeric `score` field (Go `JSONSection.Score`), defaulting
+/// Reads a section's numeric `score` field, defaulting
 /// to the info-only sentinel `-1.0` when absent.
 fn section_score(section: &GoValue) -> f64 {
     match section.as_map().and_then(|m| m.get("score")) {
@@ -432,8 +428,8 @@ fn section_score(section: &GoValue) -> f64 {
     }
 }
 
-/// Go `terminal.FormatScore`: `round(score*10)/10` → `"N/10"`; a negative score
-/// (info-only) renders `"Info"` (Go `ExecutiveSummary.OverallScoreLabel`).
+/// The reference `terminal.FormatScore`: `round(score*10)/10` → `"N/10"`; a negative score
+/// (info-only) renders `"Info"`.
 fn overall_score_label(score: f64) -> String {
     if score < 0.0 {
         return "Info".to_string();
@@ -443,11 +439,11 @@ fn overall_score_label(score: f64) -> String {
 }
 
 /// Expands `patterns` over the registry-ordered static analyzers and renders ONE
-/// merged `renderer.JSONReport` (Go `renderer.SectionsToJSON`): sections in
+/// merged `renderer.JSONReport`: sections in
 /// registry order, `overall_score` the average of the scored (`score >= 0`)
 /// sections (or `-1` when none are scored). `None` if no static analyzer is
 /// selected or any selected analyzer cannot produce a report (the caller then
-/// falls through to the same error path Go takes).
+/// falls through to the same error path the reference implementation takes).
 #[must_use]
 pub fn static_multi_json(patterns: &[&str], path: &str) -> Option<Vec<u8>> {
     let mut sections: Vec<GoValue> = Vec::new();
@@ -536,7 +532,7 @@ pub fn static_single_bin(id: &str, path: &str) -> Option<Vec<u8>> {
     }
 }
 
-/// The history analyzers in Go phase/registry order (Go `defaultHistoryLeaves`
+/// The history analyzers in the reference implementation phase/registry order (the reference `defaultHistoryLeaves`
 /// as emitted by the combined unified-model path). Used to expand `*`/globs and
 /// to order the history phase of the combined static+history render.
 pub const HISTORY_COMBINED_ORDER: &[&str] = &[
@@ -552,12 +548,12 @@ pub const HISTORY_COMBINED_ORDER: &[&str] = &[
     "history/sentiment",
 ];
 
-/// The history analyzers in Go's *separate-phase* per-analyzer emit order — the
+/// The history analyzers in the reference implementation's *separate-phase* per-analyzer emit order — the
 /// order `runHistoryPhase` writes each leaf's standalone report when the run is
 /// NOT a mixed static+history combined render (i.e. a history-only selection,
 /// literal list or glob, in a machine format). This is the pipeline leaf order
 /// (`pl.Leaves` → `selectLeaves`), which differs from both the registry id sort
-/// and [`HISTORY_COMBINED_ORDER`]. Verified against the live Go binary
+/// and [`HISTORY_COMBINED_ORDER`]. Verified against the live reference binary
 /// (`--analyzers history/* --format json`): the concatenated per-analyzer reports
 /// appear in exactly this sequence.
 pub const HISTORY_PHASE_EMIT_ORDER: &[&str] = &[
@@ -574,16 +570,16 @@ pub const HISTORY_PHASE_EMIT_ORDER: &[&str] = &[
 ];
 
 /// Expands a requested pattern list into the concrete history leaf ids it
-/// selects, in Go's separate-phase emit order ([`HISTORY_PHASE_EMIT_ORDER`]).
-/// Literal ids match exactly; globs use Go `path.Match` semantics. Used by the
-/// history-only-glob per-analyzer concatenation path (Go `runHistoryPhase` over a
+/// selects, in the reference implementation's separate-phase emit order ([`HISTORY_PHASE_EMIT_ORDER`]).
+/// Literal ids match exactly; globs use the reference `path.Match` semantics. Used by the
+/// history-only-glob per-analyzer concatenation path (the reference `runHistoryPhase` over a
 /// glob-expanded selection), so a `history/*` or multi-id history selection emits
-/// each leaf's standalone report in the same order Go does.
-/// Whether any requested pattern selects the analyzer `id`, mirroring Go
-/// `Registry.resolvePattern` (registry.go): a bare `*` matches EVERY id (Go
+/// each leaf's standalone report in the same order the reference implementation does.
+/// Whether any requested pattern selects the analyzer `id`, mirroring the reference
+/// `Registry.resolvePattern`: a bare `*` matches EVERY id (reference:
 /// special-cases `pattern == "*"` to `allIDs()` BEFORE `path.Match`, because
 /// `path.Match("*", "history/typos")` is false — `*` does not cross `/`); other
-/// globs use Go `path.Match` semantics ([`go_path_match`]); a literal id matches
+/// globs use the reference `path.Match` semantics ([`go_path_match`]); a literal id matches
 /// exactly. Without the `*` special case, `--analyzers '*'` would select nothing,
 /// while `--analyzers 'history/*'` would still work (the literal `history/`
 /// prefix anchors the match).
@@ -602,7 +598,7 @@ fn pattern_selects_id(patterns: &[&str], id: &str) -> bool {
 }
 
 /// Expands a requested pattern list into the concrete history leaf ids it
-/// selects, in Go's separate-phase emit order ([`HISTORY_PHASE_EMIT_ORDER`]).
+/// selects, in the reference implementation's separate-phase emit order ([`HISTORY_PHASE_EMIT_ORDER`]).
 #[must_use]
 pub fn expand_history_phase_ids(patterns: &[&str]) -> Vec<String> {
     let selected = |id: &str| pattern_selects_id(patterns, id);
@@ -614,12 +610,12 @@ pub fn expand_history_phase_ids(patterns: &[&str]) -> Vec<String> {
 }
 
 /// Expands the requested analyzer patterns into concrete (static, history) id
-/// lists in Go SELECTION order — the `registry.ExpandPatterns` semantics the
-/// run command applies before `registry.Split` (registry.go:129/153): patterns
+/// lists in the reference implementation SELECTION order — the `registry.ExpandPatterns` semantics the
+/// run command applies before `registry.Split`: patterns
 /// resolve IN ORDER (a literal id to itself, a glob to the matching registry
 /// ids in registration order), duplicates dropped first-wins, then ids are
 /// divided by mode preserving that order. The plot path needs this order:
-/// Go renders pages (and the index cards) in the resolved id order.
+/// The reference implementation renders pages (and the index cards) in the resolved id order.
 #[must_use]
 pub fn expand_selection_ids(patterns: &[&str]) -> (Vec<String>, Vec<String>) {
     let is_glob = |p: &str| p.contains(['*', '?', '[']);
@@ -633,7 +629,7 @@ pub fn expand_selection_ids(patterns: &[&str]) -> (Vec<String>, Vec<String>) {
     for pat in patterns {
         if is_glob(pat) {
             // Glob: the full registry in registration order (statics, then
-            // history leaves), filtered by Go path.Match.
+            // history leaves), filtered by the reference `path.Match` semantics.
             for (id, _) in STATIC_BIN_ANALYZERS {
                 if *pat == "*" || go_path_match(pat, id) {
                     push_unique(&mut statics, id);
@@ -658,10 +654,10 @@ pub fn expand_selection_ids(patterns: &[&str]) -> (Vec<String>, Vec<String>) {
 }
 
 /// Expands the requested analyzer patterns into concrete (static, history) id
-/// lists in Go combined-model order: static analyzers in [`STATIC_BIN_ANALYZERS`]
+/// lists in the reference implementation combined-model order: static analyzers in [`STATIC_BIN_ANALYZERS`]
 /// registry order, then history analyzers in [`HISTORY_COMBINED_ORDER`]. Literal
-/// (non-glob) ids are matched exactly; globs use Go `path.Match` semantics. This
-/// mirrors Go `registry.Split` + `combinedIDsAndModes` ordering used by the
+/// (non-glob) ids are matched exactly; globs use the reference `path.Match` semantics. This
+/// mirrors the reference `registry.Split` + `combinedIDsAndModes` ordering used by the
 /// combined render.
 #[must_use]
 pub fn expand_combined_ids(patterns: &[&str]) -> (Vec<String>, Vec<String>) {
@@ -680,12 +676,12 @@ pub fn expand_combined_ids(patterns: &[&str]) -> (Vec<String>, Vec<String>) {
 }
 
 /// Renders the combined static+history run as the single `codefang.run.v1`
-/// unified-model envelope, the Rust analogue of Go `renderCombinedDirect`
-/// (run.go:678). Each selected analyzer is dispatched through its registry
+/// unified-model envelope, the Rust analogue of the reference `renderCombinedDirect`
+///. Each selected analyzer is dispatched through its registry
 /// handler with `--format bin`, producing a CFB1 envelope whose payload is the
 /// analyzer's raw report JSON. The concatenated envelopes are decoded into a
-/// [`cf_analyze::conversion::UnifiedModel`] (Go `DecodeCombinedBinaryReports`),
-/// stamped with run metadata (Go `NewAnalysisMetadata`), and re-serialized in the
+/// [`cf_analyze::conversion::UnifiedModel`],
+/// stamped with run metadata, and re-serialized in the
 /// requested `output_format` via [`cf_analyze::conversion::write_converted_output`]
 /// so every machine format (json/yaml/bin/ndjson/timeseries) follows from the
 /// one model value.
@@ -705,11 +701,11 @@ pub fn render_combined(
     let mut ids: Vec<String> = Vec::new();
     let mut modes: Vec<cf_analyze::AnalyzerMode> = Vec::new();
 
-    // Static phase, then history phase — Go renderCombinedDirect order. Each
+    // Static phase, then history phase — the reference `renderCombinedDirect` order. Each
     // handler is dispatched with the literal "bin" format; its CFB1 envelope is
-    // appended to the combined buffer (Go staticExec/historyExec into &raw).
+    // appended to the combined buffer (reference: staticExec/historyExec into &raw).
     // Each leaf's raw report is gathered via its CFB1 bin envelope. Handlers
-    // match on the NORMALIZED format name (Go `ValidateFormat` maps the `bin`
+    // match on the NORMALIZED format name (the reference `ValidateFormat` maps the `bin`
     // alias to `binary`), so pass the normalized name here — passing the bare
     // `bin` alias would miss any handler that only accepts `binary` (e.g.
     // static/halstead), aborting the whole combined render.
@@ -732,9 +728,9 @@ pub fn render_combined(
     model.metadata = Some(cf_analyze::metadata::new_analysis_metadata(&ctx.path));
 
     // Normalize the requested format to the canonical name the conversion
-    // serializer matches on (Go ValidateUniversalFormat: "bin" -> "binary",
+    // serializer matches on (reference `ValidateUniversalFormat`: "bin" -> "binary",
     // case-folded), then apply the --ndjson modifier on timeseries exactly as
-    // Go renderCombinedDirect does.
+    // the reference `renderCombinedDirect` does.
     let normalized = crate::formats::normalize_format(output_format);
     let render_format = if ctx.ndjson() && normalized == "timeseries" {
         "timeseries+ndjson".to_string()
@@ -747,7 +743,7 @@ pub fn render_combined(
     Some(out)
 }
 
-/// Go `path.Match` semantics over an analyzer ID (`*`, `?`, `[...]`).
+/// The reference `path.Match` semantics over an analyzer ID (`*`, `?`, `[...]`).
 #[must_use]
 pub fn go_path_match(pattern: &str, name: &str) -> bool {
     go_path_match_inner(pattern.as_bytes(), name.as_bytes())
@@ -831,14 +827,14 @@ fn match_class(pat: &[u8], ch: u8) -> (bool, &[u8]) {
 
 // ---------------------------------------------------------------------------
 // Per-analyzer registry handlers. Each owns its own `match format`; this is the
-// ONE place that knows how to format a given analyzer (Go: each analyzer's
+// ONE place that knows how to format a given analyzer (reference: each analyzer's
 // FormatReport* family). One handler per analyzer id — NOT one per (id,format).
 // ---------------------------------------------------------------------------
 
 fn h_static_clones(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     let path = &ctx.path;
     // `format` is the resolved/normalized value: `--format bin` arrives here as
-    // `"binary"` (Go `ValidateFormat` maps the `bin` alias to `binary`); accept
+    // `"binary"` (the reference `ValidateFormat` maps the `bin` alias to `binary`); accept
     // both spellings for robustness.
     match format {
         "json" => static_clones::clones_report_json(path),
@@ -853,7 +849,7 @@ fn h_static_clones(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
 }
 
 /// The shared static-phase path-policy options from the run flags
-/// (Go `run.go pathPolicyFromFlags`: `--include-vendored` /
+/// (the reference `pathPolicyFromFlags`: `--include-vendored` /
 /// `--include-generated`; `--extra-excluded-prefixes` is not exposed on `run`).
 pub(crate) fn static_path_policy(ctx: &RunContext) -> cf_pathpolicy::Options {
     cf_pathpolicy::Options {
@@ -986,7 +982,7 @@ fn h_static_comments(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
 
 fn h_history_imports(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     // One report value, encoded per format by the shared history serializer
-    // (Go BaseHistoryAnalyzer.Serialize). The YAML section header is the Go
+    //. The YAML section header is the reference implementation
     // analyzer Name() (`imports.HistoryAnalyzer.Name` == "ImportsPerDeveloper").
     let metrics = history::imports_run_metrics(ctx.matches)?;
     serialize_history_metrics(
@@ -1007,19 +1003,19 @@ fn h_history_typos(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
 }
 
 fn h_history_couples(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    // One report value (Go `ComputedMetrics`, behind ToJSON/ToYAML); every
+    // One report value (the reference `ComputedMetrics`, behind ToJSON/ToYAML); every
     // machine format is a serializer over it. ToJSON == ToYAML for couples, so
     // json_value and yaml_value share the same tree. The YAML section name is
-    // the analyzer's Go `Name()` ("Couples").
+    // the analyzer's the reference `Name()` ("Couples").
     let value = couples_run::couples_run_value(ctx.matches)?;
     serialize_history_metrics(format, "Couples", &value, &value)
 }
 
 fn h_history_shotness(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    // One report value (Go `ComputedMetrics`, the value behind ToJSON/ToYAML);
+    // One report value (the reference `ComputedMetrics`, the value behind ToJSON/ToYAML);
     // every machine format is just a serializer over it. ToJSON == ToYAML for
     // shotness, so json_value and yaml_value share `to_go_value()`. The YAML
-    // section name is the analyzer's Go `Name()` ("Shotness").
+    // section name is the analyzer's the reference `Name()` ("Shotness").
     let metrics = shotness_run::shotness_run_metrics(ctx.matches)?;
     let value = metrics.to_go_value();
     serialize_history_metrics(format, "Shotness", &value, &value)
@@ -1057,10 +1053,10 @@ fn h_history_anomaly(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
         let value = metrics.to_go_value();
         return serialize_history_metrics(format, "TemporalAnomaly", &value, &value);
     }
-    // Full revwalk (no --head): one report value (Go ComputeAllMetrics →
+    // Full revwalk (no --head): one report value (reference `ComputeAllMetrics` →
     // ComputedMetrics), every machine format an encoding of it via the shared
     // history serializer. ToJSON == ToYAML for anomaly, so json/yaml share the
-    // same GoValue. The YAML section name is the analyzer's Go `Name()`
+    // same GoValue. The YAML section name is the analyzer's the reference `Name()`
     // ("TemporalAnomaly").
     let metrics = history::anomaly_run_metrics(ctx.matches)?;
     let value = metrics.to_go_value();
@@ -1071,8 +1067,8 @@ fn h_history_quality(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     // `--head` is handled inside `quality_metrics` (single HEAD-commit window),
     // so every format is the same encoding of one computed value — including the
     // `binary` payload the combined `*` model gathers.
-    // One computed report value (Go ComputeAllMetrics), three encodings routed
-    // through the shared serializer (Go FormatReportJSON/YAML/Binary): json/bin
+    // One computed report value, three encodings routed
+    // through the shared serializer (reference: FormatReportJSON/YAML/Binary): json/bin
     // marshal the encoding/json value tree; yaml wraps the same struct-origin
     // value tree in the `codefang (v2)` envelope under `history/quality:`.
     let metrics = history::quality_metrics(ctx.matches)?;
@@ -1085,7 +1081,7 @@ fn h_history_sentiment(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     // `--head` is handled inside `sentiment_metrics` (single HEAD-commit window),
     // so every format (including the combined `*` model's `binary`) is one
     // encoding of the same computed value.
-    // One computed report value, three encodings (Go ComputeAllMetrics →
+    // One computed report value, three encodings (reference `ComputeAllMetrics` →
     // FormatReportJSON/YAML/Binary): json/bin marshal the encoding/json value
     // tree (nil slice → null); yaml wraps the yaml.v3 value tree (nil → []) in
     // the `codefang (v2)` envelope. Routed through the shared serializer so every
@@ -1100,11 +1096,11 @@ fn h_history_sentiment(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
 }
 
 fn h_history_file_history(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    // One computed report value (Go ComputeAllMetricsWithOptions), three machine
+    // One computed report value, three machine
     // encodings (json/bin/yaml). The crate's `computed_metrics_to_go` is the
     // single `ToJSON`/`ToYAML` value tree (file_history's ToJSON == ToYAML);
     // route it through the shared history-metrics serializer so all formats are
-    // encodings of THE SAME value (Go BaseHistoryAnalyzer.Serialize). The YAML
+    // encodings of THE SAME value. The YAML
     // section header is the analyzer's Name(): `FileHistoryAnalysis`.
     let value = history::file_history_report_value(ctx.matches)?;
     serialize_history_metrics(format, "FileHistoryAnalysis", &value, &value)
@@ -1146,7 +1142,7 @@ fn h_history_burndown(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     }
 }
 
-/// Builds the single default analyzer [`Registry`] — the Rust analogue of Go
+/// Builds the single default analyzer [`Registry`] — the Rust analogue of the reference implementation
 /// `defaultRegistry()` (`analyze.NewRegistry(defaultUASTAnalyzers,
 /// defaultRawFileAnalyzers, defaultHistoryLeaves)`). One registry insertion per
 /// analyzer; dispatch is a keyed lookup by id, not a per-format match ladder.

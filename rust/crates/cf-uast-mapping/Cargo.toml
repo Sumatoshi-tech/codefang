@@ -18,6 +18,9 @@ streaming-iterator = "0.1"
 # not machine-format report OUTPUT, so serde_json is acceptable here per DESIGN
 # §2 (report output must still route through cf-gojson/cf-goyaml).
 serde_json = { workspace = true }
+# Ergonomic error derives for the parser/matcher error types (Display strings
+# unchanged; they are part of the CLI contract).
+thiserror = "1"
 
 [dev-dependencies]
 # Corpus-coverage test for the closed vocabularies (vocab.rs): iterates every

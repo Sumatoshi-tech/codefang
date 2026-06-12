@@ -1,20 +1,16 @@
 //! Per-commit transport-cell (TC) payload types.
 //!
-//! Ports `internal/analyzers/file_history/tc.go`.
-//!
 //! These types capture, for a single commit, the path actions
 //! (insert/modify/delete/rename), the per-author line-stat deltas, and the file
-//! category composition. The full TC plumbing (git2 change routing, blob cache,
+//! category composition. The full TC plumbing (change routing, blob cache,
 //! identity detection) belongs to the framework integration sketched in
 //! [`crate::framework`]. The data shapes and the [`CategoryCounts`] arithmetic
-//! are byte-identity-relevant (the category names feed the composition report)
-//! and are ported here.
+//! are report-contract-relevant (the category names feed the composition
+//! report) and live here.
 
 use crate::classify::Category;
 
 /// Line statistics for a single file/author change.
-///
-/// Mirrors `internal/plumbing.LineStats`. The names match the Go struct.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct LineStats {
     /// Lines added.
@@ -25,10 +21,11 @@ pub struct LineStats {
     pub changed: i64,
 }
 
-impl LineStats {
-    /// Returns the element-wise sum of two line-stat values (Go aggregation).
-    #[must_use]
-    pub fn add(self, other: LineStats) -> LineStats {
+impl std::ops::Add for LineStats {
+    type Output = LineStats;
+
+    /// Returns the element-wise sum of two line-stat values.
+    fn add(self, other: LineStats) -> LineStats {
         LineStats {
             added: self.added + other.added,
             removed: self.removed + other.removed,
@@ -39,9 +36,9 @@ impl LineStats {
 
 /// File category counts for a single commit.
 ///
-/// Mirrors `CategoryCounts` in `tc.go`. JSON field order (when emitted directly)
-/// follows the Go declaration order:
-/// source, vendor, generated, documentation, configuration, image, dotfile, binary.
+/// JSON field order (when emitted directly) is the declaration order:
+/// source, vendor, generated, documentation, configuration, image, dotfile,
+/// binary.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CategoryCounts {
     /// Source file count.
@@ -63,7 +60,7 @@ pub struct CategoryCounts {
 }
 
 impl CategoryCounts {
-    /// Adds the counts from `other` into `self` (Go `Add`).
+    /// Adds the counts from `other` into `self`.
     pub fn add(&mut self, other: &CategoryCounts) {
         self.source += other.source;
         self.vendor += other.vendor;
@@ -75,7 +72,7 @@ impl CategoryCounts {
         self.binary += other.binary;
     }
 
-    /// Returns the sum of all category counts (Go `Total`).
+    /// Returns the sum of all category counts.
     #[must_use]
     pub fn total(&self) -> i64 {
         self.source
@@ -88,7 +85,7 @@ impl CategoryCounts {
             + self.binary
     }
 
-    /// Returns the count for the given category (Go `Get`).
+    /// Returns the count for the given category.
     #[must_use]
     pub fn get(&self, cat: Category) -> i64 {
         match cat {
@@ -103,7 +100,7 @@ impl CategoryCounts {
         }
     }
 
-    /// Adds one to the count for the given category (Go `Increment`).
+    /// Adds one to the count for the given category.
     pub fn increment(&mut self, cat: Category) {
         match cat {
             Category::Source => self.source += 1,
@@ -142,6 +139,6 @@ mod tests {
     fn line_stats_add() {
         let a = LineStats { added: 1, removed: 2, changed: 3 };
         let b = LineStats { added: 10, removed: 20, changed: 30 };
-        assert_eq!(a.add(b), LineStats { added: 11, removed: 22, changed: 33 });
+        assert_eq!(a + b, LineStats { added: 11, removed: 22, changed: 33 });
     }
 }

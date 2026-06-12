@@ -1,23 +1,18 @@
-//! Augmented interval tree for efficient overlap queries.
+//! Augmented interval tree for efficient overlap queries, specialized to the
+//! `u32` key and `u32` value used by burndown range queries.
 //!
-//! Vendored port of `pkg/alg/interval/interval.go` (the Go `interval` package),
-//! specialized to the `u32` key and `u32` value used by burndown range queries.
+//! The tree is augmented with `max_high` (the maximum right endpoint in each
+//! subtree) for subtree pruning during overlap queries. `query_overlap`
+//! returns matches in ascending `(low, high)` order, which is what
+//! [`crate::range_query`] relies on.
 //!
-//! This is an INTERIM copy. The shared `cf-alg-interval` crate from the design
-//! has not been ported yet; once it exists, [`crate::range_query`] should depend
-//! on it and this module should be deleted. See the crate-level TODOs.
-//!
-//! The Go tree is a red-black tree augmented with `maxHigh` (the maximum right
-//! endpoint in each subtree) for subtree pruning during overlap queries. This
-//! Rust port preserves the augmentation and the query/ordering semantics
-//! (`QueryOverlap` returns matches in ascending `Low`, then `High`), which is
-//! what `range_query` relies on. The internal balancing strategy here is AVL
-//! rather than red-black: both keep the tree height `O(log n)` and the in-order
-//! traversal identical, so `QueryOverlap` results are byte-identical to Go's for
-//! the burndown use (which only ever inserts and queries, never deletes).
+//! The reference implementation balances with a red-black tree; this one uses
+//! AVL. Both keep the tree height `O(log n)` and the in-order traversal
+//! identical, so `query_overlap` results match the reference for the burndown
+//! use (which only ever inserts and queries, never deletes).
 
 /// An interval `[low, high]` with an associated value. Bounds are treated as
-/// inclusive for overlap. Mirrors the Go `Interval` struct.
+/// inclusive for overlap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Interval {
     /// Inclusive lower bound.
@@ -28,7 +23,7 @@ pub struct Interval {
     pub value: u32,
 }
 
-/// A single node in the interval tree. Mirrors the Go `node` struct.
+/// A single node in the interval tree.
 #[derive(Debug)]
 struct Node {
     interval: Interval,
@@ -50,7 +45,7 @@ impl Node {
     }
 }
 
-/// An augmented interval tree. Mirrors the Go `Tree` struct.
+/// An augmented interval tree.
 #[derive(Debug, Default)]
 pub struct Tree {
     root: Option<Box<Node>>,
@@ -133,8 +128,7 @@ fn insert_node(node: Option<Box<Node>>, low: u32, high: u32, value: u32) -> Box<
         return Node::new(low, high, value);
     };
 
-    // Go's bstInsert orders by Low, then High; ties (and equal keys) go right,
-    // matching `compareIntervals(n, current) < 0` ⇒ left, else right.
+    // Insertion orders by low, then high; ties (and equal keys) go right.
     let go_left = low < node.interval.low || (low == node.interval.low && high < node.interval.high);
     if go_left {
         node.left = Some(insert_node(node.left.take(), low, high, value));
@@ -149,7 +143,7 @@ fn insert_node(node: Option<Box<Node>>, low: u32, high: u32, value: u32) -> Box<
 fn collect_overlap(node: &Option<Box<Node>>, low: u32, high: u32, result: &mut Vec<Interval>) {
     let Some(node) = node else { return };
 
-    // Prune: if maxHigh in this subtree is less than the query low, skip it.
+    // Prune: if max_high in this subtree is less than the query low, skip it.
     if node.max_high < low {
         return;
     }
@@ -160,7 +154,7 @@ fn collect_overlap(node: &Option<Box<Node>>, low: u32, high: u32, result: &mut V
         result.push(node.interval);
     }
 
-    // Prune right: if node's Low > high, no right child can overlap.
+    // Prune right: if node's low > high, no right child can overlap.
     if node.interval.low > high {
         return;
     }
@@ -168,18 +162,18 @@ fn collect_overlap(node: &Option<Box<Node>>, low: u32, high: u32, result: &mut V
     collect_overlap(&node.right, low, high, result);
 }
 
-// `is_empty` and `query_point` mirror the Go `interval.Tree` API surface and
-// are covered by this module's unit tests, but the burndown `range_query` path
-// only uses `query_overlap`. Allow the dead-code warning rather than dropping
-// API parity with the Go package this module vendors.
+// `is_empty` and `query_point` round out the interval-tree API surface and are
+// covered by this module's unit tests, but the burndown `range_query` path
+// only uses `query_overlap`. Allow the dead-code warning rather than shrinking
+// the API below what the unit tests exercise.
 #[allow(dead_code)]
 impl Tree {
-    /// Create a new empty interval tree. Mirrors Go `New`.
+    /// Create a new empty interval tree.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Number of intervals in the tree. Mirrors Go `Len`.
+    /// Number of intervals in the tree.
     pub fn len(&self) -> usize {
         self.size
     }
@@ -189,26 +183,26 @@ impl Tree {
         self.size == 0
     }
 
-    /// Add an interval `[low, high]` with `value`. Mirrors Go `Insert`.
+    /// Add an interval `[low, high]` with `value`.
     pub fn insert(&mut self, low: u32, high: u32, value: u32) {
         self.root = Some(insert_node(self.root.take(), low, high, value));
         self.size += 1;
     }
 
-    /// Return all intervals overlapping `[low, high]`, in ascending `(low, high)`
-    /// order. Mirrors Go `QueryOverlap`.
+    /// Return all intervals overlapping `[low, high]`, in ascending
+    /// `(low, high)` order.
     pub fn query_overlap(&self, low: u32, high: u32) -> Vec<Interval> {
         let mut result = Vec::new();
         collect_overlap(&self.root, low, high, &mut result);
         result
     }
 
-    /// Return all intervals containing `point`. Mirrors Go `QueryPoint`.
+    /// Return all intervals containing `point`.
     pub fn query_point(&self, point: u32) -> Vec<Interval> {
         self.query_overlap(point, point)
     }
 
-    /// Remove all intervals from the tree. Mirrors Go `Clear`.
+    /// Remove all intervals from the tree.
     pub fn clear(&mut self) {
         self.root = None;
         self.size = 0;
@@ -219,7 +213,7 @@ impl Tree {
 mod tests {
     use super::*;
 
-    /// Port of Go interval_test.go empty-tree behavior.
+    /// Empty-tree behavior.
     #[test]
     fn empty_tree() {
         let t = Tree::new();

@@ -1,10 +1,9 @@
 //! The single-pass clone-detection [`Visitor`].
 //!
-//! Port of the visitor portion of `internal/analyzers/clones/visitor.go`. During
-//! traversal it collects function nodes; [`Visitor::get_report`] then builds
-//! their MinHash signatures and exports them under the `_func_signatures` report
-//! key for the cross-file [`crate::Aggregator`]. Detection itself is deferred to
-//! the aggregator.
+//! During traversal it collects function nodes; [`Visitor::get_report`] then
+//! builds their `MinHash` signatures and exports them under the
+//! `_func_signatures` report key for the cross-file [`crate::Aggregator`].
+//! Detection itself is deferred to the aggregator.
 
 use cf_analyze::{GoMap, GoValue, MapOrigin, Report};
 use cf_uast_node::Node;
@@ -17,7 +16,7 @@ use crate::{
     KEY_TOTAL_CLONE_PAIRS, KEY_TOTAL_FUNCTIONS, MSG_NO_CLONES, MSG_NO_FUNCTIONS, NUM_HASHES,
 };
 
-/// Collects function nodes and exports their signatures. Mirrors Go `Visitor`.
+/// Collects function nodes and exports their signatures.
 #[derive(Debug, Clone)]
 pub struct Visitor {
     function_count: usize,
@@ -33,8 +32,7 @@ impl Default for Visitor {
 }
 
 impl Visitor {
-    /// Creates a new clone-detection visitor with Go defaults. Mirrors Go
-    /// `NewVisitor`.
+    /// Creates a new clone-detection visitor with the default parameters.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -46,12 +44,12 @@ impl Visitor {
     }
 
     /// Visits a node on entry, collecting function nodes and (eagerly) their
-    /// signatures. Mirrors Go `Visitor.OnEnter`.
+    /// signatures.
     ///
-    /// Go retains the raw `*node.Node` pointers and computes signatures lazily in
-    /// `GetReport`; because this port borrows the tree per-node, the signature is
-    /// computed here while the node reference is available. The set of functions
-    /// counted and the signatures produced are identical.
+    /// Computing the signature here (rather than lazily at report time) is
+    /// equivalent because the signature depends only on the node's subtree at
+    /// visit time; the set of functions counted and the signatures produced
+    /// are the same either way.
     pub fn on_enter(&mut self, n: &Node) {
         if is_function_node(n) {
             self.function_count += 1;
@@ -61,16 +59,14 @@ impl Visitor {
         }
     }
 
-    /// Number of function nodes seen so far. Mirrors `len(v.functions)`.
+    /// Number of function nodes seen so far.
     #[must_use]
     pub fn function_count(&self) -> usize {
         self.function_count
     }
 
-    /// Builds the signature-export report consumed by the aggregator.
-    ///
-    /// Mirrors Go `Visitor.GetReport` + `buildSignatureReport`. With no functions
-    /// it returns the "No functions found" empty report.
+    /// Builds the signature-export report consumed by the aggregator. With no
+    /// functions it returns the "No functions found" empty report.
     #[must_use]
     pub fn get_report(&self) -> Report {
         if self.function_count == 0 {
@@ -80,22 +76,21 @@ impl Visitor {
         build_signature_report(self.function_count, &self.entries)
     }
 
-    /// Returns the collected entries (for the aggregator). Not in the Go public
-    /// API, but the in-Rust equivalent of consuming `_func_signatures`.
+    /// Returns the collected entries (the in-process equivalent of consuming
+    /// `_func_signatures`).
     #[must_use]
     pub fn entries(&self) -> &[FuncEntry] {
         &self.entries
     }
 
-    /// Like [`Visitor::get_report`] but stamps each exported signature item with
-    /// `_source_file = source_file`.
+    /// Like [`Visitor::get_report`] but stamps each exported signature item
+    /// with `_source_file = source_file`.
     ///
-    /// Mirrors the Go folder pipeline, where the framework's
-    /// `analyze.StampSourceFile` sets `_source_file` on every `_func_signatures`
-    /// collection item (the repo-relative path) after the visitor runs and before
-    /// the aggregator reads it back to qualify function names. With no functions
-    /// it returns the "No functions found" empty report (which carries no
-    /// signatures to stamp).
+    /// In the folder pipeline the framework sets `_source_file` on every
+    /// `_func_signatures` collection item (the repo-relative path) after the
+    /// visitor runs and before the aggregator reads it back to qualify
+    /// function names. With no functions it returns the "No functions found"
+    /// empty report (which carries no signatures to stamp).
     #[must_use]
     pub fn get_report_with_source(&self, source_file: &str) -> Report {
         if self.function_count == 0 {
@@ -106,8 +101,7 @@ impl Visitor {
 }
 
 /// Builds the signature-export report, stamping each `{name, sig}` item with
-/// `_source_file`. Mirrors Go `buildSignatureReport` followed by the framework's
-/// `StampSourceFile`.
+/// `_source_file`.
 #[must_use]
 pub fn build_signature_report_with_source(
     total_functions: usize,
@@ -135,10 +129,10 @@ pub fn build_signature_report_with_source(
     report
 }
 
-/// Builds the signature-export report. Mirrors Go `buildSignatureReport`.
+/// Builds the signature-export report.
 ///
 /// The exported `_func_signatures` is an array of `{name, sig}` objects; the
-/// signature is serialized via [`cf_alg_minhash::Signature::bytes`] (the Go
+/// signature is serialized via [`cf_alg_minhash::Signature::bytes`] (the
 /// big-endian wire form) as a base value the aggregator decodes back.
 #[must_use]
 pub fn build_signature_report(total_functions: usize, entries: &[FuncEntry]) -> Report {
@@ -147,8 +141,8 @@ pub fn build_signature_report(total_functions: usize, entries: &[FuncEntry]) -> 
         let mut m = GoMap::new_struct();
         m.push("name", GoValue::Str(e.name.clone()));
         // Signature carried as its big-endian byte form (decoded by the
-        // aggregator via Signature::from_bytes). Go carries the *minhash.Signature
-        // pointer directly; the byte form is the portable equivalent.
+        // aggregator via Signature::from_bytes) — the portable equivalent of
+        // passing the signature by reference.
         let bytes = e.sig.bytes().into_iter().map(|b| GoValue::Uint(u64::from(b))).collect();
         m.push("sig", GoValue::Array(bytes));
         sig_entries.push(GoValue::Object(m));

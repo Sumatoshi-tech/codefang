@@ -1,13 +1,12 @@
 //! Structured store record kinds and the store-write payload mapping.
 //!
-//! Ports the kind constants from `store_writer.go` and the pure portion of
-//! `WriteToStore` (the record set derived from [`ComputedMetrics`]). It also
-//! ports the store-based time-series extraction (`store_reader.go`'s
-//! `extractStoreTimeSeries`) used by the cross-analyzer anomaly path.
+//! The store record-kind constants, the record set derived from
+//! [`ComputedMetrics`], and the store-based time-series extraction used by the
+//! cross-analyzer anomaly path.
 //!
-//! The actual `ReportWriter`/`ReportReader` I/O lives in the not-yet-ported
-//! `cf-analyze` store layer; mirroring the `cf-anomaly` port, this module exposes
-//! the pure record view + extraction logic that a store adapter drives.
+//! The actual `ReportWriter`/`ReportReader` I/O lives in the `cf-analyze` store
+//! layer; as in `cf-anomaly`, this module exposes the pure record view +
+//! extraction logic that a store adapter drives.
 
 use crate::metrics::DIM_SENTIMENT;
 use crate::model::{AggregateData, ComputedMetrics, TimeSeriesData, TrendData};
@@ -19,12 +18,12 @@ pub const KIND_TREND: &str = "trend";
 /// Record kind: the single `AggregateData` record.
 pub const KIND_AGGREGATE: &str = "aggregate";
 
-/// The set of store records derived from computed metrics.
+/// The set of store records derived from computed metrics: the `time_series`
+/// slice, the single `trend` record, and the single `aggregate` record.
 ///
-/// Mirrors the records `WriteToStore` streams: the `time_series` slice, the
-/// single `trend` record, and the single `aggregate` record. Borrowing keeps
-/// this allocation-free; a store-writer adapter (in `cf-analyze`, once ported)
-/// iterates these and writes each kind through the byte-identical codec.
+/// Borrowing keeps this allocation-free; a store-writer adapter (in
+/// `cf-analyze`) iterates these and writes each kind through the byte-stable
+/// codec.
 pub struct StoreRecords<'a> {
     /// Per-tick time-series entries (kind [`KIND_TIME_SERIES`]).
     pub time_series: &'a [TimeSeriesData],
@@ -35,7 +34,7 @@ pub struct StoreRecords<'a> {
 }
 
 impl<'a> StoreRecords<'a> {
-    /// Builds the store-record view over `metrics`, mirroring `WriteToStore`.
+    /// Builds the store-record view over `metrics`.
     #[must_use]
     pub fn from_metrics(metrics: &'a ComputedMetrics) -> Self {
         Self {
@@ -46,15 +45,15 @@ impl<'a> StoreRecords<'a> {
     }
 }
 
-/// Extracts the per-tick sentiment dimension from stored `time_series` records.
-///
-/// Mirrors Go `extractStoreTimeSeries`: builds the tick axis and a single
-/// `"sentiment"` dimension of per-tick scores (as `f64`). Returns `None` when no
-/// time-series records are present, matching Go's `(nil, nil)`.
+/// Tick axis plus named per-tick value dimensions, as extracted from store
+/// records for the cross-analyzer anomaly path.
+pub type StoreTimeSeries = (Vec<i64>, Vec<(String, Vec<f64>)>);
+
+/// Extracts the per-tick sentiment dimension from stored `time_series` records:
+/// the tick axis and a single `"sentiment"` dimension of per-tick scores (as
+/// `f64`). Returns `None` when no time-series records are present.
 #[must_use]
-pub fn extract_store_time_series(
-    time_series: &[TimeSeriesData],
-) -> Option<(Vec<i64>, Vec<(String, Vec<f64>)>)> {
+pub fn extract_store_time_series(time_series: &[TimeSeriesData]) -> Option<StoreTimeSeries> {
     if time_series.is_empty() {
         return None;
     }

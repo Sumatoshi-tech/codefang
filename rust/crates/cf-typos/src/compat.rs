@@ -1,12 +1,12 @@
-//! Self-contained foundation types: Git hash and a Go-`encoding/json`
-//! byte-compatible value + encoder.
+//! Self-contained foundation types: Git hash and a report-contract JSON value
+//! + encoder.
 //!
-//! DESIGN.md routes all report serialization through the tier-0 `cf-gojson`
-//! crate (and `cf-gitlib` for the hash type). Those crates are not yet
-//! implemented in this workspace, so this module provides the minimal slice of
-//! their contracts that the typos analyzer needs. Replacing it with
-//! `cf_gitlib::Hash` + `cf_gojson::{GoValue, to_vec, to_vec_indent}` is a
-//! mechanical edit: the value variants and the hash API mirror those crates.
+//! The integrated pipeline routes report serialization through the shared
+//! `cf-gojson` crate (and `cf-gitlib` for the hash type). This module provides
+//! the minimal local slice of those contracts so the typos analyzer stands
+//! alone and verifiable; consumers convert the local [`GoValue`] to the shared
+//! encoder types at the boundary. The value variants and the hash API mirror
+//! the shared crates, so a swap is mechanical.
 
 use std::fmt;
 
@@ -15,17 +15,19 @@ pub const HASH_SIZE: usize = 20;
 
 /// A Git object hash (SHA-1), a 20-byte array.
 ///
-/// Mirrors `cf_gitlib::Hash` / Go `gitlib.Hash`. The zero value is all-zero
-/// bytes, matching Go; [`Hash::string`] renders lowercase hex.
+/// Mirrors `cf_gitlib::Hash`. The zero value is all-zero bytes;
+/// [`Hash::string`] renders lowercase hex.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, PartialOrd, Ord)]
 pub struct Hash(pub [u8; HASH_SIZE]);
 
 impl Hash {
-    /// Returns the lowercase hex string representation (Go `Hash.String()`).
+    /// Returns the lowercase hex string representation.
+    #[must_use]
     pub fn string(&self) -> String {
+        use std::fmt::Write;
         let mut s = String::with_capacity(HASH_SIZE * 2);
         for b in &self.0 {
-            s.push_str(&format!("{b:02x}"));
+            let _ = write!(s, "{b:02x}");
         }
         s
     }
@@ -37,24 +39,24 @@ impl fmt::Display for Hash {
     }
 }
 
-/// A Go-`encoding/json` byte-compatible value.
+/// A report-contract JSON value.
 ///
 /// Mirrors `cf_gojson::GoValue` for the variants the typos report uses. Object
-/// keys follow Go's dual-mode rule:
+/// keys follow the contract's dual-mode rule:
 ///
 /// * [`GoValue::Map`] — **map-origin**: keys sorted by raw UTF-8 bytes at
-///   encode time (Go `map[string]any`).
-/// * [`GoValue::Struct`] — **struct-origin**: field declaration order preserved
-///   (Go struct with `json:` tags).
+///   encode time (dynamic maps).
+/// * [`GoValue::Struct`] — **struct-origin**: field declaration order
+///   preserved (typed records).
 #[derive(Debug, Clone, PartialEq)]
 pub enum GoValue {
     /// JSON `null`.
     Null,
-    /// Signed integer (Go `int`/`int64`); rendered with no decimal point.
+    /// Signed integer; rendered with no decimal point.
     Int(i64),
     /// UTF-8 string.
     Str(String),
-    /// JSON array (Go slice).
+    /// JSON array.
     Array(Vec<GoValue>),
     /// Map-origin object (sorted keys at encode time).
     Map(Vec<(String, GoValue)>),
@@ -64,6 +66,7 @@ pub enum GoValue {
 
 impl GoValue {
     /// Convenience constructor for a map-origin object.
+    #[must_use]
     pub fn map<I, K>(entries: I) -> GoValue
     where
         I: IntoIterator<Item = (K, GoValue)>,
@@ -72,17 +75,19 @@ impl GoValue {
         GoValue::Map(entries.into_iter().map(|(k, v)| (k.into(), v)).collect())
     }
 
-    /// Serializes to compact JSON bytes, matching Go's `json.Marshal`
-    /// (no whitespace, map keys sorted, HTML escaping on, no trailing newline).
+    /// Serializes to compact JSON, per the report contract (no whitespace, map
+    /// keys sorted, HTML escaping on, no trailing newline).
+    #[must_use]
     pub fn to_json(&self) -> String {
         let mut out = String::new();
         self.write_json(&mut out, None, 0);
         out
     }
 
-    /// Serializes to two-space-indented JSON, matching Go's
-    /// `Encoder.SetIndent("", "  ")` body (a single space after each colon;
-    /// empty containers collapse to `{}` / `[]`). No trailing newline is added.
+    /// Serializes to two-space-indented JSON, per the report contract's
+    /// indented mode (a single space after each colon; empty containers
+    /// collapse to `{}` / `[]`). No trailing newline is added.
+    #[must_use]
     pub fn to_json_indent(&self) -> String {
         let mut out = String::new();
         self.write_json(&mut out, Some("  "), 0);
@@ -98,7 +103,7 @@ impl GoValue {
                 item.write_json(out, ind, d)
             }),
             GoValue::Map(entries) => {
-                // map-origin: sort keys by raw UTF-8 bytes (Go encode-time sort).
+                // map-origin: sort keys by raw UTF-8 bytes at encode time.
                 let mut sorted: Vec<&(String, GoValue)> = entries.iter().collect();
                 sorted.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
                 write_obj(out, indent, depth, sorted.into_iter());
@@ -112,7 +117,7 @@ impl GoValue {
 }
 
 /// Writes an array/sequence with optional indentation.
-fn write_seq<'a, T, I, F>(out: &mut String, indent: Option<&str>, depth: usize, items: I, mut f: F)
+fn write_seq<T, I, F>(out: &mut String, indent: Option<&str>, depth: usize, items: I, mut f: F)
 where
     I: Iterator<Item = T>,
     F: FnMut(&mut String, T, Option<&str>, usize),
@@ -153,7 +158,7 @@ where
         write_json_string(k, out);
         out.push(':');
         if indent.is_some() {
-            out.push(' '); // Go indent mode: one space after the colon.
+            out.push(' '); // Indent mode: one space after the colon.
         }
         v.write_json(out, indent, depth + 1);
     }
@@ -171,7 +176,7 @@ fn newline_indent(out: &mut String, indent: Option<&str>, depth: usize) {
     }
 }
 
-/// Writes a Go-`encoding/json`-compatible quoted string (HTML escaping on).
+/// Writes a report-contract quoted JSON string (HTML escaping on).
 fn write_json_string(s: &str, out: &mut String) {
     out.push('"');
     for c in s.chars() {
@@ -253,8 +258,8 @@ mod tests {
 
     #[test]
     fn escapes_html() {
-        // Go `encoding/json` has HTML escaping ON by default: <, >, & become
-        // <, >, &.
+        // HTML escaping is ON in the report contract: <, >, & become their
+        // \u00xx escape sequences.
         assert_eq!(
             GoValue::Str("a<b>&c".to_string()).to_json(),
             "\"a\\u003cb\\u003e\\u0026c\""

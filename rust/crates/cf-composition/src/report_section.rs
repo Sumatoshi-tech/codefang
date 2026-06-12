@@ -1,13 +1,11 @@
 //! Composition report section.
 //!
-//! Ported from Go `internal/analyzers/composition/report_section.go`. Builds the
-//! human-facing section model (title, status, key metrics, distribution, issues)
-//! from an aggregated composition report.
+//! Builds the human-facing section model (title, status, key metrics,
+//! distribution, issues) from an aggregated composition report.
 //!
-//! This section feeds terminal/HTML rendering, which DESIGN §2.7 marks as
-//! **non-binding/cosmetic** — so its output is not part of the byte-identity
-//! contract. The logic is nonetheless ported faithfully (and unit-tested) so the
-//! analyzer's section behaviour matches Go.
+//! This section feeds terminal/HTML rendering, which is **non-binding,
+//! cosmetic** output — not part of the byte-identity contract. The logic is
+//! nonetheless unit-tested so the section behaviour stays stable.
 
 use std::collections::HashMap;
 
@@ -26,11 +24,11 @@ pub const STATUS_EMPTY: &str = "No files analyzed";
 
 /// Score sentinel meaning "informational only" (no pass/fail grade).
 ///
-/// Mirrors Go `analyze.ScoreInfoOnly`. Kept here as the local constant the
-/// section reports until `cf-analyzers-common` exposes the shared value.
+/// Kept here as the local constant the section reports until
+/// `cf-analyzers-common` exposes the shared value.
 pub const SCORE_INFO_ONLY: f64 = -1.0;
 
-/// Severity strings, mirroring `analyze.Severity*`.
+/// Severity string for informational issues.
 pub const SEVERITY_INFO: &str = "info";
 /// Severity for categories considered problematic (binary files).
 pub const SEVERITY_POOR: &str = "poor";
@@ -73,15 +71,13 @@ pub struct Issue {
 /// because the section is cosmetic and is built directly from typed data.
 #[derive(Debug, Clone, Default)]
 pub struct CompositionReport {
-    /// Total files analyzed (Go `total_files`).
+    /// Total files analyzed (`total_files`).
     pub total_files: i64,
-    /// Per-category counts (Go `breakdown`).
+    /// Per-category counts (`breakdown`).
     pub breakdown: HashMap<String, i64>,
 }
 
 /// Implements the composition report section.
-///
-/// Mirrors Go `ReportSection` (embedding `analyze.BaseReportSection`).
 #[derive(Debug, Clone)]
 pub struct ReportSection {
     title: String,
@@ -95,10 +91,9 @@ const PERCENT_MULTIPLIER: f64 = 100.0;
 impl ReportSection {
     /// Builds a section from an aggregated composition report.
     ///
-    /// Mirrors Go `NewReportSection`: the status message is [`STATUS_EMPTY`]
-    /// when `total_files == 0`, otherwise [`STATUS_DEFAULT`]. A `nil` report in
-    /// Go maps to a default ([`CompositionReport::default`]) here, which yields
-    /// the empty status — matching `TestCompositionSection_NilReport`.
+    /// The status message is [`STATUS_EMPTY`] when `total_files == 0`,
+    /// otherwise [`STATUS_DEFAULT`]. A missing report maps to
+    /// [`CompositionReport::default`], which yields the empty status.
     #[must_use]
     pub fn new(report: CompositionReport) -> Self {
         let message = if report.total_files == 0 {
@@ -133,10 +128,9 @@ impl ReportSection {
         self.score
     }
 
-    /// Returns the ordered key metrics for display.
-    ///
-    /// Mirrors Go `KeyMetrics`: total files, source-file count, and source
-    /// percentage (formatted to one decimal place with a trailing `%`).
+    /// Returns the ordered key metrics for display: total files, source-file
+    /// count, and source percentage (formatted to one decimal place with a
+    /// trailing `%`).
     #[must_use]
     pub fn key_metrics(&self) -> Vec<Metric> {
         let total = self.report.total_files;
@@ -161,7 +155,7 @@ impl ReportSection {
     /// Returns the category breakdown as distribution items, in
     /// [`ALL_CATEGORIES`] order, omitting zero-count categories.
     ///
-    /// Returns an empty vector when no files were analyzed, matching Go's `nil`.
+    /// Returns an empty vector when no files were analyzed.
     #[must_use]
     pub fn distribution(&self) -> Vec<DistributionItem> {
         let total = self.report.total_files;
@@ -184,7 +178,7 @@ impl ReportSection {
         items
     }
 
-    /// Returns up to `n` non-source categories as issues (`n <= 0` → all).
+    /// Returns up to `n` non-source categories as issues (`n == 0` -> all).
     #[must_use]
     pub fn top_issues(&self, n: usize) -> Vec<Issue> {
         self.build_issues(n)
@@ -196,11 +190,10 @@ impl ReportSection {
         self.build_issues(0)
     }
 
-    /// Builds issues for non-source categories with non-zero counts.
-    ///
-    /// Mirrors Go `buildIssues`: skips `CategorySource`, skips zero counts,
-    /// formats the value as `"<count> files (<pct>%)"` with one decimal place,
-    /// and truncates to `limit` when `limit > 0`.
+    /// Builds issues for non-source categories with non-zero counts: skips
+    /// `source`, skips zero counts, formats the value as
+    /// `"<count> files (<pct>%)"` with one decimal place, and truncates to
+    /// `limit` when `limit > 0`.
     fn build_issues(&self, limit: usize) -> Vec<Issue> {
         let total = self.report.total_files;
         if total == 0 {
@@ -236,10 +229,8 @@ impl ReportSection {
     }
 }
 
-/// Returns the severity for a file category.
-///
-/// Mirrors Go `severityForCategory`: binary is [`SEVERITY_POOR`], everything
-/// else is [`SEVERITY_INFO`].
+/// Returns the severity for a file category: binary is [`SEVERITY_POOR`],
+/// everything else is [`SEVERITY_INFO`].
 #[must_use]
 pub fn severity_for_category(cat: Category) -> &'static str {
     match cat {
@@ -249,8 +240,6 @@ pub fn severity_for_category(cat: Category) -> &'static str {
 }
 
 /// Percentage of `count` out of `total` (0.0 when `total == 0`).
-///
-/// Mirrors Go `reportutil.Pct`.
 fn pct(count: i64, total: i64) -> f64 {
     if total == 0 {
         return 0.0;
@@ -258,13 +247,12 @@ fn pct(count: i64, total: i64) -> f64 {
     (count as f64) / (total as f64) * PERCENT_MULTIPLIER
 }
 
-/// Formats an integer, mirroring Go `reportutil.FormatInt`.
+/// Formats an integer for display.
 fn format_int(value: i64) -> String {
     value.to_string()
 }
 
-/// Formats a percentage to one decimal place with a trailing `%`, mirroring Go
-/// `reportutil.FormatPercent`.
+/// Formats a percentage to one decimal place with a trailing `%`.
 fn format_percent(value: f64) -> String {
     format!("{value:.1}%")
 }

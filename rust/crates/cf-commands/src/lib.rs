@@ -1,49 +1,43 @@
-//! `cf-commands` — Cobra→clap command wiring and analyzer registration for the
-//! `codefang` binary, the Rust port of Go `cmd/codefang/commands`.
+//! `cf-commands` — command wiring and analyzer registration for the `codefang`
+//! binary.
 //!
 //! This is the **tier-8 aggregation point** (specs/rust-rewrite/DESIGN.md §1
 //! tier 8, §4): it registers every analyzer, builds the `run` / `render` /
 //! `version` command tree with all of `run`'s literal flags and the dynamic
-//! per-analyzer flags, and (in the `runtime` configuration) drives the analysis
-//! pipeline and routes report serialization through the shared go-compat
-//! serialization crates — never raw `serde`.
+//! per-analyzer flags, drives the analysis pipeline, and routes report
+//! serialization through the shared report-format crates (cf-gojson /
+//! cf-goyaml) — never raw `serde`.
 //!
 //! # CLI parity (DESIGN §4)
 //!
 //! The command tree is built with clap's **builder API** (not derive) so command
 //! and flag declaration order, help strings, defaults, and error wording can be
-//! matched to cobra verbatim. The three subcommands wired by Go `main.go` are
-//! [`build_run_command`], [`build_render_command`], and [`build_version_command`]
-//! (Go `NewRunCommand` / `NewRenderCommand` / `versionCmd`). The Go `mcp`
-//! command is `//go:build ignore`; it is mirrored behind the non-default `mcp`
-//! Cargo feature and is not built by default.
+//! matched verbatim to the reference binary's CLI (a cobra surface). The three
+//! wired subcommands are [`build_run_command`], [`build_render_command`], and
+//! [`build_version_command`]. The reference `mcp` command is not shipped by
+//! default; it is mirrored behind the non-default `mcp` Cargo feature.
 //!
-//! # Port status
+//! The major pieces:
 //!
-//! The self-contained pieces are implemented and unit-tested here against the
-//! already-compiling `cf-version` and `cf-pipeline` crates:
-//!
-//! - [`formats`] — full port of Go `internal/analyzers/analyze/formats.go`
-//!   (format constants, `NormalizeFormat`, `ValidateFormat`,
-//!   `ValidateUniversalFormat`, plus the `ResolveFormats` / `ResolveInputFormat`
-//!   conversion logic and the `--ndjson` + `--format timeseries` →
-//!   `timeseries+ndjson` composition). The error string is the exact Go
-//!   `unsupported format: <fmt>`.
+//! - [`formats`] — format constants and validation (`normalize_format`,
+//!   `validate_format`, `validate_universal_format`, the `resolve_formats` /
+//!   `resolve_input_format` conversion logic and the `--ndjson` + `--format
+//!   timeseries` → `timeseries+ndjson` composition). The error string is the
+//!   exact CLI-contract `unsupported format: <fmt>`.
 //! - [`version`] — the `version` subcommand output (`codefang <v> (commit: <c>,
 //!   built: <d>)\n`), via [`cf_version`].
-//! - [`flags`] — the full `run`/`render` clap command tree: every literal flag
-//!   from `run.go` (names, shorts, defaults, verbatim help), the tri-state
+//! - [`flags`] — the full `run`/`render` clap command tree: every literal `run`
+//!   flag (names, shorts, defaults, verbatim help), the tri-state
 //!   `--checkpoint`/`--resume`, the deprecated `--skip-blacklist` /
 //!   `--blacklisted-prefixes` (exact messages), and the **dynamic per-analyzer
-//!   flag** registration driven by [`cf_pipeline::ConfigurationOption`] (Go
-//!   `registerAnalyzerFlags` / `registerConfigFlag`).
+//!   flag** registration driven by [`cf_pipeline::ConfigurationOption`].
+//! - [`handlers`] / [`pipeline`] — the run/render execution path: analyzer
+//!   dispatch, the static folder walk and shared history revwalk, and
+//!   per-format report serialization.
 //!
-//! The actual run/render execution handlers (Go `RunCommand.run`,
-//! `runHistoryAnalyzers`, `runRender`) depend on `cf-analyze` (the
-//! format/conversion hub), `cf-gitlib`, `cf-framework`'s runner, and the 16
-//! analyzer crates. Those crates are not yet building in this tree, so the
-//! handlers live behind the `runtime` feature; their cross-crate contracts are
-//! captured as the minimal traits in [`registry`]. See the crate `todos`.
+//! Compatibility: every machine-report surface this crate emits is pinned
+//! byte-for-byte against the reference binary by the differential gate in
+//! `rust/tests/compat`.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -78,8 +72,8 @@ pub use version::{build_version_command, version_output};
 pub const CRATE_NAME: &str = "cf-commands";
 
 /// Build the top-level `codefang` [`clap::Command`] with the `run`, `render`,
-/// and `version` subcommands wired in declaration order, mirroring Go
-/// `cmd/codefang/main.go`.
+/// and `version` subcommands wired in declaration order, matching the
+/// reference command tree.
 ///
 /// The root carries the persistent flags `--verbose`/`-v`, `--quiet`/`-q`, and
 /// `--profile` (all default `false`), matching cobra's persistent flags. The
@@ -127,7 +121,7 @@ const DISPATCH_BLOCKED_MSG: &str =
 /// The single `codefang` entry point: build the command tree, parse `args`
 /// (which MUST start with the program name, like `std::env::args`), and dispatch
 /// `run` / `render` / `version` through the general pipeline + registry.
-/// Returns the process exit code (Go `RunCommand.run` → cobra `Execute` exit).
+/// Returns the process exit code (the reference `RunCommand.run` → cobra `Execute` exit).
 ///
 /// This is the thin shell the `codefang` binary calls; all dispatch flows
 /// through [`pipeline::run_pipeline`] over [`handlers::default_registry`] — there
@@ -170,7 +164,7 @@ where
 /// script to stdout, the Rust analogue of the bytes cobra's auto-registered
 /// completion command emits (`bash`/`fish`/`powershell`/`zsh`). The script bytes
 /// are clap-vs-cobra cosmetic (Layer-D informational), but a real generator (not
-/// a help stub) is required so the command behaves like Go's. With no shell
+/// a help stub) is required so the command behaves like the reference implementation's. With no shell
 /// subcommand cobra prints the completion command's help (rc 0).
 fn completion_subcommand(sub: &clap::ArgMatches) -> i32 {
     use clap_complete::Shell;
@@ -198,7 +192,7 @@ fn completion_subcommand(sub: &clap::ArgMatches) -> i32 {
 fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
     use std::io::Write;
 
-    // Observability bracket around the whole run, mirroring Go run.go:338-351
+    // Observability bracket around the whole run, mirroring the reference implementation:338-351
     // (`rc.initObservability()` + deferred `providers.Shutdown`). With no
     // OTEL_EXPORTER_OTLP_ENDPOINT the providers are no-op: zero output, zero
     // report-byte impact. The guard's Drop performs the shutdown.
@@ -207,7 +201,7 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
         match observability::init_run_observability(sub.get_flag("debug-trace")) {
             Ok(guard) => guard,
             Err(e) => {
-                // Go: return fmt.Errorf("init observability: %w", err) → cobra
+                // Reference: return fmt.Errorf("init observability: %w", err) → cobra
                 // prints `Error: <msg>` and exits 1.
                 eprintln!("Error: init observability: {e}");
                 return 1;
@@ -227,31 +221,31 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
     let ctx = pipeline::RunContext::from_matches(sub);
     let ids = ctx.analyzer_ids();
 
-    // Special case preserved from Go FormatPerAnalyzer: a static-only glob/id set
+    // Special case preserved from the reference `FormatPerAnalyzer`: a static-only glob/id set
     // with --format bin emits the concatenated registry-ordered per-analyzer CFB1
     // envelopes. This is a multi-id (glob) concern, not a single-id dispatch, so
     // it is handled before the per-id pipeline (which dispatches literal ids).
     let raw_format = ctx.raw_format();
     let analyzer_strs: Vec<&str> = ids.iter().map(String::as_str).collect();
 
-    // --format plot routes to the multi-page HTML renderer (Go run.go: the
+    // --format plot routes to the multi-page HTML renderer (the reference implementation: the
     // static/history phases each call validatePlotFlags then the plot
     // executor). The --output precheck fires for ANY plot selection (the exact
-    // Go ErrPlotOutputRequired wording, rc 1). A static-only selection renders
+    // reference `ErrPlotOutputRequired` wording, rc 1). A static-only selection renders
     // pages + index + the static results report.json; a history-only selection
     // renders <flag>.html pages + index + the {analyzer_ids, pages}
-    // report.json (Go runRender); a MIXED selection runs both phases into the
+    // report.json; a MIXED selection runs both phases into the
     // SAME directory — the history report.json overwrites the static one and
-    // the final index is rebuilt title-sorted across both page sets (Go
+    // the final index is rebuilt title-sorted across both page sets (reference:
     // rebuildPlotIndex). Any unported selection surfaces the dispatch-blocked
-    // diagnostic AFTER the flag validation, preserving Go's error ordering.
+    // diagnostic AFTER the flag validation, preserving the reference implementation's error ordering.
     if formats::normalize_format(&raw_format) == formats::FORMAT_PLOT {
-        let output = sub.get_one::<String>("output").map(String::as_str).unwrap_or("");
+        let output = sub.get_one::<String>("output").map_or("", String::as_str);
         if output.is_empty() {
             eprintln!("Error: --output flag is required when --format plot");
             return 1;
         }
-        // SELECTION-order expansion: Go renders plot pages (and index cards)
+        // SELECTION-order expansion: the reference implementation renders plot pages (and index cards)
         // in the resolved id order (`AnalyzerNamesByID(analyzerIDs)`).
         let (plot_static, plot_history) = handlers::expand_selection_ids(&analyzer_strs);
         if !plot_static.is_empty() && plot_history.is_empty() {
@@ -269,7 +263,7 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
         if !plot_static.is_empty() && !plot_history.is_empty() {
             // Mixed run: static phase first (pages + index + static
             // report.json), then the history phase into the same directory
-            // (Go runStaticPhase → runHistoryPhase → rebuildPlotIndex).
+            // (reference: runStaticPhase → runHistoryPhase → rebuildPlotIndex).
             if let Some(code) = handlers::plot::run_static_plot(&ctx, &plot_static, output) {
                 if code != 0 {
                     return code;
@@ -295,7 +289,7 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
         }
     }
 
-    // Special case preserved from Go renderer.SectionsToJSON: a STATIC-ONLY
+    // Special case preserved from the reference `renderer.SectionsToJSON`: a STATIC-ONLY
     // selection (no history analyzer) of MORE THAN ONE static analyzer (a literal
     // multi-id list or a glob like `static/*`) with `--format json` renders ONE
     // merged JSONReport — sections in registry order, overall_score the average
@@ -314,12 +308,12 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
     }
 
     // Mixed static+history selection (both phases non-empty) renders the single
-    // `codefang.run.v1` unified-model envelope, mirroring Go runDirect →
+    // `codefang.run.v1` unified-model envelope, mirroring the reference `runDirect` →
     // renderCombinedDirect. This is NOT a per-analyzer concatenation: every
     // selected analyzer's raw report is gathered (via its bin payload) into one
     // model with run metadata and re-serialized in the requested format by the
     // serializer layer (cf-analyze::write_converted_output). Plot is excluded
-    // (Go isMixedPlot keeps the separate-phase path). On any unported analyzer
+    // (reference: isMixedPlot keeps the separate-phase path). On any unported analyzer
     // the helper returns None and we fall through to the per-id pipeline.
     let (combined_static, combined_history) = handlers::expand_combined_ids(&analyzer_strs);
     if !combined_static.is_empty()
@@ -336,14 +330,14 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
     }
 
     // Expand globs / literal ids to the concrete registry ids the per-id pipeline
-    // dispatches (Go `registry.Split` resolves patterns before the phase loop).
+    // dispatches (the reference `registry.Split` resolves patterns before the phase loop).
     // `run_pipeline` matches literal ids only, so an unexpanded glob like
     // `history/*` would otherwise miss every handler. The static phase uses the
-    // registry static order; the history phase uses Go's SEPARATE-phase emit order
+    // registry static order; the history phase uses the reference implementation's SEPARATE-phase emit order
     // (`HISTORY_PHASE_EMIT_ORDER` — `runHistoryPhase` over the glob-expanded leaf
     // set), which differs from the combined-model order, so a history-only glob's
-    // per-analyzer reports concatenate in the same sequence Go writes them. Fall
-    // back to the raw selection when nothing expands (preserves Go's unknown-id
+    // per-analyzer reports concatenate in the same sequence the reference implementation writes them. Fall
+    // back to the raw selection when nothing expands (preserves the reference implementation's unknown-id
     // error). A glob in `analyzer_strs` forces the expanded ordering even for a
     // mixed selection; a purely literal selection keeps its request order.
     let resolved_ids = {
@@ -358,8 +352,8 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
         }
     };
 
-    // Centralized history-phase formats (Go OutputHistoryResults / StreamingSink):
-    // text, ndjson, and timeseries are NOT per-analyzer encodings — Go routes the
+    // Centralized history-phase formats (reference: OutputHistoryResults / StreamingSink):
+    // text, ndjson, and timeseries are NOT per-analyzer encodings — the reference implementation routes the
     // whole selected leaf set through one history output function (header + per-
     // leaf sections for text; per-commit TC lines for ndjson; one merged document
     // for timeseries). A history-only selection in one of those formats dispatches
@@ -381,7 +375,7 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
                 handlers::history_formats::history_timeseries(&ctx, &resolved_ids, false)
             }
             // `timeseries+ndjson` (the --ndjson modifier) is NOT the merged
-            // document as lines: Go routes it through the per-chunk
+            // document as lines: the reference implementation routes it through the per-chunk
             // TimeSeriesChunkFlusher (DrainCommitStats), which devs/burndown
             // reproduce in their per-analyzer handlers — fall through.
             _ => None,
@@ -392,7 +386,7 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
                 return 0;
             }
             Some(Err(fail)) => {
-                // Go streams the partial bytes to stdout BEFORE the serializer
+                // The reference implementation streams the partial bytes to stdout BEFORE the serializer
                 // fails; cobra then prints `Error: <msg>` to stderr and exits 1.
                 std::io::stdout().write_all(&fail.partial).expect("write stdout");
                 eprintln!("Error: {}", fail.message);
@@ -410,8 +404,8 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
             }
             0
         }
-        // An unknown analyzer id surfaces the specific Go diagnostic
-        // ("unknown analyzer id: <id>", Go ErrUnknownAnalyzer) so the error
+        // An unknown analyzer id surfaces the specific reference diagnostic
+        // ("unknown analyzer id: <id>", reference `ErrUnknownAnalyzer`) so the error
         // path is byte-class-identical to cobra (the cli-surface runtime probe
         // requires the "analyzer" diagnostic, not a generic stub message).
         Err(pipeline::PipelineError::UnknownAnalyzer(id)) => {
@@ -428,9 +422,9 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
 }
 
 /// Dispatches `codefang render <store-dir>`; reproduces the `--output` precheck
-/// (Go render.go `ErrNoOutputDir`) before the (still-blocked) render body.
+/// (the reference implementation `ErrNoOutputDir`) before the (still-blocked) render body.
 fn render_subcommand(sub: &clap::ArgMatches) -> i32 {
-    let output = sub.get_one::<String>("output").map(String::as_str).unwrap_or("");
+    let output = sub.get_one::<String>("output").map_or("", String::as_str);
     if output.is_empty() {
         eprintln!("Error: output directory is required (use --output)");
         return 1;

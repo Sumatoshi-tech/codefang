@@ -1,22 +1,18 @@
-//! Batch blob loading and blob-pair diffing, ported from
-//! `pkg/gitlib/worker.go` and the C batch shim `pkg/gitlib/clib/{blob_ops,diff_ops}.c`
-//! (driven from Go via `pkg/gitlib/cgo_bridge.go`).
+//! Batch blob loading and blob-pair diffing.
 //!
-//! # Why this is pure Rust, not a CGO shim
-//!
-//! The Go side ran these batch operations on a single OS-thread-locked goroutine
-//! (`Worker` + `runtime.LockOSThread`) and dropped into a custom C library to
-//! amortize CGO call overhead. In Rust, libgit2 is already in-process via the
-//! `git2` crate, there is no CGO boundary to amortize, and a [`crate::Repository`]
-//! is `!Send`/`!Sync` — so the natural model is a per-thread [`Worker`] that owns
+//! The reference implementation ran these batch operations through a custom
+//! C shim over libgit2 on a dedicated OS thread. Here libgit2 is already
+//! in-process via the `git2` crate and a [`crate::Repository`] is
+//! `!Send`/`!Sync` — so the natural model is a per-thread [`Worker`] that owns
 //! the repository and executes each request synchronously by calling git2
-//! directly. The numeric outputs (line counts, diff op runs) are reproduced
-//! byte-for-byte from the C algorithms below, which is what flows into reports.
+//! directly. The numeric outputs (line counts, diff op runs) reproduce the
+//! reference batch algorithms byte-for-byte, which is what flows into reports
+//! (pinned by `rust/tests/compat`).
 //!
-//! # Diff-op algorithm (ported verbatim from `diff_ops.c`)
+//! # Diff-op algorithm (reference batch-shim behavior)
 //!
-//! For a blob pair, libgit2's line callback emits context / addition / deletion
-//! lines. The C shim coalesces consecutive same-type lines into runs
+//! For a blob pair, libgit2's line callback emits context / addition /
+//! deletion lines. The shim coalesces consecutive same-type lines into runs
 //! ([`DiffOp`]), inserts an implicit *equal* run for lines skipped before each
 //! hunk (`hunk.old_start - 1 > old_line_pos`), and appends a trailing *equal*
 //! run for unchanged lines after the last hunk (`old_lines - old_line_pos`).
@@ -28,19 +24,19 @@ use crate::error::{GitError, Result};
 use crate::hash::Hash;
 use crate::Repository;
 
-/// The kind of a single diff operation (Go `DiffOpType`).
+/// The kind of a single diff operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
 pub enum DiffOpType {
-    /// Lines unchanged between old and new (Go `DiffOpEqual = 0`).
+    /// Lines unchanged between old and new.
     Equal = 0,
-    /// Lines added in the new blob (Go `DiffOpInsert = 1`).
+    /// Lines added in the new blob.
     Insert = 1,
-    /// Lines removed from the old blob (Go `DiffOpDelete = 2`).
+    /// Lines removed from the old blob.
     Delete = 2,
 }
 
-/// A single coalesced run of diff lines (Go `DiffOp`).
+/// A single coalesced run of diff lines.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DiffOp {
     /// The kind of run.
@@ -49,7 +45,7 @@ pub struct DiffOp {
     pub line_count: i32,
 }
 
-/// The result of loading a single blob (Go `BlobResult`).
+/// The result of loading a single blob.
 #[derive(Debug)]
 pub struct BlobResult {
     /// The blob hash.
@@ -66,7 +62,7 @@ pub struct BlobResult {
     pub error: Option<GitError>,
 }
 
-/// The result of diffing two blobs (Go `DiffResult`).
+/// The result of diffing two blobs.
 #[derive(Debug)]
 pub struct DiffResult {
     /// Total lines in the old blob.
@@ -79,7 +75,7 @@ pub struct DiffResult {
     pub error: Option<GitError>,
 }
 
-/// A request to diff two blobs (Go `DiffRequest`).
+/// A request to diff two blobs.
 #[derive(Debug, Clone, Default)]
 pub struct DiffRequest {
     /// The old blob hash (used when `has_old` and `old_data` is empty).
@@ -96,24 +92,23 @@ pub struct DiffRequest {
     pub has_new: bool,
 }
 
-/// A per-thread batch git worker (Go `gitlib.Worker` + `CGOBridge`).
+/// A per-thread batch git worker.
 ///
 /// Owns a borrowed [`Repository`] and executes batch blob/diff/tree-diff
-/// operations synchronously. Because [`Repository`] is `!Send`/`!Sync`, a worker
-/// is created and used on a single thread — the Rust analogue of Go's
-/// `runtime.LockOSThread` worker goroutine.
+/// operations synchronously. Because [`Repository`] is `!Send`/`!Sync`, a
+/// worker is created and used on a single thread.
 pub struct Worker<'repo> {
     repo: &'repo Repository,
 }
 
 impl<'repo> Worker<'repo> {
-    /// Creates a worker over `repo` (Go `NewWorker` / `NewCGOBridge`).
+    /// Creates a worker over `repo`.
     #[must_use]
     pub fn new(repo: &'repo Repository) -> Self {
         Worker { repo }
     }
 
-    /// Loads a batch of blobs by hash (Go `CGOBridge.BatchLoadBlobs`).
+    /// Loads a batch of blobs by hash.
     ///
     /// Each result carries the bytes, size, binary flag, and line count, or an
     /// error ([`GitError::BlobLookup`]) when the blob is missing/not a blob. The
@@ -126,10 +121,9 @@ impl<'repo> Worker<'repo> {
             .collect()
     }
 
-    /// Loads a batch of blobs as [`CachedBlob`]s (Go worker `BlobBatchRequest`).
+    /// Loads a batch of blobs as [`CachedBlob`]s.
     ///
-    /// Mirrors the Go worker building `[]*CachedBlob` from the batch results:
-    /// successful entries become `Some(CachedBlob)`, failed entries `None`,
+    /// Successful entries become `Some(CachedBlob)`, failed entries `None`,
     /// preserving the request order and length.
     #[must_use]
     pub fn batch_load_cached_blobs(&self, hashes: &[Hash]) -> Vec<Option<CachedBlob>> {
@@ -141,7 +135,7 @@ impl<'repo> Worker<'repo> {
                         res.hash,
                         res.size,
                         res.data,
-                        res.line_count as i64,
+                        i64::from(res.line_count),
                     ))
                 } else {
                     None
@@ -150,14 +144,15 @@ impl<'repo> Worker<'repo> {
             .collect()
     }
 
-    /// Loads a single blob via the ODB-equivalent path (`load_single_blob_odb`).
+    /// Loads a single blob.
     fn load_one_blob(&self, hash: Hash) -> BlobResult {
         match self.repo.lookup_blob(hash) {
             Ok(blob) => {
                 let data = blob.contents();
                 let size = blob.size();
                 let is_binary = cf_textutil::is_binary(&data);
-                // Line count is 0 for binary or empty blobs (matches blob_ops.c).
+                // Line count is 0 for binary or empty blobs (reference batch-shim
+                // behavior).
                 let line_count = if !is_binary && !data.is_empty() {
                     cf_textutil::count_lines(&data) as i32
                 } else {
@@ -183,7 +178,7 @@ impl<'repo> Worker<'repo> {
         }
     }
 
-    /// Computes diffs for a batch of blob pairs (Go `CGOBridge.BatchDiffBlobs`).
+    /// Computes diffs for a batch of blob pairs.
     ///
     /// The order of results matches the order of `requests`.
     #[must_use]
@@ -191,7 +186,7 @@ impl<'repo> Worker<'repo> {
         requests.iter().map(|r| self.diff_blob_pair(r)).collect()
     }
 
-    /// Diffs one blob pair, reproducing `compute_diff_generic` / `compute_single_diff`.
+    /// Diffs one blob pair, reproducing the reference batch-shim semantics.
     ///
     /// Resolves each side's bytes (pre-loaded `*_data` or a blob lookup by hash),
     /// returns [`GitError::BlobLookup`] when a needed blob is missing,
@@ -222,7 +217,7 @@ impl<'repo> Worker<'repo> {
             }
         };
 
-        // Binary check (C: cf_is_binary on each non-empty side).
+        // Binary check on each present side.
         if (req.has_old && cf_textutil::is_binary(&old_bytes))
             || (req.has_new && cf_textutil::is_binary(&new_bytes))
         {
@@ -259,13 +254,12 @@ impl<'repo> Worker<'repo> {
         }
     }
 
-    /// Computes tree changes with a pathspec pre-filter
-    /// (Go `CGOBridge.TreeDiffWithPathspec`).
+    /// Computes tree changes with a pathspec pre-filter.
     ///
-    /// Skips the diff when both tree OIDs are equal and non-zero (C fast path).
-    /// A non-empty `pathspec` restricts the diff to matching files at the libgit2
-    /// level. Submodule/sub-tree change entries (mode `0o160000` / `0o040000`)
-    /// are filtered out, matching the C shim.
+    /// Skips the diff when both tree OIDs are equal and non-zero (fast path).
+    /// A non-empty `pathspec` restricts the diff to matching files at the
+    /// libgit2 level. Submodule/sub-tree change entries (mode `0o160000` /
+    /// `0o040000`) are filtered out (reference batch-shim behavior).
     ///
     /// # Errors
     ///
@@ -386,14 +380,13 @@ impl<'repo> Worker<'repo> {
     }
 }
 
-/// Maps a libgit2 [`git2::FileMode`] to its raw octal value, matching the C
-/// `git_diff_delta.{old,new}_file.mode` integer the shim compares against.
+/// Maps a libgit2 [`git2::FileMode`] to its raw octal value.
 fn file_mode_to_u32(mode: git2::FileMode) -> u32 {
-    // Map each libgit2 file mode to its standard git octal value. The shim only
-    // special-cases tree (0o040000) and commit/submodule (0o160000), but all
-    // variants are spelled out so the comparison is exact and total. Matched by
-    // explicit variant (not an integer cast) because git2 0.19's `FileMode`
-    // exposes no `From<FileMode>` integer conversion.
+    // Map each libgit2 file mode to its standard git octal value. Only tree
+    // (0o040000) and commit/submodule (0o160000) are special-cased by the
+    // caller, but all variants are spelled out so the comparison is exact and
+    // total. Matched by explicit variant (not an integer cast) because git2
+    // 0.19's `FileMode` exposes no `From<FileMode>` integer conversion.
     match mode {
         git2::FileMode::Unreadable => 0,
         git2::FileMode::Tree => 0o040000,
@@ -405,12 +398,12 @@ fn file_mode_to_u32(mode: git2::FileMode) -> u32 {
     }
 }
 
-/// Runs libgit2's line diff over two buffers and coalesces ops, reproducing the
-/// C `diff_ctx_t` / `add_op` / `flush_op` / hunk / trailing-equal logic.
+/// Runs libgit2's line diff over two buffers and coalesces ops, reproducing
+/// the reference batch-shim coalescing / hunk / trailing-equal logic.
 fn compute_line_diff(old_data: &[u8], new_data: &[u8], old_lines: i32) -> Vec<DiffOp> {
     use std::cell::RefCell;
 
-    // Coalescing state, mirroring diff_ctx_t.
+    // Coalescing state.
     struct Ctx {
         ops: Vec<DiffOp>,
         current_type: i32, // -1 = none yet
@@ -455,8 +448,8 @@ fn compute_line_diff(old_data: &[u8], new_data: &[u8], old_lines: i32) -> Vec<Di
     // Scope the patch walk so any borrows end before we move `ctx` out with
     // `into_inner()` below. git2 0.19 exposes buffer-to-buffer line diffs via
     // `Patch::from_buffers`; we iterate its hunks/lines in order and apply the
-    // same coalescing the C `diff foreach` callbacks did (an implicit equal
-    // block for lines skipped before each hunk, then per-line origin mapping).
+    // reference coalescing (an implicit equal block for lines skipped before
+    // each hunk, then per-line origin mapping).
     let diff_ok = {
         let mut opts = git2::DiffOptions::new();
         match git2::Patch::from_buffers(old_data, None, new_data, None, Some(&mut opts)) {
@@ -472,7 +465,7 @@ fn compute_line_diff(old_data: &[u8], new_data: &[u8], old_lines: i32) -> Vec<Di
                         }
                     };
                     {
-                        // hunk preamble: implicit equal block for skipped lines.
+                        // Hunk preamble: implicit equal block for skipped lines.
                         let mut c = ctx.borrow_mut();
                         let hunk_start = hunk.old_start() as i32 - 1; // 1-based -> 0-based
                         if hunk_start > c.old_line_pos {
@@ -482,12 +475,9 @@ fn compute_line_diff(old_data: &[u8], new_data: &[u8], old_lines: i32) -> Vec<Di
                             c.new_line_pos += skipped;
                         }
                     }
-                    let lines = match patch.num_lines_in_hunk(h) {
-                        Ok(n) => n,
-                        Err(_) => {
-                            ok = false;
-                            break 'hunks;
-                        }
+                    let Ok(lines) = patch.num_lines_in_hunk(h) else {
+                        ok = false;
+                        break 'hunks;
                     };
                     for l in 0..lines {
                         let line: git2::DiffLine<'_> = match patch.line_in_hunk(h, l) {
@@ -524,14 +514,14 @@ fn compute_line_diff(old_data: &[u8], new_data: &[u8], old_lines: i32) -> Vec<Di
 
     let mut c = ctx.into_inner();
     if !diff_ok {
-        // On a libgit2 error the C shim returns CF_ERR_DIFF with no ops; the Go
-        // caller surfaces the error. Here we return whatever ops accumulated
-        // (empty), and the caller's binary/lookup guards already ran.
+        // On a libgit2 error the reference shim returns a diff error with no
+        // ops. Here we return whatever ops accumulated (empty), and the
+        // caller's binary/lookup guards already ran.
         return c.ops;
     }
 
     // Flush any pending op, then append the trailing equal block for unchanged
-    // lines after the last hunk (C: old_lines - old_line_pos).
+    // lines after the last hunk (old_lines - old_line_pos).
     c.flush();
     if old_lines > c.old_line_pos {
         let remaining = old_lines - c.old_line_pos;
@@ -546,7 +536,7 @@ mod tests {
     use super::*;
     use crate::testing::TestRepo;
 
-    // Ported from cgo_bridge_test.go::TestDiffOpType.
+    // Mirrors reference test TestDiffOpType.
     #[test]
     fn diff_op_type_values() {
         assert_eq!(DiffOpType::Equal as i32, 0);
@@ -554,7 +544,7 @@ mod tests {
         assert_eq!(DiffOpType::Delete as i32, 2);
     }
 
-    // Ported from worker_test.go::TestWorker_BlobBatchRequest.
+    // Mirrors reference test TestWorker_BlobBatchRequest.
     #[test]
     fn worker_blob_batch() {
         let tr = TestRepo::new();
@@ -578,7 +568,7 @@ mod tests {
         }
     }
 
-    // Ported from worker_test.go::TestWorker_BlobBatchRequestEmpty.
+    // Mirrors reference test TestWorker_BlobBatchRequestEmpty.
     #[test]
     fn worker_blob_batch_empty() {
         let tr = TestRepo::new();
@@ -590,7 +580,7 @@ mod tests {
         assert!(worker.batch_load_cached_blobs(&[]).is_empty());
     }
 
-    // Ported from worker_test.go::TestCGOBridge_BatchLoadBlobsInvalidHash.
+    // Mirrors reference test TestCGOBridge_BatchLoadBlobsInvalidHash.
     #[test]
     fn batch_load_invalid_hash() {
         let tr = TestRepo::new();
@@ -604,7 +594,7 @@ mod tests {
         assert!(matches!(results[0].error, Some(GitError::BlobLookup)));
     }
 
-    // Ported from worker_test.go::TestCGOBridge_BatchDiffBlobsInvalidHash.
+    // Mirrors reference test TestCGOBridge_BatchDiffBlobsInvalidHash.
     #[test]
     fn batch_diff_invalid_hash() {
         let tr = TestRepo::new();
@@ -625,7 +615,7 @@ mod tests {
         assert!(matches!(results[0].error, Some(GitError::DiffLookup)));
     }
 
-    // Ported from worker_test.go::TestWorker_DiffBatchRequest.
+    // Mirrors reference test TestWorker_DiffBatchRequest.
     #[test]
     fn worker_diff_batch() {
         let tr = TestRepo::new();
@@ -662,7 +652,7 @@ mod tests {
             .any(|op| op.op_type == DiffOpType::Insert && op.line_count == 1));
     }
 
-    // Ported from worker_test.go::TestCGOBridge_TreeDiffWithPathspec_FiltersByGlob.
+    // Mirrors reference test TestCGOBridge_TreeDiffWithPathspec_FiltersByGlob.
     #[test]
     fn tree_diff_pathspec_filters() {
         let tr = TestRepo::new();
@@ -691,7 +681,7 @@ mod tests {
         assert_eq!(filtered[0].to.name, "a.go");
     }
 
-    // Ported from worker_test.go::TestCGOBridge_TreeDiffSameHash.
+    // Mirrors reference test TestCGOBridge_TreeDiffSameHash.
     #[test]
     fn tree_diff_same_hash() {
         let tr = TestRepo::new();

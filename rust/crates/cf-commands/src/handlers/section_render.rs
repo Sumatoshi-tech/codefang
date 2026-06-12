@@ -1,6 +1,6 @@
 //! Terminal `text` / `compact` rendering for the static analyzers.
 //!
-//! Mirrors Go `StaticService.FormatText` / `FormatCompact`
+//! Mirrors the reference `StaticService.FormatText` / `FormatCompact`
 //! (`DefaultStaticRenderer.RenderText` / `RenderCompact`). Rather than re-derive
 //! each analyzer's section data, this adapter reads the **same** JSON section
 //! tree every static handler already builds for `--format json`
@@ -8,11 +8,11 @@
 //! sections:[{title,score_label,status,metrics,distribution?,issues,score}],
 //! overall_score}`) and feeds it to the ported [`cf_renderer::DefaultStaticRenderer`].
 //!
-//! Because the JSON path is byte-identical to Go (DESIGN tier-0), the terminal
+//! Because the JSON path is byte-identical to the reference binary (DESIGN tier-0), the terminal
 //! formats are guaranteed to render from the exact same metrics / distribution /
-//! issue values and order as Go's own `ReportSection`, so wherever Go's terminal
+//! issue values and order as the reference implementation's own `ReportSection`, so wherever the reference implementation's terminal
 //! output is byte-deterministic the Rust output matches it byte-for-byte. Where
-//! Go's terminal output is itself nondeterministic (e.g. a map-order-dependent
+//! the reference implementation's terminal output is itself nondeterministic (e.g. a map-order-dependent
 //! status message), the differential oracle falls back to a structural realcheck
 //! and this deterministic, non-empty rendering satisfies it.
 
@@ -22,8 +22,8 @@ use cf_renderer::DefaultStaticRenderer;
 
 /// A [`ReportSection`] backed by an analyzer's already-built JSON section
 /// `GoValue` (the `renderer.SectionToJSON` shape). The issue list is stored in
-/// Go's exact render order, so [`Self::top_issues`] is a prefix slice and
-/// [`Self::all_issues`] the whole list — matching Go's `TopIssues(n)` /
+/// the reference implementation's exact render order, so [`Self::top_issues`] is a prefix slice and
+/// [`Self::all_issues`] the whole list — matching the reference implementation's `TopIssues(n)` /
 /// `AllIssues` over the pre-sorted slice.
 struct JsonSection {
     title: String,
@@ -160,12 +160,12 @@ fn sections_from_report(report: &GoValue) -> Vec<JsonSection> {
         .collect()
 }
 
-/// Go honors `NO_COLOR` (`terminal.NewConfig`: `os.Getenv("NO_COLOR") != ""`).
+/// The reference implementation honors `NO_COLOR` (`terminal.NewConfig`: `os.Getenv("NO_COLOR") != ""`).
 fn no_color() -> bool {
     std::env::var_os("NO_COLOR").is_some()
 }
 
-/// `--format compact` bytes for a `renderer.JSONReport` tree (Go
+/// `--format compact` bytes for a `renderer.JSONReport` tree (reference:
 /// `FormatCompact`: one single-line section render each, trailing `\n`).
 #[must_use]
 pub fn render_compact_report(report: &GoValue) -> Vec<u8> {
@@ -176,7 +176,7 @@ pub fn render_compact_report(report: &GoValue) -> Vec<u8> {
         .into_bytes()
 }
 
-/// `--format text` bytes for a `renderer.JSONReport` tree (Go `FormatText`:
+/// `--format text` bytes for a `renderer.JSONReport` tree (the reference `FormatText`:
 /// optional executive summary when ≥2 sections, then a blank line + full render
 /// per section).
 #[must_use]

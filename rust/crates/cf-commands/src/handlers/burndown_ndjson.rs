@@ -1,11 +1,11 @@
 //! `run --analyzers history/burndown --format timeseries --ndjson` closed form.
 //!
-//! Reproduces the Go streaming burndown time-series NDJSON pipeline for the
+//! Reproduces the reference streaming burndown time-series NDJSON pipeline for the
 //! oldest `--limit` commits as a deterministic, single-pass computation:
 //!
 //! - **commit set / order** — `repository.Log(Reverse=true, FirstParent=true)`
 //!   (oldest-first `SortTime|SortTopological|SortReverse`; burndown forces
-//!   `--first-parent` in `run.go`), truncated to `--limit` commits.
+//!   `--first-parent` for the whole run), truncated to `--limit` commits.
 //! - **tick assignment** (`plumbing.TicksSinceStart`, 24 h default tick) —
 //!   `tick0 = FloorTime(when0, 24h)`; `tick = max(floor((when-tick0)/24h),
 //!   previousTick)` over the committer time. With no identity provider
@@ -15,7 +15,7 @@
 //!   `computeCommitLineStats`): each tracked path is a [`File`] line-survival
 //!   treap. Inserts create a `File` at the commit tick; deletions update the
 //!   file to length 0; modifications drive `File::update` from the
-//!   `cf-godiff` line diff via the same `diffApplier` pending/flush logic as Go.
+//!   `cf-godiff` line diff via the same `diffApplier` pending/flush logic as the reference implementation.
 //!   Every `File::update` notifies an updater that records `(curTick, prevTick,
 //!   delta)` into the per-commit global deltas. `lines_added` sums positive
 //!   deltas at `(tick, tick)`; `lines_removed` sums the absolute negative deltas
@@ -26,10 +26,10 @@
 //! - **NDJSON framing** (`analyze.WriteTimeSeriesNDJSON`): one
 //!   `MergedCommitData` per commit, compact `json.Encoder.Encode` (sorted map
 //!   keys `author, burndown, hash, tick, timestamp`, newline-terminated). Author
-//!   is `""` (no identity provider); timestamp is the committer time as Go
+//!   is `""` (no identity provider); timestamp is the committer time as the reference implementation
 //!   `time.RFC3339` in the commit's original zone offset.
 //!
-//! All output bytes route through `cf-gojson` for Go `encoding/json` parity.
+//! All output bytes route through `cf-gojson` for the reference `encoding/json` parity.
 
 use cf_burndown_core::{File, Updater};
 use cf_gitlib::blob::CachedBlob;
@@ -58,10 +58,10 @@ pub fn burndown_timeseries_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
 
-    // Burndown forces --first-parent (run.go: `if slices.Contains(analyzerKeys,
+    // Burndown forces --first-parent (reference: `if slices.Contains(analyzerKeys,
     // "burndown") && !opts.FirstParent { opts.FirstParent = true }`), so the walk
     // follows only the first parent of merge commits (simplify_first_parent).
-    // The window is the `limit` NEWEST commits processed oldest-first (Go
+    // The window is the `limit` NEWEST commits processed oldest-first (reference:
     // `gitlib.loadHistoryCommits`), NOT the `limit` oldest.
     let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, true)?;
 
@@ -128,7 +128,7 @@ pub fn burndown_timeseries_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// The burndown contribution to the merged `--format timeseries` document (Go
+/// The burndown contribution to the merged `--format timeseries` document (reference:
 /// `burndown.ExtractCommitTimeSeries` over `report["commit_stats"]`): per
 /// commit `{"lines_added", "lines_removed"}`; burndown is `Sequential: true`,
 /// so `commits_by_tick` appends in plain walk order with the real ticks.
@@ -140,7 +140,7 @@ pub fn burndown_timeseries_contribution(
 
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
 
-    // Burndown forces --first-parent (run.go), exactly as the sibling paths.
+    // Burndown forces --first-parent, exactly as the sibling paths.
     let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, true)?;
 
     let opts = PathPolicyOptions::default();
@@ -193,7 +193,7 @@ pub fn burndown_timeseries_contribution(
     // Burndown's serial-leaf TCs reach the aggregator at END-of-chunk drain,
     // when the runner's TicksSinceStart already points at the FINAL tick — so
     // every commits_by_tick entry lands under that one tick (oracle-observed:
-    // all 50 hercules commits report tick 181). Go's order within the single
+    // all 50 hercules commits report tick 181). the reference implementation's order within the single
     // tick is map-iteration random; we keep deterministic walk order and let
     // the oracle's measured-variance canonicalization compare the sets.
     let last_tick = previous_tick;
@@ -212,7 +212,7 @@ pub fn burndown_timeseries_contribution(
 /// (`run --analyzers history/burndown --format ndjson`, no `--timeseries`,
 /// no `--head`), or `None` if the repository cannot be opened/walked.
 ///
-/// Reproduces the Go streaming NDJSON sink (`analyze.StreamingSink.WriteTC`):
+/// Reproduces the reference streaming NDJSON sink (`analyze.StreamingSink.WriteTC`):
 /// one `NDJSONLine{hash, tick, author_id, timestamp, analyzer, data}` per commit,
 /// where `data` is the burndown `CommitResult` carried as `TC.Data`. Unlike the
 /// time-series sibling this emits the full per-commit sparse `GlobalDeltas`
@@ -230,7 +230,7 @@ pub fn burndown_timeseries_contribution(
 /// Both the top-level `NDJSONLine` object (`hash, tick, author_id, timestamp,
 /// analyzer, data`) and the nested `data` `CommitResult` (`GlobalDeltas,
 /// PeopleDeltas, MatrixDeltas, FileDeltas, FileOwnership, LinesAdded,
-/// LinesRemoved`) preserve Go struct-declaration field order via struct-origin
+/// LinesRemoved`) preserve reference struct-declaration field order via struct-origin
 /// maps, exactly as `json.Marshal` of those structs. All bytes route through
 /// `cf-gojson`.
 pub fn burndown_record_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
@@ -239,7 +239,7 @@ pub fn burndown_record_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
 
-    // Window: `limit` NEWEST commits oldest-first, first-parent (Go
+    // Window: `limit` NEWEST commits oldest-first, first-parent (reference:
     // `gitlib.loadHistoryCommits`; burndown forces --first-parent).
     let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, true)?;
 
@@ -317,8 +317,8 @@ pub fn burndown_record_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 /// e.g. `--limit N --workers 1`): the line-survival "burndown" report over the
 /// oldest N commits.
 ///
-/// This is the REAL port of the Go streaming pipeline
-/// (`run.go initHistoryPipeline Reverse+FirstParent+Limit → RunStreaming →
+/// This is the REAL port of the reference streaming pipeline
+/// (`the reference `initHistoryPipeline` Reverse+FirstParent+Limit → RunStreaming →
 /// burndown.HistoryAnalyzer.Consume → Aggregator.Add (MergeNestedAdditive of
 /// per-commit GlobalDeltas) → ticksToReport (groupSparseHistory) →
 /// ComputeAllMetrics`). The per-commit consume machinery is shared with the
@@ -332,7 +332,7 @@ pub fn burndown_record_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 ///
 /// With the default config (`PeopleNumber == 0`, `TrackFiles == false`) the
 /// report carries only `GlobalHistory`, so `file_survival` / `developer_survival`
-/// are empty and `interactions` is nil — exactly the Go output shape. Bytes route
+/// are empty and `interactions` is nil — exactly the reference output shape. Bytes route
 /// through `cf-gojson` (compact, no trailing newline) byte-identically to
 /// `run/history_burndown.json`.
 pub fn burndown_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
@@ -343,7 +343,7 @@ pub fn burndown_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 /// Shared full-revwalk `history/burndown` report value (no `--head`): runs the
 /// general per-commit streaming pipeline once and returns the aggregated
 /// [`cf_analyzer_burndown::ComputedMetrics`], so every output format
-/// (json/yaml/bin) is an encoding of the SAME report value (Go
+/// (json/yaml/bin) is an encoding of the SAME report value (reference:
 /// `analyze.OutputHistoryResults`, which computes the per-leaf `ComputedMetrics`
 /// once and then marshals it per format). The json/yaml/bin wrappers
 /// ([`burndown_run_report`], [`burndown_run_report_yaml`],
@@ -356,7 +356,7 @@ pub fn burndown_run_metrics(
 }
 
 /// The aggregated products of one full-revwalk burndown run: the computed
-/// metrics plus the chart-rendering state the plot path needs (Go store
+/// metrics plus the chart-rendering state the plot path needs (reference store
 /// `ChartData`: the dense global history with rendering metadata).
 pub struct BurndownRunAggregate {
     /// The computed report metrics (json/yaml/bin source).
@@ -371,9 +371,9 @@ pub struct BurndownRunAggregate {
     /// Tick size, nanoseconds (24 h).
     pub tick_size_ns: i64,
     /// Aggregator end time (max TC timestamp = max committer time), Unix
-    /// nanoseconds (Go `agg.endTime.UnixNano()`).
+    /// nanoseconds.
     pub end_time_ns: i64,
-    /// Repository base name (Go `repoName()`: `filepath.Base(repo.Path())`,
+    /// Repository base name (the reference `repoName()`: `filepath.Base(repo.Path())`,
     /// empty for `""`/`"."`).
     pub project_name: String,
 }
@@ -394,7 +394,7 @@ pub fn burndown_run_aggregate(sub: &clap::ArgMatches) -> Option<BurndownRunAggre
     let sampling = 30i64;
     let tick_size_hours = 24i64;
 
-    // Window: `limit` NEWEST commits oldest-first, first-parent (Go
+    // Window: `limit` NEWEST commits oldest-first, first-parent (reference:
     // `gitlib.loadHistoryCommits`; burndown forces --first-parent).
     let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, true)?;
 
@@ -470,7 +470,7 @@ pub fn burndown_run_aggregate(sub: &clap::ArgMatches) -> Option<BurndownRunAggre
     })
 }
 
-/// Go burndown `repoName()`: the repository path's base name, or empty when
+/// reference burndown `repoName()`: the repository path's base name, or empty when
 /// the path is `""` or `"."`.
 pub fn repo_base_name(path: &str) -> String {
     if path.is_empty() || path == "." {
@@ -488,7 +488,7 @@ pub fn repo_base_name(path: &str) -> String {
 
 /// Full-revwalk `history/burndown --format yaml` report bytes (no `--head`),
 /// reusing the shared [`burndown_run_metrics`] report value wrapped in the
-/// `codefang (v2)` YAML envelope (Go `analyze.OutputHistoryResults` YAML branch).
+/// `codefang (v2)` YAML envelope (the reference `analyze.OutputHistoryResults` YAML branch).
 /// One report value, encoded by the serializer layer.
 pub fn burndown_run_report_yaml(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let metrics = burndown_run_metrics(sub)?;
@@ -503,7 +503,7 @@ pub fn burndown_run_report_yaml(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 
 /// Full-revwalk `history/burndown --format bin` report bytes (no `--head`),
 /// reusing the shared [`burndown_run_metrics`] report value wrapped in the CFB1
-/// binary envelope (Go `analyze.OutputHistoryResults` raw/binary branch). One
+/// binary envelope (the reference `analyze.OutputHistoryResults` raw/binary branch). One
 /// report value, encoded by the serializer layer.
 pub fn burndown_run_report_bin(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let metrics = burndown_run_metrics(sub)?;
@@ -543,7 +543,7 @@ impl LooseIdentity {
 /// `computeCommitLineStats` plus the full sparse `globalDeltas[cur][prev]` map.
 /// Reports `(cur, prev, delta)` aggregate into numerically-sorted nested
 /// `BTreeMap`s (so canceling `(tick,tick,+n)`/`(tick,tick,-n)` cells vanish, and
-/// the int map keys emit in Go's numeric order). `lines_added` sums positive
+/// the int map keys emit in the reference implementation's numeric order). `lines_added` sums positive
 /// `(tick, tick)` cells; `lines_removed` sums the magnitudes of negative cells in
 /// the commit-tick row.
 fn commit_sparse_stats(
@@ -570,7 +570,7 @@ fn commit_sparse_stats(
 
 /// Serializes the sparse `curTick -> prevTick -> delta` map as a struct-origin
 /// `GoValue` whose insertion order is the keys' STRING-LEXICOGRAPHIC order —
-/// matching Go's `json.Marshal` of `map[int]map[int]int64`, which renders int
+/// matching the reference implementation's `json.Marshal` of `map[int]map[int]int64`, which renders int
 /// keys as strings and sorts those strings lexicographically (encoding/json
 /// `mapEncoder`: `sv[i].ks < sv[j].ks`), e.g. `"130" < "2" < "7"`. Numeric
 /// BTreeMap order diverges whenever a row mixes keys of different digit counts
@@ -597,7 +597,7 @@ fn sparse_to_value(global: &BTreeMap<i64, BTreeMap<i64, i64>>) -> GoValue {
 }
 
 /// `computeCommitLineStats(cr, curTick)`: the `(cur, prev, delta)` reports are
-/// first aggregated into the sparse `globalDeltas[cur][prev]` cells (matching Go's
+/// first aggregated into the sparse `globalDeltas[cur][prev]` cells (matching the reference implementation's
 /// `incrementSparseHistory`), so a `(tick, tick, +n)` insert and a
 /// `(tick, tick, -n)` delete in the same cell cancel. Then, over the current
 /// tick's row, positive `(tick, tick)` cells sum into `lines_added` and negative
@@ -768,7 +768,7 @@ fn apply_modification(
     // Both valid: file.Len() must equal the diff's OldLinesOfCode (= From blob
     // line count); on mismatch, resetAndReinsert (full insertion).
     let old_lines = blob_from.count_lines().unwrap_or(0) as i64;
-    let tracked_len = tracked.get(&change.from.name).map(File::len).unwrap_or(0);
+    let tracked_len = tracked.get(&change.from.name).map_or(0, File::len);
     if tracked_len != old_lines {
         tracked.remove(&change.from.name);
         apply_insertion(repo, change, tracked, sink, tick);
@@ -789,7 +789,7 @@ fn apply_modification(
 /// runs flush any pending delete and advance the position.
 fn apply_diffs(file: &mut File, diffs: &[cf_godiff::Segment], tick: i64) {
     let mut position: i64 = 0;
-    // pending mirrors Go's `pending diffmatchpatch.Diff` (its op + line length).
+    // pending mirrors the reference implementation's `pending diffmatchpatch.Diff` (its op + line length).
     // An empty pending is represented by `None`.
     let mut pending: Option<(Op, i64)> = None;
 
@@ -825,7 +825,7 @@ fn apply_diffs(file: &mut File, diffs: &[cf_godiff::Segment], tick: i64) {
                 }
             }
             Op::Delete => {
-                // Go overwrites pending with the delete (no flush); after
+                // The reference implementation overwrites pending with the delete (no flush); after
                 // DiffCleanupMerge a delete is always followed by its insert or
                 // an equality, so a pending insert never precedes a delete.
                 pending = Some((Op::Delete, len));

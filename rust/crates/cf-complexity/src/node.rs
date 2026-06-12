@@ -1,16 +1,14 @@
 //! Minimal UAST node model used by the complexity analyzer.
 //!
-//! This mirrors the subset of `pkg/uast/pkg/node.Node` that the Go `complexity`
-//! analyzer reads: node type, token, roles, string props, children, and source
-//! positions, plus the traversal helpers (`VisitPreOrder`, `HasAnyType`,
-//! `HasAllRoles`, `HasAnyRole`) the analyzer calls. When the dedicated
-//! `cf-uast-node` crate lands, this module should be replaced by a re-export of
-//! `cf_uast_node::Node` (see crate todos).
+//! This covers exactly the subset of the UAST node surface the analyzer
+//! reads: node type, token, roles, string props, children, and source
+//! positions, plus the traversal helpers (pre-order visit, type/role
+//! predicates, type/role collection) the analyzer calls.
 
 use std::collections::BTreeMap;
 
-/// UAST node type string constants, mirroring `pkg/uast/pkg/node/node.go`.
-/// Reproduced verbatim (the byte values flow into reports via node types).
+/// UAST node type string constants. The byte values flow into reports via
+/// node types, so they are part of the report contract.
 pub mod uast {
     /// `File` root node type.
     pub const FILE: &str = "File";
@@ -50,7 +48,7 @@ pub mod uast {
     pub const CALL: &str = "Call";
 }
 
-/// UAST role string constants, mirroring `pkg/uast/pkg/node/node.go`.
+/// UAST role string constants.
 pub mod role {
     /// `Function` role.
     pub const FUNCTION: &str = "Function";
@@ -68,7 +66,7 @@ pub mod role {
     pub const RETURN: &str = "Return";
 }
 
-/// Source positions for a node. Mirrors `node.Positions`.
+/// Source positions for a node.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Positions {
     /// 1-based start line.
@@ -87,8 +85,6 @@ pub struct Positions {
 
 /// A UAST node: a typed tree node with an optional token, semantic roles,
 /// string-valued properties, ordered children, and optional source positions.
-///
-/// Mirrors the subset of `node.Node` consumed by the complexity analyzer.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Node {
     /// Node type, e.g. [`uast::FUNCTION`].
@@ -107,6 +103,7 @@ pub struct Node {
 
 impl Node {
     /// Creates a node of the given type with all other fields empty.
+    #[must_use]
     pub fn new(node_type: impl Into<String>) -> Self {
         Node {
             node_type: node_type.into(),
@@ -114,8 +111,8 @@ impl Node {
         }
     }
 
-    /// Creates an [`uast::IDENTIFIER`]-style node with a token, mirroring Go's
-    /// `node.NewNodeWithToken`.
+    /// Creates a node with a token (e.g. an [`uast::IDENTIFIER`]).
+    #[must_use]
     pub fn with_token(node_type: impl Into<String>, token: impl Into<String>) -> Self {
         Node {
             node_type: node_type.into(),
@@ -125,55 +122,63 @@ impl Node {
     }
 
     /// Builder: set children.
+    #[must_use]
     pub fn with_children(mut self, children: Vec<Node>) -> Self {
         self.children = children;
         self
     }
 
-    /// Builder: append a child (mirrors Go's `AddChild`).
+    /// Appends a child.
     pub fn add_child(&mut self, child: Node) {
         self.children.push(child);
     }
 
     /// Builder: set roles.
+    #[must_use]
     pub fn with_roles(mut self, roles: Vec<&str>) -> Self {
         self.roles = roles.into_iter().map(String::from).collect();
         self
     }
 
     /// Builder: insert one property.
+    #[must_use]
     pub fn with_prop(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.props.insert(key.into(), value.into());
         self
     }
 
     /// Builder: set source positions.
+    #[must_use]
     pub fn with_pos(mut self, pos: Positions) -> Self {
         self.pos = Some(pos);
         self
     }
 
     /// Looks up a string property by key.
+    #[must_use]
     pub fn prop(&self, key: &str) -> Option<&str> {
         self.props.get(key).map(String::as_str)
     }
 
-    /// Reports whether this node has any of the given types (`HasAnyType`).
+    /// Reports whether this node has any of the given types.
+    #[must_use]
     pub fn has_any_type(&self, types: &[&str]) -> bool {
         types.iter().any(|t| self.node_type == *t)
     }
 
-    /// Reports whether this node has all of the given roles (`HasAllRoles`).
+    /// Reports whether this node has all of the given roles.
+    #[must_use]
     pub fn has_all_roles(&self, roles: &[&str]) -> bool {
         roles.iter().all(|r| self.roles.iter().any(|own| own == r))
     }
 
-    /// Reports whether this node has any of the given roles (`HasAnyRole`).
+    /// Reports whether this node has any of the given roles.
+    #[must_use]
     pub fn has_any_role(&self, roles: &[&str]) -> bool {
         roles.iter().any(|r| self.roles.iter().any(|own| own == r))
     }
 
-    /// Visits this node and all descendants in pre-order (`VisitPreOrder`).
+    /// Visits this node and all descendants in pre-order.
     pub fn visit_pre_order<F: FnMut(&Node)>(&self, f: &mut F) {
         f(self);
         for child in &self.children {
@@ -181,8 +186,8 @@ impl Node {
         }
     }
 
-    /// Collects descendants (including `self`) whose type is in `types`,
-    /// mirroring `UASTTraverser.FindNodesByType` (pre-order).
+    /// Collects descendants (including `self`) whose type is in `types`, in
+    /// pre-order.
     pub fn find_nodes_by_type<'a>(&'a self, types: &[&str], out: &mut Vec<&'a Node>) {
         if self.has_any_type(types) {
             out.push(self);
@@ -192,8 +197,8 @@ impl Node {
         }
     }
 
-    /// Collects descendants (including `self`) having any of `roles`,
-    /// mirroring `UASTTraverser.FindNodesByRoles` (pre-order).
+    /// Collects descendants (including `self`) having any of `roles`, in
+    /// pre-order.
     pub fn find_nodes_by_roles<'a>(&'a self, roles: &[&str], out: &mut Vec<&'a Node>) {
         if self.has_any_role(roles) {
             out.push(self);

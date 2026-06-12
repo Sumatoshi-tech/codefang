@@ -1,14 +1,13 @@
-//! The comments analyzer, ported from `internal/analyzers/comments/comments.go`.
+//! The comments analyzer.
 //!
-//! Behaviour is a faithful translation of the Go implementation: it finds
-//! comment and function/method/class/interface/struct nodes, groups consecutive
-//! comments into blocks (sorted by start line), scores each block by its
-//! placement relative to the closest target, and computes aggregate metrics.
+//! Finds comment and function/method/class/interface/struct nodes, groups
+//! consecutive comments into blocks (sorted by start line), scores each block
+//! by its placement relative to the closest target, and computes aggregate
+//! metrics.
 //!
-//! Report building is routed through [`cf_gojson::GoValue`] using a *map-origin*
-//! [`cf_gojson::GoMap`] so the encoder byte-sorts keys at encode time, exactly
-//! reproducing Go's `Report = map[string]any` ordering (DESIGN §2.2). Nothing
-//! here uses `serde_json`.
+//! Report building is routed through [`cf_gojson::GoValue`] using a
+//! *map-origin* [`cf_gojson::GoMap`] so the encoder byte-sorts keys at encode
+//! time (report-format contract, DESIGN §2.2). Nothing here uses `serde_json`.
 
 use cf_gojson::{GoMap, GoValue, MapOrigin};
 use cf_uast_node::Node;
@@ -19,7 +18,7 @@ use crate::types::{
     FunctionInfo, FunctionReportItem,
 };
 
-/// Magic constants mirroring `comments.go`.
+/// Scoring constants (report contract).
 const SCORE_VALUE: f64 = 0.2;
 const GAP_THRESHOLD_HIGH: i64 = 2;
 const LEN_ARG_50: usize = 50;
@@ -28,7 +27,8 @@ const MAGIC_999: i64 = 999;
 const MAGIC_1000: i64 = 1000;
 const UNKNOWN_NAME: &str = "unknown";
 
-/// Error returned when analysis is given a nil root (Go `ErrNilRootNode`).
+/// Error returned when analysis is given no root. The error text is part of
+/// the CLI contract.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NilRootNode;
 
@@ -40,12 +40,12 @@ impl std::fmt::Display for NilRootNode {
 
 impl std::error::Error for NilRootNode {}
 
-/// The comments analyzer (Go `Analyzer`).
+/// The comments analyzer.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Analyzer;
 
 impl Analyzer {
-    /// Creates a new analyzer (Go `NewAnalyzer`).
+    /// Creates a new analyzer.
     pub fn new() -> Self {
         Analyzer
     }
@@ -65,10 +65,13 @@ impl Analyzer {
         CommentConfig::default_config()
     }
 
-    /// Performs comment analysis (Go `(*Analyzer).Analyze`).
+    /// Performs comment analysis.
     ///
-    /// Returns [`NilRootNode`] when `root` is `None`. With no comments found,
-    /// returns the empty result.
+    /// With no comments found, returns the empty result.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NilRootNode`] when `root` is `None`.
     pub fn analyze(&self, root: Option<&Node>) -> Result<GoValue, NilRootNode> {
         let root = root.ok_or(NilRootNode)?;
 
@@ -125,11 +128,10 @@ impl Analyzer {
         self.create_comment_blocks(&sorted)
     }
 
-    /// Sorts comments by start line. Mirrors Go's `sort.Slice` comparator: when
-    /// either node lacks a position the comparator returns `false` ("not less
-    /// than"); the equivalent stable-sort comparator returns `Equal`, preserving
-    /// input order, which matches the observable Go behaviour for well-formed
-    /// inputs (every comment node here carries a position).
+    /// Sorts comments by start line. When either node lacks a position the
+    /// comparator returns `Equal`, preserving input order — equivalent to the
+    /// reference comparator's "not less than" answer for well-formed inputs
+    /// (every comment node here carries a position).
     fn sort_comments_by_line<'a>(&self, comments: &[&'a Node]) -> Vec<&'a Node> {
         let mut sorted: Vec<&Node> = comments.to_vec();
         sorted.sort_by(|a, b| match (node_pos(a), node_pos(b)) {
@@ -229,8 +231,8 @@ impl Analyzer {
             .collect()
     }
 
-    /// Scores a block using its (start_line, end_line) span as a virtual
-    /// comment (Go `analyzeSingleComment` applied to the synthetic block node).
+    /// Scores a block using its (`start_line`, `end_line`) span as a single
+    /// virtual comment.
     fn analyze_virtual_block(
         &self,
         block: &CommentBlock,
@@ -278,8 +280,8 @@ impl Analyzer {
             .unwrap_or(-0.1)
     }
 
-    /// Finds the closest function/class to a comment span (Go
-    /// `findClosestTarget` + `calculateDistance`).
+    /// Finds the closest function/class to a comment span (see
+    /// [`calculate_distance`] for the asymmetric distance).
     fn find_closest_target<'a>(
         &self,
         comment_end: i64,
@@ -363,7 +365,7 @@ impl Analyzer {
         let functions_table = self.build_functions_table(functions, metrics);
         let function_summary_iface = self.build_function_summary_iface(metrics);
 
-        // Go `Report = map[string]any` => map-origin so cf-gojson byte-sorts keys.
+        // Dynamic report map => map-origin so cf-gojson byte-sorts keys.
         let mut m = GoMap::new(MapOrigin::Map);
         m.push("total_comments", GoValue::Int(metrics.total_comments));
         m.push("good_comments", GoValue::Int(metrics.good_comments));
@@ -484,7 +486,7 @@ impl Analyzer {
     }
 }
 
-// --- free helpers (mirror comments.go free functions) -----------------------
+// --- free helpers ------------------------------------------------------------
 
 fn has_good_comment(func_name: &str, details: &[CommentDetail]) -> bool {
     details
@@ -556,11 +558,11 @@ fn comment_assessment(is_good: bool) -> String {
 }
 
 fn truncate_comment_body(body: &str) -> String {
-    // Go truncates by byte length: len(body) > 50 => body[:47] + "...".
+    // Truncation is by BYTE length (report contract): len > 50 => first 47
+    // bytes + "...".
     if body.len() > LEN_ARG_50 {
-        // Mirror Go's byte slice body[:47]; back off to the nearest char
-        // boundary <= 47 so we never split a multi-byte sequence (Go would
-        // panic on that; comment tokens here are ASCII-dominant).
+        // Back off to the nearest char boundary <= 47 so we never split a
+        // multi-byte sequence; comment tokens here are ASCII-dominant.
         let mut end = 47;
         while end > 0 && !body.is_char_boundary(end) {
             end -= 1;
@@ -603,10 +605,8 @@ fn safe_div(a: f64, b: f64) -> f64 {
 }
 
 fn comment_message(score: f64) -> String {
-    // Mirrors common.ThresholdLabeler with high=0.8, medium=0.6, low=0.4 from
-    // aggregator.go. Label strings match report_section.go expectations exercised
-    // by the Go FormatReport tests ("Excellent comment quality and placement",
-    // "Fair comment quality").
+    // Threshold labeler with high=0.8, medium=0.6, low=0.4. The label strings
+    // are part of the report contract.
     if score >= 0.8 {
         "Excellent comment quality and placement".to_string()
     } else if score >= 0.6 {
@@ -644,9 +644,8 @@ fn node_token(n: &Node) -> &str {
 
 /// Returns `(start_line, end_line)` if the node carries a position.
 ///
-/// `cf_uast_node::Positions` stores lines as `u64`; the analyzer works in `i64`
-/// line space (matching Go's `int` after `safeconv.MustUintToInt`), so callers
-/// widen these directly.
+/// `cf_uast_node::Positions` stores lines as `u64`; the analyzer works in
+/// `i64` line space, so callers widen these directly.
 fn node_pos(n: &Node) -> Option<(u64, u64)> {
     n.pos.as_ref().map(|p| (p.start_line, p.end_line))
 }

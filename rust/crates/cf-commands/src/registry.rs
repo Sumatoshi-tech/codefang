@@ -1,7 +1,7 @@
 //! Minimal analyzer-registration interfaces that the command tree builds on.
 //!
 //! `cf-commands` is the analyzer-registration aggregation point (DESIGN §1 tier
-//! 8). In Go, `registerAnalyzerFlags` (`run.go`) iterates every analyzer's
+//! 8). In the reference implementation, `registerAnalyzerFlags` iterates every analyzer's
 //! `ListConfigurationOptions()` and registers one CLI flag per option. The
 //! analyzers themselves live in crates that are not yet building in this tree,
 //! so this module defines the **minimal contract** the flag builder needs —
@@ -20,10 +20,10 @@ use cf_pipeline::ConfigurationOption;
 
 /// Anything that can describe its configuration options as
 /// [`cf_pipeline::ConfigurationOption`]s — the Rust analogue of the relevant
-/// slice of Go's analyzer interface (`ListConfigurationOptions() []pipeline.ConfigurationOption`).
+/// slice of the reference implementation's analyzer interface (`ListConfigurationOptions() []pipeline.ConfigurationOption`).
 ///
 /// Used by [`crate::flags::register_analyzer_flags`] to build one clap flag per
-/// option, deduplicating by [`ConfigurationOption::flag`] exactly as Go's
+/// option, deduplicating by [`ConfigurationOption::flag`] exactly as the reference implementation's
 /// `registerAnalyzerFlags` does with its `registeredFlags` set.
 pub trait ConfigOptionProvider {
     /// Returns this provider's configuration options, in declaration order.
@@ -43,28 +43,17 @@ impl ConfigOptionProvider for &[ConfigurationOption] {
 }
 
 /// Errors raised while wiring analyzer flags into the command.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RegistrationError {
     /// A configuration option's declared kind did not match the type of its
-    /// default value (Go's `registerConfigFlag` silently skips this case via a
+    /// default value (the reference implementation's `registerConfigFlag` silently skips this case via a
     /// failed type assertion; we surface it so misconfiguration is visible).
+    #[error("configuration option {flag}: default value type mismatch")]
     DefaultTypeMismatch {
         /// The offending flag name.
         flag: String,
     },
 }
-
-impl core::fmt::Display for RegistrationError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            RegistrationError::DefaultTypeMismatch { flag } => {
-                write!(f, "configuration option {flag}: default value type mismatch")
-            }
-        }
-    }
-}
-
-impl std::error::Error for RegistrationError {}
 
 #[cfg(test)]
 mod tests {

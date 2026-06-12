@@ -1,25 +1,25 @@
 //! Static-analysis report computation for `static/complexity`.
 //!
-//! Ports the metric-computation + serialization view (`metrics.go`:
-//! `ParseReportData` → `ComputeAllMetrics` → `ComputedMetrics`) used by the
-//! static pipeline's `--format json|yaml|bin` captures. The streaming static
-//! framework (walk → per-file UAST parse → analyzer → stamp → aggregate) is
-//! reproduced by the caller; this module takes the aggregated, file-stamped
-//! per-function inputs and builds the exact [`cf_gojson::GoValue`] that Go's
-//! `ComputedMetrics` marshals to.
+//! Builds the aggregated metric view that the static pipeline's
+//! `--format json|yaml|bin` captures serialize. The streaming static framework
+//! (walk → per-file UAST parse → analyzer → stamp → aggregate) is reproduced
+//! by the caller; this module takes the aggregated, file-stamped per-function
+//! inputs and builds the exact [`cf_gojson::GoValue`] the report contract
+//! pins.
 //!
-//! Field/key ordering matches Go's `encoding/json`: the top-level struct and the
-//! per-function / aggregate structs keep declaration order (struct-origin maps),
-//! while `distribution` (a `map[string]int`) byte-sorts. `function_complexity`
-//! and `high_risk_functions` are ordered by Go's `sort.Slice` (pdqsort) over the
-//! aggregation-order input — see [`crate::gosort`].
+//! Field/key ordering follows the report-format contract: the top-level value
+//! and the per-function / aggregate values keep declaration order
+//! (struct-origin maps), while `distribution` (a string-keyed map) byte-sorts.
+//! `function_complexity` and `high_risk_functions` are ordered by the pinned
+//! unstable sort (pdqsort) over the aggregation-order input — see
+//! [`crate::gosort`].
 
 use crate::gosort::go_sort_slice;
 use cf_gojson::{GoMap, GoValue, MapOrigin};
 
-/// One function's aggregated, file-stamped complexity input (the parsed
-/// `FunctionData` the metric computers read). `source_file` / `language` /
-/// `directory` are stamped by the static pipeline.
+/// One function's aggregated, file-stamped complexity input.
+/// `source_file` / `language` / `directory` are stamped by the static
+/// pipeline.
 #[derive(Debug, Clone)]
 pub struct FunctionInput {
     /// Function name.
@@ -40,11 +40,12 @@ pub struct FunctionInput {
     pub lines_of_code: i64,
 }
 
-/// Aggregated report-level scalars (the parsed `ReportData` scalars, summed
-/// across files by the aggregator). Note: the Go aggregator stores
-/// `cognitive_complexity` / `nesting_depth` as float sums, which
-/// `parseReportScalars`'s `.(int)` assertion then drops to 0 — so the aggregate
-/// view always reports those two as 0.
+/// Aggregated report-level scalars (summed across files by the aggregator).
+///
+/// Note: the aggregation pipeline stores `cognitive_complexity` /
+/// `nesting_depth` as float sums, which the scalar-parsing step's strict int
+/// assertion then drops to 0 — so the aggregate view always reports those two
+/// as 0 (reference-implementation behavior, pinned by the differential gate).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ReportScalars {
     /// Total functions across all files.
@@ -59,7 +60,7 @@ pub struct ReportScalars {
     pub decision_points: i64,
 }
 
-// --- Thresholds (metrics.go) ---
+// --- Thresholds (report contract) ---
 const CYCLOMATIC_THRESHOLD_HIGH: i64 = 10;
 const CYCLOMATIC_THRESHOLD_MODERATE: i64 = 5;
 const COGNITIVE_THRESHOLD_HIGH: i64 = 15;
@@ -69,10 +70,9 @@ const NESTING_THRESHOLD_MODERATE: i64 = 3;
 const RISK_SCORE_CRITICAL: i64 = 5;
 const RISK_SCORE_HIGH: i64 = 3;
 
-/// Mirrors the aggregator's `buildComplexityMessage` (aggregator.go), which the
-/// static pipeline writes into the report `message` key consumed by the
-/// aggregate metric. Note this differs from the single-file analyzer's
-/// `getComplexityMessage` wording for the mid bands.
+/// The aggregate `message` text keyed by average complexity. Note this differs
+/// from the single-file analyzer's message wording for the mid bands; both
+/// texts are part of the report contract.
 fn build_complexity_message(score: f64) -> &'static str {
     if score <= 1.0 {
         "Excellent complexity - functions are simple and maintainable"
@@ -85,7 +85,6 @@ fn build_complexity_message(score: f64) -> &'static str {
     }
 }
 
-/// Mirrors `classifyFunctionRisk`.
 fn classify_function_risk(cyclomatic: i64, cognitive: i64, nesting: i64) -> &'static str {
     let mut score = 0;
     if cyclomatic >= CYCLOMATIC_THRESHOLD_HIGH {
@@ -114,7 +113,7 @@ fn classify_function_risk(cyclomatic: i64, cognitive: i64, nesting: i64) -> &'st
     }
 }
 
-/// Mirrors `metrics.RiskPriority` (CRITICAL < HIGH < MEDIUM < LOW).
+/// Risk sort priority (CRITICAL < HIGH < MEDIUM < LOW).
 fn risk_priority(level: &str) -> i32 {
     match level {
         "CRITICAL" => 0,
@@ -124,7 +123,7 @@ fn risk_priority(level: &str) -> i32 {
     }
 }
 
-/// Mirrors `classifyComplexityLevel`: distribution bucket label.
+/// Distribution bucket label for a cyclomatic value.
 fn classify_complexity_level(cyclomatic: i64) -> &'static str {
     if cyclomatic <= CYCLOMATIC_THRESHOLD_MODERATE {
         "simple"
@@ -135,7 +134,6 @@ fn classify_complexity_level(cyclomatic: i64) -> &'static str {
     }
 }
 
-// --- Health score (metrics.go) ---
 fn calculate_health_score(avg: f64) -> f64 {
     if avg <= 1.0 {
         100.0
@@ -148,26 +146,31 @@ fn calculate_health_score(avg: f64) -> f64 {
     }
 }
 
-/// Inserts a string field only when non-empty (Go `omitempty` for strings).
+/// Inserts a string field only when non-empty (`omitempty` semantics for
+/// strings).
 fn insert_omitempty_str(m: &mut GoMap, key: &str, value: &str) {
     if !value.is_empty() {
         m.insert(key, GoValue::Str(value.to_string()));
     }
 }
 
-/// Builds the full `ComputedMetrics` value tree (the bin/json payload root).
-///
-/// `functions` is the aggregation-order list (walk order × per-file analyzer
-/// order); the per-metric `sort.Slice` calls are applied here exactly as Go does.
-#[must_use]
-pub fn computed_metrics(functions: &[FunctionInput], scalars: &ReportScalars) -> GoValue {
-    // --- function_complexity: per-function with density + risk, sorted by
-    // cyclomatic desc via Go's pdqsort. ---
-    struct FcRow<'a> {
-        f: &'a FunctionInput,
-        density: f64,
-        risk: &'static str,
-    }
+/// A `function_complexity` row: a function with its density and risk level.
+struct FcRow<'a> {
+    f: &'a FunctionInput,
+    density: f64,
+    risk: &'static str,
+}
+
+/// A `high_risk_functions` row: a function with at least one issue.
+struct HrRow<'a> {
+    f: &'a FunctionInput,
+    risk: &'static str,
+    issues: Vec<&'static str>,
+}
+
+/// Builds `function_complexity`: per-function with density + risk, sorted by
+/// cyclomatic desc via the pinned pdqsort.
+fn build_function_complexity(functions: &[FunctionInput]) -> Vec<GoValue> {
     let mut fc: Vec<FcRow> = functions
         .iter()
         .map(|f| {
@@ -188,23 +191,27 @@ pub fn computed_metrics(functions: &[FunctionInput], scalars: &ReportScalars) ->
         a.f.cyclomatic_complexity > b.f.cyclomatic_complexity
     });
 
-    let mut fc_arr: Vec<GoValue> = Vec::with_capacity(fc.len());
-    for row in &fc {
-        let mut o = GoMap::new(MapOrigin::Struct);
-        o.insert("name", GoValue::Str(row.f.name.clone()));
-        insert_omitempty_str(&mut o, "source_file", &row.f.source_file);
-        insert_omitempty_str(&mut o, "language", &row.f.language);
-        insert_omitempty_str(&mut o, "directory", &row.f.directory);
-        o.insert("cyclomatic_complexity", GoValue::Int(row.f.cyclomatic_complexity));
-        o.insert("cognitive_complexity", GoValue::Int(row.f.cognitive_complexity));
-        o.insert("nesting_depth", GoValue::Int(row.f.nesting_depth));
-        o.insert("lines_of_code", GoValue::Int(row.f.lines_of_code));
-        o.insert("complexity_density", GoValue::Float(row.density));
-        o.insert("risk_level", GoValue::Str(row.risk.to_string()));
-        fc_arr.push(GoValue::Map(o));
-    }
+    fc.iter()
+        .map(|row| {
+            let mut o = GoMap::new(MapOrigin::Struct);
+            o.insert("name", GoValue::Str(row.f.name.clone()));
+            insert_omitempty_str(&mut o, "source_file", &row.f.source_file);
+            insert_omitempty_str(&mut o, "language", &row.f.language);
+            insert_omitempty_str(&mut o, "directory", &row.f.directory);
+            o.insert("cyclomatic_complexity", GoValue::Int(row.f.cyclomatic_complexity));
+            o.insert("cognitive_complexity", GoValue::Int(row.f.cognitive_complexity));
+            o.insert("nesting_depth", GoValue::Int(row.f.nesting_depth));
+            o.insert("lines_of_code", GoValue::Int(row.f.lines_of_code));
+            o.insert("complexity_density", GoValue::Float(row.density));
+            o.insert("risk_level", GoValue::Str(row.risk.to_string()));
+            GoValue::Map(o)
+        })
+        .collect()
+}
 
-    // --- distribution: map[string]int -> byte-sorted keys. ---
+/// Builds `distribution`: a string-keyed map (byte-sorted on encode) holding
+/// only the buckets with a non-zero count.
+fn build_distribution(functions: &[FunctionInput]) -> GoMap {
     let mut simple = 0i64;
     let mut moderate = 0i64;
     let mut complex = 0i64;
@@ -216,11 +223,6 @@ pub fn computed_metrics(functions: &[FunctionInput], scalars: &ReportScalars) ->
         }
     }
     let mut dist = GoMap::new(MapOrigin::Map);
-    // stats.Distribution returns a map with only the labels that occurred; all
-    // three buckets are present whenever any function falls into them. We always
-    // include the buckets that have a non-zero count plus the ones Go emits.
-    // stats.Distribution only adds a key when count > 0, but here every bucket is
-    // exercised on real input; match Go by inserting only non-zero buckets.
     if complex > 0 {
         dist.insert("complex", GoValue::Int(complex));
     }
@@ -230,13 +232,12 @@ pub fn computed_metrics(functions: &[FunctionInput], scalars: &ReportScalars) ->
     if simple > 0 {
         dist.insert("simple", GoValue::Int(simple));
     }
+    dist
+}
 
-    // --- high_risk_functions: functions with issues, sorted by risk priority. ---
-    struct HrRow<'a> {
-        f: &'a FunctionInput,
-        risk: &'static str,
-        issues: Vec<&'static str>,
-    }
+/// Builds `high_risk_functions`: functions with issues, sorted by risk
+/// priority via the pinned pdqsort.
+fn build_high_risk_functions(functions: &[FunctionInput]) -> Vec<GoValue> {
     let mut hr: Vec<HrRow> = Vec::new();
     for f in functions {
         let mut issues: Vec<&'static str> = Vec::new();
@@ -263,31 +264,34 @@ pub fn computed_metrics(functions: &[FunctionInput], scalars: &ReportScalars) ->
         risk_priority(a.risk) < risk_priority(b.risk)
     });
 
-    let mut hr_arr: Vec<GoValue> = Vec::with_capacity(hr.len());
-    for row in &hr {
-        let mut o = GoMap::new(MapOrigin::Struct);
-        o.insert("name", GoValue::Str(row.f.name.clone()));
-        insert_omitempty_str(&mut o, "source_file", &row.f.source_file);
-        insert_omitempty_str(&mut o, "language", &row.f.language);
-        insert_omitempty_str(&mut o, "directory", &row.f.directory);
-        o.insert("cyclomatic_complexity", GoValue::Int(row.f.cyclomatic_complexity));
-        o.insert("cognitive_complexity", GoValue::Int(row.f.cognitive_complexity));
-        o.insert("risk_level", GoValue::Str(row.risk.to_string()));
-        o.insert(
-            "issues",
-            GoValue::Array(row.issues.iter().map(|s| GoValue::Str((*s).to_string())).collect()),
-        );
-        hr_arr.push(GoValue::Map(o));
-    }
+    hr.iter()
+        .map(|row| {
+            let mut o = GoMap::new(MapOrigin::Struct);
+            o.insert("name", GoValue::Str(row.f.name.clone()));
+            insert_omitempty_str(&mut o, "source_file", &row.f.source_file);
+            insert_omitempty_str(&mut o, "language", &row.f.language);
+            insert_omitempty_str(&mut o, "directory", &row.f.directory);
+            o.insert("cyclomatic_complexity", GoValue::Int(row.f.cyclomatic_complexity));
+            o.insert("cognitive_complexity", GoValue::Int(row.f.cognitive_complexity));
+            o.insert("risk_level", GoValue::Str(row.risk.to_string()));
+            o.insert(
+                "issues",
+                GoValue::Array(row.issues.iter().map(|s| GoValue::Str((*s).to_string())).collect()),
+            );
+            GoValue::Map(o)
+        })
+        .collect()
+}
 
-    // --- aggregate. ---
+/// Builds the `aggregate` struct value.
+fn build_aggregate(scalars: &ReportScalars) -> GoMap {
     let mut agg = GoMap::new(MapOrigin::Struct);
     agg.insert("total_functions", GoValue::Int(scalars.total_functions));
     agg.insert("average_complexity", GoValue::Float(scalars.average_complexity));
     agg.insert("max_complexity", GoValue::Int(scalars.max_complexity));
     agg.insert("total_complexity", GoValue::Int(scalars.total_complexity));
     // The aggregator's float-summed cognitive/nesting are dropped to 0 by the
-    // int type assertion in parseReportScalars (see ReportScalars docs).
+    // strict int assertion in scalar parsing (see ReportScalars docs).
     agg.insert("cognitive_complexity", GoValue::Int(0));
     agg.insert("nesting_depth", GoValue::Int(0));
     agg.insert("decision_points", GoValue::Int(scalars.decision_points));
@@ -299,12 +303,26 @@ pub fn computed_metrics(functions: &[FunctionInput], scalars: &ReportScalars) ->
         "message",
         GoValue::Str(build_complexity_message(scalars.average_complexity).to_string()),
     );
+    agg
+}
 
-    // --- root struct. ---
+/// Builds the full computed-metrics value tree (the bin/json payload root).
+///
+/// `functions` is the aggregation-order list (walk order × per-file analyzer
+/// order); the per-metric unstable sorts are applied here exactly as the
+/// report contract pins them.
+#[must_use]
+pub fn computed_metrics(functions: &[FunctionInput], scalars: &ReportScalars) -> GoValue {
     let mut root = GoMap::new(MapOrigin::Struct);
-    root.insert("function_complexity", GoValue::Array(fc_arr));
-    root.insert("distribution", GoValue::Map(dist));
-    root.insert("high_risk_functions", GoValue::Array(hr_arr));
-    root.insert("aggregate", GoValue::Map(agg));
+    root.insert(
+        "function_complexity",
+        GoValue::Array(build_function_complexity(functions)),
+    );
+    root.insert("distribution", GoValue::Map(build_distribution(functions)));
+    root.insert(
+        "high_risk_functions",
+        GoValue::Array(build_high_risk_functions(functions)),
+    );
+    root.insert("aggregate", GoValue::Map(build_aggregate(scalars)));
     GoValue::Map(root)
 }

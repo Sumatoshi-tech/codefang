@@ -1,8 +1,7 @@
-//! Burndown matrix core data model: Hercules-style line-survival treaps.
+//! Burndown matrix core data model: line-survival treaps.
 //!
-//! This crate is the Rust port of the Go package `internal/burndown`. It
-//! provides file-level line-interval tracking used by the burndown analyzer to
-//! compute line-survival ("burndown") matrices.
+//! File-level line-interval tracking used by the burndown analyzer to compute
+//! line-survival ("burndown") matrices.
 //!
 //! # Overview
 //!
@@ -18,16 +17,15 @@
 //! - [`File::query_range`] answers line-ownership overlap queries via a lazily
 //!   built interval tree.
 //!
-//! # Byte-identity note
+//! # Compatibility note
 //!
-//! The Go `internal/burndown` package performs no report serialization itself
-//! (it imports no `encoding/json` / `yaml`); it only exposes a debug
+//! This crate performs no report serialization itself; it only exposes a debug
 //! [`File::dump`] string and [`Segment`] values that the burndown analyzer
-//! serializes downstream. Per the rewrite design, any MACHINE-format report
-//! bytes must be produced by the shared `cf-gojson` / `cf-goyaml` crates — so
-//! this crate intentionally has no serialization dependency, and the burndown
-//! analyzer crate (`cf-analyzer-burndown`, not yet ported) is responsible for
-//! routing [`Segment`] / matrix data through `cf-gojson`.
+//! serializes downstream. Machine-format report bytes must be produced by the
+//! shared `cf-gojson` / `cf-goyaml` crates (the byte contract is pinned by
+//! `rust/tests/compat`), so this crate intentionally has no serialization
+//! dependency: `cf-analyzer-burndown` is responsible for routing [`Segment`] /
+//! matrix data through `cf-gojson`.
 
 #![forbid(unsafe_code)]
 
@@ -42,29 +40,24 @@ pub use range_query::OwnershipSegment;
 pub use timeline::{DeltaReport, TimeKey, Timeline};
 pub use timeline_treap::{Segment, TreapTimeline};
 
-/// The value of the last leaf in the tree (`math.MaxUint32`).
-///
-/// Mirrors the Go constant `TreeEnd`.
+/// The value of the last leaf in the tree (the `u32::MAX` sentinel).
 pub const TREE_END: TimeKey = u32::MAX;
 
 /// The binary power corresponding to the maximum tick that can be stored.
-///
-/// Mirrors the Go constant `TreeMaxBinPower`.
 pub const TREE_MAX_BIN_POWER: u32 = 14;
 
 /// The special "day" which disables status updates; used in [`File::merge`].
 ///
-/// Equals `(1 << TREE_MAX_BIN_POWER) - 1`. Mirrors the Go constant
-/// `TreeMergeMark`.
+/// Equals `(1 << TREE_MAX_BIN_POWER) - 1`.
 pub const TREE_MERGE_MARK: TimeKey = (1 << TREE_MAX_BIN_POWER) - 1;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// The exported constants match the Go `internal/burndown` constants.
+    /// The exported constants match the reference-implementation values.
     #[test]
-    fn constants_match_go() {
+    fn constants_are_stable() {
         assert_eq!(TREE_END, u32::MAX);
         assert_eq!(TREE_MAX_BIN_POWER, 14);
         assert_eq!(TREE_MERGE_MARK, 16383);

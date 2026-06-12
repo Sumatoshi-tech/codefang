@@ -7,26 +7,24 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
-# cf-sentiment — commit-comment sentiment analysis (Go id: history/sentiment).
-# Ports internal/analyzers/sentiment: VADER (govader @ f6505c8d) + multilingual
-# lexicon + SE-domain neutralizers, aggregated per tick over commit history.
+# cf-sentiment — commit-comment sentiment analysis (analyzer id: history/sentiment).
+# VADER scoring + multilingual lexicon + SE-domain neutralizers, aggregated per
+# tick over commit history.
 #
-# Report serialization routes exclusively through cf-gojson / cf-goyaml so the
-# machine-format bytes match Go's encoding/json + yaml.v3 byte-for-byte
-# (DESIGN §2). VADER scores and the multilingual lexicon are reproduced exactly
-# (DESIGN §2.6, rule 7); the base VADER lexicon is vendored byte-for-byte under
-# data/ (copied from the govader module's rawdata/).
+# Compatibility: machine-report bytes are pinned against the reference binary by
+# rust/tests/compat. The base VADER lexicon is vendored byte-for-byte under
+# data/.
 
 [dependencies]
-# Go encoding/json-byte-compatible encoder (DESIGN §2.2). NEVER serde_json.
-# Report types expose `to_go_value()`; YAML routes the same GoValue tree through
-# cf-goyaml once that crate lands.
+# Report-format JSON encoder (compatibility contract). NEVER serde_json for
+# report output. Report types expose `to_go_value()`; YAML routes the same
+# GoValue tree through cf-goyaml.
 cf-gojson = { path = "../cf-gojson" }
-# Mean/stddev/percent helpers (pkg/alg/stats). to_percent feeds the trend
-# change-percent float in machine output, so it mirrors Go op-for-op.
+# Mean/stddev/percent helpers. to_percent feeds the trend change-percent float
+# in machine output, so its arithmetic is part of the report contract.
 cf-alg-stats = { path = "../cf-alg-stats" }
-# Embedded multilingual Chen-Skiena lexicon (data-parity crate, DESIGN §2.6).
-# Injected into VADER's lexicon for 32+ language scoring.
+# Embedded multilingual Chen-Skiena lexicon (data-parity crate), injected into
+# VADER's lexicon for 32+ language scoring.
 cf-sentiment-lexicons = { path = "../cf-sentiment-lexicons" }
 
 [lints.clippy]

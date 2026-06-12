@@ -1,29 +1,19 @@
 //! Framework integration sketch (NOT YET IMPLEMENTED).
 //!
-//! The streaming side of the Go analyzer — `history.go` (`Consume`/`Fork`/
-//! `Merge`/`SnapshotPlumbing`), `aggregator.go` (`Aggregator`, `SpillStore`,
-//! `TicksToReport`, `filterFilesByLastCommit`), `checkpoint.go`,
-//! `hibernation.go`, `store_writer.go`, `store_reader.go` — depends on framework
-//! crates that are not yet stable in the Rust tree:
-//!
-//! * `cf-analyze` — `Report`, `TC`, `TICK`, `BaseHistoryAnalyzer`,
-//!   `MergeTracker`, `Aggregator`, `ReportReader`/`ReportWriter`,
-//!   `CommitTimeSeriesProvider`, `BuildTickBounds`, `TickBounds`.
-//! * `cf-analyzers-plumbing` — `IdentityDetector`, `TreeDiffAnalyzer`,
-//!   `LinesStatsCalculator`, `BlobCacheAnalyzer`, `ChangeRouter`, `Snapshot`.
-//! * `cf-spillstore` — `SpillStore<FileHistory>`.
-//! * `cf-gitlib` — `Repository`, `Hash`, `Change`/`Changes`, `CachedBlob`,
-//!   `LookupCommit`, `FilesContext`, `ReleaseNativeMemory` (git2-backed).
-//! * `cf-checkpoint` / `cf-persist` — `CheckpointHelper`, `JSONCodec`.
+//! The streaming side of the analyzer — consume/fork/merge over the commit
+//! walk, the aggregator and spill store, checkpointing, hibernation, and the
+//! store writers/readers — depends on framework crates that are not yet stable
+//! in this tree (`cf-analyze`, `cf-analyzers-plumbing`, `cf-spillstore`,
+//! `cf-gitlib`, `cf-checkpoint`/`cf-persist`).
 //!
 //! Once those crates expose stable interfaces, the analyzer struct, aggregator,
-//! checkpoint state and store writers should be ported one-to-one from the Go
-//! source. The minimal contracts the port will need are sketched below so
-//! downstream registration code can reference them.
+//! checkpoint state and store writers can be completed here. The minimal
+//! contracts that work will need are sketched below so downstream registration
+//! code can reference them.
 
 use crate::metrics::FileHistory;
 
-/// Store record kinds written by the analyzer (`store_writer.go`).
+/// Store record kinds written by the analyzer.
 pub mod store_kinds {
     /// Per-file `FileChurnData` records (sorted by churn score).
     pub const FILE_CHURN: &str = "file_churn";
@@ -33,16 +23,16 @@ pub mod store_kinds {
     pub const COMPOSITION: &str = "composition";
 }
 
-/// Checkpoint basename (`checkpointBasename`).
+/// Checkpoint basename.
 pub const CHECKPOINT_BASENAME: &str = "file_history_state";
 
-/// Estimated working-state bytes per commit (`workingStateSize`).
+/// Estimated working-state bytes per commit.
 pub const WORKING_STATE_SIZE: i64 = 2 * 1024;
-/// Estimated TC payload bytes per commit (`avgTCSize`).
+/// Estimated TC payload bytes per commit.
 pub const AVG_TC_SIZE: i64 = 10 * 1024;
 
-/// Merges two [`FileHistory`] values (`mergeFileHistory` in `aggregator.go`):
-/// sums per-author line stats and appends hash lists.
+/// Merges two [`FileHistory`] values: sums per-author line stats and appends
+/// hash lists.
 ///
 /// This is framework-adjacent but pure, so it is implemented here and unit
 /// tested; the streaming aggregator will call it.
@@ -50,7 +40,7 @@ pub const AVG_TC_SIZE: i64 = 10 * 1024;
 pub fn merge_file_history(mut existing: FileHistory, incoming: FileHistory) -> FileHistory {
     for (author, stats) in incoming.people {
         let old = existing.people.entry(author).or_default();
-        *old = old.add(stats);
+        *old = *old + stats;
     }
     existing.hashes.extend(incoming.hashes);
     existing

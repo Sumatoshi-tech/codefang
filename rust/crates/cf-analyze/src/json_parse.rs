@@ -6,7 +6,7 @@
 //! byte-identity relevant — only re-encoding is — so a small standards-compliant
 //! parser into [`GoValue`] suffices. Integers that fit in `i64`/`u64` are kept
 //! as [`GoValue::Int`]/[`GoValue::Uint`]; anything with a `.`/`e` becomes
-//! [`GoValue::Float`], matching how Go's `json.Unmarshal` into `any` would later
+//! [`GoValue::Float`], matching how the reference decoder (`json.Unmarshal` into `any`) would later
 //! re-marshal (the reference decoder uses doubles for all numbers, but report values
 //! round-trip through this typed model; integer preservation keeps re-encoded
 //! counts free of spurious decimals).

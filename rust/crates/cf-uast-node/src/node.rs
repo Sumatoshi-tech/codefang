@@ -1,23 +1,18 @@
 //! Core [`Node`] / [`Positions`] types, the [`Builder`], constructors, and the
-//! structural mutation/query methods. Ported from `node.go`.
+//! structural mutation/query methods.
 
 use sha1::{Digest, Sha1};
 
 /// A type label for a node (e.g. `"Function"`, `"Identifier"`).
-///
-/// Go declares `type Type string`; we use a transparent newtype so it keeps the
-/// same comparison/ordering semantics while staying distinct from [`Role`].
 pub type Type = String;
 
 /// A syntactic/semantic label for a node (see [`roles`]).
-///
-/// Go declares `type Role string`; ported as a plain `String`.
 pub type Role = String;
 
-/// UAST node type constants. Ported verbatim from `node.go`'s `UAST*` block.
+/// UAST node type constants.
 ///
 /// These are re-exported at the crate root so callers can write
-/// `cf_uast_node::UAST_FUNCTION` analogous to Go's `node.UASTFunction`.
+/// `cf_uast_node::UAST_FUNCTION` without the module path.
 pub mod uast_types {
     /// `"File"`.
     pub const UAST_FILE: &str = "File";
@@ -139,7 +134,7 @@ pub mod uast_types {
     pub const UAST_SYNTHETIC: &str = "Synthetic";
 }
 
-/// Role constants for syntactic and semantic labeling. Ported from `node.go`.
+/// Role constants for syntactic and semantic labeling.
 pub mod roles {
     /// `"Function"`.
     pub const ROLE_FUNCTION: &str = "Function";
@@ -250,7 +245,7 @@ pub mod roles {
 /// The byte and line/col offsets for a node.
 ///
 /// All fields are 1-based except `start_offset`/`end_offset`, which are byte
-/// offsets. Mirrors Go's `Positions` struct (`uint` fields, `omitempty` JSON).
+/// offsets.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Positions {
     /// 1-based start line.
@@ -269,7 +264,6 @@ pub struct Positions {
 
 /// The canonical UAST node structure.
 ///
-/// Field meanings mirror the Go `Node` struct exactly:
 /// - `id`: unique/stable node identifier (optional; raw bytes — see
 ///   [`Node::assign_stable_ids`]).
 /// - `node_type`: node type (e.g. `"Function"`, `"Identifier"`).
@@ -279,10 +273,9 @@ pub struct Positions {
 /// - `props`: additional, language-specific properties.
 /// - `children`: child nodes (ordered).
 ///
-/// Note: Go stores `ID` as a `string` even though [`Node::assign_stable_ids`]
-/// fills it with 8 raw SHA-1 bytes (not valid UTF-8). To reproduce that exactly
-/// without lossy conversion, `id` is `Vec<u8>` here; [`Node::to_map`] hex-encodes
-/// it just like Go's `fmt.Sprintf("%x", nodeID)`.
+/// Note: [`Node::assign_stable_ids`] fills `id` with 8 raw SHA-1 bytes (not
+/// valid UTF-8), so `id` is `Vec<u8>` rather than a string; [`Node::to_map`]
+/// hex-encodes it for serialization (report-format contract).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Node {
     /// Unique node identifier (raw bytes; empty means "no ID").
@@ -298,16 +291,16 @@ pub struct Node {
     /// Additional language-specific properties.
     pub props: std::collections::HashMap<String, String>,
     /// Child nodes, in order.
-    pub children: Vec<Node>,
+    pub children: Vec<Self>,
 }
 
-/// Initial capacity for the children slice (`initialChildCap` in Go).
+/// Initial capacity for the children slice.
 const INITIAL_CHILD_CAP: usize = 4;
 
-/// SHA-1 prefix length used for stable IDs (`hashBufSize` in Go).
+/// SHA-1 prefix length used for stable IDs.
 const HASH_BUF_SIZE: usize = 8;
 
-/// A fluent builder for [`Node`]. Mirrors Go's `Builder`.
+/// A fluent builder for [`Node`].
 #[derive(Debug, Default)]
 pub struct Builder {
     node: Node,
@@ -315,47 +308,55 @@ pub struct Builder {
 
 impl Builder {
     /// Creates a new builder around a zero-valued node.
+    #[must_use]
     pub fn new() -> Self {
-        Builder { node: Node::default() }
+        Self { node: Node::default() }
     }
 
     /// Sets the node ID (raw bytes).
+    #[must_use]
     pub fn with_id(mut self, id: impl Into<Vec<u8>>) -> Self {
         self.node.id = id.into();
         self
     }
 
     /// Sets the node type.
+    #[must_use]
     pub fn with_type(mut self, node_type: impl Into<Type>) -> Self {
         self.node.node_type = node_type.into();
         self
     }
 
     /// Sets the node token.
+    #[must_use]
     pub fn with_token(mut self, token: impl Into<String>) -> Self {
         self.node.token = token.into();
         self
     }
 
     /// Sets the node roles.
+    #[must_use]
     pub fn with_roles(mut self, roles: Vec<Role>) -> Self {
         self.node.roles = roles;
         self
     }
 
     /// Sets the node position.
-    pub fn with_position(mut self, pos: Option<Positions>) -> Self {
+    #[must_use]
+    pub const fn with_position(mut self, pos: Option<Positions>) -> Self {
         self.node.pos = pos;
         self
     }
 
     /// Sets the node properties.
+    #[must_use]
     pub fn with_props(mut self, props: std::collections::HashMap<String, String>) -> Self {
         self.node.props = props;
         self
     }
 
     /// Consumes the builder and returns the node. Children are left empty.
+    #[must_use]
     pub fn build(self) -> Node {
         self.node
     }
@@ -363,7 +364,6 @@ impl Builder {
 
 impl Node {
     /// Creates a new node with all leaf fields set (children left empty).
-    /// Mirrors Go's `node.New(...)`.
     pub fn new(
         id: impl Into<Vec<u8>>,
         node_type: impl Into<Type>,
@@ -371,7 +371,7 @@ impl Node {
         roles: Vec<Role>,
         pos: Option<Positions>,
         props: std::collections::HashMap<String, String>,
-    ) -> Node {
+    ) -> Self {
         Builder::new()
             .with_id(id)
             .with_type(node_type)
@@ -382,18 +382,18 @@ impl Node {
             .build()
     }
 
-    /// Creates a node with a type and token (`node.NewNodeWithToken`).
-    pub fn with_token(node_type: impl Into<Type>, token: impl Into<String>) -> Node {
-        Node::new(Vec::new(), node_type, token, Vec::new(), None, Default::default())
+    /// Creates a node with a type and token.
+    pub fn with_token(node_type: impl Into<Type>, token: impl Into<String>) -> Self {
+        Self::new(Vec::new(), node_type, token, Vec::new(), None, std::collections::HashMap::default())
     }
 
-    /// Creates a literal node (`node.NewLiteralNode`).
-    pub fn literal(token: impl Into<String>) -> Node {
-        Node::with_token(uast_types::UAST_LITERAL, token)
+    /// Creates a literal node (type [`uast_types::UAST_LITERAL`]).
+    pub fn literal(token: impl Into<String>) -> Self {
+        Self::with_token(uast_types::UAST_LITERAL, token)
     }
 
-    /// Appends a child node. Mirrors Go's `AddChild` (lazy slice init).
-    pub fn add_child(&mut self, child: Node) {
+    /// Appends a child node (the children slice is allocated lazily).
+    pub fn add_child(&mut self, child: Self) {
         if self.children.is_empty() {
             self.children.reserve(INITIAL_CHILD_CAP);
         }
@@ -401,10 +401,8 @@ impl Node {
     }
 
     /// Removes the first child structurally equal to `child`.
-    /// Returns `true` if one was removed. Mirrors Go's `RemoveChild` (which
-    /// compares by pointer; here we compare by structural equality since Rust
-    /// `Node`s are values).
-    pub fn remove_child(&mut self, child: &Node) -> bool {
+    /// Returns `true` if one was removed.
+    pub fn remove_child(&mut self, child: &Self) -> bool {
         if let Some(idx) = self.children.iter().position(|c| c == child) {
             self.children.remove(idx);
             return true;
@@ -413,8 +411,8 @@ impl Node {
     }
 
     /// Replaces the first child structurally equal to `old` with `replacement`.
-    /// Returns `true` if a replacement happened. Mirrors Go's `ReplaceChild`.
-    pub fn replace_child(&mut self, old: &Node, replacement: Node) -> bool {
+    /// Returns `true` if a replacement happened.
+    pub fn replace_child(&mut self, old: &Self, replacement: Self) -> bool {
         if let Some(idx) = self.children.iter().position(|c| c == old) {
             self.children[idx] = replacement;
             return true;
@@ -422,7 +420,8 @@ impl Node {
         false
     }
 
-    /// Returns `true` if the node has any of the given roles. Mirrors `HasAnyRole`.
+    /// Returns `true` if the node has any of the given roles.
+    #[must_use]
     pub fn has_any_role(&self, roles: &[&str]) -> bool {
         if self.roles.is_empty() {
             return false;
@@ -430,7 +429,8 @@ impl Node {
         roles.iter().any(|r| self.roles.iter().any(|nr| nr == r))
     }
 
-    /// Returns `true` if the node has all of the given roles. Mirrors `HasAllRoles`.
+    /// Returns `true` if the node has all of the given roles.
+    #[must_use]
     pub fn has_all_roles(&self, roles: &[&str]) -> bool {
         if self.roles.is_empty() {
             return false;
@@ -438,18 +438,20 @@ impl Node {
         roles.iter().all(|r| self.roles.iter().any(|nr| nr == r))
     }
 
-    /// Returns `true` if the node's type is any of the given types. Mirrors `HasAnyType`.
+    /// Returns `true` if the node's type is any of the given types.
+    #[must_use]
     pub fn has_any_type(&self, types: &[&str]) -> bool {
         types.iter().any(|t| self.node_type == *t)
     }
 
     /// Assigns a stable, content-addressed ID to every node in the tree.
     ///
-    /// Reproduces Go's `AssignStableIDs` / `assignStableIDRecursive` byte-for-byte:
-    /// for each node a SHA-1 digest is computed over the node type, token, the
-    /// six little-endian `u64` position fields (only when a position is present),
-    /// each role string, and — after recursing into children first — each child's
-    /// already-assigned ID. The node's ID becomes the first 8 bytes of the digest.
+    /// The digest layout is a frozen identity contract (pinned by the
+    /// differential gate): for each node a SHA-1 digest is computed over the
+    /// node type, token, the six little-endian `u64` position fields (only when
+    /// a position is present), each role string, and — after recursing into
+    /// children first — each child's already-assigned ID. The node's ID becomes
+    /// the first 8 bytes of the digest.
     pub fn assign_stable_ids(&mut self) {
         let mut hasher = Sha1::new();
         hasher.update(self.node_type.as_bytes());
@@ -480,11 +482,12 @@ impl Node {
         self.id = digest[..HASH_BUF_SIZE].to_vec();
     }
 
-    /// Returns the `Node{...}` debug string used by Go's `String()` method.
+    /// Returns the canonical `Node{...}` debug string.
     ///
-    /// Reproduces `nodeString`: `Node{Type:<t>[,Token:<tok>][,Roles:[a b]]
-    /// [,Props:map[...]][,Children:<n>]}`. The `Props` rendering matches Go's
-    /// `fmt.Sprintf("%v", map)` which prints `map[k:v k2:v2]` with keys sorted.
+    /// Format: `Node{Type:<t>[,Token:<tok>][,Roles:[a b]]
+    /// [,Props:map[...]][,Children:<n>]}`. The `Props` rendering is
+    /// `map[k:v k2:v2]` with keys sorted (reference-implementation format).
+    #[must_use]
     pub fn to_display_string(&self) -> String {
         let mut buf = String::new();
         buf.push_str("Node{");
@@ -508,8 +511,8 @@ impl Node {
         }
 
         if !self.props.is_empty() {
-            // Go: fmt.Fprintf(buf, ",Props:%v", props) => "map[k:v k2:v2]" with
-            // keys in sorted order (Go's fmt sorts map keys since Go 1.12).
+            // Props render as "map[k:v k2:v2]" with keys in sorted order
+            // (reference-implementation format).
             buf.push_str(",Props:map[");
             let mut keys: Vec<&String> = self.props.keys().collect();
             keys.sort();
@@ -565,7 +568,6 @@ mod tests {
 
     #[test]
     fn add_child_appends() {
-        // Mirrors Go TestNode_AddChild.
         let mut n = Node::with_token("File", "");
         n.add_child(Node::with_token("Function", ""));
         assert_eq!(n.children.len(), 1);
@@ -573,7 +575,6 @@ mod tests {
 
     #[test]
     fn remove_child_removes_first_match() {
-        // Mirrors Go TestNode_RemoveChild.
         let child1 = Node::with_token("Function", "a");
         let child2 = Node::with_token("Function", "b");
         let mut root = Builder::new()
@@ -617,8 +618,7 @@ mod tests {
     }
 
     #[test]
-    fn display_matches_go_format() {
-        // Mirrors Go TestNode_String.
+    fn display_matches_reference_format() {
         assert_eq!(
             Node::with_token("Function", "foo").to_display_string(),
             "Node{Type:Function,Token:foo}"

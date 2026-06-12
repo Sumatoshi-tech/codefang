@@ -1,24 +1,24 @@
-//! Comment sentiment scoring. Direct port of `scorer.go`.
+//! Comment sentiment scoring.
 //!
-//! Wraps the [VADER engine](crate::vader) with the SE-domain neutralizers and
-//! length weighting from the Go analyzer. VADER compound scores feed machine
-//! reports, so every float here mirrors Go operation-for-operation (DESIGN §2.6,
-//! rule 7).
+//! Wraps the [VADER engine](crate::vader) with SE-domain neutralizers and
+//! comment-length weighting. VADER compound scores feed machine reports, so
+//! every float operation here is part of the report contract (pinned by the
+//! differential gate).
 
 use std::sync::OnceLock;
 
 use crate::vader::SentimentIntensityAnalyzer;
 
-/// VADER `[-1,1]` → our `[0,1]` mapping divisor. Mirrors `vaderCompoundRange`.
+/// VADER `[-1,1]` → our `[0,1]` mapping divisor.
 const VADER_COMPOUND_RANGE: f64 = 2.0;
 
-/// Default SE-domain neutralizer weight. Mirrors `neutralizerWeight`.
+/// Default SE-domain neutralizer weight.
 pub const NEUTRALIZER_WEIGHT: f64 = 0.8;
 
-/// Default comment-length weight cap. Mirrors `maxWeightRatio`.
+/// Default comment-length weight cap.
 pub const MAX_WEIGHT_RATIO: f64 = 3.0;
 
-/// Configurable parameters for sentiment scoring. Mirrors `ScorerOptions`.
+/// Configurable parameters for sentiment scoring.
 #[derive(Debug, Clone, Copy)]
 pub struct ScorerOptions {
     /// How strongly SE-domain adjustments apply (`0`..`1`).
@@ -28,7 +28,6 @@ pub struct ScorerOptions {
 }
 
 impl Default for ScorerOptions {
-    /// Mirrors `DefaultScorerOptions`.
     fn default() -> Self {
         Self {
             neutralizer_weight: NEUTRALIZER_WEIGHT,
@@ -37,12 +36,12 @@ impl Default for ScorerOptions {
     }
 }
 
-/// The process-wide VADER analyzer with multilingual lexicons injected.
+/// The process-wide VADER analyzer with multilingual lexicons injected
+/// (a lazily-initialized singleton).
 ///
-/// Mirrors Go's `vaderOnce` / `getVaderAnalyzer` (a lazily-initialized
-/// singleton). The lexicon injection is byte-deterministic regardless of
-/// initialization order because only missing, non-ASCII words are added and the
-/// merge target (a hash map) is keyed by word, not insertion order.
+/// The lexicon injection is byte-deterministic regardless of initialization
+/// order because only missing, non-ASCII words are added and the merge target
+/// (a hash map) is keyed by word, not insertion order.
 fn vader_analyzer() -> &'static SentimentIntensityAnalyzer {
     static ANALYZER: OnceLock<SentimentIntensityAnalyzer> = OnceLock::new();
     ANALYZER.get_or_init(|| {
@@ -52,12 +51,10 @@ fn vader_analyzer() -> &'static SentimentIntensityAnalyzer {
     })
 }
 
-/// Adds non-ASCII multilingual entries to VADER's lexicon. Mirrors
-/// `injectMultilingualLexicons`.
+/// Adds non-ASCII multilingual entries to VADER's lexicon.
 ///
 /// Only non-ASCII words are injected (so the English base lexicon is never
-/// overridden), and only when the lower-cased word is absent — matching Go's
-/// `if _, exists := sia.Lexicon[lower]; !exists`.
+/// overridden), and only when the lower-cased word is absent.
 fn inject_multilingual_lexicons(sia: &mut SentimentIntensityAnalyzer) {
     for entry in cf_sentiment_lexicons::all() {
         if is_ascii_only(entry.word) {
@@ -68,16 +65,17 @@ fn inject_multilingual_lexicons(sia: &mut SentimentIntensityAnalyzer) {
     }
 }
 
-/// Returns true if all bytes in `s` are ASCII (`< 128`). Mirrors `isASCIIOnly`.
+/// Returns true if all bytes in `s` are ASCII (`< 128`).
 #[must_use]
 pub fn is_ascii_only(s: &str) -> bool {
-    s.bytes().all(|b| b < 128)
+    s.is_ascii()
 }
 
-/// Maps VADER compound `[-1,1]` to `[0,1]`. Mirrors `vaderCompoundToScore`.
+/// Maps a VADER compound score in `[-1,1]` to `[0,1]`.
 ///
-/// The cast to `f32` reproduces Go's `float32(score)` truncation of precision,
-/// which matters because the result reaches a `float32` machine-report field.
+/// The cast to `f32` deliberately truncates precision: the result reaches a
+/// 32-bit float machine-report field, and the truncation point is part of the
+/// report contract.
 #[must_use]
 pub fn vader_compound_to_score(compound: f64) -> f32 {
     let score = (compound + 1.0) / VADER_COMPOUND_RANGE;
@@ -90,8 +88,7 @@ pub fn vader_compound_to_score(compound: f64) -> f32 {
     score as f32
 }
 
-/// SE-domain terms VADER misclassifies, neutralized toward `0`. Mirrors
-/// `seDomainNeutralizers` (all targets are `0.0`).
+/// SE-domain terms VADER misclassifies, neutralized toward `0`.
 const SE_DOMAIN_NEUTRALIZERS: &[&str] = &[
     "kill", "killed", "killing", "abort", "aborted", "aborting", "fatal", "dead", "terminate",
     "terminated", "destroy", "panic", "deprecated", "obsolete", "master", "execute", "exploit",
@@ -99,7 +96,6 @@ const SE_DOMAIN_NEUTRALIZERS: &[&str] = &[
 ];
 
 /// SE-domain terms that are genuinely negative, with their valence shift.
-/// Mirrors `seNegativeTerms`.
 const SE_NEGATIVE_TERMS: &[(&str, f64)] = &[
     ("hack", -0.3),
     ("hacky", -0.4),
@@ -113,18 +109,16 @@ const SE_NEGATIVE_TERMS: &[(&str, f64)] = &[
     ("horrible", -0.3),
 ];
 
-/// Applies SE-domain adjustment to a VADER compound score. Mirrors
-/// `applySEDomainAdjustmentWithWeight`.
+/// Applies SE-domain adjustment to a VADER compound score.
 ///
 /// # Ordering note
 ///
-/// Go iterates `seDomainNeutralizers` and `seNegativeTerms` (both Go maps) in
-/// nondeterministic order, but the result is order-independent: neutralizer
-/// targets are all `0`, so each contributes `(0 - compound) * nWeight`
-/// regardless of order, and the negative-term shifts are summed. `adjustment`
-/// and `count` therefore match Go exactly. This port uses fixed-order slices,
-/// which is identical numerically (sum of the same terms) and additionally
-/// removes the Go nondeterminism.
+/// The reference implementation iterates these term sets in nondeterministic
+/// (hash-map) order, but the result is order-independent: neutralizer targets
+/// are all `0`, so each contributes `(0 - compound) * n_weight` regardless of
+/// order, and the negative-term shifts are summed. `adjustment` and `count`
+/// therefore match exactly. This implementation uses fixed-order slices, which
+/// is numerically identical (sum of the same terms) and fully deterministic.
 #[must_use]
 pub fn apply_se_domain_adjustment_with_weight(text: &str, compound: f64, n_weight: f64) -> f64 {
     let lower = text.to_lowercase();
@@ -155,14 +149,12 @@ pub fn apply_se_domain_adjustment_with_weight(text: &str, compound: f64, n_weigh
 }
 
 /// Returns a sentiment score in `[0,1]` for `comments` using default options.
-/// Mirrors `ComputeSentiment`.
 #[must_use]
 pub fn compute_sentiment(comments: &[String]) -> f32 {
     compute_sentiment_with_options(comments, ScorerOptions::default())
 }
 
-/// Returns a sentiment score with configurable parameters. Mirrors
-/// `ComputeSentimentWithOptions`.
+/// Returns a sentiment score with configurable parameters.
 #[must_use]
 pub fn compute_sentiment_with_options(comments: &[String], opts: ScorerOptions) -> f32 {
     if comments.is_empty() {
@@ -199,8 +191,7 @@ pub fn compute_sentiment_with_options(comments: &[String], opts: ScorerOptions) 
     (weighted_sum / total_weight) as f32
 }
 
-/// Mean byte-length of non-empty (trimmed) comments. Mirrors
-/// `averageCommentLength`.
+/// Mean byte-length of non-empty (trimmed) comments.
 #[must_use]
 pub fn average_comment_length(comments: &[String]) -> f64 {
     let mut total = 0_usize;
@@ -219,7 +210,7 @@ pub fn average_comment_length(comments: &[String]) -> f64 {
     total as f64 / count as f64
 }
 
-/// Length weight capped at `max_ratio`. Mirrors `commentWeightWithMax`.
+/// Length weight capped at `max_ratio`.
 #[must_use]
 pub fn comment_weight_with_max(length: usize, avg_length: f64, max_ratio: f64) -> f64 {
     if avg_length <= 0.0 {
@@ -240,33 +231,28 @@ mod tests {
         v.iter().map(|x| (*x).to_string()).collect()
     }
 
-    // TestComputeSentiment_Empty
     #[test]
     fn compute_sentiment_empty() {
         assert!((f64::from(compute_sentiment(&[]))).abs() < FLOAT_DELTA);
     }
 
-    // TestComputeSentiment_WhitespaceOnly
     #[test]
     fn compute_sentiment_whitespace_only() {
         assert!((f64::from(compute_sentiment(&s(&["  ", "\t", ""])))).abs() < FLOAT_DELTA);
     }
 
-    // TestComputeSentiment_Positive
     #[test]
     fn compute_sentiment_positive() {
         let score = compute_sentiment(&s(&["This is a great fix!"]));
         assert!(f64::from(score) >= SENTIMENT_POSITIVE_THRESHOLD, "score = {score}");
     }
 
-    // TestComputeSentiment_Negative
     #[test]
     fn compute_sentiment_negative() {
         let score = compute_sentiment(&s(&["This code is broken and terrible."]));
         assert!(f64::from(score) <= SENTIMENT_NEGATIVE_THRESHOLD, "score = {score}");
     }
 
-    // TestComputeSentiment_Neutral
     #[test]
     fn compute_sentiment_neutral() {
         let score = compute_sentiment(&s(&["The function handles input validation."]));
@@ -274,7 +260,6 @@ mod tests {
         assert!(f64::from(score) < SENTIMENT_POSITIVE_THRESHOLD);
     }
 
-    // TestComputeSentiment_Mixed
     #[test]
     fn compute_sentiment_mixed() {
         let score = compute_sentiment(&s(&["This is great!", "This is broken."]));
@@ -282,21 +267,18 @@ mod tests {
         assert!(f64::from(score) < SENTIMENT_POSITIVE_THRESHOLD);
     }
 
-    // TestComputeSentiment_MultipleComments
     #[test]
     fn compute_sentiment_multiple_comments() {
         let score = compute_sentiment(&s(&["good work", "nice refactor", "clean code"]));
         assert!(f64::from(score) >= SENTIMENT_POSITIVE_THRESHOLD, "score = {score}");
     }
 
-    // TestComputeSentiment_HeavyNegative
     #[test]
     fn compute_sentiment_heavy_negative() {
         let score = compute_sentiment(&s(&["This is terrible awful horrible broken bug hack"]));
         assert!(f64::from(score) <= SENTIMENT_NEGATIVE_THRESHOLD, "score = {score}");
     }
 
-    // TestComputeSentiment_SEDomainNeutralTerms
     #[test]
     fn compute_sentiment_se_neutral_terms() {
         let cases = [
@@ -317,7 +299,6 @@ mod tests {
         }
     }
 
-    // TestComputeSentiment_SEDomainNegativeTerms
     #[test]
     fn compute_sentiment_se_negative_terms() {
         let cases = [
@@ -334,7 +315,6 @@ mod tests {
         }
     }
 
-    // TestComputeSentiment_LengthWeighting
     #[test]
     fn compute_sentiment_length_weighting() {
         let short = "bad";
@@ -345,28 +325,24 @@ mod tests {
         assert!((f64::from(long_only) - f64::from(score)).abs() < 0.15);
     }
 
-    // TestApplySEDomainAdjustment_NoTerms
     #[test]
     fn apply_se_no_terms() {
         let r = apply_se_domain_adjustment_with_weight("simple regular comment", 0.5, NEUTRALIZER_WEIGHT);
         assert!((r - 0.5).abs() < FLOAT_DELTA);
     }
 
-    // TestApplySEDomainAdjustment_WithNeutralizer
     #[test]
     fn apply_se_with_neutralizer() {
         let r = apply_se_domain_adjustment_with_weight("kill the process", -0.6, NEUTRALIZER_WEIGHT);
         assert!(r > -0.6);
     }
 
-    // TestApplySEDomainAdjustment_WithNegativeTerm
     #[test]
     fn apply_se_with_negative_term() {
         let r = apply_se_domain_adjustment_with_weight("this is a terrible hack", 0.0, NEUTRALIZER_WEIGHT);
         assert!(r < 0.0);
     }
 
-    // TestApplySEDomainAdjustment_ClampsBounds
     #[test]
     fn apply_se_clamps_bounds() {
         let r = apply_se_domain_adjustment_with_weight(
@@ -378,7 +354,6 @@ mod tests {
         assert!(r <= 1.0);
     }
 
-    // TestVaderCompoundToScore_Boundaries
     #[test]
     fn vader_compound_to_score_boundaries() {
         assert!((f64::from(vader_compound_to_score(-1.0))).abs() < FLOAT_DELTA);
@@ -388,7 +363,6 @@ mod tests {
         assert!((f64::from(vader_compound_to_score(2.0)) - 1.0).abs() < FLOAT_DELTA);
     }
 
-    // TestCommentWeight
     #[test]
     fn comment_weight() {
         let max = ScorerOptions::default().max_weight_ratio;
@@ -398,7 +372,6 @@ mod tests {
         assert!((comment_weight_with_max(50, 0.0, max) - 1.0).abs() < FLOAT_DELTA);
     }
 
-    // TestComputeSentiment_MultilingualScoring
     #[test]
     fn compute_sentiment_multilingual() {
         let ru_pos = "\u{43e}\u{442}\u{43b}\u{438}\u{447}\u{43d}\u{43e} \u{443}\u{441}\u{43f}\u{435}\u{448}\u{43d}\u{43e}";
@@ -409,14 +382,12 @@ mod tests {
         assert!(f64::from(neg) < SENTIMENT_POSITIVE_THRESHOLD);
     }
 
-    // TestInjectMultilingualLexicons
     #[test]
     fn inject_multilingual_grows_lexicon() {
         let analyzer = vader_analyzer();
         assert!(analyzer.lexicon.len() > 7500, "lexicon size = {}", analyzer.lexicon.len());
     }
 
-    // TestIsASCIIOnly
     #[test]
     fn is_ascii_only_cases() {
         assert!(is_ascii_only("hello"));
@@ -426,7 +397,6 @@ mod tests {
         assert!(!is_ascii_only("\u{597d}"));
     }
 
-    // TestAverageCommentLength
     #[test]
     fn average_comment_length_cases() {
         assert!((average_comment_length(&[]) - 1.0).abs() < FLOAT_DELTA);

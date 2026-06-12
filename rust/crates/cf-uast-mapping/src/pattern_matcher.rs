@@ -1,61 +1,41 @@
 //! Native tree-sitter S-expression query/capture compiler and matcher.
 //!
-//! Port of Go `pkg/uast/pkg/mapping/pattern_matcher.go`. Tree-sitter provides
-//! the underlying `Query`/`QueryCursor` primitives but **not** a cached,
-//! pooled DSL-pattern compiler, so this layer is reimplemented (DESIGN.md §5).
+//! Tree-sitter provides the underlying `Query`/`QueryCursor` primitives but
+//! **not** a cached, pooled DSL-pattern compiler, so this layer adds it
+//! (DESIGN.md §5):
 //!
-//! Behavioral parity with the Go implementation:
-//! - [`PatternMatcher::compile_and_cache`] compiles an S-expression pattern to a
-//!   tree-sitter [`Query`] and memoizes it by pattern text, tracking hit/miss
-//!   counters (Go `CompileAndCache` + `CacheStats`).
-//! - [`PatternMatcher::match_pattern`] runs a compiled query against a node and
-//!   returns the captures of the **first** match (Go `MatchPattern`).
+//! - [`PatternMatcher::compile_and_cache`] compiles an S-expression pattern to
+//!   a tree-sitter [`Query`] and memoizes it by pattern text, tracking
+//!   hit/miss counters.
+//! - [`PatternMatcher::match_pattern`] runs a compiled query against a node
+//!   and returns the captures of the **first** match.
 //!
-//! The Go `sync.Pool` of cursors becomes a small mutex-guarded free list; the
-//! `sync.RWMutex`-guarded cache becomes a mutex-guarded map. Compiled queries are
-//! shared via `Arc<Query>` (Go shared `*sitter.Query` pointers).
-//!
-//! Available only when the `pattern-matcher` feature is enabled (the default).
+//! Cursors are recycled through a small mutex-guarded free list; the cache is
+//! a mutex-guarded map sharing compiled queries via `Arc<Query>`.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use tree_sitter::{Language, Node, Query, QueryCursor};
 
-/// Errors produced by the pattern matcher, mirroring the Go sentinel errors.
-#[derive(Debug)]
+/// Errors produced by the pattern matcher.
+///
+/// The error strings are part of the CLI compatibility contract.
+#[derive(Debug, thiserror::Error)]
 pub enum MatchError {
-    /// The query or node argument was missing (`errNilQueryArg`).
+    /// The query or node argument was missing.
+    #[error("query or node is nil")]
     NilQueryArg,
-    /// No match was found (`errNoMatch`).
+    /// No match was found.
+    #[error("no match found")]
     NoMatch,
-    /// Tree-sitter query compilation failed (`tree-sitter query compilation failed`).
-    Compilation(tree_sitter::QueryError),
-}
-
-impl std::fmt::Display for MatchError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MatchError::NilQueryArg => f.write_str("query or node is nil"),
-            MatchError::NoMatch => f.write_str("no match found"),
-            MatchError::Compilation(e) => {
-                write!(f, "tree-sitter query compilation failed: {e}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for MatchError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            MatchError::Compilation(e) => Some(e),
-            _ => None,
-        }
-    }
+    /// Tree-sitter query compilation failed.
+    #[error("tree-sitter query compilation failed: {0}")]
+    Compilation(#[source] tree_sitter::QueryError),
 }
 
 /// Compiles and matches S-expression patterns to tree-sitter queries, with a
-/// pattern→query cache and a cursor free list. Mirrors Go `PatternMatcher`.
+/// pattern→query cache and a cursor free list.
 pub struct PatternMatcher {
     lang: Language,
     inner: Mutex<Inner>,
@@ -69,10 +49,10 @@ struct Inner {
 }
 
 impl PatternMatcher {
-    /// Creates a new matcher for `lang` with an empty cache. Mirrors Go
-    /// `NewPatternMatcher`.
+    /// Creates a new matcher for `lang` with an empty cache.
+    #[must_use]
     pub fn new(lang: Language) -> Self {
-        PatternMatcher {
+        Self {
             lang,
             inner: Mutex::new(Inner {
                 cache: HashMap::new(),
@@ -84,9 +64,13 @@ impl PatternMatcher {
     }
 
     /// Compiles a pattern and caches the result, returning the shared compiled
-    /// query. On a cache hit the hit counter is bumped; on a miss the pattern is
-    /// compiled, stored, and the miss counter is bumped. Mirrors Go
-    /// `CompileAndCache`.
+    /// query. On a cache hit the hit counter is bumped; on a miss the pattern
+    /// is compiled, stored, and the miss counter is bumped.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MatchError::Compilation`] when the pattern is not a valid
+    /// tree-sitter query for the matcher's language.
     pub fn compile_and_cache(&self, pattern: &str) -> Result<Arc<Query>, MatchError> {
         {
             let mut inner = self.inner.lock().expect("pattern matcher cache poisoned");
@@ -102,8 +86,7 @@ impl PatternMatcher {
 
         let mut inner = self.inner.lock().expect("pattern matcher cache poisoned");
         // Another thread may have compiled it meanwhile; keep the first stored
-        // value to match the Go single-writer behavior of the last writer
-        // winning is not observable since queries are equivalent.
+        // value (the queries are equivalent, so the choice is not observable).
         let entry = inner
             .cache
             .entry(pattern.to_string())
@@ -113,19 +96,19 @@ impl PatternMatcher {
         Ok(result)
     }
 
-    /// Returns the number of cache hits and misses. Mirrors Go `CacheStats`.
+    /// Returns the number of cache hits and misses.
     pub fn cache_stats(&self) -> (i64, i64) {
         let inner = self.inner.lock().expect("pattern matcher cache poisoned");
         (inner.hits, inner.misses)
     }
 
     /// Matches a compiled query against a node and returns the captures of the
-    /// first match as a name→text map. Mirrors Go `MatchPattern`.
+    /// first match as a name→text map (a [`BTreeMap`] for deterministic
+    /// ordering).
     ///
-    /// The returned map is a [`BTreeMap`] for deterministic ordering. Go returns
-    /// a `map[string]string` whose iteration order is randomized; the key/value
-    /// contents are identical. Captures whose node is null are skipped, matching
-    /// the Go `!cap.Node.IsNull()` guard.
+    /// # Errors
+    ///
+    /// Returns [`MatchError::NoMatch`] when the query produces no match.
     pub fn match_pattern(
         &self,
         query: &Query,
@@ -137,11 +120,11 @@ impl PatternMatcher {
             .lock()
             .expect("cursor pool poisoned")
             .pop()
-            .unwrap_or_else(QueryCursor::new);
+            .unwrap_or_default();
 
         let result = match_tree_sitter_query(query, &mut cursor, node, source);
 
-        // Return the cursor to the pool (RAII analogue of sync.Pool.Put).
+        // Return the cursor to the pool for reuse.
         self.cursor_pool
             .lock()
             .expect("cursor pool poisoned")
@@ -151,7 +134,7 @@ impl PatternMatcher {
     }
 }
 
-/// Port of Go `matchTreeSitterQuery`: takes the first match's captures.
+/// Takes the first match's captures as a name→text map.
 fn match_tree_sitter_query(
     query: &Query,
     cursor: &mut QueryCursor,
@@ -172,11 +155,10 @@ fn match_tree_sitter_query(
             .get(cap.index as usize)
             .copied()
             .unwrap_or("");
-        // tree-sitter 0.22 query-match capture nodes are always present (there is
-        // no null/`IsNull` notion as in go-tree-sitter-bare), so the Go
-        // `!cap.Node.IsNull()` guard collapses to extracting the captured text.
-        // `utf8_text` errors only on invalid UTF-8, which the Go `Content` path
-        // would never receive, so skipping on error preserves behavior.
+        // tree-sitter 0.22 query-match capture nodes are always present, so
+        // capture handling reduces to extracting the captured text.
+        // `utf8_text` errors only on invalid UTF-8, which this path never
+        // receives in practice; skipping on error preserves behavior.
         if let Ok(text) = cap.node.utf8_text(source) {
             captures.insert(name.to_string(), text.to_string());
         }
@@ -189,12 +171,12 @@ mod tests {
     // Functional matching tests require a concrete tree-sitter `Language`
     // (a grammar crate), which is not a dependency of `cf-uast-mapping` — the
     // grammar set lives in `cf-uast` (DESIGN.md §5). Those end-to-end tests live
-    // there. Here we only assert the error-display wording matches the Go
-    // sentinels, which is part of the observable surface.
+    // there. Here we only assert the error-display wording, which is part of
+    // the observable CLI surface.
     use super::*;
 
     #[test]
-    fn error_messages_match_go_sentinels() {
+    fn error_messages_are_frozen() {
         assert_eq!(MatchError::NilQueryArg.to_string(), "query or node is nil");
         assert_eq!(MatchError::NoMatch.to_string(), "no match found");
     }

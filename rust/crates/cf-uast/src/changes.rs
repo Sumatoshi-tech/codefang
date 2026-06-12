@@ -1,10 +1,9 @@
 //! Structural diffing between two UAST trees.
 //!
-//! Direct port of Go `pkg/uast/changes.go` (`DetectChanges`, `diffChildren` and
-//! helpers). The traversal order and child-matching strategy are preserved
-//! exactly: children are matched greedily by `(type, token)` key, the first
-//! unused candidate wins, the parent's own `Modified` change is emitted *before*
-//! the recursive child changes, then unmatched-before nodes are reported as
+//! The traversal order and child-matching strategy are frozen behavior:
+//! children are matched greedily by `(type, token)` key, the first unused
+//! candidate wins, the parent's own `Modified` change is emitted *before* the
+//! recursive child changes, then unmatched-before nodes are reported as
 //! `Removed` and unmatched-after nodes as `Added`.
 
 use std::collections::HashMap;
@@ -13,7 +12,7 @@ use cf_uast_node::{Node, Positions};
 
 use crate::types::{ChangeType, NodeChange};
 
-/// Detects structural changes between two UAST nodes (Go `DetectChanges`).
+/// Detects structural changes between two UAST nodes.
 ///
 /// Returns the empty vector when both are `None`. Otherwise:
 /// * `None` → `Some` yields a single [`ChangeType::Added`];
@@ -21,6 +20,7 @@ use crate::types::{ChangeType, NodeChange};
 /// * `Some` → `Some` compares the node itself (token, type, position) and its
 ///   children, emitting a [`ChangeType::Modified`] for the pair (when the node
 ///   changed or any child changed) followed by the child changes.
+#[must_use]
 pub fn detect_changes(before: Option<&Node>, after: Option<&Node>) -> Vec<NodeChange> {
     match (before, after) {
         (None, Some(a)) => vec![NodeChange {
@@ -58,12 +58,12 @@ pub fn detect_changes(before: Option<&Node>, after: Option<&Node>) -> Vec<NodeCh
     }
 }
 
-/// Returns whether two optional positions differ (Go `positionsChanged`).
+/// Returns whether two optional positions differ.
 ///
 /// Both `None` → unchanged; exactly one `None` → changed; otherwise the four
-/// line/col fields are compared (byte offsets are intentionally ignored, exactly
-/// as in Go).
-fn positions_changed(pos_a: Option<&Positions>, pos_b: Option<&Positions>) -> bool {
+/// line/col fields are compared (byte offsets are intentionally ignored —
+/// reference-implementation behavior).
+const fn positions_changed(pos_a: Option<&Positions>, pos_b: Option<&Positions>) -> bool {
     match (pos_a, pos_b) {
         (None, None) => false,
         (None, Some(_)) | (Some(_), None) => true,
@@ -76,14 +76,14 @@ fn positions_changed(pos_a: Option<&Positions>, pos_b: Option<&Positions>) -> bo
     }
 }
 
-/// Identifies a child by `(type, token)` (Go `childKey`).
+/// Identifies a child by `(type, token)`.
 #[derive(PartialEq, Eq, Hash, Clone)]
 struct ChildKey {
     node_type: String,
     token: String,
 }
 
-/// Compares the children of two nodes (Go `diffChildren`).
+/// Compares the children of two nodes.
 fn diff_children(before: &Node, after: &Node) -> Vec<NodeChange> {
     let before_children = &before.children;
     let after_children = &after.children;
@@ -109,7 +109,7 @@ fn diff_children(before: &Node, after: &Node) -> Vec<NodeChange> {
 }
 
 /// Builds an index from `(type, token)` to the child indices with that key, in
-/// order (Go `buildChildIndex`).
+/// order.
 fn build_child_index(children: &[Node]) -> HashMap<ChildKey, Vec<usize>> {
     let mut index: HashMap<ChildKey, Vec<usize>> = HashMap::new();
     for (idx, child) in children.iter().enumerate() {
@@ -122,8 +122,8 @@ fn build_child_index(children: &[Node]) -> HashMap<ChildKey, Vec<usize>> {
     index
 }
 
-/// Greedily matches before-children to after-children by key (Go
-/// `matchChildren`), recursing into matched pairs.
+/// Greedily matches before-children to after-children by key, recursing into
+/// matched pairs.
 fn match_children(
     before_children: &[Node],
     after_children: &[Node],
@@ -139,9 +139,8 @@ fn match_children(
             token: bc.token.clone(),
         };
 
-        let indices = match after_index.get(&key) {
-            Some(v) => v,
-            None => continue,
+        let Some(indices) = after_index.get(&key) else {
+            continue;
         };
 
         for &after_idx in indices {
@@ -158,7 +157,7 @@ fn match_children(
     changes
 }
 
-/// Reports unmatched before-children as removed (Go `collectRemovedChildren`).
+/// Reports unmatched before-children as removed.
 fn collect_removed_children(before_children: &[Node], before_matched: &[bool]) -> Vec<NodeChange> {
     let mut changes = Vec::new();
     for (idx, bc) in before_children.iter().enumerate() {
@@ -174,7 +173,7 @@ fn collect_removed_children(before_children: &[Node], before_matched: &[bool]) -
     changes
 }
 
-/// Reports unmatched after-children as added (Go `collectAddedChildren`).
+/// Reports unmatched after-children as added.
 fn collect_added_children(after_children: &[Node], after_used: &[bool]) -> Vec<NodeChange> {
     let mut changes = Vec::new();
     for (idx, ac) in after_children.iter().enumerate() {
@@ -275,7 +274,7 @@ mod tests {
 
     #[test]
     fn parent_modified_emitted_before_child_changes() {
-        // Reproduces the Go ordering: the Modified for the (before, after) pair
+        // The ordering is frozen: the Modified for the (before, after) pair
         // appears first, then the child-level changes.
         let mut a = n("File", "");
         a.children.push(n("Function", "foo"));

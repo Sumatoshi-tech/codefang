@@ -11,7 +11,7 @@ publish.workspace = true
 # Serialization compat (DESIGN section 2): all machine output goes through these.
 cf-gojson = { workspace = true }
 cf-reportutil = { path = "../cf-reportutil" }
-# Numeric parity for mean/median/P95/max/min/sum (port of pkg/alg/stats).
+# Numeric parity for mean/median/P95/max/min/sum (shared statistics kernel).
 cf-alg-stats = { path = "../cf-alg-stats" }
 
 # NOTE: the four component analyzers (cf-complexity, cf-halstead, cf-comments,

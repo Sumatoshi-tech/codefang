@@ -1,11 +1,9 @@
-//! Test fixtures, ported from `pkg/gitlib/testing.go` (the `TestCommit` /
-//! `TestSignature` mocks) and the `testRepo` helper in `gitlib_test.go`.
+//! Test fixtures: the [`TestCommit`] / [`test_signature`] mocks and the
+//! [`TestRepo`] builder.
 //!
 //! [`TestRepo`] builds a hermetic on-disk git repository in a temp directory
-//! with deterministic author/committer signatures, mirroring the Go test
-//! `testRepo` (init repo, stage all, create commits, branches, merges). It is
-//! compiled only under `cfg(test)` plus exposed behind the `testing` feature for
-//! downstream crates' integration tests.
+//! with deterministic author/committer signatures (init repo, stage all,
+//! create commits, branches, merges). It is compiled only under `cfg(test)`.
 
 use std::path::PathBuf;
 
@@ -15,7 +13,7 @@ use crate::hash::Hash;
 const TEST_NAME: &str = "Test User";
 const TEST_EMAIL: &str = "test@example.com";
 
-/// A hermetic on-disk test repository (Go test `testRepo`).
+/// A hermetic on-disk test repository.
 ///
 /// Creates a fresh repository in a unique temp directory on construction and
 /// removes it on [`Drop`]. Commit timestamps advance by one second per commit so
@@ -54,8 +52,7 @@ impl TestRepo {
         self.path.to_str().expect("utf-8 temp path")
     }
 
-    /// Creates (or overwrites) a working-tree file, making parent dirs as needed
-    /// (Go `testRepo.createFile`).
+    /// Creates (or overwrites) a working-tree file, making parent dirs as needed.
     ///
     /// # Panics
     ///
@@ -70,7 +67,7 @@ impl TestRepo {
         std::fs::write(&path, content).expect("write file");
     }
 
-    /// Removes a working-tree file (Go `testRepo.deleteFile`).
+    /// Removes a working-tree file.
     ///
     /// # Panics
     ///
@@ -79,7 +76,7 @@ impl TestRepo {
         std::fs::remove_file(self.path.join(name)).expect("remove file");
     }
 
-    /// Stages all files and creates a commit on HEAD (Go `testRepo.commit`).
+    /// Stages all files and creates a commit on HEAD.
     ///
     /// Returns the new commit hash. Uses the current HEAD (if any) as the single
     /// parent.
@@ -106,8 +103,7 @@ impl TestRepo {
         Hash::from_oid(&oid)
     }
 
-    /// Creates a commit on an arbitrary ref without moving HEAD
-    /// (Go `testRepo.commitToRef`).
+    /// Creates a commit on an arbitrary ref without moving HEAD.
     ///
     /// # Panics
     ///
@@ -130,10 +126,10 @@ impl TestRepo {
         Hash::from_oid(&oid)
     }
 
-    /// Creates a merge commit with two parents (Go `testRepo.createMergeCommit`).
+    /// Creates a merge commit with two parents.
     ///
-    /// The merge reuses the first parent's tree (matching the Go helper), with
-    /// `first_parent` as the main line.
+    /// The merge reuses the first parent's tree, with `first_parent` as the
+    /// main line.
     ///
     /// # Panics
     ///
@@ -204,13 +200,11 @@ fn unique_temp_dir() -> PathBuf {
     base
 }
 
-/// A mock commit for unit tests that need no real git objects
-/// (Go `gitlib.TestCommit`).
+/// A mock commit for unit tests that need no real git objects.
 ///
-/// Carries a hash, author/committer (committer defaults to author), message, and
-/// parent hashes. Structural lookups (`parent`, `tree`, `files`, `file`) are not
-/// implemented and report [`crate::GitError::MockNotImplemented`] in the Go
-/// original; here the mock simply exposes its stored scalar fields.
+/// Carries a hash, author/committer (committer defaults to author), message,
+/// and parent hashes. Structural lookups (`parent`, `tree`, `files`, `file`)
+/// are not implemented; the mock simply exposes its stored scalar fields.
 #[derive(Debug, Clone)]
 pub struct TestCommit {
     hash: Hash,
@@ -221,7 +215,7 @@ pub struct TestCommit {
 }
 
 impl TestCommit {
-    /// Creates a mock commit (Go `NewTestCommit`).
+    /// Creates a mock commit.
     #[must_use]
     pub fn new(hash: Hash, author: crate::Signature, message: &str, parent_hashes: Vec<Hash>) -> Self {
         TestCommit {
@@ -260,8 +254,7 @@ impl TestCommit {
     }
 }
 
-/// Builds a [`crate::Signature`] for testing with `when = now`
-/// (Go `gitlib.TestSignature`).
+/// Builds a [`crate::Signature`] for testing with `when = now`.
 #[must_use]
 pub fn test_signature(name: &str, email: &str) -> crate::Signature {
     let now = std::time::SystemTime::now()
@@ -279,7 +272,7 @@ pub fn test_signature(name: &str, email: &str) -> crate::Signature {
 mod tests {
     use super::*;
 
-    // Ported from testing_test.go::TestNewTestCommit.
+    // Mirrors reference test TestNewTestCommit.
     #[test]
     fn new_test_commit() {
         let hash = Hash::new("abcdef1234567890abcdef1234567890abcdef12");
@@ -295,7 +288,7 @@ mod tests {
         assert_eq!(c.num_parents(), 2);
     }
 
-    // Ported from testing_test.go::TestTestSignature.
+    // Mirrors reference test TestTestSignature.
     #[test]
     fn test_signature_fields() {
         let sig = test_signature("John Doe", "john@example.com");

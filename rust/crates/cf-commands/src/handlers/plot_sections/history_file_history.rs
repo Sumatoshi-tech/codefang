@@ -1,5 +1,4 @@
-//! `history/file-history` plot sections — port of Go
-//! `internal/analyzers/file_history/store_reader.go` + `plot.go`
+//! `history/file-history` plot sections.
 //! (`GenerateStoreSections` → `buildStoreSections` over the `file_churn` and
 //! `composition` store kinds, which the run's `ComputedMetrics` carries as
 //! `file_churn` / `composition_ts`).
@@ -13,12 +12,12 @@ use cf_plotpage::{
 
 use crate::handlers::go_sort;
 
-/// file_history plot.go constants.
+/// file_Reference history plot-section constants.
 const TOP_FILES_LIMIT: usize = 20;
 const X_AXIS_ROTATE: f64 = 60.0;
 const COMPOSITION_AREA_ALPHA: f64 = 0.5;
 
-/// Go `AllCategories` order (file_history `Category` constants) with the
+/// The reference `AllCategories` order (file_history `Category` constants) with the
 /// per-category chart colors (`categoryColors`).
 const CATEGORY_COLORS: &[(&str, &str)] = &[
     ("source", "#4CAF50"),
@@ -31,7 +30,7 @@ const CATEGORY_COLORS: &[(&str, &str)] = &[
     ("binary", "#F44336"),
 ];
 
-/// Go `GenerateStoreSections` → `buildStoreSections`: zero churn AND zero
+/// The reference `GenerateStoreSections` → `buildStoreSections`: zero churn AND zero
 /// composition yield zero sections.
 pub fn sections(
     file_churn: &[FileChurnData],
@@ -87,7 +86,7 @@ pub fn sections(
     sections
 }
 
-/// Go `buildBarChartFromChurnData`: re-sort (Go `sort.Slice`, commit-count
+/// The reference `buildBarChartFromChurnData`: re-sort (the reference `sort.Slice`, commit-count
 /// descending over the churn-score-sorted input), cut to the top 20, one
 /// "Commits" series, rotated X labels.
 fn build_bar_chart_from_churn(file_churn: &[FileChurnData]) -> Chart {
@@ -107,7 +106,7 @@ fn build_bar_chart_from_churn(file_churn: &[FileChurnData]) -> Chart {
     let co = ChartOpts::default_dark();
     let mut chart = build_bar_chart(Some(&co), &labels, &series, "Commits");
 
-    // Go's follow-up WithXAxisOpts replaces the X axis with the rotated-label
+    // The reference implementation's follow-up WithXAxisOpts replaces the X axis with the rotated-label
     // variant (no name, interval "0").
     chart.x_axis = XAxis {
         axis_label: Some(AxisLabel {
@@ -129,7 +128,7 @@ fn build_bar_chart_from_churn(file_churn: &[FileChurnData]) -> Chart {
     chart
 }
 
-/// Go `buildCompositionChartFromTS`: per-category stacked area line over the
+/// The reference `buildCompositionChartFromTS`: per-category stacked area line over the
 /// pre-computed time series; categories with no positive values are skipped;
 /// `None` when nothing plots.
 fn build_composition_chart_from_ts(ts: &[CompositionTimeSeriesEntry]) -> Option<Chart> {

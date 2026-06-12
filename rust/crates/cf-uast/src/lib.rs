@@ -1,36 +1,31 @@
 //! `cf-uast` — the aggregate UAST parser facade.
 //!
-//! Rust port of the Go package `pkg/uast` (the package root, *not* its
-//! sub-packages, which live in sibling crates). It provides:
+//! It provides:
 //!
 //! * [`Parser`] — the entry point: detect support, resolve a language, parse a
-//!   file or bytes into a UAST (port of `parser.go` / `parsefile.go`).
+//!   file or bytes into a UAST.
 //! * [`Loader`] — the lazy language loader with a fixed 512-bit extension bloom
-//!   filter (port of `loader.go`).
-//! * [`detect_changes`] — structural diffing between two UAST trees (port of
-//!   `changes.go`).
+//!   filter.
+//! * [`detect_changes`] — structural diffing between two UAST trees.
 //! * [`LanguageParser`], [`Map`], [`NodeChange`], [`ChangeType`],
-//!   [`get_file_extension`] — the facade types (port of `types.go`).
-//! * [`languages`] — language-name → tree-sitter grammar dispatch (port of
-//!   `languages.go`).
+//!   [`get_file_extension`] — the facade types.
+//! * [`languages`] — language-name → tree-sitter grammar dispatch.
 //!
 //! # Relationship to the sibling crates
 //!
-//! The original Go package depends on its own sub-packages `pkg/uast/pkg/node`
-//! and `pkg/uast/pkg/mapping`, plus the embedded `uastmaps/*.uastmap` data and
-//! the generated `embedded_mappings.gen.go`. In the Rust workspace those are
-//! separate crates (DESIGN §1):
+//! The UAST stack is split across crates (DESIGN §1):
 //!
 //! * [`cf_uast_node`] — the [`Node`](cf_uast_node::Node) tree and its
 //!   byte-sorted `ToMap` serialization (DESIGN §2.2).
 //! * [`cf_uast_mapping`] — the mapping DSL parser and native tree-sitter
 //!   query/capture compiler.
-//! * [`cf_uast_uastmaps`] — the regenerated embedded `.uastmap` tables (the
-//!   `build.rs` port of the generator; replaces the 2.7 MB
-//!   `embedded_mappings.gen.go`, DESIGN §5 / rule 6).
+//! * [`cf_uast_uastmaps`] — the embedded `.uastmap` tables.
 //!
 //! This crate deliberately does **not** depend on `cf-framework`, so the `uast`
 //! binary remains the first end-to-end-shippable artifact (DESIGN §1.1).
+//!
+//! Compatibility: parse trees and report bytes are pinned against the
+//! reference implementation by `rust/tests/compat`.
 //!
 //! # Byte-identity
 //!
@@ -64,12 +59,10 @@ pub use types::{
 };
 
 // Re-export the node type so facade callers can use it without an explicit
-// `cf-uast-node` dependency (mirroring how Go callers use `node.Node` via the
-// `uast` package surface).
+// `cf-uast-node` dependency.
 pub use cf_uast_node::{Node, Positions};
 
-/// The dependency name provided by UAST change detection (Go
-/// `DependencyUastChanges`).
+/// The dependency name provided by UAST change detection.
 pub const DEPENDENCY_UAST_CHANGES: &str = "uast_changes";
 
 #[cfg(test)]

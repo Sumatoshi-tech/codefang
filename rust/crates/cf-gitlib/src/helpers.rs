@@ -1,18 +1,17 @@
-//! Repository loading and time parsing, ported from `pkg/gitlib/helpers.go`.
+//! Repository loading and time parsing.
 //!
-//! [`parse_time`] accepts a Go-style duration (`"24h"`), an RFC3339 timestamp,
-//! or a date-only string, returning **Unix epoch seconds** (the comparable
-//! instant the rest of gitlib uses). [`load_repository`] rejects remote URIs;
-//! [`load_commits`] loads commits with limit / first-parent / head-only / since
-//! options, reversing to oldest-first like Go.
+//! [`parse_time`] accepts a duration (`"24h"`), an RFC3339 timestamp, or a
+//! date-only string, returning **Unix epoch seconds** (the comparable instant
+//! the rest of gitlib uses). [`load_repository`] rejects remote URIs;
+//! [`load_commits`] loads commits with limit / first-parent / head-only /
+//! since options, reversing to oldest-first.
 //!
 //! # Clock injection
 //!
 //! Durations are resolved relative to "now". Per the design's wall-clock
 //! neutralization (§2.8), the reference instant honors the `CODEFANG_NOW`
-//! environment variable (RFC3339 or epoch seconds) when set, falling back to the
-//! system clock — so duration-relative goldens are reproducible. This mirrors
-//! Go's `time.Now()` while making it injectable.
+//! environment variable (RFC3339 or epoch seconds) when set, falling back to
+//! the system clock — so duration-relative goldens are reproducible.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -22,7 +21,7 @@ use crate::commit::Commit;
 use crate::error::{GitError, Result};
 use crate::repository::{LogOptions, Repository};
 
-/// Options controlling how commits are loaded (Go `gitlib.CommitLoadOptions`).
+/// Options controlling how commits are loaded.
 #[derive(Debug, Clone, Default)]
 pub struct CommitLoadOptions {
     /// Maximum number of commits to load (`0` = no limit).
@@ -39,13 +38,12 @@ pub struct CommitLoadOptions {
 const SECONDS_PER_MINUTE: i64 = 60;
 const SECONDS_PER_HOUR: i64 = 3600;
 
-/// Opens a local git repository, rejecting remote URIs (Go `LoadRepository`).
+/// Opens a local git repository, rejecting remote URIs.
 ///
 /// Returns an error for `scheme://` URIs and `user@host:` SCP-style remotes.
-/// Trailing path separators are trimmed, matching Go. Unlike Go (which calls
-/// `log.Fatalf` on open failure), this returns the error so callers can handle
-/// it — the Go fatal-exit behavior is a CLI concern reproduced at the binary
-/// layer, not in the library.
+/// Trailing path separators are trimmed. Open failures return the error so
+/// callers can handle it — the CLI's fatal-exit behavior is reproduced at the
+/// binary layer, not in the library.
 ///
 /// # Errors
 ///
@@ -61,7 +59,7 @@ pub fn load_repository(uri: &str) -> Result<Repository> {
 
 /// Reports whether `uri` looks like an SCP-style remote (`user@host:path`).
 ///
-/// Mirrors Go's regex `^[A-Za-z]\w*@[A-Za-z0-9][\w.]*:`.
+/// Equivalent to the reference regex `^[A-Za-z]\w*@[A-Za-z0-9][\w.]*:`.
 fn is_scp_style_remote(uri: &str) -> bool {
     let bytes = uri.as_bytes();
     if bytes.is_empty() || !bytes[0].is_ascii_alphabetic() {
@@ -95,10 +93,10 @@ fn is_scp_style_remote(uri: &str) -> bool {
     false
 }
 
-/// Parses a time string to Unix epoch seconds (Go `ParseTime`).
+/// Parses a time string to Unix epoch seconds.
 ///
 /// Accepts, in order:
-/// 1. a Go-style duration (e.g. `"24h"`, `"90m"`, `"1h30m"`) → `now - duration`;
+/// 1. a duration (e.g. `"24h"`, `"90m"`, `"1h30m"`) → `now - duration`;
 /// 2. an RFC3339 timestamp (e.g. `"2024-01-01T00:00:00Z"`);
 /// 3. a date-only string (e.g. `"2024-01-01"`, interpreted as midnight UTC).
 ///
@@ -134,9 +132,9 @@ fn now_secs() -> i64 {
         .unwrap_or(0)
 }
 
-/// Parses a Go-style duration string into seconds (subset: `h`, `m`, `s` units).
+/// Parses a duration string into seconds (subset: `h`, `m`, `s` units).
 ///
-/// Go's `time.ParseDuration` supports `ns`/`us`/`ms`/`s`/`m`/`h`; gitlib's
+/// The full reference duration syntax also has `ns`/`us`/`ms`; gitlib's
 /// `--since` durations in practice use `h`/`m`/`s`, which this parser covers,
 /// including compound values like `"1h30m"`. Returns `None` for non-durations.
 fn parse_go_duration_secs(s: &str) -> Option<i64> {
@@ -188,8 +186,8 @@ fn parse_go_duration_secs(s: &str) -> Option<i64> {
     Some(if neg { -total } else { total })
 }
 
-/// Parses an RFC3339 timestamp to epoch seconds (the `Z`/offset forms Go's
-/// `time.RFC3339` accepts). Returns `None` if it is not RFC3339.
+/// Parses an RFC3339 timestamp to epoch seconds (`Z` or numeric-offset
+/// forms). Returns `None` if it is not RFC3339.
 fn parse_rfc3339(s: &str) -> Option<i64> {
     // Format: YYYY-MM-DDThh:mm:ss(.fff)?(Z|±hh:mm)
     let bytes = s.as_bytes();
@@ -221,8 +219,8 @@ fn parse_rfc3339(s: &str) -> Option<i64> {
 
     // Timezone.
     let offset_secs = match bytes.get(idx) {
-        Some(b'Z') | Some(b'z') => 0,
-        Some(b'+') | Some(b'-') => {
+        Some(b'Z' | b'z') => 0,
+        Some(b'+' | b'-') => {
             let sign = if bytes[idx] == b'-' { -1 } else { 1 };
             let oh: i64 = s.get(idx + 1..idx + 3)?.parse().ok()?;
             // Accept "+hh:mm" or "+hhmm".
@@ -241,7 +239,7 @@ fn parse_rfc3339(s: &str) -> Option<i64> {
 }
 
 /// Parses a date-only `YYYY-MM-DD` string to epoch seconds at midnight UTC
-/// (Go `time.DateOnly`). Returns `None` if it is not a plain date.
+///. Returns `None` if it is not a plain date.
 fn parse_date_only(s: &str) -> Option<i64> {
     if s.len() != 10 {
         return None;
@@ -267,8 +265,7 @@ fn parse_ymd(s: &str) -> Option<i64> {
 /// Days from the Unix epoch for a (proleptic Gregorian) civil date.
 ///
 /// Howard Hinnant's `days_from_civil` algorithm (public domain), the standard
-/// branchless conversion; equivalent to what Go's `time.Date(...).Unix()/86400`
-/// produces for UTC dates.
+/// branchless conversion for UTC dates.
 fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = (if y >= 0 { y } else { y - 399 }) / 400;
@@ -278,11 +275,11 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
-/// Loads commits from a repository per `opts` (Go `LoadCommits`).
+/// Loads commits from a repository per `opts`.
 ///
 /// For `head_only`, returns just the HEAD commit. Otherwise walks history with
 /// the given limit / first-parent / since options, then **reverses** so the
-/// result is oldest-first (matching Go's `slices.Reverse`).
+/// result is oldest-first.
 ///
 /// # Errors
 ///
@@ -319,9 +316,8 @@ fn load_history_commits<'repo>(
     }
 
     let mut iter = repository.log(&log_opts)?;
-    // CollectN drains up to `limit` (all when limit == 0), exactly like Go's
-    // CollectN convention. A negative Go limit is treated as 0 (unlimited),
-    // matching `alg.CollectN` where `limit <= 0` collects everything.
+    // collect_n drains up to `limit` (all when limit == 0); a negative limit
+    // is treated as 0 (unlimited), matching the collect_n convention.
     let limit = if opts.limit > 0 {
         opts.limit as usize
     } else {

@@ -6,19 +6,22 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "Git repository access layer over libgit2 (Rust port of Go pkg/gitlib). Per-thread !Send/!Sync repository handles, RAII Drop replaces Free(), batch blob/diff worker. Built on the git2 crate with vendored libgit2 for byte-identical object/diff/hash semantics with git2go."
+description = "Git repository access layer over libgit2. Per-thread !Send/!Sync repository handles with RAII cleanup, plus a batch blob/diff worker. Built on the git2 crate with vendored libgit2 so object/diff/hash semantics match the reference binary byte-for-byte."
 
 [dependencies]
-# KEEP libgit2. git2 + vendored-libgit2 pins libgit2 to match git2go's
-# diff/blob/hash semantics (third_party/libgit2 submodule is the pin source).
-# Per-thread !Send/!Sync Repository, RAII Drop replaces Free(). See DESIGN §3.
+# KEEP libgit2. git2 + vendored-libgit2 pins libgit2 so diff/blob/hash
+# semantics match the reference binary (third_party/libgit2 submodule is the
+# pin source). Per-thread !Send/!Sync Repository, RAII Drop frees handles.
+# See DESIGN §3.
 git2 = { workspace = true }
-# Byte text helpers (IsBinary / CountLines) shared with the Go pkg/textutil.
+# Byte text helpers (is_binary / count_lines) shared with the analyzers.
 cf-textutil = { path = "../cf-textutil" }
-# Overflow-checked numeric conversions (Go pkg/safeconv MustUintToInt / MustIntToUint).
+# Overflow-checked numeric conversions.
 cf-safeconv = { path = "../cf-safeconv" }
-# Pull-based iterator contract + CollectN (Go pkg/alg iter.go), used by LoadCommits.
+# Pull-based iterator contract + collect_n, used by load_commits.
 cf-alg = { path = "../cf-alg" }
+# Derived Display/Error for the GitError taxonomy (strings are frozen contract).
+thiserror = "1"
 
 [lints.clippy]
 # Hash<->Oid byte copies and libgit2 size_t<->i64 conversions are deliberate,

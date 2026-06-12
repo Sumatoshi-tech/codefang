@@ -367,7 +367,6 @@ dependencies = [
  "cf-alg-minhash",
  "cf-analyze",
  "cf-gojson",
- "cf-pipeline",
  "cf-reportutil",
  "cf-uast-node",
 ]
@@ -377,12 +376,7 @@ name = "cf-cohesion"
 version = "0.0.0"
 dependencies = [
  "cf-alg-bloom",
- "cf-analyze",
- "cf-analyzers-common",
- "cf-gojson",
  "cf-gosort",
- "cf-goyaml",
- "cf-reportutil",
  "cf-uast-node",
 ]
 
@@ -435,6 +429,7 @@ dependencies = [
  "cf-version",
  "clap",
  "clap_complete",
+ "thiserror",
 ]
 
 [[package]]
@@ -518,6 +513,7 @@ dependencies = [
  "cf-safeconv",
  "cf-textutil",
  "git2",
+ "thiserror",
 ]
 
 [[package]]
@@ -543,14 +539,7 @@ dependencies = [
 name = "cf-halstead"
 version = "0.0.0"
 dependencies = [
- "cf-alg-cms",
- "cf-alg-mapx",
- "cf-gojson",
- "cf-goyaml",
- "cf-metrics",
- "cf-reportutil",
  "cf-uast-node",
- "clap",
 ]
 
 [[package]]
@@ -783,6 +772,7 @@ dependencies = [
  "cf-uast-mappings",
  "cf-uast-node",
  "cf-uast-uastmaps",
+ "thiserror",
  "tree-sitter",
 ]
 
@@ -801,6 +791,7 @@ dependencies = [
  "cf-uast-uastmaps",
  "serde_json",
  "streaming-iterator",
+ "thiserror",
  "tree-sitter",
  "trybuild",
 ]

@@ -37,22 +37,22 @@ pub const CRATE_NAME: &str = "cf-alg-stats";
 
 /// The standard multiplier for converting ratios to percentages.
 ///
-/// Mirrors Go's `const PercentMultiplier = 100`.
+/// Ratio-to-percent multiplier (compatibility constant).
 pub const PERCENT_MULTIPLIER: f64 = 100.0;
 
 /// 50th-percentile threshold (the median).
 ///
-/// Mirrors Go's `const PercentileMedian = 0.5`.
+/// Median percentile rank (compatibility constant).
 pub const PERCENTILE_MEDIAN: f64 = 0.5;
 
 /// 95th-percentile threshold.
 ///
-/// Mirrors Go's `const PercentileP95 = 0.95`.
+/// 95th-percentile rank (compatibility constant).
 pub const PERCENTILE_P95: f64 = 0.95;
 
 /// The cap for z-score when stddev is zero but the value differs from the mean.
 ///
-/// Mirrors Go's `const ZScoreMaxSentinel = 100.0`. Provided for parity with the
+/// Z-score saturation sentinel (`100.0`). Provided for parity with the
 /// Go package; consumers apply it.
 pub const Z_SCORE_MAX_SENTINEL: f64 = 100.0;
 
@@ -118,7 +118,7 @@ pub fn mean_std_dev(values: &[f64]) -> (f64, f64) {
 
 /// Converts a ratio (0.0–1.0) to a percentage (0–100).
 ///
-/// Mirrors Go's `ToPercent`: `ratio * PercentMultiplier`.
+/// Converts a ratio to a percentage: `ratio * PercentMultiplier`.
 ///
 /// # Examples
 ///
@@ -161,7 +161,7 @@ pub fn percentile(values: &[f64], p: f64) -> f64 {
 
     let idx = p * (count - 1) as f64;
     // Go: lower := int(math.Floor(idx)); upper := int(math.Ceil(idx)).
-    // Go's int() conversion truncates toward zero; floor/ceil of a value in
+    // Integer conversion truncates toward zero (report contract); floor/ceil of a value in
     // [0, count-1] are non-negative, so `as usize` matches int() here.
     let lower_f = idx.floor();
     let upper_f = idx.ceil();
@@ -179,7 +179,7 @@ pub fn percentile(values: &[f64], p: f64) -> f64 {
 
 /// Returns the 50th percentile of `values`.
 ///
-/// Returns `0` for an empty slice. Mirrors Go's `Median`.
+/// Returns `0` for an empty slice.
 ///
 /// # Examples
 ///
@@ -194,7 +194,7 @@ pub fn median(values: &[f64]) -> f64 {
 
 /// Restricts `val` to the range `[lo, hi]`.
 ///
-/// Mirrors Go's `Clamp[T cmp.Ordered]`: `max(lo, min(val, hi))`. Uses
+/// Clamps to `[lo, hi]`: `max(lo, min(val, hi))`. Uses
 /// [`PartialOrd`] so it accepts both integers and floats; for `f64`, callers
 /// must avoid NaN bounds (the Go original likewise relies on `cmp.Ordered`
 /// total order semantics and does not special-case NaN).
@@ -275,7 +275,7 @@ pub fn max<T: PartialOrd + Copy + Default>(values: &[T]) -> T {
 /// Reports whether `observed` diverges from `predicted` by more than
 /// `threshold` (a fraction, e.g. `0.1` = 10%).
 ///
-/// Returns `false` when `predicted <= 0` (no meaningful baseline). Mirrors Go's
+/// Returns `false` when `predicted <= 0` (no meaningful baseline). Matches the reference
 /// `ExceedsThreshold`: computes `divergence = (observed - predicted)/predicted`,
 /// takes its absolute value, and returns `divergence > threshold` (strictly
 /// greater — equal-to-threshold is *not* exceeded).
@@ -305,7 +305,7 @@ pub fn exceeds_threshold(observed: f64, predicted: f64, threshold: f64) -> bool 
 /// Counts items per label as determined by `classify`.
 ///
 /// Returns `None` for a `None` slice and an empty map for an empty slice,
-/// mirroring Go's `Distribution` (which returns `nil` for a `nil` slice and an
+/// mirroring the reference `Distribution` (which returns `nil` for a `nil` slice and an
 /// empty `map` for an empty slice). The returned map's iteration order is
 /// unspecified, exactly like a Go `map` — callers that serialize it must sort
 /// keys (as `cf-gojson` does for map-origin objects).
@@ -340,7 +340,7 @@ where
 
 /// Returns the sum of all elements in `values`.
 ///
-/// Returns the [`Default`] value of `T` for an empty slice (Go's "zero value of
+/// Returns the [`Default`] value of `T` for an empty slice (the reference's "zero value of
 /// T"). Accumulates in input order via `+=`, matching the Go `Sum`.
 ///
 /// # Examples
@@ -389,7 +389,7 @@ pub struct Ema {
 impl Ema {
     /// Creates an EMA with the given smoothing factor `alpha` in `(0, 1]`.
     ///
-    /// Mirrors Go's `NewEMA`. The value starts at `0` and is uninitialized
+    /// The value starts at `0` and is uninitialized
     /// until the first [`update`](Ema::update).
     #[must_use]
     pub const fn new(alpha: f64) -> Self {
@@ -430,9 +430,9 @@ impl Ema {
     }
 }
 
-/// `min(a, b)` matching Go's builtin `min` for ordered types.
+/// `min(a, b)` with the reference tie-break for ordered types.
 ///
-/// Go's `min` returns `a` when `a <= b`, else `b`. For the parity-relevant
+/// Returns `a` when `a <= b`, else `b`. For the parity-relevant
 /// usage (clamp with finite bounds) this is equivalent; NaN handling is not
 /// special-cased, consistent with the Go original relying on `cmp.Ordered`.
 #[inline]
@@ -444,7 +444,7 @@ fn go_min<T: PartialOrd>(a: T, b: T) -> T {
     }
 }
 
-/// `max(a, b)` matching Go's builtin `max` for ordered types.
+/// `max(a, b)` with the reference tie-break for ordered types.
 #[inline]
 fn go_max<T: PartialOrd>(a: T, b: T) -> T {
     if a > b {
@@ -454,20 +454,20 @@ fn go_max<T: PartialOrd>(a: T, b: T) -> T {
     }
 }
 
-/// Sorts `values` ascending using Go's `slices.Sort` float ordering.
+/// Sorts `values` ascending using the reference float ordering (NaN-first total order).
 ///
-/// Go's `slices.Sort` on `[]float64` uses `cmp.Compare`, which orders NaN as
+/// The reference sort on floats uses a three-way comparator that orders NaN as
 /// **less than** every other value (NaNs sort to the front) and treats `-0.0`
 /// and `+0.0` as equal. [`f64::total_cmp`] differs (it places NaN at the
-/// extremes and distinguishes signed zero), so we implement Go's comparator
+/// extremes and distinguishes signed zero), so we implement that comparator
 /// directly to keep percentile results identical on NaN/zero edge cases.
 fn go_sort_f64(values: &mut [f64]) {
     values.sort_by(go_cmp_f64);
 }
 
-/// Three-way comparison matching Go's `cmp.Compare[float64]`.
+/// Three-way float comparison (reference `cmp.Compare[float64]` semantics).
 ///
-/// Per Go's `cmp.Compare`: `x < y` ⇒ -1, `x > y` ⇒ +1, otherwise 0, with the
+/// `x < y` ⇒ -1, `x > y` ⇒ +1, otherwise 0, with the
 /// special rule that a NaN operand is considered less than a non-NaN operand
 /// (and two NaNs compare equal). This makes NaNs sort to the front, exactly as
 /// `slices.Sort` does.
@@ -787,7 +787,7 @@ mod tests {
 
     #[test]
     fn test_go_sort_f64_nan_sorts_first() {
-        // Go's slices.Sort places NaN at the front; verify our comparator does too.
+        // The reference float order places NaN at the front; verify our comparator does too.
         let mut v = vec![3.0, f64::NAN, 1.0, 2.0];
         go_sort_f64(&mut v);
         assert!(v[0].is_nan());

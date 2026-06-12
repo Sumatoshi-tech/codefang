@@ -6,22 +6,14 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "Analyzer-registration + clap command construction for codefang (Go cmd/codefang/commands port): the run/render/version command tree and dynamic per-analyzer flags."
+description = "Analyzer-registration + clap command construction for codefang: the run/render/version command tree and dynamic per-analyzer flags."
 
 # cf-commands is the tier-8 analyzer-registration + clap command-construction
-# aggregation point (DESIGN §1 tier 8, §4). It mirrors Go's
-# cmd/codefang/commands package: builds the run/render/version clap commands,
-# registers every analyzer and its dynamic per-analyzer flags, and routes all
-# report serialization through the shared go-compat crates (never raw serde).
-#
-# Dependency reality: the runtime execution path (the run/render handlers) needs
-# sibling crates that are still scaffolds in this tree (cf-gitlib and the 16
-# analyzer crates) plus cf-analyze (which currently does not compile). Those are
-# declared optional behind the `runtime` feature so the self-contained parts of
-# this crate -- the format-validation logic, the version command, and the full
-# clap command tree with every literal and dynamic flag -- build and test
-# against the already-compiling cf-version and cf-pipeline crates. See the
-# crate-level rustdoc and the workflow notes for the remaining wiring.
+# aggregation point (DESIGN §1 tier 8, §4): it builds the run/render/version
+# clap commands, registers every analyzer and its dynamic per-analyzer flags,
+# and routes all report serialization through the shared report-format crates
+# (never raw serde). Output bytes are pinned against the reference binary by
+# the differential gate in rust/tests/compat.
 
 [features]
 # Default builds only the parts that do NOT depend on unported sibling crates:
@@ -42,12 +34,13 @@ runtime = [
     "dep:cf-storage",
 ]
 
-# The Go `mcp` command is //go:build ignore and NOT shipped by default
-# (DESIGN §4.1). Mirror it as a non-default feature.
+# The reference `mcp` command is not shipped by default (DESIGN §4.1).
+# Mirror it as a non-default feature.
 mcp = ["dep:cf-mcp"]
 
 [dependencies]
 clap = { workspace = true }
+thiserror = "1"
 # Generates the shell-completion scripts for the `completion` subcommand, the
 # Rust analogue of the bytes cobra emits for its auto-registered completion
 # command (bash/fish/powershell/zsh).
@@ -58,7 +51,7 @@ cf-version = { path = "../cf-version" }
 cf-pipeline = { path = "../cf-pipeline" }
 
 # --- Run-pipeline execution crates (the general run pipeline + registry) ---
-# Report serialization MUST route through these go-compat crates, never serde.
+# Report serialization MUST route through these report-format crates, never serde.
 cf-gojson = { path = "../cf-gojson" }
 cf-goyaml = { path = "../cf-goyaml" }
 cf-reportutil = { path = "../cf-reportutil" }
@@ -69,7 +62,7 @@ cf-uast-node = { path = "../cf-uast-node" }
 cf-pathpolicy = { path = "../cf-pathpolicy", features = ["default-deps"] }
 # libgit2-backed repository/commit access for the single history revwalk.
 cf-gitlib = { path = "../cf-gitlib" }
-# Go-time.RFC3339 formatting + metadata for history tick bounds / timeseries.
+# Pinned RFC3339 formatting + metadata for history tick bounds / timeseries.
 cf-analyze = { path = "../cf-analyze" }
 cf-textutil = { path = "../cf-textutil" }
 cf-langpath = { path = "../cf-langpath" }
@@ -91,8 +84,8 @@ cf-renderer = { path = "../cf-renderer" }
 cf-couples = { path = "../cf-couples" }
 cf-shotness = { path = "../cf-shotness" }
 cf-analyzer-burndown = { path = "../cf-analyzer-burndown" }
-# --format plot HTML page renderer (Go internal/analyzers/common/plotpage):
-# the static-phase plot path renders per-analyzer pages + index + report.json.
+# --format plot HTML page renderer: the static-phase plot path renders
+# per-analyzer pages + index + report.json.
 cf-plotpage = { path = "../cf-plotpage" }
 cf-devs = { path = "../cf-devs" }
 cf-typos = { path = "../cf-typos" }

@@ -1,23 +1,20 @@
 //! Per-tick / per-commit quality data containers.
 //!
-//! Direct port of the data types in `internal/analyzers/quality/analyzer.go`
-//! ([`TickQuality`], [`TickData`]). These hold per-file scalar samples gathered
-//! during `Consume`; summary statistics are computed at output time
+//! [`TickQuality`] and [`TickData`] hold per-file scalar samples gathered while
+//! consuming commits; summary statistics are computed at output time
 //! ([`crate::metrics`]).
 //!
 //! Order-independence: the composite quality analyzer keys per-commit
 //! [`TickQuality`] by commit hash and merges by concatenation, so the result is
-//! independent of the order commits are consumed (matching the Go analyzer's
-//! `Merge`-is-no-op design).
+//! independent of the order commits are consumed.
 
 use std::collections::BTreeMap;
 
 /// Per-file quality metric values for a single tick.
 ///
-/// Mirrors Go `quality.TickQuality`. Values are appended per file during
-/// `Consume`; statistics are computed at output time. The vector field order is
-/// the Go struct declaration order, which is the order [`merge`](TickQuality::merge)
-/// concatenates in.
+/// Values are appended per file while consuming a commit; statistics are
+/// computed at output time. The vector field order is the declaration order,
+/// which is the order [`merge`](TickQuality::merge) concatenates in.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TickQuality {
     /// Cyclomatic complexity per file (`total_complexity`).
@@ -54,8 +51,8 @@ impl TickQuality {
 
     /// Incorporates values from `other` into `self` by concatenation.
     ///
-    /// Mirrors Go `(*TickQuality).merge`: appends each per-file slice in struct
-    /// declaration order. A `None`/empty `other` is a no-op.
+    /// Appends each per-file slice in declaration order. An empty `other` is a
+    /// no-op.
     pub fn merge(&mut self, other: &TickQuality) {
         self.complexities.extend_from_slice(&other.complexities);
         self.cognitives.extend_from_slice(&other.cognitives);
@@ -78,16 +75,15 @@ impl TickQuality {
 
     /// Returns the number of files analyzed in this tick.
     ///
-    /// Mirrors Go `(*TickQuality).filesAnalyzed` — the length of
-    /// [`complexities`](TickQuality::complexities) (complexity is appended for
-    /// every analyzed file).
+    /// The length of [`complexities`](TickQuality::complexities) (complexity
+    /// is appended for every analyzed file).
     #[must_use]
     pub fn files_analyzed(&self) -> usize {
         self.complexities.len()
     }
 }
 
-/// Per-tick aggregated payload (Go `quality.TickData`).
+/// Per-tick aggregated payload.
 ///
 /// `commit_quality` maps commit hash (lowercase hex) to that commit's
 /// [`TickQuality`]. A [`BTreeMap`] is used so that any direct iteration is
@@ -102,7 +98,7 @@ pub struct TickData {
 mod tests {
     use super::*;
 
-    // Port of TestTickQuality_Merge (analyzer_test.go).
+    // Mirrors the reference suite's TestTickQuality_Merge.
     #[test]
     fn merge_concatenates_per_field() {
         let mut tq1 = TickQuality {

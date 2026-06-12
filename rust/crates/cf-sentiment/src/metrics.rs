@@ -1,15 +1,13 @@
-//! Sentiment metric computation. Direct port of `metrics.go`.
+//! Sentiment metric computation.
 //!
-//! Ports the input model (`ReportData`), the per-metric computations
-//! (`computeTimeSeriesWithOpts`, `computeTrendWithOpts`,
-//! `computeLowSentimentPeriodsWithOpts`, `computeAggregateWithOpts`), the
-//! `AggregateCommitsToTicks` aggregation, and `ComputeAllMetricsWithOptions`.
+//! The input model ([`ReportData`]), the per-metric computations (time series,
+//! trend, low-sentiment periods, aggregate), the commit→tick aggregation, and
+//! [`compute_all_metrics_with_options`].
 //!
-//! The untyped `Report = map[string]any` parsing (`ParseReportData`) belongs to
-//! the not-yet-ported `cf-analyze` conversion hub; here [`ReportData`] is a typed
-//! struct that a future report-map adapter populates. Commit hashes are modeled
-//! as their hex strings (Go uses `gitlib.Hash` and keys/aggregates by
-//! `hash.String()`), so the pure computation needs no `cf-gitlib` dependency.
+//! Commit hashes are modeled as their hex strings (the analyzer keys and
+//! aggregates by the hash's string form), so the pure computation needs no git
+//! dependency. The untyped report-map parsing lives in the `cf-analyze`
+//! conversion hub.
 
 use std::collections::BTreeMap;
 
@@ -18,21 +16,21 @@ use cf_alg_stats::to_percent;
 use crate::model::{AggregateData, ComputedMetrics, LowSentimentPeriodData, TimeSeriesData, TrendData};
 use crate::scorer::compute_sentiment;
 
-/// Time-series dimension name. Mirrors Go `DimSentiment`.
+/// Time-series dimension name.
 pub const DIM_SENTIMENT: &str = "sentiment";
 
-// Sentiment thresholds (metrics.go).
+// Sentiment thresholds.
 
-/// Positive classification threshold. Mirrors `SentimentPositiveThreshold`.
+/// Positive classification threshold.
 pub const SENTIMENT_POSITIVE_THRESHOLD: f64 = 0.6;
-/// Negative classification threshold. Mirrors `SentimentNegativeThreshold`.
+/// Negative classification threshold.
 pub const SENTIMENT_NEGATIVE_THRESHOLD: f64 = 0.4;
-/// Trend-direction threshold. Mirrors `trendThreshold`.
+/// Trend-direction threshold.
 pub const TREND_THRESHOLD: f64 = 0.1;
-/// Low-sentiment HIGH-risk threshold. Mirrors `lowSentimentRiskThreshold`.
+/// Low-sentiment HIGH-risk threshold.
 pub const LOW_SENTIMENT_RISK_THRESHOLD: f64 = 0.2;
 
-/// Configurable thresholds for metrics computation. Mirrors `MetricOptions`.
+/// Configurable thresholds for metrics computation.
 #[derive(Debug, Clone, Copy)]
 pub struct MetricOptions {
     /// Positive classification threshold.
@@ -46,7 +44,6 @@ pub struct MetricOptions {
 }
 
 impl Default for MetricOptions {
-    /// Mirrors `DefaultMetricOptions`.
     fn default() -> Self {
         Self {
             positive_threshold: SENTIMENT_POSITIVE_THRESHOLD,
@@ -59,9 +56,8 @@ impl Default for MetricOptions {
 
 /// Inclusive tick time bounds (pre-formatted RFC3339 strings).
 ///
-/// Stand-in for `analyze.TickBounds`; `cf-analyze` owns the real formatting. An
-/// empty string means "no bound", reproducing Go's `omitempty` on the
-/// `start_time`/`end_time` fields.
+/// `cf-analyze` owns the actual formatting. An empty string means "no bound",
+/// which the serializers omit (`omitempty` contract).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TickBounds {
     /// RFC3339 start time, or empty for none.
@@ -70,7 +66,7 @@ pub struct TickBounds {
     pub end_time: String,
 }
 
-/// Parsed input data for metrics computation. Mirrors Go `ReportData`.
+/// Parsed input data for metrics computation.
 ///
 /// `commits_by_tick` maps a tick to the hex hashes of its commits;
 /// `comments_by_commit` (consumed by [`aggregate_commits_to_ticks`]) maps a hex
@@ -88,13 +84,11 @@ pub struct ReportData {
 }
 
 impl ReportData {
-    /// Builds [`ReportData`] from the canonical commit-level inputs, mirroring
-    /// the populated branch of Go `ParseReportData`.
+    /// Builds [`ReportData`] from the canonical commit-level inputs.
     ///
     /// When both `comments_by_commit` and `commits_by_tick` are non-empty, the
     /// per-tick comments and emotions are derived via
-    /// [`aggregate_commits_to_ticks`]; otherwise they are left empty (Go leaves
-    /// the maps as freshly-allocated empties).
+    /// [`aggregate_commits_to_ticks`]; otherwise they are left empty.
     #[must_use]
     pub fn from_commit_data(
         comments_by_commit: &BTreeMap<String, Vec<String>>,
@@ -117,10 +111,9 @@ impl ReportData {
     }
 }
 
-/// Groups per-commit comments into per-tick comments and emotions. Mirrors Go
-/// `AggregateCommitsToTicks`.
+/// Groups per-commit comments into per-tick comments and emotions.
 ///
-/// Returns empty maps when either input is empty (Go returns `(nil, nil)`).
+/// Returns empty maps when either input is empty.
 #[must_use]
 pub fn aggregate_commits_to_ticks(
     comments_by_commit: &BTreeMap<String, Vec<String>>,
@@ -146,14 +139,13 @@ pub fn aggregate_commits_to_ticks(
     (cbt, ebt)
 }
 
-/// Runs all metrics with default options. Mirrors `ComputeAllMetrics`.
+/// Runs all metrics with default options.
 #[must_use]
 pub fn compute_all_metrics(input: &ReportData) -> ComputedMetrics {
     compute_all_metrics_with_options(input, MetricOptions::default())
 }
 
-/// Runs all metrics with configurable thresholds. Mirrors
-/// `ComputeAllMetricsWithOptions`.
+/// Runs all metrics with configurable thresholds.
 #[must_use]
 pub fn compute_all_metrics_with_options(input: &ReportData, opts: MetricOptions) -> ComputedMetrics {
     ComputedMetrics {
@@ -164,8 +156,7 @@ pub fn compute_all_metrics_with_options(input: &ReportData, opts: MetricOptions)
     }
 }
 
-/// Classifies a trend direction. Mirrors `classifyTrendDirectionWithOpts`.
-#[must_use]
+/// Classifies a trend direction.
 fn classify_trend_direction(start: f32, end: f32, opts: MetricOptions) -> &'static str {
     let thresh = opts.trend_threshold as f32;
     if end > start + thresh {
@@ -177,7 +168,7 @@ fn classify_trend_direction(start: f32, end: f32, opts: MetricOptions) -> &'stat
     }
 }
 
-/// Classifies a sentiment value. Mirrors `classifySentimentWithOpts`.
+/// Classifies a sentiment value.
 #[must_use]
 pub fn classify_sentiment(sentiment: f32, opts: MetricOptions) -> &'static str {
     if sentiment >= opts.positive_threshold as f32 {
@@ -189,10 +180,10 @@ pub fn classify_sentiment(sentiment: f32, opts: MetricOptions) -> &'static str {
     }
 }
 
-/// Computes the per-tick time series. Mirrors `computeTimeSeriesWithOpts`.
+/// Computes the per-tick time series.
 #[must_use]
 pub fn compute_time_series(input: &ReportData, opts: MetricOptions) -> Vec<TimeSeriesData> {
-    // BTreeMap iteration is already tick-sorted (matches Go's sort.Ints).
+    // BTreeMap iteration is already tick-sorted.
     let mut result = Vec::with_capacity(input.emotions_by_tick.len());
 
     for (&tick, &sentiment) in &input.emotions_by_tick {
@@ -217,8 +208,8 @@ pub fn compute_time_series(input: &ReportData, opts: MetricOptions) -> Vec<TimeS
         };
 
         if let Some(bounds) = input.tick_bounds.get(&tick) {
-            entry.start_time = bounds.start_time.clone();
-            entry.end_time = bounds.end_time.clone();
+            entry.start_time.clone_from(&bounds.start_time);
+            entry.end_time.clone_from(&bounds.end_time);
         }
 
         result.push(entry);
@@ -227,7 +218,7 @@ pub fn compute_time_series(input: &ReportData, opts: MetricOptions) -> Vec<TimeS
     result
 }
 
-/// Computes the trend. Mirrors `computeTrendWithOpts`.
+/// Computes the trend.
 #[must_use]
 pub fn compute_trend(input: &ReportData, opts: MetricOptions) -> TrendData {
     if input.emotions_by_tick.is_empty() {
@@ -259,12 +250,14 @@ pub fn compute_trend(input: &ReportData, opts: MetricOptions) -> TrendData {
     }
 }
 
-/// Least-squares regression endpoints. Mirrors `linearRegressionEndpoints`.
+/// Least-squares regression endpoints.
 ///
 /// The float arithmetic (sums in `f64`, the `n*sumXY - sumX*sumY` form, and the
-/// final `f32` casts of `intercept + slope*tick`) mirrors Go operation-for-op so
-/// the reported `float32` endpoints match.
+/// final `f32` casts of `intercept + slope*tick`) is part of the report
+/// contract: the reported 32-bit endpoints depend on this exact operation
+/// order.
 #[must_use]
+#[allow(clippy::similar_names)] // sum_x / sum_y / sum_xy are canonical regression names
 pub fn linear_regression_endpoints(ticks: &[i64], emotions: &BTreeMap<i64, f32>) -> (f32, f32) {
     let n = ticks.len() as f64;
     if n == 0.0 {
@@ -299,8 +292,7 @@ pub fn linear_regression_endpoints(ticks: &[i64], emotions: &BTreeMap<i64, f32>)
     (start_val, end_val)
 }
 
-/// Computes negative-sentiment periods. Mirrors
-/// `computeLowSentimentPeriodsWithOpts`.
+/// Computes negative-sentiment periods.
 #[must_use]
 pub fn compute_low_sentiment_periods(
     input: &ReportData,
@@ -329,15 +321,15 @@ pub fn compute_low_sentiment_periods(
         });
     }
 
-    // Sort by sentiment ascending (worst first). Go uses sort.Slice, which is
-    // not stable; the iteration order above is tick-ascending (BTreeMap), giving
-    // a deterministic order for equal-sentiment ties.
+    // Sort by sentiment ascending (worst first). The iteration order above is
+    // tick-ascending (BTreeMap), giving a deterministic order for
+    // equal-sentiment ties.
     result.sort_by(|a, b| a.sentiment.partial_cmp(&b.sentiment).unwrap_or(std::cmp::Ordering::Equal));
 
     result
 }
 
-/// Computes aggregate statistics. Mirrors `computeAggregateWithOpts`.
+/// Computes aggregate statistics.
 #[must_use]
 pub fn compute_aggregate(input: &ReportData, opts: MetricOptions) -> AggregateData {
     let mut agg = AggregateData {
@@ -385,7 +377,6 @@ mod tests {
         pairs.iter().copied().collect()
     }
 
-    // TestClassifySentiment
     #[test]
     fn classify_sentiment_table() {
         let o = MetricOptions::default();
@@ -399,14 +390,12 @@ mod tests {
         assert_eq!(classify_sentiment(0.0, o), "negative");
     }
 
-    // TestSentimentTimeSeriesMetric_Empty
     #[test]
     fn time_series_empty() {
         let r = compute_time_series(&ReportData::default(), MetricOptions::default());
         assert!(r.is_empty());
     }
 
-    // TestSentimentTimeSeriesMetric_SingleTick
     #[test]
     fn time_series_single_tick() {
         let input = ReportData {
@@ -424,7 +413,6 @@ mod tests {
         assert_eq!(r[0].classification, "positive");
     }
 
-    // TestSentimentTimeSeriesMetric_MultipleTicks_SortedByTick
     #[test]
     fn time_series_sorted() {
         let input = ReportData {
@@ -441,7 +429,6 @@ mod tests {
         assert_eq!(r[2].classification, "neutral");
     }
 
-    // TestSentimentTimeSeriesMetric_TickTimestamps
     #[test]
     fn time_series_tick_timestamps() {
         let input = ReportData {
@@ -462,7 +449,6 @@ mod tests {
         assert_eq!(r[0].end_time, "2024-01-16T12:00:00Z");
     }
 
-    // TestSentimentTrendMetric_Empty
     #[test]
     fn trend_empty() {
         let r = compute_trend(&ReportData::default(), MetricOptions::default());
@@ -471,7 +457,6 @@ mod tests {
         assert!(r.trend_direction.is_empty());
     }
 
-    // TestSentimentTrendMetric_SingleTick
     #[test]
     fn trend_single_tick() {
         let input = ReportData {
@@ -484,7 +469,6 @@ mod tests {
         assert_eq!(r.trend_direction, "stable");
     }
 
-    // TestSentimentTrendMetric_TrendDirections
     #[test]
     fn trend_directions() {
         for (start, end, expected) in [
@@ -502,7 +486,6 @@ mod tests {
         }
     }
 
-    // TestSentimentTrendMetric_ChangePercent
     #[test]
     fn trend_change_percent() {
         let input = ReportData {
@@ -513,7 +496,6 @@ mod tests {
         assert!((r.change_percent - 50.0).abs() < 0.01);
     }
 
-    // TestSentimentTrendMetric_ZeroStartSentiment
     #[test]
     fn trend_zero_start() {
         let input = ReportData {
@@ -524,7 +506,6 @@ mod tests {
         assert!(r.change_percent.abs() < 0.01);
     }
 
-    // TestLinearRegressionEndpoints_Empty
     #[test]
     fn regression_empty() {
         let (s, e) = linear_regression_endpoints(&[], &BTreeMap::new());
@@ -532,7 +513,6 @@ mod tests {
         assert!(e.abs() < FLOAT_DELTA);
     }
 
-    // TestLinearRegressionEndpoints_SinglePoint
     #[test]
     fn regression_single_point() {
         let emotions = m_f32(&[(5, 0.7)]);
@@ -541,7 +521,6 @@ mod tests {
         assert!((e - 0.7).abs() < FLOAT_DELTA);
     }
 
-    // TestLinearRegressionEndpoints_PerfectUptrend
     #[test]
     fn regression_perfect_uptrend() {
         let emotions = m_f32(&[(0, 0.2), (1, 0.4), (2, 0.6), (3, 0.8)]);
@@ -550,14 +529,12 @@ mod tests {
         assert!((e - 0.8).abs() < FLOAT_DELTA);
     }
 
-    // TestLowSentimentPeriodMetric_Empty
     #[test]
     fn low_sentiment_empty() {
         let r = compute_low_sentiment_periods(&ReportData::default(), MetricOptions::default());
         assert!(r.is_empty());
     }
 
-    // TestLowSentimentPeriodMetric_NoLowSentiment
     #[test]
     fn low_sentiment_none() {
         let input = ReportData {
@@ -568,7 +545,6 @@ mod tests {
         assert!(r.is_empty());
     }
 
-    // TestLowSentimentPeriodMetric_RiskLevels
     #[test]
     fn low_sentiment_risk_levels() {
         for (sentiment, risk) in [(0.1_f32, "HIGH"), (0.2, "HIGH"), (0.3, "MEDIUM"), (0.4, "MEDIUM")] {
@@ -584,7 +560,6 @@ mod tests {
         }
     }
 
-    // TestLowSentimentPeriodMetric_SortedBySentiment
     #[test]
     fn low_sentiment_sorted() {
         let input = ReportData {
@@ -598,7 +573,6 @@ mod tests {
         assert!((r[2].sentiment - 0.3).abs() < FLOAT_DELTA);
     }
 
-    // TestSentimentAggregateMetric_Empty
     #[test]
     fn aggregate_empty() {
         let r = compute_aggregate(&ReportData::default(), MetricOptions::default());
@@ -608,7 +582,6 @@ mod tests {
         assert!(r.average_sentiment.abs() < FLOAT_DELTA);
     }
 
-    // TestSentimentAggregateMetric_AllClassifications
     #[test]
     fn aggregate_all_classifications() {
         let input = ReportData {
@@ -632,7 +605,6 @@ mod tests {
         assert!((r.average_sentiment - expected).abs() < FLOAT_DELTA);
     }
 
-    // TestAggregateCommitsToTicks_Empty
     #[test]
     fn aggregate_commits_empty() {
         let (cbt, ebt) = aggregate_commits_to_ticks(&BTreeMap::new(), &BTreeMap::new());
@@ -640,7 +612,6 @@ mod tests {
         assert!(ebt.is_empty());
     }
 
-    // TestAggregateCommitsToTicks_SingleCommitPerTick
     #[test]
     fn aggregate_commits_single() {
         let cbc: BTreeMap<String, Vec<String>> = [
@@ -658,7 +629,6 @@ mod tests {
         assert_eq!(ebt.len(), 2);
     }
 
-    // TestComputeAllMetrics_Empty
     #[test]
     fn compute_all_empty() {
         let r = compute_all_metrics(&ReportData::default());
@@ -668,7 +638,6 @@ mod tests {
         assert_eq!(r.aggregate.total_ticks, 0);
     }
 
-    // TestComputeAllMetrics_FromCommitData
     #[test]
     fn compute_all_from_commit_data() {
         let cbc: BTreeMap<String, Vec<String>> = [

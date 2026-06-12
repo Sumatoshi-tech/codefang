@@ -1,6 +1,6 @@
 //! Static-analysis report path for the UAST `static/clones` analyzer.
 //!
-//! Reproduces the Go static folder pipeline for
+//! Reproduces the reference static folder pipeline for
 //! `codefang run --analyzers static/clones --format {json,yaml,bin}`:
 //!
 //!  1. `StaticService.uastPhase` walks `rootPath` with `filepath.WalkDir` in
@@ -24,7 +24,7 @@
 //!         (`renderer.SectionsToJSON`): `overall_score_label` / `sections`
 //!         (title, score_label, status, metrics, distribution, issues, score) /
 //!         `overall_score`. Issues are the stored clone pairs sorted by
-//!         similarity descending; the issue list order is Go-nondeterministic
+//!         similarity descending; the issue list order is nondeterministic in the reference binary
 //!         (the stored pair multiset is stable, only the tie order varies),
 //!         which the differential oracle canonicalizes.
 //!       * `yaml` / `bin` -> `FormatPerAnalyzer` -> `computeMetricsFromReport`
@@ -35,7 +35,7 @@
 //! The analyzer MATH (signatures, LSH, pair finding, classification, ratio,
 //! section/metrics projection) lives entirely in the cf-clones crate; this
 //! module owns only the pipeline-tier folder walk + the serializer routing,
-//! exactly as Go `internal/framework` + `internal/analyzers/analyze` do.
+//! exactly as the reference `internal/framework` + `internal/analyzers/analyze` do.
 
 use std::fs;
 use std::path::Path;
@@ -55,7 +55,7 @@ use cf_uast_node::Node as UastNode;
 #[must_use]
 pub fn clones_report_json(root_path: &str) -> Option<Vec<u8>> {
     let value = clones_report_value(root_path)?;
-    // Go: json.NewEncoder(w).SetIndent("", "  ").Encode(report) -> two-space
+    // Reference: json.NewEncoder(w).SetIndent("", "  ").Encode(report) -> two-space
     // indent + one trailing newline.
     let bytes = Encoder::indented("  ").with_trailing_newline(true).encode_to_vec(&value);
     Some(bytes)
@@ -91,9 +91,9 @@ pub fn clones_report_bin(root_path: &str) -> Option<Vec<u8>> {
 }
 
 /// Builds the `static/clones --format compact` report bytes for `root_path`
-/// (Go `StaticService.FormatCompact` -> `DefaultStaticRenderer.RenderCompact`:
+/// (the reference `StaticService.FormatCompact` -> `DefaultStaticRenderer.RenderCompact`:
 /// one single-line section render), or `None` when the path cannot be read.
-/// This is the only fully Go-deterministic terminal format for clones — it shows
+/// This is the only fully deterministic in the reference binary terminal format for clones — it shows
 /// only the title/score-bar/message, never the order-nondeterministic pair list.
 #[must_use]
 pub fn clones_report_compact(root_path: &str) -> Option<Vec<u8>> {
@@ -102,10 +102,10 @@ pub fn clones_report_compact(root_path: &str) -> Option<Vec<u8>> {
 }
 
 /// Builds the AGGREGATED RAW `analyze.Report` GoValue for `static/clones` —
-/// the value Go's `clones.Aggregator.GetResult()` returns after the folder walk
-/// (aggregator.go:97), which is what `--format plot` consumes and what
+/// the value the reference `clones.Aggregator.GetResult()` returns after the
+/// folder walk, which is what `--format plot` consumes and what
 /// `writeReportJSON` serializes into `report.json`. `opts` carries the run's
-/// path-policy flags. The stored `clone_pairs` ORDER is Go-nondeterministic
+/// path-policy flags. The stored `clone_pairs` ORDER is nondeterministic in the reference binary
 /// (LSH candidate iteration); the differential oracle measures and
 /// canonicalizes it — the pair multiset and every scalar are deterministic.
 #[must_use]
@@ -117,7 +117,7 @@ pub fn clones_raw_report_value(root_path: &str, opts: &Options) -> Option<cf_goj
 
 /// Walks `root_path`, runs the clones visitor per file, and folds the per-file
 /// signature reports into the cross-file aggregate report value. Returns `None`
-/// when the root path does not exist (Go would surface a walk error).
+/// when the root path does not exist (reference: would surface a walk error).
 fn aggregate_report(root_path: &str) -> Option<Report> {
     aggregate_report_opts(root_path, &Options::default())
 }
@@ -148,7 +148,7 @@ fn walk(dir: &Path, root_path: &str, parser: &Parser, opts: &Options, agg: &mut 
     };
 
     let mut entries: Vec<_> = read.filter_map(Result::ok).collect();
-    entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
         let path = entry.path();
@@ -194,7 +194,7 @@ fn walk(dir: &Path, root_path: &str, parser: &Parser, opts: &Options, agg: &mut 
     }
 }
 
-/// Go `MakeRelativePath`: `filepath.Rel(rootPath, filePath)`.
+/// The reference `MakeRelativePath`: `filepath.Rel(rootPath, filePath)`.
 fn make_relative_path(file_path: &str, root_path: &str) -> String {
     if root_path.is_empty() {
         return file_path.to_string();

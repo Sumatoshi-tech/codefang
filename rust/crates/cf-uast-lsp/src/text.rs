@@ -1,18 +1,16 @@
-//! Cursor/word utilities for the mapping-DSL LSP server.
+//! Cursor/word utilities for the mapping-DSL LSP server. The behavior is
+//! byte-oriented:
 //!
-//! Direct port of the unexported helpers in Go `pkg/uast/lsp/server.go`:
-//! `extractWordAtPosition`, `isWordChar`, and `splitLines`. The byte-oriented
-//! behaviour of the Go code is reproduced exactly:
-//!
-//! * `splitLines` is `strings.Split(s, "\n")` — it never collapses a trailing
-//!   newline, so `"hello\n"` yields `["hello", ""]`.
-//! * `extractWordAtPosition` indexes into a line **by byte offset** (Go indexes
-//!   `string` by byte), clamps an out-of-range `character` to the line length,
-//!   and grows a word in both directions while [`is_word_char`] holds.
-//! * `is_word_char` accepts ASCII letters, `_`, and the DSL operator bytes
-//!   `< > - =` (so `<-` and `=>` are treated as single words), and nothing else.
+//! * [`split_lines`] splits on `'\n'` and never collapses a trailing newline,
+//!   so `"hello\n"` yields `["hello", ""]`.
+//! * [`extract_word_at_position`] indexes into a line **by byte offset**,
+//!   clamps an out-of-range `character` to the line length, and grows a word
+//!   in both directions while [`is_word_char`] holds.
+//! * [`is_word_char`] accepts ASCII letters, `_`, and the DSL operator bytes
+//!   `< > - =` (so `<-` and `=>` are treated as single words), and nothing
+//!   else.
 
-/// Splits `input` on `'\n'`, exactly like Go `strings.Split(input, "\n")`.
+/// Splits `input` on `'\n'`.
 ///
 /// Notably this does NOT treat a trailing newline specially: an empty input
 /// yields `[""]`, and a trailing `'\n'` produces a trailing empty element.
@@ -21,13 +19,11 @@ pub fn split_lines(input: &str) -> Vec<&str> {
     input.split('\n').collect()
 }
 
-/// Reports whether `ch` is part of a mapping-DSL "word".
-///
-/// Matches Go `isWordChar`: ASCII `a-z`, `A-Z`, `_`, and the operator bytes
-/// `<`, `>`, `-`, `=`. Operates on a raw byte so multi-byte UTF-8 sequences are
-/// never word characters (identical to Go indexing a `string` by byte).
+/// Reports whether `ch` is part of a mapping-DSL "word": ASCII `a-z`, `A-Z`,
+/// `_`, and the operator bytes `<`, `>`, `-`, `=`. Operates on a raw byte so
+/// multi-byte UTF-8 sequences are never word characters.
 #[must_use]
-pub fn is_word_char(ch: u8) -> bool {
+pub const fn is_word_char(ch: u8) -> bool {
     ch.is_ascii_lowercase()
         || ch.is_ascii_uppercase()
         || ch == b'_'
@@ -39,10 +35,10 @@ pub fn is_word_char(ch: u8) -> bool {
 
 /// Returns the word at the given zero-based `line` / `character` position.
 ///
-/// Port of Go `extractWordAtPosition`. `character` is a **byte** offset into the
-/// line (LSP positions are UTF-16 offsets, but the Go server treats them as byte
-/// offsets, and we reproduce that behaviour verbatim for parity). Returns `""`
-/// when `line` is out of range or the cursor sits between non-word bytes.
+/// `character` is a **byte** offset into the line (LSP positions are UTF-16
+/// offsets, but this server deliberately treats them as byte offsets —
+/// reference-implementation behavior). Returns `""` when `line` is out of
+/// range or the cursor sits between non-word bytes.
 #[must_use]
 pub fn extract_word_at_position(text: &str, line: usize, character: usize) -> String {
     let lines = split_lines(text);
@@ -52,7 +48,7 @@ pub fn extract_word_at_position(text: &str, line: usize, character: usize) -> St
 
     let line_bytes = lines[line].as_bytes();
 
-    // Clamp the cursor to the end of the line (Go: `if character > len(lineText)`).
+    // Clamp the cursor to the end of the line.
     let mut character = character;
     if character > line_bytes.len() {
         character = line_bytes.len();
@@ -79,7 +75,6 @@ pub fn extract_word_at_position(text: &str, line: usize, character: usize) -> St
 mod tests {
     use super::*;
 
-    /// Ported from Go `TestExtractWordAtPosition` (table-driven).
     #[test]
     fn test_extract_word_at_position() {
         struct Case {
@@ -115,7 +110,6 @@ mod tests {
         }
     }
 
-    /// Ported from Go `TestIsWordChar`.
     #[test]
     fn test_is_word_char() {
         let cases: &[(u8, bool)] = &[
@@ -152,7 +146,6 @@ mod tests {
         }
     }
 
-    /// Ported from Go `TestSplitLines` (table-driven).
     #[test]
     fn test_split_lines() {
         let cases: &[(&str, &str, &[&str])] = &[

@@ -1,74 +1,26 @@
 //! Signal-handling utilities for graceful cleanup.
 //!
-//! This crate is the Rust port of the Go package `pkg/sigutil`
-//! (`pkg/sigutil/guard.go`). It provides [`SignalCleanupGuard`], which ensures a
-//! cleanup function runs **exactly once** when the process exits normally, on
-//! error, or via `SIGINT` / `SIGTERM`.
+//! Provides [`SignalCleanupGuard`], which ensures a cleanup function runs
+//! **exactly once** when the process exits normally, on error, or via
+//! `SIGINT` / `SIGTERM`.
 //!
-//! # Behavioural parity with Go
-//!
-//! The Go original:
-//!
-//! ```go
-//! type SignalCleanupGuard struct {
-//!     cleanup func()
-//!     logger  *slog.Logger
-//!     sigCh   chan os.Signal
-//!     once    sync.Once
-//! }
-//!
-//! func NewSignalCleanupGuard(cleanup func(), logger *slog.Logger) *SignalCleanupGuard {
-//!     if cleanup == nil {
-//!         cleanup = func() {}
-//!     }
-//!     g := &SignalCleanupGuard{
-//!         cleanup: cleanup,
-//!         logger:  logger,
-//!         sigCh:   make(chan os.Signal, 1),
-//!     }
-//!     signal.Notify(g.sigCh, syscall.SIGINT, syscall.SIGTERM)
-//!     go func() {
-//!         sig, ok := <-g.sigCh
-//!         if !ok {
-//!             return
-//!         }
-//!         g.logger.Warn("signal received, running cleanup guard", "signal", sig.String())
-//!         g.run()
-//!     }()
-//!     return g
-//! }
-//!
-//! func (g *SignalCleanupGuard) Close() {
-//!     g.run()
-//!     signal.Stop(g.sigCh)
-//!     close(g.sigCh)
-//! }
-//!
-//! func (g *SignalCleanupGuard) run() { g.once.Do(g.cleanup) }
-//! ```
-//!
-//! The Rust port reproduces this exactly:
+//! # Guarantees
 //!
 //! * [`SignalCleanupGuard::new`] registers `SIGINT` and `SIGTERM` handlers and
 //!   spawns a background thread that, on the first such signal, logs a warning
 //!   ("signal received, running cleanup guard") and runs the cleanup.
-//! * A `nil` cleanup function is modelled by passing [`None`]; it becomes a
-//!   no-op, exactly like Go substituting `func() {}`.
+//! * Passing [`None`] for the cleanup yields a no-op guard.
 //! * [`SignalCleanupGuard::close`] runs the cleanup (if not already run),
 //!   deregisters the signal handler, and stops the background thread.
 //! * The cleanup runs **exactly once** regardless of how many signals arrive or
-//!   how many times `close` is called — Go's `sync.Once` is reproduced with a
-//!   [`std::sync::Once`].
-//! * Idiomatic Rust: `close` is also invoked from [`Drop`], so a guard whose
-//!   scope ends without an explicit `close()` still runs cleanup — matching the
-//!   `defer g.Close()` usage the Go doc comment mandates.
+//!   how many times `close` is called, enforced by a [`std::sync::Once`].
+//! * `close` is also invoked from [`Drop`], so a guard whose scope ends without
+//!   an explicit `close()` still runs cleanup.
 //!
 //! # Logging
 //!
-//! Go uses `*slog.Logger`. The Rust port keeps the same contract — an optional,
-//! pluggable logger — via the [`Logger`] trait. Pass [`None`] for the
-//! discard/no-op logger (the analogue of `slog.New(slog.NewTextHandler(io.Discard, nil))`
-//! used throughout the Go tests).
+//! Logging is optional and pluggable via the [`Logger`] trait. Pass [`None`]
+//! for a discard/no-op logger.
 //!
 //! # Example
 //!
@@ -84,7 +36,7 @@
 //!
 //! // ... do work; if SIGINT/SIGTERM arrives the cleanup runs automatically ...
 //!
-//! // Equivalent to Go's `defer g.Close()`.
+//! // Run cleanup now (Drop would also do it).
 //! guard.close();
 //! ```
 
@@ -95,27 +47,24 @@ use std::thread::JoinHandle;
 use signal_hook::consts::{SIGINT, SIGTERM};
 use signal_hook::iterator::Signals;
 
-/// The cleanup closure type. The analogue of Go's `func()`.
+/// The cleanup closure type.
 ///
 /// `Send` is required because the closure may be invoked from the background
-/// signal-handling thread (just as Go runs it from a goroutine).
+/// signal-handling thread.
 pub type CleanupFn = Box<dyn FnOnce() + Send + 'static>;
 
-/// A minimal logging sink, the analogue of Go's `*slog.Logger` as used by this
-/// package (which only ever calls `logger.Warn`).
+/// A minimal warning-level logging sink.
 ///
 /// Implementations receive the warning message plus the signal name so they can
-/// reproduce Go's structured log line
-/// `logger.Warn("signal received, running cleanup guard", "signal", sig.String())`.
+/// emit a structured log line such as
+/// `signal received, running cleanup guard signal=interrupt`.
 pub trait Logger: Send + Sync {
     /// Emit a warning. `signal` is the textual signal name (e.g. `"interrupt"`,
-    /// `"terminated"`), matching `os.Signal.String()` semantics as closely as
-    /// the platform allows.
+    /// `"terminated"`).
     fn warn(&self, msg: &str, signal: &str);
 }
 
-/// A [`Logger`] that discards everything — the analogue of
-/// `slog.New(slog.NewTextHandler(io.Discard, nil))`.
+/// A [`Logger`] that discards everything.
 struct DiscardLogger;
 
 impl Logger for DiscardLogger {
@@ -126,15 +75,14 @@ impl Logger for DiscardLogger {
 /// on error, or via `SIGINT` / `SIGTERM`.
 ///
 /// Construct one via [`SignalCleanupGuard::new`] and call [`close`] on scope
-/// exit (the Rust equivalent of Go's `defer g.Close()`); [`Drop`] also calls
-/// [`close`] as a safety net.
+/// exit; [`Drop`] also calls [`close`] as a safety net.
 ///
 /// [`close`]: SignalCleanupGuard::close
 pub struct SignalCleanupGuard {
     shared: Arc<Shared>,
     /// Handle to the registered signal source, used by [`close`] / [`Drop`] to
-    /// deregister handlers (`signal.Stop` + `close(g.sigCh)`) and unblock the
-    /// listener thread. `Option` so it is taken exactly once.
+    /// deregister handlers and unblock the listener thread. `Option` so it is
+    /// taken exactly once.
     ///
     /// [`close`]: SignalCleanupGuard::close
     handle: Option<signal_hook::iterator::Handle>,
@@ -162,12 +110,17 @@ struct Shared {
 }
 
 impl Shared {
-    /// Runs the cleanup exactly once. Subsequent calls are no-ops. Mirrors Go's
-    /// `g.once.Do(g.cleanup)`.
+    /// Runs the cleanup exactly once. Subsequent calls are no-ops.
     fn run(&self) {
         self.once.call_once(|| {
-            // Take the closure out; FnOnce must be moved to be called.
-            if let Some(cleanup) = self.cleanup.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            // Take the closure out; FnOnce must be moved to be called. Release
+            // the lock before invoking the cleanup.
+            let cleanup = self
+                .cleanup
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take();
+            if let Some(cleanup) = cleanup {
                 cleanup();
             }
         });
@@ -181,16 +134,15 @@ impl SignalCleanupGuard {
     /// deregistered.
     ///
     /// * `cleanup` — the work to run on signal/close. [`None`] is treated as a
-    ///   no-op, matching Go's `nil cleanup` handling.
+    ///   no-op.
     /// * `logger` — where to emit the warning when a signal triggers cleanup.
-    ///   [`None`] selects a discard logger (the Go tests' `io.Discard` logger).
+    ///   [`None`] selects a discard logger.
     ///
     /// # Panics
     ///
     /// Panics only if the OS refuses to register the signal handlers (i.e.
     /// `signal_hook::iterator::Signals::new` fails). In practice
-    /// `SIGINT`/`SIGTERM` registration does not fail on supported platforms,
-    /// mirroring `signal.Notify` never returning an error in the Go code.
+    /// `SIGINT`/`SIGTERM` registration does not fail on supported platforms.
     #[must_use]
     pub fn new(cleanup: Option<CleanupFn>, logger: Option<Box<dyn Logger>>) -> Self {
         let shared = Arc::new(Shared {
@@ -200,37 +152,26 @@ impl SignalCleanupGuard {
             closing: AtomicBool::new(false),
         });
 
-        // make(chan os.Signal, 1) + signal.Notify(..., SIGINT, SIGTERM).
         let mut signals =
             Signals::new([SIGINT, SIGTERM]).expect("failed to register OS signal handler");
         let handle = signals.handle();
 
         let listener_shared = Arc::clone(&shared);
         let listener = std::thread::spawn(move || {
-            // Block until the first signal (or until the handle is closed by
-            // `close`, which makes `forever()` yield `None`). This is the Rust
-            // analogue of `sig, ok := <-g.sigCh; if !ok { return }`.
-            let mut iter = signals.forever();
-            match iter.next() {
-                Some(sig) => {
-                    // A real signal arrived.
-                    if listener_shared.closing.load(Ordering::SeqCst) {
-                        // Woken by close (handle closed) rather than a genuine
-                        // request — do not log, do not duplicate cleanup; close
-                        // already ran it. (`ok == false` path.)
-                        return;
-                    }
-                    listener_shared.logger.warn(
-                        "signal received, running cleanup guard",
-                        signal_name(sig),
-                    );
-                    listener_shared.run();
+            // Block until the first signal, or until the handle is closed by
+            // `close` (which makes `forever()` yield `None`).
+            if let Some(sig) = signals.forever().next() {
+                if listener_shared.closing.load(Ordering::SeqCst) {
+                    // Woken by close (handle closed) rather than a genuine
+                    // signal — do not log, do not duplicate cleanup; close
+                    // already ran it.
+                    return;
                 }
-                None => {
-                    // Channel closed without a signal: the `!ok` path. Return.
-                }
+                listener_shared
+                    .logger
+                    .warn("signal received, running cleanup guard", signal_name(sig));
+                listener_shared.run();
             }
-            drop(iter);
         });
 
         Self {
@@ -243,24 +184,21 @@ impl SignalCleanupGuard {
 
     /// Performs cleanup (if not already done) and deregisters the signal
     /// handler. Safe to call multiple times; cleanup still runs only once.
-    ///
-    /// Mirrors Go's `Close`:
-    /// `g.run(); signal.Stop(g.sigCh); close(g.sigCh)`.
     pub fn close(&mut self) {
         if self.closed {
             return;
         }
         self.closed = true;
 
-        // g.run() — run cleanup exactly once.
+        // Run cleanup exactly once.
         self.shared.run();
 
         // Mark closing so the listener, if woken by the handle close (rather
         // than a real signal), takes the no-op path.
         self.shared.closing.store(true, Ordering::SeqCst);
 
-        // signal.Stop(g.sigCh) + close(g.sigCh): deregister handlers and unblock
-        // the listener's `forever()` so it returns and the thread can exit.
+        // Deregister handlers and unblock the listener's `forever()` so it
+        // returns and the thread can exit.
         if let Some(handle) = self.handle.take() {
             handle.close();
         }
@@ -274,15 +212,15 @@ impl SignalCleanupGuard {
 
 impl Drop for SignalCleanupGuard {
     fn drop(&mut self) {
-        // Safety net mirroring `defer g.Close()`: ensure cleanup runs and the
-        // listener thread is torn down even if `close` was never called.
+        // Safety net: ensure cleanup runs and the listener thread is torn down
+        // even if `close` was never called.
         self.close();
     }
 }
 
-/// Best-effort textual name for a raw signal number, approximating Go's
-/// `os.Signal.String()` for the two signals this package registers.
-fn signal_name(sig: i32) -> &'static str {
+/// Best-effort textual name for a raw signal number, for the two signals this
+/// crate registers.
+const fn signal_name(sig: i32) -> &'static str {
     match sig {
         SIGINT => "interrupt",
         SIGTERM => "terminated",
@@ -296,7 +234,7 @@ mod tests {
     use std::sync::atomic::{AtomicI32, Ordering};
     use std::sync::Arc;
 
-    /// Port of `TestSignalCleanupGuard_CleanupOnClose`.
+    /// Mirrors reference test `TestSignalCleanupGuard_CleanupOnClose`.
     #[test]
     fn cleanup_on_close() {
         let called = Arc::new(AtomicBool::new(false));
@@ -314,7 +252,7 @@ mod tests {
         );
     }
 
-    /// Port of `TestSignalCleanupGuard_IdempotentClose`.
+    /// Mirrors reference test `TestSignalCleanupGuard_IdempotentClose`.
     #[test]
     fn idempotent_close() {
         let count = Arc::new(AtomicI32::new(0));
@@ -332,14 +270,14 @@ mod tests {
         assert_eq!(1, count.load(Ordering::SeqCst));
     }
 
-    /// Port of `TestSignalCleanupGuard_NilCleanup`.
+    /// Mirrors reference test `TestSignalCleanupGuard_NilCleanup`.
     #[test]
     fn nil_cleanup() {
         let mut guard = SignalCleanupGuard::new(None, None);
         guard.close(); // Must not panic.
     }
 
-    /// Port of `TestSignalCleanupGuard_MultipleCleanersViaClosure`.
+    /// Mirrors reference test `TestSignalCleanupGuard_MultipleCleanersViaClosure`.
     #[test]
     fn multiple_cleaners_via_closure() {
         let c1 = Arc::new(AtomicI32::new(0));
@@ -358,7 +296,7 @@ mod tests {
         assert_eq!(1, c2.load(Ordering::SeqCst));
     }
 
-    /// Drop runs cleanup as a safety net (Rust-idiomatic, beyond the Go tests).
+    /// Drop runs cleanup as a safety net (beyond the reference suite).
     #[test]
     fn drop_runs_cleanup() {
         let called = Arc::new(AtomicBool::new(false));
@@ -393,7 +331,7 @@ mod tests {
         assert_eq!(0, n.load(Ordering::SeqCst), "close path must not log");
     }
 
-    /// `signal_name` maps the two registered signals to Go-like names.
+    /// `signal_name` maps the two registered signals to their textual names.
     #[test]
     fn signal_names() {
         assert_eq!(signal_name(SIGINT), "interrupt");

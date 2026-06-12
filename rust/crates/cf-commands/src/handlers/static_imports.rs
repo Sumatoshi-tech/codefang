@@ -1,9 +1,9 @@
 //! Static-analysis report path for the UAST `static/imports` analyzer.
 //!
-//! Reproduces the Go static pipeline for `codefang run --analyzers
+//! Reproduces the reference static pipeline for `codefang run --analyzers
 //! static/imports` across its machine formats (yaml, bin, json).
 //!
-//! Pipeline (Go `StaticService.streamFiles` → per-file `uast.Parser.Parse` →
+//! Pipeline (the reference `StaticService.streamFiles` → per-file `uast.Parser.Parse` →
 //! `imports.Analyzer.Analyze` (`extractImportsFromUAST`) → `imports.Aggregator`
 //! → format-specific serialization):
 //!
@@ -16,11 +16,11 @@
 //!     (quotes/semicolons trimmed, statement forms parsed), and **deduplicated
 //!     within the file in first-seen order**. Crucially the import token retains
 //!     any alias prefix (e.g. `fwk "k8s.io/kube-scheduler/framework`), exactly
-//!     as Go emits it — the previous text-based extractor incorrectly stripped
+//!     as the reference implementation emits it — the previous text-based extractor incorrectly stripped
 //!     aliases.
 //!  3. The cross-file [`cf_imports::Aggregator`] increments `total_files` for
 //!     EVERY analyzed file (including markdown READMEs that contribute no
-//!     imports — Go parses every supported file and folds an empty report) and
+//!     imports — the reference implementation parses every supported file and folds an empty report) and
 //!     sums per-import occurrence counts.
 //!  4. `ComputeAllMetrics(report)` derives the structured metrics; the machine
 //!     formats serialize that value through cf-goyaml / cf-reportutil / cf-gojson
@@ -28,7 +28,7 @@
 //!
 //! ## Markdown / ungrammared-but-supported files
 //!
-//! Go's `IsSupported` is true for markdown (a wired tree-sitter grammar), so a
+//! The reference implementation's `IsSupported` is true for markdown (a wired tree-sitter grammar), so a
 //! `README.md` is parsed (to a tree with no import nodes) and still counts as
 //! one file in `total_files`. Rust may lack a wired grammar for some supported
 //! extensions; a parse failure on a supported file is therefore folded as that
@@ -85,16 +85,16 @@ fn aggregate_report_value(root_path: &str) -> Option<cf_imports::ReportValue> {
 
 /// Builds the `static/imports --format json` structured-report bytes.
 ///
-/// The Go JSON path is `StaticService.FormatJSON` →
+/// The reference JSON path is `StaticService.FormatJSON` →
 /// `imports.CreateReportSection(aggregatedReport)` → `renderer.SectionToJSON` →
 /// `json.NewEncoder(SetIndent("","  ")).Encode`. Imports is an INFO-only section
 /// (`score = -1` ⇒ `score_label = "Info"`); the single-section overall is also
 /// info-only. The `issues` list is every unique import, ordered by occurrence
-/// count descending via Go's `sort.Slice` over a map iterated in random order —
-/// so the tie order is intrinsically Go-nondeterministic (the project MANIFEST
+/// count descending via the reference implementation's `sort.Slice` over a map iterated in random order —
+/// so the tie order is intrinsically nondeterministic in the reference binary (the project MANIFEST
 /// marks `static_imports.json` nonBinding). We emit a DETERMINISTIC, correct
 /// ordering: count descending, ties broken by the aggregator's sorted import
-/// keys (the same set Go emits, just stably ordered).
+/// keys (the same set the reference implementation emits, just stably ordered).
 pub fn imports_report_json(root_path: &str) -> Option<Vec<u8>> {
     let root = imports_report_value(root_path)?;
     Some(
@@ -115,7 +115,7 @@ pub fn imports_report_value(root_path: &str) -> Option<GoValue> {
     // --- status / score (info-only) ---
     let status = build_status_message(count);
 
-    // --- key metrics (report_section.go KeyMetrics order) ---
+    // --- key metrics (reference KeyMetrics order) ---
     let metric = |label: &str, value: String| {
         let mut m = GoMap::new(MapOrigin::Struct);
         m.push("label", GoValue::Str(label.to_string()));
@@ -128,7 +128,7 @@ pub fn imports_report_value(root_path: &str) -> Option<GoValue> {
     ];
 
     // --- issues: imports sorted by count desc (deterministic tie-break by key) ---
-    // Go sorts `import_counts` (a map iterated in RANDOM order) by count desc via
+    // the reference implementation sorts `import_counts` (a map iterated in RANDOM order) by count desc via
     // an unstable sort.Slice, so its tie order is nondeterministic (the project
     // MANIFEST marks static_imports.json nonBinding). We emit a DETERMINISTIC,
     // correct ordering: count descending, ties broken by ascending import key.
@@ -169,11 +169,11 @@ pub fn imports_report_value(root_path: &str) -> Option<GoValue> {
 }
 
 /// Builds the AGGREGATED RAW `analyze.Report` GoValue for `static/imports` —
-/// the value Go's `imports.Aggregator.GetResult()` returns (aggregator.go:39),
+/// the value the reference implementation's `imports.Aggregator.GetResult()` returns,
 /// which is what `--format plot` consumes and what `writeReportJSON`
 /// serializes into `report.json`:
 ///
-/// * `imports`: the unique import paths. Go materializes them from a
+/// * `imports`: the unique import paths. the reference implementation materializes them from a
 ///   `map[string]int` in RANDOM iteration order (measured-nondeterministic;
 ///   the harness compares the multiset) — we emit the byte-sorted order.
 /// * `import_counts`: import path → file-occurrence count.
@@ -233,7 +233,7 @@ fn walk_and_count_opts(
     collect_files(root, &parser, opts, &mut files);
     files.sort();
 
-    // The Go aggregator increments total_files for every analyzed file and sums
+    // The reference aggregator increments total_files for every analyzed file and sums
     // per-import occurrence counts across files.
     let mut all_imports: std::collections::BTreeMap<String, i64> = std::collections::BTreeMap::new();
     let mut total_files: i64 = 0;
@@ -264,7 +264,7 @@ fn walk_and_count_opts(
 fn collect_files(dir: &Path, parser: &Parser, opts: &Options, out: &mut Vec<String>) {
     let Ok(read) = std::fs::read_dir(dir) else { return };
     let mut entries: Vec<_> = read.filter_map(Result::ok).collect();
-    entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
         let path = entry.path();
@@ -289,7 +289,7 @@ fn collect_files(dir: &Path, parser: &Parser, opts: &Options, out: &mut Vec<Stri
 
 /// Extracts deduplicated import strings from a real cf-uast tree.
 ///
-/// Faithful port of Go `extractImportsFromUAST` (mirrored in
+/// Faithful port of the reference `extractImportsFromUAST` (mirrored in
 /// `cf_imports::extract_imports_from_uast`, here applied to `cf_uast::Node`):
 /// pre-order traversal; a node contributes when its type is `Import` or it
 /// carries the `Import` role. Duplicates (by extracted path) are dropped,

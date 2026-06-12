@@ -1,8 +1,8 @@
 //! The per-file clone-detection [`Analyzer`].
 //!
-//! Port of `internal/analyzers/clones/analyzer.go`. It builds MinHash signatures
-//! for every function in a UAST, indexes them with LSH, finds the clone pairs,
-//! and produces the `analyze::Report` map plus the machine-format projections.
+//! Builds `MinHash` signatures for every function in a UAST, indexes them with
+//! LSH, finds the clone pairs, and produces the `analyze::Report` map plus the
+//! machine-format projections.
 
 use std::io::Write;
 
@@ -27,7 +27,7 @@ use crate::{
     THRESHOLD_CLONE_RATIO_RED, THRESHOLD_CLONE_RATIO_YELLOW,
 };
 
-/// Clone-detection analyzer using MinHash and LSH. Mirrors Go `Analyzer`.
+/// Clone-detection analyzer using `MinHash` and LSH.
 #[derive(Debug, Clone)]
 pub struct Analyzer {
     shingler: Shingler,
@@ -44,8 +44,7 @@ impl Default for Analyzer {
 }
 
 impl Analyzer {
-    /// Creates a new clone-detection analyzer with the Go defaults. Mirrors Go
-    /// `NewAnalyzer`.
+    /// Creates a new clone-detection analyzer with the default parameters.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -57,25 +56,25 @@ impl Analyzer {
         }
     }
 
-    /// The analyzer name. Mirrors Go `Analyzer.Name`.
+    /// The analyzer name.
     #[must_use]
     pub fn name(&self) -> &'static str {
         ANALYZER_NAME
     }
 
-    /// The CLI flag. Mirrors Go `Analyzer.Flag`.
+    /// The CLI flag.
     #[must_use]
     pub fn flag(&self) -> &'static str {
         ANALYZER_FLAG
     }
 
-    /// Stable analyzer metadata. Mirrors Go `Analyzer.Descriptor`.
+    /// Stable analyzer metadata.
     #[must_use]
     pub fn descriptor(&self) -> Descriptor {
         new_descriptor(AnalyzerMode::Static, ANALYZER_NAME, ANALYZER_DESCRIPTION)
     }
 
-    /// Color-coded thresholds for clone metrics. Mirrors Go `Analyzer.Thresholds`.
+    /// Color-coded thresholds for clone metrics.
     #[must_use]
     pub fn thresholds(&self) -> Thresholds {
         let mut ratio = GoMap::new(MapOrigin::Map);
@@ -96,8 +95,8 @@ impl Analyzer {
 
     /// Analyzes a UAST root into a clone-detection [`Report`].
     ///
-    /// Mirrors Go `Analyzer.Analyze`. A `None` root yields the "No AST provided"
-    /// empty report; no functions yields the "No functions found" empty report.
+    /// A `None` root yields the "No AST provided" empty report; no functions
+    /// yields the "No functions found" empty report.
     #[must_use]
     pub fn analyze_node(&self, root: Option<&Node>) -> Report {
         let Some(root) = root else {
@@ -113,10 +112,10 @@ impl Analyzer {
         self.build_report(functions.len(), &pairs)
     }
 
-    /// Finds all function and method nodes in the UAST.
-    ///
-    /// Mirrors Go `findFunctions`: collects by type (`Function`/`Method`) then by
-    /// the `Function` role, deduplicating by node identity in that order.
+    /// Finds all function and method nodes in the UAST: collects by type
+    /// (`Function`/`Method`) then by the `Function` role, deduplicating by node
+    /// identity in that order.
+    #[allow(clippy::unused_self)] // method for symmetry with detect_clones
     fn find_functions<'a>(&self, root: &'a Node) -> Vec<&'a Node> {
         let type_nodes = root.find(|n| n.has_any_type(&[UAST_FUNCTION, UAST_METHOD]));
         let role_nodes = root.find(|n| n.has_any_role(&[ROLE_FUNCTION]));
@@ -142,9 +141,8 @@ impl Analyzer {
         functions
     }
 
-    /// Builds MinHash signatures, indexes them, and finds clone pairs.
-    ///
-    /// Mirrors Go `detectClones` (per-file: no cap, threshold = Type-3).
+    /// Builds `MinHash` signatures, indexes them, and finds clone pairs
+    /// (per-file: no cap, threshold = Type-3).
     fn detect_clones(&self, functions: &[&Node]) -> Vec<ClonePair> {
         let entries = build_signatures(functions, &self.shingler, self.cfg_num_hashes);
         if entries.is_empty() {
@@ -159,7 +157,8 @@ impl Analyzer {
         find_clone_pairs(&entries, &idx, 0, self.cfg_similarity_type3).pairs
     }
 
-    /// Constructs the analysis report map. Mirrors Go `buildReport`.
+    /// Constructs the analysis report map.
+    #[allow(clippy::unused_self)] // method for symmetry with analyze_node
     fn build_report(&self, total_functions: usize, pairs: &[ClonePair]) -> Report {
         let clone_ratio = compute_clone_ratio(count_distinct_funcs(pairs), total_functions);
         let message = clone_message(pairs.len());
@@ -180,10 +179,8 @@ impl Analyzer {
         report
     }
 
-    /// Writes the report as indented JSON of [`ComputedMetrics`].
-    ///
-    /// Mirrors Go `FormatReportJSON` (`json.MarshalIndent("", "  ")`). Routes
-    /// through [`cf_gojson`], never `serde_json`.
+    /// Writes the report as indented JSON of [`ComputedMetrics`] (two-space
+    /// indent). Routes through [`cf_gojson`], never `serde_json`.
     ///
     /// # Errors
     /// Returns [`AnalyzerError`] if the writer fails.
@@ -195,8 +192,6 @@ impl Analyzer {
     }
 
     /// Writes the report as a CFB1 binary envelope of [`ComputedMetrics`].
-    ///
-    /// Mirrors Go `FormatReportBinary` (`reportutil.EncodeBinaryEnvelope`).
     ///
     /// # Errors
     /// Returns [`AnalyzerError`] if encoding or the writer fails.
@@ -214,21 +209,17 @@ impl Analyzer {
 
     /// Returns the [`ComputedMetrics`] projection used by the YAML path.
     ///
-    /// Mirrors the `metrics := computeMetricsFromReport(report)` step shared by
-    /// Go's `FormatReportYAML`. The YAML emitter (`cf-goyaml`) is wired by the
-    /// framework once it lands; YAML is a non-binding capture (DESIGN §6), so the
-    /// projection — not the emitter — is the byte-identity-critical part and is
-    /// exposed here for it.
+    /// The YAML emitter (`cf-goyaml`) is wired by the framework; YAML is a
+    /// non-binding capture (DESIGN §6), so the projection — not the emitter —
+    /// is the byte-identity-critical part and is exposed here for it.
     #[must_use]
     pub fn computed_metrics(&self, report: &Report) -> ComputedMetrics {
         compute_metrics_from_report(report)
     }
 }
 
-/// Creates an empty report with the given message. Mirrors Go `buildEmptyReport`.
-///
-/// The Go path runs through `common.NewResultBuilder().BuildCustomEmptyResult`,
-/// which returns exactly these five keys as a `map[string]any`.
+/// Creates an empty report with the given message: exactly these five keys
+/// (report-format contract).
 #[must_use]
 pub fn build_empty_report(message: &str) -> Report {
     let mut report = GoMap::new(MapOrigin::Map);
@@ -240,8 +231,7 @@ pub fn build_empty_report(message: &str) -> Report {
     report
 }
 
-/// Projects a report map into [`ComputedMetrics`]. Mirrors Go
-/// `computeMetricsFromReport`.
+/// Projects a report map into [`ComputedMetrics`].
 #[must_use]
 pub fn compute_metrics_from_report(report: &Report) -> ComputedMetrics {
     let total_functions = cf_reportutil::get_int(report, KEY_TOTAL_FUNCTIONS);
@@ -261,8 +251,8 @@ pub fn compute_metrics_from_report(report: &Report) -> ComputedMetrics {
     }
 }
 
-/// Extracts the clone pairs from a report. Mirrors Go `extractClonePairs`
-/// (handling the `[]map[string]any` case produced by [`Analyzer::build_report`]).
+/// Extracts the clone pairs from a report (handling the array-of-maps shape
+/// produced by [`Analyzer::build_report`]).
 fn extract_clone_pairs(report: &Report) -> Vec<ClonePair> {
     let Some(GoValue::Array(items)) = cf_reportutil::get(report, KEY_CLONE_PAIRS) else {
         return Vec::new();
@@ -277,7 +267,7 @@ fn extract_clone_pairs(report: &Report) -> Vec<ClonePair> {
     pairs
 }
 
-/// Extracts a [`ClonePair`] from a map value. Mirrors Go `clonePairFromMap`.
+/// Extracts a [`ClonePair`] from a map value.
 fn clone_pair_from_map(m: &GoMap) -> ClonePair {
     let mut pair = ClonePair {
         func_a: String::new(),
@@ -287,19 +277,17 @@ fn clone_pair_from_map(m: &GoMap) -> ClonePair {
     };
     for (k, v) in m.entries() {
         match (k.as_str(), v) {
-            ("func_a", GoValue::Str(s)) => pair.func_a = s.clone(),
-            ("func_b", GoValue::Str(s)) => pair.func_b = s.clone(),
+            ("func_a", GoValue::Str(s)) => pair.func_a.clone_from(s),
+            ("func_b", GoValue::Str(s)) => pair.func_b.clone_from(s),
             ("similarity", GoValue::Float(f)) => pair.similarity = *f,
-            ("clone_type", GoValue::Str(s)) => pair.clone_type = s.clone(),
+            ("clone_type", GoValue::Str(s)) => pair.clone_type.clone_from(s),
             _ => {}
         }
     }
     pair
 }
 
-/// Extracts the `clone_type_distribution` counts, if present, mirroring the Go
-/// `report[keyCloneTypeDistribution].(map[string]int)` branch of
-/// `computeMetricsFromReport`.
+/// Extracts the `clone_type_distribution` counts, if present.
 fn extract_clone_type_dist(report: &Report) -> Option<crate::report::CloneTypeCounts> {
     let Some(GoValue::Map(m)) =
         cf_reportutil::get(report, KEY_CLONE_TYPE_DISTRIBUTION)
@@ -408,7 +396,7 @@ mod tests {
     }
 
     #[test]
-    fn thresholds_structure_matches_go() {
+    fn thresholds_structure_matches_contract() {
         let a = Analyzer::new();
         let json = Encoder::marshal().encode_to_string(&GoValue::Object(a.thresholds()));
         assert_eq!(

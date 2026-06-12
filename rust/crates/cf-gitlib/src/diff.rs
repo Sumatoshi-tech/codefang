@@ -1,18 +1,16 @@
-//! Tree-to-tree diff wrappers, ported from `pkg/gitlib/diff.go`.
+//! Tree-to-tree diff wrappers.
 //!
-//! [`Diff`] wraps a libgit2 [`git2::Diff`] (freed on [`Drop`], replacing Go's
-//! `Free()`); [`DiffDelta`] / [`DiffFile`] / [`DiffStats`] mirror the Go structs.
+//! [`Diff`] wraps a libgit2 [`git2::Diff`] (freed on [`Drop`]); [`DiffDelta`] /
+//! [`DiffFile`] / [`DiffStats`] are owned snapshots of the libgit2 records.
 
 use crate::error::{GitError, Result};
 use crate::hash::Hash;
 
-/// A run of consecutive same-kind diff lines, the Rust analogue of the
-/// `cf_diff_op` records that `pkg/gitlib/clib/diff_ops.c` produces.
+/// A run of consecutive same-kind diff lines.
 ///
 /// Each variant carries the **line count** of the run. The producer
 /// ([`diff_blob_line_ops`]) coalesces adjacent lines of the same kind into one
-/// op, exactly like the C `add_op`/`flush_op` pair, so the resulting sequence
-/// is what Go feeds to `computeDiffLineStats`.
+/// op; the resulting sequence is what the line-stat computation consumes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LineOp {
     /// Unchanged (context) lines.
@@ -23,31 +21,29 @@ pub enum LineOp {
     Delete(i64),
 }
 
-/// Computes the libgit2 line-mode diff op sequence for a blob pair, mirroring
-/// `pkg/gitlib/clib/diff_ops.c` (`compute_diff_generic` + the hunk/line
-/// callbacks) byte-for-byte.
+/// Computes the libgit2 line-mode diff op sequence for a blob pair.
 ///
-/// This is the diff engine the **runtime history pipeline** uses
-/// (`framework/diff_pipeline.go` → `cf_batch_diff_blobs` → `git_diff_buffers`),
-/// NOT the `diffmatchpatch` fallback. Matching it is what makes line-stat
-/// metrics (anomaly `lines_added`/`lines_removed`, devs churn, …) byte-identical
-/// to Go: libgit2's Myers diff and `diffmatchpatch`'s line diff group
-/// changed-vs-added-vs-removed lines differently, so the two are not
-/// interchangeable.
+/// This is the diff engine the **runtime history pipeline** uses, NOT the
+/// `diffmatchpatch` fallback. It must reproduce the reference batch-diff op
+/// stream exactly: line-stat metrics (anomaly `lines_added`/`lines_removed`,
+/// devs churn, …) flow straight into reports, and libgit2's Myers diff and
+/// `diffmatchpatch`'s line diff group changed-vs-added-vs-removed lines
+/// differently, so the two are not interchangeable. Pinned by the differential
+/// gate in `rust/tests/compat`.
 ///
-/// The op stream replicates the C exactly:
-/// * `GIT_DIFF_OPTIONS_INIT` defaults (3 context lines) — [`git2::DiffOptions::new`]
-///   calls `git_diff_init_options`, the same initializer the C uses;
+/// The op stream rules (reference-implementation behavior):
+/// * libgit2 default diff options (3 context lines) via
+///   [`git2::DiffOptions::new`];
 /// * per-line: context → [`LineOp::Equal`], addition → [`LineOp::Insert`],
-///   deletion → [`LineOp::Delete`] (EOF-newline and header markers are skipped,
-///   matching the C `switch` default);
+///   deletion → [`LineOp::Delete`] (EOF-newline and header markers are
+///   skipped);
 /// * per-hunk: an implicit `Equal` block for lines skipped before the hunk
 ///   (`hunk.old_start - 1 > old_pos`);
 /// * a trailing `Equal` block for the remaining unchanged tail
 ///   (`old_lines > old_pos`).
 ///
-/// `old_lines` is the old blob's [`crate::CachedBlob::count_lines`] value (Go
-/// `result->old_lines`), used only for the trailing block.
+/// `old_lines` is the old blob's [`crate::blob::CachedBlob::count_lines`]
+/// value, used only for the trailing block.
 ///
 /// # Errors
 ///
@@ -154,7 +150,7 @@ pub fn diff_blob_line_ops(
     Ok(std::mem::take(&mut s.ops))
 }
 
-/// A libgit2 diff (Go `gitlib.Diff`).
+/// A libgit2 diff.
 pub struct Diff<'repo> {
     diff: git2::Diff<'repo>,
 }
@@ -165,22 +161,21 @@ impl<'repo> Diff<'repo> {
         Diff { diff }
     }
 
-    /// Returns the number of deltas (Go `Diff.NumDeltas`).
+    /// Returns the number of deltas.
     ///
     /// # Errors
     ///
     /// This never fails in libgit2 (the count is read from the diff object); the
-    /// `Result` is kept to mirror the Go signature, always `Ok`.
+    /// `Result` is kept for signature stability, always `Ok`.
     pub fn num_deltas(&self) -> Result<usize> {
         Ok(self.diff.deltas().len())
     }
 
-    /// Returns the delta at `index` (Go `Diff.Delta`).
+    /// Returns the delta at `index`.
     ///
     /// # Errors
     ///
-    /// Returns [`GitError::GetDelta`] when the index is out of range (Go returns
-    /// `get delta: %w`).
+    /// Returns [`GitError::GetDelta`] when the index is out of range.
     pub fn delta(&self, index: usize) -> Result<DiffDelta> {
         let delta = self.diff.get_delta(index).ok_or_else(|| {
             GitError::GetDelta(git2::Error::from_str("index out of range"))
@@ -195,11 +190,10 @@ impl<'repo> Diff<'repo> {
         })
     }
 
-    /// Iterates the diff, invoking `file_cb` per file (Go `Diff.ForEach`).
+    /// Iterates the diff, invoking `file_cb` per file.
     ///
-    /// Only the file callback is exposed (the Go wrapper passes through hunk/line
-    /// callbacks but the binding analyzers use the file-level pass). Mirrors Go's
-    /// `DiffDetailFiles` traversal.
+    /// Only the file callback is exposed; the binding analyzers use the
+    /// file-level pass.
     ///
     /// # Errors
     ///
@@ -227,7 +221,7 @@ impl<'repo> Diff<'repo> {
             .map_err(GitError::DiffForEach)
     }
 
-    /// Returns diff statistics (Go `Diff.Stats`).
+    /// Returns diff statistics.
     ///
     /// # Errors
     ///
@@ -238,7 +232,7 @@ impl<'repo> Diff<'repo> {
     }
 }
 
-/// A file change in a diff (Go `gitlib.DiffDelta`).
+/// A file change in a diff.
 #[derive(Debug, Clone)]
 pub struct DiffDelta {
     /// The delta status (added / deleted / modified / …).
@@ -253,7 +247,7 @@ pub struct DiffDelta {
     pub num_hunks: i32,
 }
 
-/// A file within a diff delta (Go `gitlib.DiffFile`).
+/// A file within a diff delta.
 #[derive(Debug, Clone)]
 pub struct DiffFile {
     /// File path (empty when the side is absent).
@@ -278,25 +272,25 @@ impl From<git2::DiffFile<'_>> for DiffFile {
     }
 }
 
-/// Diff statistics (Go `gitlib.DiffStats`).
+/// Diff statistics.
 pub struct DiffStats {
     stats: git2::DiffStats,
 }
 
 impl DiffStats {
-    /// Number of inserted lines (Go `DiffStats.Insertions`).
+    /// Number of inserted lines.
     #[must_use]
     pub fn insertions(&self) -> usize {
         self.stats.insertions()
     }
 
-    /// Number of deleted lines (Go `DiffStats.Deletions`).
+    /// Number of deleted lines.
     #[must_use]
     pub fn deletions(&self) -> usize {
         self.stats.deletions()
     }
 
-    /// Number of files changed (Go `DiffStats.FilesChanged`).
+    /// Number of files changed.
     #[must_use]
     pub fn files_changed(&self) -> usize {
         self.stats.files_changed()

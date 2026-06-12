@@ -6,27 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
-description = "Static Halstead complexity metrics analyzer (port of Go internal/analyzers/halstead). Computes vocabulary/length/volume/difficulty/effort/time/bugs per function and per file, with a count-min-sketch (CMS) path for functions with >=1000 tokens. Per-function table order is nondeterministic; scalars are stable. Also used by the quality analyzer."
+description = "Halstead complexity metrics: operator/operand detection, derived measures (vocabulary/length/volume/difficulty/effort/time/bugs), and the standalone file-level analysis consumed by the quality analyzer. Output bytes are pinned by the differential gate (rust/tests/compat); the static-pipeline report builder lives in cf-commands."
 
 [dependencies]
-# Go-`encoding/json` byte-compatible encoder. ALL machine-format report
-# serialization (json, yaml via cf-goyaml, bin) routes through this, never
-# serde_json. See DESIGN §2.
-cf-gojson = { path = "../cf-gojson" }
-# gopkg.in/yaml.v3 byte-compatible emitter for the YAML report path.
-cf-goyaml = { path = "../cf-goyaml" }
-# CFB1 binary envelope (b"CFB1" + u32 LE len + compact-JSON payload). See DESIGN §2.5.
-cf-reportutil = { path = "../cf-reportutil" }
-# Count-min-sketch reused for the >=1000-token streaming-total path. The Go
-# code uses pkg/alg/cms with epsilon=0.001 delta=0.01. See DESIGN §2.6.
-cf-alg-cms = { path = "../cf-alg-cms" }
-# UAST node type the analyzer/visitor traverse.
+# UAST node type the standalone analysis traverses.
 cf-uast-node = { path = "../cf-uast-node" }
-# MetricMeta + risk-level constants shared by the metrics layer.
-cf-metrics = { path = "../cf-metrics" }
-# map-slice sort/limit helper (mapx.SortAndLimit) used by report_section/plot.
-cf-alg-mapx = { path = "../cf-alg-mapx" }
-# CLI builder API (cobra-parity command/flag wiring). See DESIGN §4.
-clap = { workspace = true }
 
 [dev-dependencies]

@@ -1,39 +1,26 @@
-//! Self-contained VADER scoring engine — a faithful port of
-//! `github.com/jonreiter/govader` @ `f6505c8d03cc`.
+//! Self-contained VADER (Valence Aware Dictionary and sEntiment Reasoner)
+//! scoring engine.
 //!
-//! # Why this lives here (temporarily)
-//!
-//! The architecture (DESIGN §1, §2.6) puts VADER in the dedicated `cf-govader`
-//! crate. At the time of this port `cf-govader` is an incomplete scaffold
-//! (missing `lib.rs`/`constants`/`python_sim`/`sentiment_analyzer`) and is
-//! **excluded from the workspace**, so depending on it would prevent
-//! `cf-sentiment` from compiling. Per DESIGN rule (5) the minimal interface VADER
-//! provides — [`SentimentIntensityAnalyzer::polarity_scores`] returning a
-//! [`Sentiment`] — is reimplemented here so the analyzer compiles and its scoring
-//! tests pass now. Once `cf-govader` lands, this module is replaced by a
-//! dependency on it (tracked in the crate todos); the public surface
-//! ([`Sentiment`], [`SentimentIntensityAnalyzer`]) is kept identical to ease that
-//! swap.
-//!
-//! # Byte / numeric parity (DESIGN §2.6, rule 7)
+//! # Numeric parity (report compatibility)
 //!
 //! VADER compound scores are floats that reach machine reports, so this is a
-//! bit-faithful reimplementation, not an approximation:
+//! bit-faithful implementation of the reference engine, not an approximation
+//! (pinned by the differential gate):
 //!
-//! * The base lexicon and emoji table are **vendored byte-for-byte** from the
-//!   govader module (`data/vaderLexicon.txt`, `data/emojiUTF8Lexicon.txt`) and
-//!   parsed exactly as `makeLexDict`/`makeEmojiDict` do (tab split, field 0 =
-//!   word, field 1 = `ParseFloat(_, 64)`).
-//! * Float arithmetic mirrors Go operation-for-operation: the valence sum is a
-//!   plain left-to-right `f64` sum (Go uses `gonum mat.Sum`, a left-fold), and
-//!   `normalize` uses `score / sqrt(score*score + alpha)`.
-//! * Tokenization is `strings.Split(text, " ")` keeping empty tokens, and
-//!   punctuation stripping / ALLCAPS detection reproduce govader's
-//!   `PythonesqueRegex` semantics.
+//! * The base lexicon and emoji table are **vendored byte-for-byte**
+//!   (`data/vaderLexicon.txt`, `data/emojiUTF8Lexicon.txt`) and parsed exactly
+//!   as the reference does (line split, tab split, field 0 = word, field 1 =
+//!   64-bit float).
+//! * Float arithmetic matches operation-for-operation: the valence sum is a
+//!   plain left-to-right `f64` sum, and `normalize` uses
+//!   `score / sqrt(score*score + alpha)`.
+//! * Tokenization splits on single spaces keeping empty tokens, and
+//!   punctuation stripping / ALLCAPS detection reproduce the reference's
+//!   Python-style string semantics.
 
 use std::collections::HashMap;
 
-// --- constants.go ---
+// --- scoring constants ---
 
 const B_INCR: f64 = 0.293;
 const B_DECR: f64 = -0.293;
@@ -49,7 +36,7 @@ const MAX_QM: f64 = 0.96;
 const NEGATION_SCALE: f64 = 1.25;
 const BUT_SCALE: f64 = 0.5;
 
-/// A single sentiment measurement for a statement. Mirrors govader `Sentiment`.
+/// A single sentiment measurement for a statement.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Sentiment {
     /// Negative-valence proportion.
@@ -62,26 +49,24 @@ pub struct Sentiment {
     pub compound: f64,
 }
 
-// --- python_sim.go (PythonesqueRegex) ---
+// --- Python-style string helpers ---
 
-/// Reproduces govader's `PythonesqueRegex` string helpers without a regex engine.
-///
-/// The Go code compiles `[a-z]+`, `[A-Z]+`, `[^a-zA-Z0-9]+` and the punctuation
-/// trim set. Those reduce to ASCII character-class scans, reproduced here so the
-/// behavior (and therefore token boundaries / ALLCAPS flags) is identical.
+/// String helpers reproducing the reference engine's Python-style semantics
+/// (`[a-z]+` / `[A-Z]+` classes and the punctuation trim set) as ASCII
+/// character-class scans, so token boundaries and ALLCAPS flags are identical.
 struct PythonesqueRegex;
 
 impl PythonesqueRegex {
-    /// Punctuation trimmed from word edges. Mirrors `PunctuationString`:
-    /// `"!#$%&\'()*+,-./:;<=>?@[\\]^_` + backtick + `{|}~`.
+    /// Punctuation trimmed from word edges:
+    /// `"!#$%&'()*+,-./:;<=>?@[\]^_` + backtick + `{|}~`.
     const PUNCTUATION: &'static [char] = &[
         '"', '!', '#', '$', '%', '&', '\'', '(', ')', '*', '+', ',', '-', '.', '/', ':', ';', '<',
         '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~',
     ];
 
-    /// Python `str.isupper`-style check via `[a-z]+`/`[A-Z]+`: any lowercase
-    /// ASCII letter flips the result to false; otherwise true iff at least one
-    /// uppercase ASCII letter is present. Mirrors `stringIsUpper`.
+    /// Python `str.isupper`-style check: any lowercase ASCII letter flips the
+    /// result to false; otherwise true iff at least one uppercase ASCII letter
+    /// is present.
     fn string_is_upper(s: &str) -> bool {
         let has_lower = s.bytes().any(|b| b.is_ascii_lowercase());
         if has_lower {
@@ -90,9 +75,8 @@ impl PythonesqueRegex {
         s.bytes().any(|b| b.is_ascii_uppercase())
     }
 
-    /// Strips leading/trailing punctuation, but only if ≥3 bytes remain.
-    /// Mirrors `stripPunctuationIfWord` (`strings.Trim` then a `< 3` guard on the
-    /// **byte** length).
+    /// Strips leading/trailing punctuation, but only if at least 3 **bytes**
+    /// remain (otherwise the token is returned unchanged).
     fn strip_punctuation_if_word(text: &str) -> String {
         let stripped = text.trim_matches(|c| Self::PUNCTUATION.contains(&c));
         if stripped.len() < 3 {
@@ -101,7 +85,7 @@ impl PythonesqueRegex {
         stripped.to_string()
     }
 
-    /// Whether some-but-not-all words are ALLCAPS. Mirrors `allcapDifferential`.
+    /// Whether some-but-not-all words are ALLCAPS.
     fn allcap_differential(words: &[String]) -> bool {
         let allcap = words.iter().filter(|w| Self::string_is_upper(w)).count();
         let cap_diff = words.len() as i64 - allcap as i64;
@@ -109,9 +93,9 @@ impl PythonesqueRegex {
     }
 }
 
-// --- senti_text.go ---
+// --- tokenized input text ---
 
-/// Sentiment-relevant string properties of input text. Mirrors `SentiText`.
+/// Sentiment-relevant string properties of input text.
 struct SentiText {
     words_and_emoticons: Vec<String>,
     words_and_emoticons_lower: Vec<String>,
@@ -119,8 +103,8 @@ struct SentiText {
 }
 
 impl SentiText {
-    /// Builds a `SentiText`. Mirrors `NewSentiText`: `strings.Split(text, " ")`
-    /// (keeping empty tokens) followed by edge-punctuation stripping.
+    /// Tokenizes on single spaces (keeping empty tokens) and strips edge
+    /// punctuation per token.
     fn new(text: &str) -> Self {
         let words_and_emoticons: Vec<String> = text
             .split(' ')
@@ -137,19 +121,18 @@ impl SentiText {
     }
 }
 
-// --- term constants (constants.go) ---
+// --- term constants ---
 
-fn negate_list() -> Vec<&'static str> {
-    vec![
-        "aint", "arent", "cannot", "cant", "couldnt", "darent", "didnt", "doesnt", "ain't",
-        "aren't", "can't", "couldn't", "daren't", "didn't", "doesn't", "dont", "hadnt", "hasnt",
-        "havent", "isnt", "mightnt", "mustnt", "neither", "don't", "hadn't", "hasn't", "haven't",
-        "isn't", "mightn't", "mustn't", "neednt", "needn't", "never", "none", "nope", "nor", "not",
-        "nothing", "nowhere", "oughtnt", "shant", "shouldnt", "uhuh", "wasnt", "werent", "oughtn't",
-        "shan't", "shouldn't", "uh-uh", "wasn't", "weren't", "without", "wont", "wouldnt", "won't",
-        "wouldn't", "rarely", "seldom", "despite",
-    ]
-}
+/// Words that negate the valence of what follows them.
+const NEGATE_LIST: &[&str] = &[
+    "aint", "arent", "cannot", "cant", "couldnt", "darent", "didnt", "doesnt", "ain't",
+    "aren't", "can't", "couldn't", "daren't", "didn't", "doesn't", "dont", "hadnt", "hasnt",
+    "havent", "isnt", "mightnt", "mustnt", "neither", "don't", "hadn't", "hasn't", "haven't",
+    "isn't", "mightn't", "mustn't", "neednt", "needn't", "never", "none", "nope", "nor", "not",
+    "nothing", "nowhere", "oughtnt", "shant", "shouldnt", "uhuh", "wasnt", "werent", "oughtn't",
+    "shan't", "shouldn't", "uh-uh", "wasn't", "weren't", "without", "wont", "wouldnt", "won't",
+    "wouldn't", "rarely", "seldom", "despite",
+];
 
 fn booster_dict() -> HashMap<String, f64> {
     let inc: &[&str] = &[
@@ -196,7 +179,6 @@ fn special_case_idioms() -> HashMap<String, f64> {
 }
 
 struct TermConstants {
-    negate_list: Vec<&'static str>,
     booster_dict: HashMap<String, f64>,
     special_case_idioms: HashMap<String, f64>,
 }
@@ -204,14 +186,12 @@ struct TermConstants {
 impl TermConstants {
     fn new() -> Self {
         Self {
-            negate_list: negate_list(),
             booster_dict: booster_dict(),
             special_case_idioms: special_case_idioms(),
         }
     }
 
-    /// Check if preceding words increase/decrease/negate valence. Mirrors
-    /// `scalarIncDec`.
+    /// Check if preceding words increase/decrease/negate valence.
     fn scalar_inc_dec(&self, word: &str, word_lower: &str, valence: f64, is_cap_diff: bool) -> f64 {
         let mut scalar = 0.0;
         if let Some(&boost) = self.booster_dict.get(word_lower) {
@@ -230,7 +210,7 @@ impl TermConstants {
         scalar
     }
 
-    /// Mirrors `specialIdiomsCheck`.
+    /// Adjusts valence for multi-word idioms around position `i`.
     fn special_idioms_check(&self, valence: f64, wel: &[String], i: usize) -> f64 {
         let mut new_valence = valence;
 
@@ -271,11 +251,11 @@ impl TermConstants {
     }
 }
 
-// --- vader.go free functions ---
+// --- scoring free functions ---
 
-fn negated(input_words: &[&str], include_nt: bool, negate_list: &[&str]) -> bool {
+fn negated(input_words: &[&str], include_nt: bool) -> bool {
     for x in input_words {
-        if negate_list.contains(x) {
+        if NEGATE_LIST.contains(x) {
             return true;
         }
     }
@@ -291,13 +271,7 @@ fn negated(input_words: &[&str], include_nt: bool, negate_list: &[&str]) -> bool
 
 fn normalize(score: f64, alpha: f64) -> f64 {
     let norm = score / ((score * score) + alpha).sqrt();
-    if norm < -1.0 {
-        -1.0
-    } else if norm > 1.0 {
-        1.0
-    } else {
-        norm
-    }
+    norm.clamp(-1.0, 1.0)
 }
 
 fn normalize_default(score: f64) -> f64 {
@@ -345,19 +319,17 @@ fn punctuation_emphasis(text: &str) -> f64 {
     amplify_ep(text) + amplify_qm(text)
 }
 
-fn negation_check(valence: f64, wel: &[String], starti: usize, i: usize, negate_list: &[&str]) -> f64 {
+fn negation_check(valence: f64, wel: &[String], starti: usize, i: usize) -> f64 {
     let mut new_valence = valence;
-    if starti == 0 {
-        if negated(&[wel[i - 1].as_str()], true, negate_list) {
-            new_valence *= N_SCALAR;
-        }
+    if starti == 0 && negated(&[wel[i - 1].as_str()], true) {
+        new_valence *= N_SCALAR;
     }
     if starti == 1 {
         if wel[i - 2] == "never" && (wel[i - 1] == "so" || wel[i - 1] == "this") {
             new_valence = valence * NEGATION_SCALE;
         } else if wel[i - 2] == "without" && wel[i - 1] == "doubt" {
             new_valence = valence;
-        } else if negated(&[wel[i - 2].as_str()], true, negate_list) {
+        } else if negated(&[wel[i - 2].as_str()], true) {
             new_valence = valence * N_SCALAR;
         }
     }
@@ -369,7 +341,7 @@ fn negation_check(valence: f64, wel: &[String], starti: usize, i: usize, negate_
             new_valence = valence * NEGATION_SCALE;
         } else if wel[i - 3] == "without" && (wel[i - 2] == "doubt" || wel[i - 1] == "doubt") {
             new_valence = valence;
-        } else if negated(&[wel[i - 3].as_str()], true, negate_list) {
+        } else if negated(&[wel[i - 3].as_str()], true) {
             new_valence = valence * N_SCALAR;
         }
     }
@@ -382,10 +354,10 @@ fn but_check(wel: &[String], sentiments: &mut [f64]) {
     };
     for (i, s) in sentiments.iter_mut().enumerate() {
         if i < bi {
-            *s = (1.0 - BUT_SCALE) * *s;
+            *s *= 1.0 - BUT_SCALE;
         }
         if i > bi {
-            *s = (1.0 + BUT_SCALE) * *s;
+            *s *= 1.0 + BUT_SCALE;
         }
     }
 }
@@ -393,7 +365,7 @@ fn but_check(wel: &[String], sentiments: &mut [f64]) {
 fn score_valence(sentiments: &[f64], text: &str) -> Sentiment {
     let mut sentiment = Sentiment::default();
     if !sentiments.is_empty() {
-        // Go uses gonum mat.Sum — a plain left-to-right f64 fold.
+        // Plain left-to-right f64 fold (report contract).
         let mut sum_s: f64 = sentiments.iter().sum();
         let punct = punctuation_emphasis(text);
         if sum_s > 0.0 {
@@ -417,14 +389,12 @@ fn score_valence(sentiments: &[f64], text: &str) -> Sentiment {
     sentiment
 }
 
-// --- sentiment_analyzer.go ---
+// --- analyzer ---
 
-/// Computes VADER sentiment-intensity scores. Mirrors
-/// `SentimentIntensityAnalyzer`.
+/// Computes VADER sentiment-intensity scores.
 ///
-/// `lexicon` is public so the sentiment analyzer can inject multilingual entries
-/// (matching govader's exported `Lexicon` field), reproducing
-/// `injectMultilingualLexicons`.
+/// `lexicon` is public so the sentiment analyzer can inject multilingual
+/// entries (see `scorer::inject_multilingual_lexicons`).
 pub struct SentimentIntensityAnalyzer {
     /// Word -> valence. Public to allow multilingual injection.
     pub lexicon: HashMap<String, f64>,
@@ -433,8 +403,7 @@ pub struct SentimentIntensityAnalyzer {
 }
 
 impl SentimentIntensityAnalyzer {
-    /// Constructs and initializes an analyzer. Mirrors
-    /// `NewSentimentIntensityAnalyzer`.
+    /// Constructs and initializes an analyzer from the vendored data tables.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -444,10 +413,10 @@ impl SentimentIntensityAnalyzer {
         }
     }
 
-    /// Returns a sentiment score for `text`. Mirrors `PolarityScores`.
+    /// Returns a sentiment score for `text`.
     #[must_use]
     pub fn polarity_scores(&self, text: &str) -> Sentiment {
-        // Replace emoji with their textual descriptions (govader buffer logic).
+        // Replace emoji with their textual descriptions.
         let mut buffer = String::with_capacity(text.len() * 2);
         let mut prev_space = true;
         for rune in text.chars() {
@@ -474,9 +443,10 @@ impl SentimentIntensityAnalyzer {
         for (i, item) in wel.iter().enumerate() {
             let valence = 0.0;
             let item_lower = &well[i];
-            if self.constants.booster_dict.contains_key(item_lower) {
-                sentiments.push(valence);
-            } else if i < wel.len() - 1 && item_lower == "kind" && well[i + 1] == "of" {
+            // Boosters and the "kind of" idiom contribute a zero base valence.
+            if self.constants.booster_dict.contains_key(item_lower)
+                || (i < wel.len() - 1 && item_lower == "kind" && well[i + 1] == "of")
+            {
                 sentiments.push(valence);
             } else {
                 self.sentiment_valence(valence, &sentitext, item, i, &mut sentiments);
@@ -539,13 +509,7 @@ impl SentimentIntensityAnalyzer {
                         s *= VALENCE_SCALAR_SCALE2;
                     }
                     new_valence += s;
-                    new_valence = negation_check(
-                        new_valence,
-                        well,
-                        start_i,
-                        i,
-                        &self.constants.negate_list,
-                    );
+                    new_valence = negation_check(new_valence, well, start_i, i);
                     if start_i == 2 {
                         new_valence = self.constants.special_idioms_check(new_valence, well, i);
                     }
@@ -575,9 +539,8 @@ impl Default for SentimentIntensityAnalyzer {
     }
 }
 
-/// Parses the vendored VADER lexicon. Mirrors `makeLexDict`:
-/// `bufio.Scanner` (split on `\n`), tab-split, word = field 0,
-/// measure = `ParseFloat(field 1, 64)`.
+/// Parses the vendored VADER lexicon: per line, tab-split, word = field 0,
+/// measure = field 1 parsed as `f64` (`0.0` on parse failure).
 fn make_lex_dict() -> HashMap<String, f64> {
     const RAW: &str = include_str!("../data/vaderLexicon.txt");
     let mut m = HashMap::new();
@@ -590,7 +553,7 @@ fn make_lex_dict() -> HashMap<String, f64> {
     m
 }
 
-/// Parses the vendored emoji table. Mirrors `makeEmojiDict`.
+/// Parses the vendored emoji table (tab-split: emoji, description).
 fn make_emoji_dict() -> HashMap<String, String> {
     const RAW: &str = include_str!("../data/emojiUTF8Lexicon.txt");
     let mut m = HashMap::new();
@@ -603,9 +566,9 @@ fn make_emoji_dict() -> HashMap<String, String> {
     m
 }
 
-/// Yields lines like Go's `bufio.Scanner` default split: split on `\n`,
-/// dropping a trailing `\r`, and skipping a final empty line after a trailing
-/// `\n`.
+/// Yields lines split on `\n`, dropping a trailing `\r` and skipping empty
+/// lines (matching how the vendored tables are consumed by the reference
+/// parser).
 fn scanner_lines(raw: &str) -> impl Iterator<Item = &str> {
     raw.split('\n').filter_map(|l| {
         let l = l.strip_suffix('\r').unwrap_or(l);

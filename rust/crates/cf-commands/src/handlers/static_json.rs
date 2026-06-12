@@ -1,9 +1,9 @@
 //! Static-analysis JSON report path for raw-file analyzers (`static/composition`).
 //!
-//! Reproduces the Go static pipeline for the single-analyzer
+//! Reproduces the reference static pipeline for the single-analyzer
 //! `codefang run --analyzers static/composition --format json` capture:
 //!
-//!  1. `StaticService.rawFilePhase` (`internal/analyzers/analyze/static.go:262`)
+//!  1. the reference `StaticService.rawFilePhase`
 //!     walks `rootPath` with `filepath.WalkDir` — directories are recursed
 //!     (except `.git`), every regular file is offered to the requested
 //!     `RawFileAnalyzer`s. A file survives when it (a) matches the `--languages`
@@ -35,8 +35,8 @@ use cf_composition::{Category, Classifier, ALL_CATEGORIES};
 use cf_gojson::{Encoder, GoMap, GoValue, MapOrigin};
 use cf_pathpolicy::{exclude, Options};
 
-/// Max bytes read per file in the raw-file pre-pass (Go `contentHeaderSize`,
-/// static.go:615).
+/// Max bytes read per file in the raw-file pre-pass (the reference `contentHeaderSize`,
+/// the reference static service).
 const CONTENT_HEADER_SIZE: usize = 8192;
 
 /// Section title / status / score constants (composition report section).
@@ -88,7 +88,7 @@ fn composition_counts_opts(root_path: &str, opts: &Options) -> Option<Counts> {
 
 /// Builds the AGGREGATED RAW `analyze.Report` GoValue for `static/composition`
 /// (`composition.Aggregator.GetResult`) — composition registers NO plot
-/// section renderer in Go, so `--format plot` renders no page for it; this raw
+/// section renderer in the reference implementation, so `--format plot` renders no page for it; this raw
 /// value is what `writeReportJSON` serializes into `report.json`.
 #[must_use]
 pub fn composition_raw_report_value(root_path: &str, opts: &Options) -> Option<GoValue> {
@@ -97,7 +97,7 @@ pub fn composition_raw_report_value(root_path: &str, opts: &Options) -> Option<G
 }
 
 /// Builds the `static/composition --format json` report bytes for `root_path`,
-/// or `None` when the path cannot be read (Go would surface a walk error; the
+/// or `None` when the path cannot be read (the reference implementation would surface a walk error; the
 /// caller then falls through to the blocked-dependency sentinel).
 #[must_use]
 pub fn composition_report(root_path: &str) -> Option<Vec<u8>> {
@@ -121,7 +121,7 @@ pub fn composition_report_value(root_path: &str) -> Option<GoValue> {
 /// Builds the `static/composition --format bin` report bytes for `root_path`,
 /// or `None` when the path cannot be read.
 ///
-/// The Go per-analyzer binary path (`StaticService.FormatPerAnalyzer` →
+/// The reference per-analyzer binary path (`StaticService.FormatPerAnalyzer` →
 /// `composition.Analyzer.FormatReportBinary` →
 /// `reportutil.EncodeBinaryEnvelope(report)`) wraps the analyzer's **raw**
 /// aggregated `analyze.Report` — NOT the renderer JSON section structure used by
@@ -143,7 +143,7 @@ pub fn composition_bin(root_path: &str) -> Option<Vec<u8>> {
 /// Builds the `static/composition --format yaml` report bytes for `root_path`,
 /// or `None` when the path cannot be read.
 ///
-/// The Go per-analyzer YAML path (`StaticService.FormatPerAnalyzer` →
+/// The reference per-analyzer YAML path (`StaticService.FormatPerAnalyzer` →
 /// `composition.Analyzer.FormatReportYAML` → `yaml.NewEncoder(w).Encode(report)`)
 /// marshals the analyzer's **raw** aggregated `analyze.Report` —
 /// `composition.Aggregator.GetResult` (`breakdown` / `percentages` /
@@ -158,7 +158,7 @@ pub fn composition_yaml(root_path: &str) -> Option<Vec<u8>> {
 }
 
 /// Builds the raw aggregated `analyze.Report` GoValue
-/// (`composition.Aggregator.GetResult`) as a Go-map-origin value: top-level keys
+/// (`composition.Aggregator.GetResult`) as a map-origin value: top-level keys
 /// `breakdown`, `percentages`, `total_files` and every-category nested maps,
 /// all byte-sorted by the encoder.
 fn build_raw_report(counts: &Counts) -> GoValue {
@@ -171,7 +171,7 @@ fn build_raw_report(counts: &Counts) -> GoValue {
     }
 
     // percentages: map[string]float64 over every category, count/total*100;
-    // omitted entirely when total_files == 0 (Go leaves the map empty).
+    // omitted entirely when total_files == 0 (reference: leaves the map empty).
     let mut percentages = GoMap::new(MapOrigin::Map);
     if total > 0 {
         for cat in ALL_CATEGORIES {
@@ -192,13 +192,13 @@ fn build_raw_report(counts: &Counts) -> GoValue {
 /// path policy and classified.
 fn walk(dir: &Path, classifier: &Classifier, opts: &Options, counts: &mut Counts) {
     let Ok(read) = fs::read_dir(dir) else {
-        // Permission / not-exist errors are skipped (Go `skipAllFilesEntry`).
+        // Permission / not-exist errors are skipped.
         return;
     };
 
     let mut entries: Vec<_> = read.filter_map(Result::ok).collect();
     // filepath.WalkDir sorts entries by name (os.ReadDir guarantees sorted).
-    entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
         let path = entry.path();
@@ -232,7 +232,7 @@ fn walk(dir: &Path, classifier: &Classifier, opts: &Options, counts: &mut Counts
 }
 
 /// Reads up to [`CONTENT_HEADER_SIZE`] bytes from `path`; returns empty on error
-/// (Go `readFileHeader` returns nil, which classifies as empty content).
+/// (the reference `readFileHeader` returns nil, which classifies as empty content).
 fn read_header(path: &Path) -> Vec<u8> {
     use std::io::Read;
     let Ok(mut f) = fs::File::open(path) else {
@@ -250,7 +250,7 @@ fn read_header(path: &Path) -> Vec<u8> {
 
 /// Builds the `renderer.JSONReport` GoValue for a single composition section.
 ///
-/// Field order mirrors the Go structs exactly (struct-origin maps keep
+/// Field order mirrors the reference structs exactly (struct-origin maps keep
 /// declaration order): `overall_score_label`, `sections`, `overall_score`; and
 /// per section `title`, `score_label`, `status`, `metrics`, `distribution`
 /// (omitted when empty), `issues`, `score`.
@@ -263,8 +263,8 @@ fn build_json_report(counts: &Counts) -> GoValue {
     GoValue::Map(report)
 }
 
-/// Builds the single composition `renderer.JSONSection` GoValue (Go
-/// `SectionToJSON`). Field order mirrors the Go struct: `title`, `score_label`,
+/// Builds the single composition `renderer.JSONSection` GoValue (reference:
+/// `SectionToJSON`). Field order mirrors the reference struct: `title`, `score_label`,
 /// `status`, `metrics`, `distribution` (omitted when empty), `issues`, `score`.
 fn build_section(counts: &Counts) -> GoValue {
     let total = counts.total_files;
@@ -340,7 +340,7 @@ fn metric(label: &str, value: &str) -> GoValue {
     GoValue::Map(m)
 }
 
-/// Go `reportutil.Pct`: fraction in [0,1] (NOT a percentage).
+/// The reference `reportutil.Pct`: fraction in [0,1] (NOT a percentage).
 fn pct(count: i64, total: i64) -> f64 {
     if total == 0 {
         return 0.0;
@@ -348,7 +348,7 @@ fn pct(count: i64, total: i64) -> f64 {
     (count as f64) / (total as f64)
 }
 
-/// Go `reportutil.FormatPercent`: `%.1f%%` over `v*100`.
+/// The reference `reportutil.FormatPercent`: `%.1f%%` over `v*100`.
 fn format_percent(v: f64) -> String {
     format!("{:.1}%", v * 100.0)
 }

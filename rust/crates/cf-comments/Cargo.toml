@@ -7,10 +7,10 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
-# Port of internal/analyzers/comments — static comment density / quality
-# (comment-block grouping sorted by line); also consumed by the quality
-# analyzer. Report serialization routes through cf-gojson (the Go-byte-compatible
-# encoder), never serde_json, per DESIGN §2.
+# cf-comments — static comment density / quality analyzer (analyzer id:
+# static/comments; comment-block grouping sorted by line); also consumed by
+# the quality analyzer. Report serialization routes through cf-gojson (the
+# report-contract encoder), never serde_json, per DESIGN §2.
 
 [dependencies]
 cf-gojson = { workspace = true }

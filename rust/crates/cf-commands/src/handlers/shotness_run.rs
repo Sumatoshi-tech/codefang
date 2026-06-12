@@ -1,35 +1,35 @@
 //! Real `history/shotness` over the general history pipeline.
 //!
-//! Port of the Go streaming shotness pipeline (run.go initHistoryPipeline /
+//! Port of the reference streaming shotness pipeline (the reference `initHistoryPipeline` /
 //! initHeadOnly → Runner → shotness `Analyzer.Consume`
 //! (`handleInsertion`/`handleModification`/`handleDeletion`, diff-driven
 //! line→node attribution) → aggregator (`accumulateNodes` /
 //! `computeCouplingPairs`) → `ticksToReport` (`buildReportFromMerged`) →
 //! `ComputeAllMetrics`).
 //!
-//! ## Node identity in the streaming pipeline (irreducible Go nondeterminism)
+//! ## Node identity in the streaming pipeline (irreducible reference-binary nondeterminism)
 //!
-//! The Go analyzer keys touched nodes through `reverseNodeMap`, a
+//! The reference analyzer keys touched nodes through `reverseNodeMap`, a
 //! `map[node.ID]name`. In the **streaming** pipeline the UAST plumbing
 //! (`parseBlob`) never calls `AssignStableIDs`, so every parsed node carries the
 //! **empty** id `""`. `reverseNodeMap` therefore collapses to a single entry
-//! `{"" : <one name>}` whose value is whichever entry Go's randomized map
+//! `{"" : <one name>}` whose value is whichever entry the reference implementation's randomized map
 //! iteration visits last. Consequently `recordTouchedNodes` attributes every
-//! diff-touched line's node(s) to that one (random) name. This makes the Go
+//! diff-touched line's node(s) to that one (random) name. This makes the reference implementation
 //! shotness output genuinely nondeterministic at the *content* level — the
 //! selected node SET differs run-to-run, not merely byte order (confirmed: two
-//! Go runs at `--limit 20` select disjoint node sets of differing size). No
-//! deterministic port can be byte-identical to Go, and the recorded golden is
+//! the reference implementation runs at `--limit 20` select disjoint node sets of differing size). No
+//! deterministic port can be byte-identical to the reference binary, and the recorded golden is
 //! itself non-reproducible.
 //!
 //! This port reproduces the *algorithm* faithfully and resolves the empty-id
 //! collapse **deterministically**: the `reverseNodeMap[""]` winner is the
-//! maximum extracted name (Go picks a random one; we pick the well-defined
+//! maximum extracted name (the reference implementation picks a random one; we pick the well-defined
 //! maximum so the output is stable). All accumulation, coupling, metric, and
 //! serialization logic is the byte-exact cf-shotness port; only the
 //! (intrinsically nondeterministic) node-name tiebreak is made deterministic.
 //!
-//! Output bytes route through `cf-gojson` (Go `encoding/json` parity); never
+//! Output bytes route through `cf-gojson` (the reference `encoding/json` parity); never
 //! `serde_json`.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -47,13 +47,13 @@ use cf_uast_node::Node;
 use crate::handlers::{floor_tick_secs, run_repo_path};
 
 /// `UASTChangesAnalyzer` spill threshold: a commit with more than this many file
-/// changes streams zero UAST changes (Go `UASTPipeline.SpillThreshold = 32`).
+/// changes streams zero UAST changes.
 const SPILL_THRESHOLD: usize = 32;
-/// UAST blob size cap (Go `maxUASTBlobSize = 256 KiB`).
+/// UAST blob size cap.
 const MAX_BLOB_SIZE: usize = 256 * 1024;
-/// Default DSL selecting structural nodes (Go `DefaultShotnessDSLStruct`).
+/// Default DSL selecting structural nodes.
 const DSL_STRUCT: &str = r#"filter(.roles has "Function")"#;
-/// Default DSL extracting the node name (Go `DefaultShotnessDSLName`,
+/// Default DSL extracting the node name (the reference `DefaultShotnessDSLName`,
 /// `.props.name`): resolved directly from the node's `name` property — see
 /// [`extract_nodes`].
 const _DSL_NAME: &str = ".props.name";
@@ -69,22 +69,22 @@ pub fn shotness_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 /// Computes the `history/shotness` [`ComputedMetrics`] over the REAL general
 /// history pipeline (one report value shared by every output format), or `None`
 /// if the repository cannot be opened/walked. Each `run --format` encoding is
-/// just a serializer over this single value (Go `ToJSON`/`ToYAML`/binary
+/// just a serializer over this single value (the reference `ToJSON`/`ToYAML`/binary
 /// envelope), routed at the handler layer.
 pub fn shotness_run_metrics(sub: &clap::ArgMatches) -> Option<cf_shotness::ComputedMetrics> {
     let report = shotness_run_report_data(sub)?;
     Some(compute_all_metrics(&report))
 }
 
-/// The raw `history/shotness` report (Go `ticksToReport`: key-sorted `Nodes` +
+/// The raw `history/shotness` report (the reference `ticksToReport`: key-sorted `Nodes` +
 /// index-keyed `Counters`) over the same walk as [`shotness_run_metrics`]. The
-/// plot path consumes this directly — Go's store writer streams exactly these
+/// plot path consumes this directly — the reference implementation's store writer streams exactly these
 /// `(NodeSummary, Counter)` records (`WriteToStore` →
 /// `extractShotnessData(report)`).
 pub fn shotness_run_report_data(sub: &clap::ArgMatches) -> Option<cf_shotness::ReportData> {
     let walk = shotness_walk(sub)?;
 
-    // Per-tick accumulator (Go aggregator `byTick`).
+    // Per-tick accumulator (reference: aggregator `byTick`).
     let mut by_tick: BTreeMap<i64, TickNodes> = BTreeMap::new();
     for c in &walk {
         if c.touched.is_empty() {
@@ -104,12 +104,12 @@ pub fn shotness_run_report_data(sub: &clap::ArgMatches) -> Option<cf_shotness::R
     Some(build_report_from_merged(&merged))
 }
 
-/// One walked commit's shotness products (Go `shotness.Consume` TC + runner
+/// One walked commit's shotness products (the reference `shotness.Consume` TC + runner
 /// stamps). `touched` empty ⇔ nil-Data TC (skipped merge / spill / no nodes).
 pub(crate) struct ShotnessCommit {
     /// Full hex hash.
     pub hash: String,
-    /// Node key → summary for the nodes this commit touched (Go
+    /// Node key → summary for the nodes this commit touched (reference:
     /// `CommitData.NodesTouched` keys + summaries; `CountDelta` is always 1).
     pub touched: BTreeMap<String, NodeSummary>,
     /// TicksSinceStart tick.
@@ -135,7 +135,7 @@ pub(crate) fn shotness_walk(sub: &clap::ArgMatches) -> Option<Vec<ShotnessCommit
     let hashes: Vec<cf_gitlib::Hash> = if head_only {
         vec![repo.head().ok()?]
     } else {
-        // Window: `limit` NEWEST commits oldest-first (Go `gitlib.loadHistoryCommits`).
+        // Window: `limit` NEWEST commits oldest-first.
         crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?
     };
 
@@ -143,9 +143,9 @@ pub(crate) fn shotness_walk(sub: &clap::ArgMatches) -> Option<Vec<ShotnessCommit
     let opts = PathPolicyOptions::default();
     let mut identity = IdentityDetector::new();
 
-    // Cumulative analyzer state (Go `s.nodes` / `s.files`).
+    // Cumulative analyzer state.
     let mut state = ShotnessState::default();
-    // Merge dedup tracker (Go `s.merges.SeenOrAdd` over NumParents() > 1).
+    // Merge dedup tracker (the reference `s.merges.SeenOrAdd` over NumParents() > 1).
     let mut seen_merges: BTreeSet<cf_gitlib::Hash> = BTreeSet::new();
 
     let mut tick0: Option<i64> = None;
@@ -200,7 +200,7 @@ pub(crate) fn shotness_walk(sub: &clap::ArgMatches) -> Option<Vec<ShotnessCommit
             continue;
         }
 
-        // allNodes: node keys touched in THIS commit (deduped, Go `allNodes`).
+        // allNodes: node keys touched in THIS commit (deduped, the reference `allNodes`).
         let mut all_nodes: BTreeSet<String> = BTreeSet::new();
 
         for change in &changes {
@@ -239,7 +239,7 @@ pub(crate) fn shotness_walk(sub: &clap::ArgMatches) -> Option<Vec<ShotnessCommit
 }
 
 /// Per-commit shotness NDJSON records (forked leaf): only commits that touched
-/// known nodes emit a line; `data` is Go's `*CommitData` — one `NodesTouched`
+/// known nodes emit a line; `data` is the reference implementation's `*CommitData` — one `NodesTouched`
 /// map (key-sorted) of `NodeDelta{Summary{Type,Name,File}, CountDelta: 1}`.
 pub fn shotness_ndjson_records(
     sub: &clap::ArgMatches,
@@ -278,7 +278,7 @@ pub fn shotness_ndjson_records(
     Some(records)
 }
 
-/// The shotness contribution to the merged `--format timeseries` document (Go
+/// The shotness contribution to the merged `--format timeseries` document (reference:
 /// `shotness.ExtractCommitTimeSeries` over `report["commit_stats"]`): per
 /// node-touching commit `{"nodes_touched": n, "coupling_pairs": n*(n-1)/2}`.
 pub fn shotness_timeseries_contribution(
@@ -294,7 +294,7 @@ pub fn shotness_timeseries_contribution(
             continue;
         }
         let n = c.touched.len() as i64;
-        // Go computeCouplingPairs: 0 below minCouplingNodes (2), else C(n,2).
+        // The reference `computeCouplingPairs`: 0 below minCouplingNodes (2), else C(n,2).
         let pairs = if n < 2 { 0 } else { n * (n - 1) / 2 };
         let mut entry = GoMap::new_map();
         entry.insert("nodes_touched".to_string(), GoValue::Int(n));
@@ -315,7 +315,7 @@ pub fn shotness_timeseries_contribution(
 }
 
 /// Parses a change side's blob into a UAST root, applying the same filters as
-/// Go's `UASTPipeline.parseBlob`: path-policy exclusion, parser support,
+/// the reference implementation's `UASTPipeline.parseBlob`: path-policy exclusion, parser support,
 /// 256 KiB blob cap, content-aware generated detection.
 fn parse_change_uast(
     repo: &cf_gitlib::Repository,
@@ -345,7 +345,7 @@ fn parse_change_uast(
 
 /// One extracted structural node: its resolved name, type, and 1-based inclusive
 /// line span, used for registration and diff line→node mapping
-/// (Go `extractNodes` / `genLine2Node` / `resolveEndLine`).
+/// (the reference `extractNodes` / `genLine2Node` / `resolveEndLine`).
 struct ExtractedNode {
     name: String,
     type_: String,
@@ -354,11 +354,11 @@ struct ExtractedNode {
 }
 
 /// Extracts structural nodes via the struct DSL and resolves each node's name
-/// via the name DSL (Go `extractNodes`). Returns one entry per distinct name
+/// via the name DSL. Returns one entry per distinct name
 /// (last-wins on name collision over the deterministic `FindDSL` slice order)
 /// plus the deterministic `reverseNodeMap[""]` winner name (the maximum name).
 ///
-/// Go builds `res map[name]*Node` and then `reverseNodeMap` maps every node's
+/// The reference implementation builds `res map[name]*Node` and then `reverseNodeMap` maps every node's
 /// (empty) ID to a single name, picking one at random. We return the maximum
 /// name as the deterministic winner.
 fn extract_nodes(root: &Node) -> (Vec<ExtractedNode>, Option<String>) {
@@ -370,10 +370,10 @@ fn extract_nodes(root: &Node) -> (Vec<ExtractedNode>, Option<String>) {
     let mut named: BTreeMap<String, ExtractedNode> = BTreeMap::new();
 
     for struct_node in &structs {
-        // Go: `nameNodes, err := structNode.FindDSL(".props.name")`. The
+        // Reference: `nameNodes, err := structNode.FindDSL(".props.name")`. The
         // `.props.<key>` field access yields one literal node holding the value of
         // the `name` property (the Rust DSL engine lacks the nested-props
-        // processor, so resolve it directly — identical semantics). Go's name
+        // processor, so resolve it directly — identical semantics). the reference implementation's name
         // selection:
         //   if err==nil && len(nameNodes)>0 { name=nameNodes[0].Token;
         //                                      if name!="" { use name } }      // empty ⇒ skip
@@ -381,7 +381,7 @@ fn extract_nodes(root: &Node) -> (Vec<ExtractedNode>, Option<String>) {
         let name = match struct_node.props.get("name") {
             Some(prop) => {
                 if prop.is_empty() {
-                    continue; // present-but-empty ⇒ no fallback, skip (Go parity)
+                    continue; // present-but-empty ⇒ no fallback, skip
                 }
                 prop.clone()
             }
@@ -401,13 +401,13 @@ fn extract_nodes(root: &Node) -> (Vec<ExtractedNode>, Option<String>) {
         );
     }
 
-    // reverseNodeMap[""] winner: deterministic stand-in for Go's random map pick.
+    // reverseNodeMap[""] winner: deterministic stand-in for the reference implementation's random map pick.
     let winner = named.keys().next_back().cloned();
     let nodes: Vec<ExtractedNode> = named.into_values().collect();
     (nodes, winner)
 }
 
-/// Resolves a node's 1-based inclusive line span (Go `pos.StartLine` /
+/// Resolves a node's 1-based inclusive line span (the reference `pos.StartLine` /
 /// `resolveEndLine`: explicit end line if greater, else the max descendant line).
 fn node_span(n: &Node) -> (usize, usize) {
     let Some(pos) = &n.pos else { return (0, 0) };
@@ -427,7 +427,7 @@ fn node_span(n: &Node) -> (usize, usize) {
     (start, end)
 }
 
-/// A line→spanning-node-indices map (Go `genLine2Node`); `line2node[l-1]` holds
+/// A line→spanning-node-indices map; `line2node[l-1]` holds
 /// the indices (into the `nodes` slice) of nodes whose span covers line `l`.
 fn gen_line2node(nodes: &[ExtractedNode], lines: usize) -> Vec<Vec<usize>> {
     let mut res: Vec<Vec<usize>> = vec![Vec::new(); lines];
@@ -444,7 +444,7 @@ fn gen_line2node(nodes: &[ExtractedNode], lines: usize) -> Vec<Vec<usize>> {
     res
 }
 
-/// Diff operation kind (Go `diffmatchpatch.Operation` as used by FileDiff).
+/// Diff operation kind (the reference `diffmatchpatch.Operation` as used by FileDiff).
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DiffOp {
     Delete,
@@ -459,7 +459,7 @@ struct DiffEdit {
     line_count: usize,
 }
 
-/// Per-file diff: the rune-encoded edits plus the old/new LOC counts that Go's
+/// Per-file diff: the rune-encoded edits plus the old/new LOC counts that the reference implementation's
 /// FileDiff reports as `len(src)` / `len(dst)`.
 struct FileDiff {
     old_lines_of_code: usize,
@@ -467,9 +467,9 @@ struct FileDiff {
     edits: Vec<DiffEdit>,
 }
 
-/// Computes the FileDiff for a Modify change, mirroring Go's `processChange`
+/// Computes the FileDiff for a Modify change, mirroring the reference implementation's `processChange`
 /// (skip same-hash / binary, line-diff via the diffmatchpatch port). Returns
-/// `None` when the change is not diffed (Go FileDiff only diffs Modify changes
+/// `None` when the change is not diffed (reference `FileDiff` only diffs Modify changes
 /// and skips binary blobs / missing blobs).
 fn file_diff(repo: &cf_gitlib::Repository, change: &cf_gitlib::changes::Change) -> Option<FileDiff> {
     use cf_godiff::{line_diff, Op};
@@ -486,11 +486,11 @@ fn file_diff(repo: &cf_gitlib::Repository, change: &cf_gitlib::changes::Change) 
         return None;
     }
 
-    // Go decodes via string([]byte) (no whitespace stripping at default config).
+    // The reference implementation decodes via string([]byte) (no whitespace stripping at default config).
     let from = String::from_utf8_lossy(&blob_from.data).into_owned();
     let to = String::from_utf8_lossy(&blob_to.data).into_owned();
 
-    // Identical-string fast path (Go: single DiffEqual of "L"*lineCount).
+    // Identical-string fast path (reference: single DiffEqual of "L"*lineCount).
     if from == to {
         let lc = count_lines(&from);
         return Some(FileDiff {
@@ -529,7 +529,7 @@ fn file_diff(repo: &cf_gitlib::Repository, change: &cf_gitlib::changes::Change) 
     Some(FileDiff { old_lines_of_code: old_loc, new_lines_of_code: new_loc, edits })
 }
 
-/// Counts lines the way Go's identical-string fast path does
+/// Counts lines the way the reference implementation's identical-string fast path does
 /// (`strings.Count(s,"\n")` plus one if non-empty without a trailing newline).
 fn count_lines(s: &str) -> usize {
     let mut count = s.bytes().filter(|&b| b == b'\n').count();
@@ -539,36 +539,36 @@ fn count_lines(s: &str) -> usize {
     count
 }
 
-/// Go's `CachedBlob.IsBinary`: a NUL byte in the first 8000 bytes.
+/// The reference implementation's `CachedBlob.IsBinary`: a NUL byte in the first 8000 bytes.
 fn is_binary(data: &[u8]) -> bool {
     let head = &data[..data.len().min(8000)];
     head.contains(&0)
 }
 
-/// Cumulative shotness analyzer state (Go `s.nodes` / `s.files`).
+/// Cumulative shotness analyzer state.
 #[derive(Default)]
 struct ShotnessState {
-    /// key → node hotness (Go `s.nodes`).
+    /// key → node hotness.
     nodes: BTreeMap<String, StateNode>,
-    /// file → set of keys belonging to that file (Go `s.files`).
+    /// file → set of keys belonging to that file.
     files: BTreeMap<String, BTreeSet<String>>,
 }
 
-/// Per-node cumulative state (Go `nodeShotness`).
+/// Per-node cumulative state.
 struct StateNode {
     summary: NodeSummary,
     count: i64,
 }
 
 impl ShotnessState {
-    /// Registers or increments a node (Go `addNode`).
+    /// Registers or increments a node.
     fn add_node(&mut self, name: &str, type_: &str, file: &str, all_nodes: &mut BTreeSet<String>) {
         let summary = NodeSummary::new(type_, name, file);
         let key = summary.key();
         let exists = all_nodes.contains(&key);
         all_nodes.insert(key.clone());
 
-        let count = self.nodes.get(&key).map(|n| n.count).unwrap_or(0);
+        let count = self.nodes.get(&key).map_or(0, |n| n.count);
 
         if count == 0 {
             self.nodes.insert(key.clone(), StateNode { summary, count: 1 });
@@ -580,7 +580,7 @@ impl ShotnessState {
         }
     }
 
-    /// Removes all nodes associated with a deleted file (Go `handleDeletion`).
+    /// Removes all nodes associated with a deleted file.
     fn handle_deletion(&mut self, from_name: &str) {
         if let Some(keys) = self.files.remove(from_name) {
             for key in keys {
@@ -590,8 +590,8 @@ impl ShotnessState {
     }
 
     /// Extracts nodes from a newly inserted file and registers them
-    /// (Go `handleInsertion`). Insertion has no diff, so every extracted node is
-    /// touched under its OWN name (Go iterates `res` (name→node) directly).
+    ///. Insertion has no diff, so every extracted node is
+    /// touched under its OWN name (the reference implementation iterates `res` (name→node) directly).
     fn handle_insertion(&mut self, to_name: &str, after: &Node, all_nodes: &mut BTreeSet<String>) {
         let (nodes, _winner) = extract_nodes(after);
         for n in &nodes {
@@ -600,7 +600,7 @@ impl ShotnessState {
     }
 
     /// Processes a file modification: rename bookkeeping then diff-driven
-    /// line→node touch recording (Go `handleModification`).
+    /// line→node touch recording.
     fn handle_modification(
         &mut self,
         repo: &cf_gitlib::Repository,
@@ -636,11 +636,10 @@ impl ShotnessState {
         );
     }
 
-    /// Walks the diff edits and records touched nodes (Go `applyDiffEdits` +
+    /// Walks the diff edits and records touched nodes (the reference `applyDiffEdits` +
     /// `recordTouchedNodes`). With the empty-id `reverseNodeMap` collapse, a
     /// Delete hunk attributes the Before-winner name and an Insert hunk the
-    /// After-winner name; the node Type comes from each line-spanning node `n`
-    /// (Go `addNode(id=winnerName, n, file)`).
+    /// After-winner name; the node Type comes from each line-spanning node `n`.
     #[allow(clippy::too_many_arguments)]
     fn apply_diff_edits(
         &mut self,
@@ -694,7 +693,7 @@ impl ShotnessState {
     }
 
     /// Records nodes touched by a hunk spanning `[start, start+size)`
-    /// (Go `recordTouchedNodes`). For each line-spanning node, `addNode` is
+    ///. For each line-spanning node, `addNode` is
     /// called with the winner name and that node's type.
     #[allow(clippy::too_many_arguments)]
     fn record_touched(
@@ -718,7 +717,7 @@ impl ShotnessState {
         }
     }
 
-    /// Updates state when a file is renamed (Go `applyRename`).
+    /// Updates state when a file is renamed.
     fn apply_rename(&mut self, old_name: &str, new_name: &str) {
         let Some(old_keys) = self.files.remove(old_name) else {
             return;

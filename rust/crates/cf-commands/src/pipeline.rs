@@ -1,6 +1,6 @@
 //! The single general `run` pipeline and its analyzer registry.
 //!
-//! This module is the Rust analogue of Go `cmd/codefang/commands/run.go`
+//! This module is the Rust analogue of the reference implementation
 //! (`RunCommand.run` → `runDirect` → `runStaticPhase` / `runHistoryPhase`) plus
 //! `internal/framework`'s streaming runner. It replaces the per-`(analyzer,
 //! format)` dispatch ladder that the `codefang` binary historically carried
@@ -8,15 +8,15 @@
 //! general flow:
 //!
 //!  1. [`RunContext::from_matches`] resolves the requested analyzer set + output
-//!     format from the parsed clap args (Go `RunCommand` field binding +
+//!     format from the parsed clap args (the reference `RunCommand` field binding +
 //!     `registry.SelectedIDs`).
-//!  2. [`run_pipeline`] splits the selection into static and history analyzers
-//!     (Go `registry.Split`), resolves the per-phase format (Go
-//!     `analyze.ResolveFormats`), and dispatches **by analyzer id** through the
+//!  2. [`run_pipeline`] splits the selection into static and history analyzers,
+//!     resolves the per-phase format (the reference `analyze.ResolveFormats`),
+//!     and dispatches **by analyzer id** through the
 //!     [`Registry`] — for static analyzers the file set is parsed to UAST once
 //!     and each requested static analyzer runs from its crate; for history
 //!     analyzers a single git revwalk feeds per-commit data to each requested
-//!     history analyzer from its crate (Go `runStaticPhase` /
+//!     history analyzer from its crate (the reference `runStaticPhase` /
 //!     `runHistoryPhase`).
 //!  3. The resulting report bytes are produced by the analyzer crate's own
 //!     serializer (cf-gojson / cf-goyaml / cf-reportutil per format) — this
@@ -31,7 +31,7 @@
 //! (resolved path + parsed options) and the already-resolved format string, and
 //! returns the report bytes the crate produces. The dispatch loop in
 //! [`run_pipeline`] is format-agnostic: format selection is the handler's
-//! concern, exactly as each analyzer crate's `FormatReport*` family is in Go.
+//! concern, exactly as each analyzer crate's `FormatReport*` family is in the reference implementation.
 
 use std::collections::BTreeMap;
 
@@ -40,50 +40,48 @@ use clap::ArgMatches;
 use crate::formats::{apply_ndjson_modifier, resolve_formats};
 
 /// Whether an analyzer is driven by the static (folder → UAST) phase or the
-/// history (git revwalk → per-commit) phase. Mirrors Go `analyze.AnalyzerMode`
+/// history (git revwalk → per-commit) phase. Mirrors the reference `analyze.AnalyzerMode`
 /// (`ModeStatic` / `ModeHistory`); the analyzer id prefix (`static/` vs
-/// `history/`) selects the phase, exactly as Go `registry.Split` does.
+/// `history/`) selects the phase, exactly as the reference `registry.Split` does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
-    /// Folder-walk + per-file UAST analyzer (Go `ModeStatic`).
+    /// Folder-walk + per-file UAST analyzer.
     Static,
-    /// Git-revwalk + per-commit analyzer (Go `ModeHistory`).
+    /// Git-revwalk + per-commit analyzer.
     History,
 }
 
 /// Resolved run inputs shared by every analyzer handler — the Rust analogue of
-/// the per-run state Go threads through `runStaticPhase` / `runHistoryPhase`
+/// the per-run state the reference implementation threads through `runStaticPhase` / `runHistoryPhase`
 /// (path, format, the `--head`/`--limit`/`--ndjson` toggles, path policy).
 ///
 /// Handlers read only what they need; the context is constructed once per `run`
 /// from the parsed clap [`ArgMatches`] so the dispatch loop stays general.
 pub struct RunContext<'a> {
-    /// Folder / repository path to analyze (Go `RunCommand.resolvePath`: the
+    /// Folder / repository path to analyze (the reference `RunCommand.resolvePath`: the
     /// positional `[path]` arg, falling back to `--path`/`-p`, default `.`).
     pub path: String,
     /// The parsed clap matches for the `run` subcommand, so history handlers can
     /// read the streaming flags (`--head`, `--limit`, `--ndjson`, `--workers`,
-    /// …) without this struct enumerating every one (Go reads them off
+    /// …) without this struct enumerating every one (the reference implementation reads them off
     /// `RunCommand` / `HistoryRunOptions`).
     pub matches: &'a ArgMatches,
 }
 
 impl<'a> RunContext<'a> {
     /// Builds the run context from the parsed `run` subcommand matches,
-    /// resolving the analyze path the way Go `RunCommand.resolvePath` does: the
+    /// resolving the analyze path the way the reference `RunCommand.resolvePath` does: the
     /// positional `[path]` argument wins, else `--path`/`-p` (default `.`).
     #[must_use]
     pub fn from_matches(matches: &'a ArgMatches) -> Self {
         let path = matches
             .get_one::<String>("path-positional")
             .filter(|p| !p.is_empty())
-            .or_else(|| matches.get_one::<String>("path"))
-            .map(String::to_owned)
-            .unwrap_or_else(|| ".".to_owned());
+            .or_else(|| matches.get_one::<String>("path")).map_or_else(|| ".".to_owned(), String::to_owned);
         RunContext { path, matches }
     }
 
-    /// The requested analyzer ids, in user-supplied order (Go `-a/--analyzers`,
+    /// The requested analyzer ids, in user-supplied order (the reference `-a/--analyzers`,
     /// comma-split by clap's value delimiter). Empty when the flag is absent.
     #[must_use]
     pub fn analyzer_ids(&self) -> Vec<String> {
@@ -118,7 +116,7 @@ impl<'a> RunContext<'a> {
 /// The crate-owned report builder for one analyzer. Receives the resolved
 /// [`RunContext`] and the already-resolved, ndjson-modified format string, and
 /// returns the serialized report bytes (`None` when the analyzer cannot run for
-/// this input — e.g. the repo cannot be walked — matching the Go path that
+/// this input — e.g. the repo cannot be walked — matching the reference path that
 /// surfaces an error). The bytes MUST come from the analyzer crate's own
 /// serializer (cf-gojson / cf-goyaml / cf-reportutil); this signature never
 /// returns a model this module would re-encode, keeping all byte-shaping in the
@@ -129,7 +127,7 @@ pub type RunHandler = fn(ctx: &RunContext, format: &str) -> Option<Vec<u8>>;
 /// builder. The `formats` set is advisory documentation of which output formats
 /// the handler supports; dispatch does not branch on it (the handler owns format
 /// selection, returning `None` for an unsupported combination so the caller can
-/// report the same "unsupported format" error Go does).
+/// report the same "unsupported format" error the reference implementation does).
 pub struct AnalyzerEntry {
     /// Canonical analyzer id, e.g. `static/complexity`, `history/burndown`.
     pub id: &'static str,
@@ -140,7 +138,7 @@ pub struct AnalyzerEntry {
 }
 
 /// The analyzer registry: the single source of truth mapping analyzer id →
-/// [`AnalyzerEntry`]. This is the Rust analogue of Go `analyze.Registry`
+/// [`AnalyzerEntry`]. This is the Rust analogue of the reference `analyze.Registry`
 /// (`defaultUASTAnalyzers ++ defaultRawFileAnalyzers ++ defaultHistoryLeaves`),
 /// built once and queried by id. Dispatch is a keyed lookup, NOT a per-format
 /// match ladder.
@@ -152,21 +150,21 @@ impl Registry {
     /// Builds an empty registry.
     #[must_use]
     pub fn new() -> Self {
-        Registry { entries: BTreeMap::new() }
+        Self { entries: BTreeMap::new() }
     }
 
-    /// Registers one analyzer entry, keyed by its id (Go `Registry.register`).
+    /// Registers one analyzer entry, keyed by its id.
     pub fn register(&mut self, entry: AnalyzerEntry) {
         self.entries.insert(entry.id, entry);
     }
 
-    /// Looks up an analyzer by id (Go `Registry.Descriptor`).
+    /// Looks up an analyzer by id.
     #[must_use]
     pub fn lookup(&self, id: &str) -> Option<&AnalyzerEntry> {
         self.entries.get(id)
     }
 
-    /// Every registered id, sorted (Go `Registry.All` / `IDsByMode` feed
+    /// Every registered id, sorted (the reference `Registry.All` / `IDsByMode` feed
     /// `--list-analyzers`). Used by the binary's `--list-analyzers` path.
     #[must_use]
     pub fn ids(&self) -> Vec<&'static str> {
@@ -174,7 +172,7 @@ impl Registry {
     }
 
     /// Splits a requested id selection into (static, history) id lists,
-    /// preserving the requested order within each phase. Mirrors Go
+    /// preserving the requested order within each phase. mirrors the reference implementation
     /// `registry.Split`: the phase is taken from the registered entry's
     /// [`Mode`]. Unknown ids are dropped here (the caller reports them).
     #[must_use]
@@ -209,45 +207,33 @@ pub struct PhaseOutput {
     pub bytes: Vec<u8>,
 }
 
-/// Errors the general pipeline can surface, mirroring the Go `run.go` error set
+/// Errors the general pipeline can surface, mirroring the reference implementation error set
 /// (`ErrNoAnalyzersSelected`, `ErrUnknownAnalyzer`, the format errors).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PipelineError {
-    /// No analyzer ids were selected (Go `ErrNoAnalyzersSelected`).
+    /// No analyzer ids were selected.
+    #[error("no analyzers selected. Use -a flag, e.g.: -a burndown,couples")]
     NoAnalyzersSelected,
-    /// A requested id is not in the registry (Go `ErrUnknownAnalyzer`).
+    /// A requested id is not in the registry.
+    #[error("unknown analyzer id: {0}")]
     UnknownAnalyzer(String),
-    /// The requested format is not supported (Go `formats.go` errors).
+    /// The requested format is not supported (the reference implementation errors).
+    #[error("unsupported format: {0}")]
     UnsupportedFormat(String),
     /// An analyzer ran but could not produce a report for this input (the repo
     /// or folder could not be walked); carries the analyzer id.
+    #[error("analyzer {0} produced no report")]
     AnalyzerFailed(String),
 }
-
-impl core::fmt::Display for PipelineError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            PipelineError::NoAnalyzersSelected => write!(
-                f,
-                "no analyzers selected. Use -a flag, e.g.: -a burndown,couples"
-            ),
-            PipelineError::UnknownAnalyzer(id) => write!(f, "unknown analyzer id: {id}"),
-            PipelineError::UnsupportedFormat(fmt) => write!(f, "unsupported format: {fmt}"),
-            PipelineError::AnalyzerFailed(id) => write!(f, "analyzer {id} produced no report"),
-        }
-    }
-}
-
-impl std::error::Error for PipelineError {}
 
 /// The single general run pipeline. Resolves the analyzer set + per-phase
 /// format, then dispatches every requested analyzer through `registry` by id,
 /// returning each phase's serialized report bytes in selection order.
 ///
 /// This is the one place dispatch happens; there is no per-`(analyzer, format)`
-/// branching. Static analyzers are dispatched first (Go `runStaticPhase`), then
-/// history analyzers (Go `runHistoryPhase`); within each phase the handlers run
-/// in the user-requested order. Format resolution mirrors Go
+/// branching. Static analyzers are dispatched first, then
+/// history analyzers; within each phase the handlers run
+/// in the user-requested order. Format resolution mirrors the reference implementation
 /// `analyze.ResolveFormats` + the `--ndjson`/`timeseries` modifier.
 ///
 /// # Errors
@@ -278,7 +264,7 @@ pub fn run_pipeline(
     let mut outputs = Vec::with_capacity(ids.len());
 
     // Static phase: parse the folder once (each handler walks the same root);
-    // dispatch each static analyzer by id (Go runStaticPhase).
+    // dispatch each static analyzer by id.
     for id in &static_ids {
         let entry = registry
             .lookup(id)
@@ -288,9 +274,9 @@ pub fn run_pipeline(
         outputs.push(PhaseOutput { id: (*id).clone(), bytes });
     }
 
-    // History phase: one revwalk feeds each history analyzer (Go
+    // History phase: one revwalk feeds each history analyzer (reference:
     // runHistoryPhase). The `--ndjson` modifier turns `timeseries` into
-    // `timeseries+ndjson` exactly as Go `applyNDJSONModifier` does.
+    // `timeseries+ndjson` exactly as the reference `applyNDJSONModifier` does.
     let history_format = apply_ndjson_modifier(&history_format, ctx.ndjson());
     for id in &history_ids {
         let entry = registry

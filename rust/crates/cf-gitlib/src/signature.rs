@@ -1,11 +1,10 @@
-//! Git signatures (author / committer), ported from `pkg/gitlib/signature.go`.
+//! Git signatures (author / committer).
 
 /// A git signature: name, email, and a commit time.
 ///
-/// Mirrors Go's `gitlib.Signature`. The Go type stores `When time.Time`; here it
-/// is the libgit2 [`git2::Time`] (seconds since epoch + UTC offset in minutes),
-/// the same representation git2go exposes, so author/committer timestamps round
-/// trip identically.
+/// The time is the libgit2 [`git2::Time`] (seconds since epoch + UTC offset in
+/// minutes), so author/committer timestamps round-trip identically through the
+/// report pipeline.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Signature {
     /// Author / committer name.
@@ -17,9 +16,8 @@ pub struct Signature {
 }
 
 impl Default for Signature {
-    /// The zero signature: empty name/email and the epoch with a zero offset.
-    ///
-    /// Mirrors Go's zero `Signature{}` returned by test-double commits.
+    /// The zero signature: empty name/email and the epoch with a zero offset,
+    /// as returned by test-double commits.
     fn default() -> Self {
         Signature {
             name: String::new(),

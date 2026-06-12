@@ -8,11 +8,10 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-cf-gojson = { workspace = true }
+# Pinned unstable sort (pdqsort) for tie ordering in report tables.
 cf-gosort = { workspace = true }
-cf-goyaml = { path = "../cf-goyaml" }
-cf-reportutil = { path = "../cf-reportutil" }
+# UAST node type the analyzer/visitor traverse.
 cf-uast-node = { path = "../cf-uast-node" }
-cf-analyze = { path = "../cf-analyze" }
-cf-analyzers-common = { path = "../cf-analyzers-common" }
+# Shared Bloom filter; its exact hash family is load-bearing for the cohesion
+# scores (false positives are part of the defined behavior).
 cf-alg-bloom = { path = "../cf-alg-bloom" }

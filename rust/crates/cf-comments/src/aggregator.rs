@@ -1,11 +1,7 @@
-//! Result aggregation across multiple comment analyses, ported from
-//! `internal/analyzers/comments/aggregator.go`.
+//! Result aggregation across multiple comment analyses: sum of count keys,
+//! average of numeric keys.
 //!
-//! The Go `Aggregator` embeds `common.Aggregator` (sum of count keys, average
-//! of numeric keys) plus a `DetailedDataCollector` for the `comments`/
-//! `functions` tables. This module reimplements the numeric/count aggregation
-//! that the ported `TestAggregator_Aggregate` pins exactly. Detailed-table
-//! merging (the `DetailedDataCollector` half) is provided by
+//! Detailed-table merging (the `comments`/`functions` tables) is provided by
 //! `cf-analyzers-common` and is wired in by the framework layer, not here.
 
 use std::collections::BTreeMap;
@@ -33,7 +29,7 @@ const COUNT_KEYS: &[&str] = &[
 /// aggregator consumes).
 pub type NumericReport = BTreeMap<String, f64>;
 
-/// Aggregates comment results across files (Go `Aggregator`).
+/// Aggregates comment results across files.
 #[derive(Debug, Default)]
 pub struct Aggregator {
     sums: BTreeMap<String, f64>,
@@ -42,17 +38,16 @@ pub struct Aggregator {
 }
 
 impl Aggregator {
-    /// Creates a new aggregator (Go `NewAggregator`).
+    /// Creates a new aggregator.
     pub fn new() -> Self {
         Aggregator::default()
     }
 
-    /// Aggregates a batch of per-file numeric reports (Go `Aggregate`).
+    /// Aggregates a batch of per-file numeric reports.
     ///
     /// Count keys are summed; numeric keys are averaged over the number of
     /// files. Iteration order over `results` does not affect the result
-    /// (sums/averages are commutative), matching Go's map-iteration-order
-    /// independence for these keys.
+    /// (sums/averages are commutative).
     pub fn aggregate(&mut self, results: &BTreeMap<String, NumericReport>) {
         for report in results.values() {
             self.file_count += 1;
@@ -69,9 +64,9 @@ impl Aggregator {
         }
     }
 
-    /// Returns the aggregated result as a [`GoValue`] (Go `GetResult`).
+    /// Returns the aggregated result as a [`GoValue`].
     ///
-    /// Empty aggregation yields zeros, matching `TestAggregator_GetResult_Empty`.
+    /// Empty aggregation yields zeros.
     pub fn get_result(&self) -> GoValue {
         let mut m = GoMap::new(MapOrigin::Map);
         for &k in COUNT_KEYS {
@@ -106,7 +101,6 @@ mod tests {
         }
     }
 
-    // Ported from Go TestAggregator_Aggregate.
     #[test]
     fn aggregate_sums_and_averages() {
         let mut agg = Aggregator::new();
@@ -147,7 +141,6 @@ mod tests {
         }
     }
 
-    // Ported from Go TestAggregator_GetResult_Empty.
     #[test]
     fn empty_result_is_zero() {
         let agg = Aggregator::new();

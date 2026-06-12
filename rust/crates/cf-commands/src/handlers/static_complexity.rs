@@ -1,9 +1,9 @@
 //! Static-analysis JSON report path for the UAST `static/complexity` analyzer.
 //!
-//! Reproduces the Go static pipeline for the single-analyzer
+//! Reproduces the reference static pipeline for the single-analyzer
 //! `codefang run --analyzers static/complexity --format json` capture:
 //!
-//!  1. `StaticService.uastPhase` (`internal/analyzers/analyze/static.go:323`)
+//!  1. the reference `StaticService.uastPhase`
 //!     walks `rootPath` with `filepath.WalkDir` in lexical order — directories
 //!     are recursed (except `.git`), and every regular file that (a) is
 //!     UAST-supported (`parser.IsSupported`), (b) matches the `--languages`
@@ -15,7 +15,7 @@
 //!     by cyclomatic desc, cognitive desc, name asc (`sort.Slice`, pdqsort).
 //!     Each item is stamped with `_source_file` (path made relative to the
 //!     analyzed root, here the file basename).
-//!  3. The complexity `Aggregator` (`internal/analyzers/complexity/aggregator.go`)
+//!  3. The complexity `Aggregator`
 //!     sums the count/numeric totals across files, tracks the true max
 //!     complexity, concatenates the per-file `functions` tables in file-walk
 //!     order (`DetailedDataCollector`, append, no dedup), and computes the
@@ -29,9 +29,9 @@
 //!  5. Serialized via `json.NewEncoder(w).SetIndent("", "  ").Encode(report)` —
 //!     two-space indent, one trailing newline — routed through cf-gojson.
 //!
-//! The two `sort.Slice` calls are Go's **unstable** pdqsort; we reproduce its
+//! The two `sort.Slice` calls are the reference implementation's **unstable** pdqsort; we reproduce its
 //! exact element movement with [`go_pdqsort`] so the tie order (functions equal
-//! on every sort key) matches Go byte-for-byte.
+//! on every sort key) matches the reference output byte-for-byte.
 
 use std::fs;
 use std::path::Path;
@@ -43,7 +43,7 @@ use cf_pathpolicy::{exclude, Options};
 use cf_uast::Parser;
 use cf_uast_node::Node as UastNode;
 
-// --- Section rendering constants (report_section.go) ---
+// --- Section rendering constants ---
 
 const SECTION_TITLE: &str = "COMPLEXITY";
 
@@ -84,7 +84,7 @@ const METRIC_DECISION_POINTS: &str = "Decision Points";
 
 const DEFAULT_STATUS_MESSAGE: &str = "No complexity data available";
 
-// Aggregator messages (aggregator.go buildComplexityMessage).
+// Aggregator messages (reference buildComplexityMessage).
 const MSG_EXCELLENT: &str = "Excellent complexity - functions are simple and maintainable";
 const MSG_GOOD: &str = "Good complexity - functions have reasonable complexity";
 const MSG_FAIR: &str = "Fair complexity - some functions could be simplified";
@@ -105,7 +105,7 @@ pub(crate) struct FnRecord {
 }
 
 /// Builds the `static/complexity --format json` report bytes for `root_path`,
-/// or `None` when the path cannot be read (Go would surface a walk error; the
+/// or `None` when the path cannot be read (the reference implementation would surface a walk error; the
 /// caller then falls through to the blocked-dependency sentinel).
 #[must_use]
 pub fn complexity_report(root_path: &str) -> Option<Vec<u8>> {
@@ -114,8 +114,8 @@ pub fn complexity_report(root_path: &str) -> Option<Vec<u8>> {
 
 /// `static/complexity --format json` with the run-level static flags applied:
 /// `opts` carries `--include-vendored` / `--include-generated` (the shared
-/// path-policy options Go builds in `run.go pathPolicyFromFlags`), and
-/// `per_file` enables Go's `--per-file` section enrichment
+/// path-policy options the reference implementation builds in the reference `pathPolicyFromFlags`), and
+/// `per_file` enables the reference implementation's `--per-file` section enrichment
 /// (`StaticService.enrichWithPerFileData` → `JSONReport.EnrichWithPerFileData`:
 /// one `JSONFileEntry` per ANALYZED file — function-free files included — keyed
 /// into the section's `files` array).
@@ -136,11 +136,11 @@ pub fn complexity_report_value(root_path: &str) -> Option<GoValue> {
     complexity_report_value_opts(root_path, false, &Options::default(), false)
 }
 
-/// Builds the `static/complexity` section tree in Go's `AggregationModeSummaryOnly`
+/// Builds the `static/complexity` section tree in the reference implementation's `AggregationModeSummaryOnly`
 /// shape used for the `text` / `compact` formats: the per-item `functions`
 /// detailed collection is a no-op, so the distribution and top-issues sections
 /// (both derived from `functions`) are absent while the scalar Key Metrics
-/// (computed by the always-on `MetricsProcessor`) are unchanged. Mirrors Go
+/// (computed by the always-on `MetricsProcessor`) are unchanged. mirrors the reference implementation
 /// `ResolveAggregationMode(FormatText|FormatCompact) -> SummaryOnly`.
 #[must_use]
 pub fn complexity_report_value_summary(root_path: &str) -> Option<GoValue> {
@@ -172,7 +172,7 @@ fn complexity_report_value_opts(
 
     // Concatenated per-file function tables (file-walk order).
     let mut records: Vec<FnRecord> = Vec::new();
-    // Per-analyzed-file boundaries into `records` (Go per-file aggregator
+    // Per-analyzed-file boundaries into `records` (reference per-file aggregator
     // snapshots; one entry per parsed file, function-free included).
     let mut files: Vec<FileBoundary> = Vec::new();
 
@@ -205,7 +205,7 @@ fn complexity_report_value_opts(
     // number of aggregated reports (reportCount = every parsed file, including
     // empty-result files) in CalculateAverages. The section's "Cognitive Total"
     // metric reads this averaged value back through GetInt → safeconv.ToInt,
-    // which truncates the float toward zero (Go `int(f)`).
+    // which truncates the float toward zero.
     let cognitive_metric: i64 = if report_count > 0 {
         (cognitive_total as f64 / report_count as f64) as i64
     } else {
@@ -226,7 +226,7 @@ fn complexity_report_value_opts(
     // scalar metrics above are untouched.
     let records_ref: &[FnRecord] = if summary_only { &[] } else { &records };
 
-    // --per-file: one JSONFileEntry per analyzed file, in walk order (Go ranges
+    // --per-file: one JSONFileEntry per analyzed file, in walk order (the reference implementation ranges
     // a map here — run-to-run random; the oracle's measured-variance
     // canonicalization compares the set).
     let file_entries: Option<Vec<GoValue>> = if per_file {
@@ -251,12 +251,12 @@ fn complexity_report_value_opts(
 }
 
 /// Builds the AGGREGATED RAW `analyze.Report` GoValue for `static/complexity`
-/// — the value Go's complexity `Aggregator.GetResult()` returns after the
-/// folder walk (aggregator.go:67), which is what `--format plot` consumes
+/// — the value the reference implementation's complexity `Aggregator.GetResult()` returns after the
+/// folder walk, which is what `--format plot` consumes
 /// (`PlotSectionsFor("static/complexity")` over the raw report) and what
-/// `writeReportJSON` (static.go:1017) serializes into `report.json`.
+/// `writeReportJSON` serializes into `report.json`.
 ///
-/// Shape (a Go `map[string]any`, keys byte-sorted at encode time):
+/// Shape (a reference-style `map[string]any`, keys byte-sorted at encode time):
 ///
 /// * `analyzer_name`, `message` (derived via `buildComplexityMessage(avg)`),
 /// * counts: `total_functions`, `total_complexity`, `decision_points`
@@ -265,11 +265,11 @@ fn complexity_report_value_opts(
 ///   by the parsed-file count — `MetricsProcessor.CalculateAverages`),
 /// * derived: `average_complexity` (float), `max_complexity` (int),
 /// * `functions`: the per-file tables concatenated in walk order
-///   (`DetailedDataCollector`), each item the Go `convertFunctionReportItems`
+///   (`DetailedDataCollector`), each item the reference `convertFunctionReportItems`
 ///   map + the `_source_file`/`_language`/`_directory` stamps
 ///   (`StampSourceFile`/`StampLanguage` + `stampCollectionMetadata`).
 ///
-/// With no parsed files the Go base aggregator returns
+/// With no parsed files the reference base aggregator returns
 /// `buildEmptyComplexityResult` instead (5 keys, no `analyzer_name`).
 #[must_use]
 pub fn complexity_raw_report_value(root_path: &str, opts: &Options) -> Option<GoValue> {
@@ -309,7 +309,7 @@ pub fn complexity_raw_report_value(root_path: &str, opts: &Options) -> Option<Go
     );
 
     if report_count == 0 {
-        // Go base Aggregator.GetResult with reportCount==0 returns the
+        // The reference base `Aggregator.GetResult` with reportCount==0 returns the
         // analyzer's emptyResultBuilder (buildEmptyComplexityResult).
         let mut m = GoMap::new(MapOrigin::Map);
         m.push("total_functions", GoValue::Int(0));
@@ -363,8 +363,8 @@ pub fn complexity_raw_report_value(root_path: &str, opts: &Options) -> Option<Go
     Some(GoValue::Map(m))
 }
 
-/// One raw `functions` item: the Go `convertFunctionReportItems` map
-/// (complexity.go:330) + the `_source_file`/`_language`/`_directory` stamps.
+/// One raw `functions` item: the reference `convertFunctionReportItems` map
+/// plus the `_source_file`/`_language`/`_directory` stamps.
 /// Map-origin, so JSON keys byte-sort at encode time.
 fn raw_function_item(r: &FnRecord) -> GoValue {
     let mut m = GoMap::new(MapOrigin::Map);
@@ -396,7 +396,7 @@ fn raw_function_item(r: &FnRecord) -> GoValue {
     GoValue::Map(m)
 }
 
-/// Go `filepath.Dir` over the clean relative paths `MakeRelativePath` yields:
+/// The reference `filepath.Dir` over the clean relative paths `MakeRelativePath` yields:
 /// everything before the final separator, or `"."` when there is none.
 fn go_filepath_dir(path: &str) -> String {
     match path.rfind('/') {
@@ -406,10 +406,10 @@ fn go_filepath_dir(path: &str) -> String {
     }
 }
 
-/// One analyzed file's slice of the walk products (the Rust shape of Go's
+/// One analyzed file's slice of the walk products (the Rust shape of the reference implementation's
 /// per-file aggregator snapshot).
 struct FileBoundary {
-    /// Path relative to the analyzed root (Go `MakeRelativePath`).
+    /// Path relative to the analyzed root.
     location: String,
     /// Range into the concatenated `records` (empty for function-free files).
     start: usize,
@@ -421,7 +421,7 @@ struct FileBoundary {
     max_complexity: i64,
 }
 
-/// Builds one `renderer.JSONFileEntry` (Go `SectionToJSONFileEntry` over the
+/// Builds one `renderer.JSONFileEntry` (the reference `SectionToJSONFileEntry` over the
 /// per-file report's section): `file_path`, `score_label`, `status`, `metrics`,
 /// `distribution` (omitempty — absent for function-free files), `issues`,
 /// `score`.
@@ -431,7 +431,7 @@ fn build_file_entry(f: &FileBoundary, records: &[FnRecord]) -> GoValue {
     let avg = if n_fns > 0 { f.total_complexity as f64 / n_fns as f64 } else { 0.0 };
     let score = calculate_score(avg);
     // Per-file status: the analyzer's single-file report message — the empty
-    // result carries "No functions found" (complexity.go buildEmptyResult).
+    // result carries "No functions found" (reference buildEmptyResult).
     let status = if n_fns > 0 {
         build_complexity_message(avg)
     } else {
@@ -544,7 +544,7 @@ fn walk(
     };
 
     let mut entries: Vec<_> = read.filter_map(Result::ok).collect();
-    entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
         let path = entry.path();
@@ -601,13 +601,13 @@ fn walk(
 
         let cx_root = convert_node(&uast_root);
         // Per-file metrics (the crate sorts by cc desc, cog desc, name asc;
-        // Go's per-file sort.Slice over the same comparator yields the same
+        // the reference implementation's per-file sort.Slice over the same comparator yields the same
         // order for the sets fixture — no within-file all-key ties).
         let fns = analyzer.function_metrics(Some(&cx_root));
 
         // _source_file stamp = path relative to the analyzed root.
         let location = make_relative_path(&path_str, root_path);
-        // _language stamp (Go StampLanguage(parser.GetLanguage(filePath))).
+        // _language stamp (reference: StampLanguage(parser.GetLanguage(filePath))).
         let language = parser.get_language(&path_str);
 
         if fns.is_empty() {
@@ -674,7 +674,7 @@ fn record_for(m: &FunctionMetrics, location: &str, language: &str) -> FnRecord {
     }
 }
 
-/// Go `MakeRelativePath` (perfile.go): `filepath.Rel(rootPath, filePath)`.
+/// The reference `MakeRelativePath`: `filepath.Rel(rootPath, filePath)`.
 /// For the flat sets fixture this yields the basename.
 fn make_relative_path(file_path: &str, root_path: &str) -> String {
     if root_path.is_empty() {
@@ -771,7 +771,7 @@ fn build_json_report(
 ) -> GoValue {
     let score = calculate_score(avg_complexity);
 
-    // ---- metrics (report_section.go KeyMetrics) ----
+    // ---- metrics (reference KeyMetrics) ----
     let metrics = GoValue::Array(vec![
         metric(METRIC_TOTAL_FUNCTIONS, &total_functions.to_string()),
         metric(METRIC_AVG_COMPLEXITY, &format!("{avg_complexity:.1}")),
@@ -893,18 +893,18 @@ fn dist_item(label: &str, percent: f64, count: i64) -> GoValue {
 }
 
 // ===========================================================================
-// Go `sort.Slice` (pdqsort) port — exact element-movement parity.
+// the reference `sort.Slice` (pdqsort) port — exact element-movement parity.
 // Operates on an index permutation; `less(&a, &b)` returns true when a < b.
-// Mirrors src/sort/zsortfunc.go + slice.go (limit = bits.Len(len)).
+// Mirrors the reference sort sources (limit = bits.Len(len)).
 // ===========================================================================
 
 const MAX_INSERTION: usize = 12;
 
 fn bits_len(n: usize) -> u32 {
-    (usize::BITS) - (n as usize).leading_zeros()
+    usize::BITS - n.leading_zeros()
 }
 
-/// Sorts `data` with Go `sort.Slice` semantics using `less`.
+/// Sorts `data` with the reference `sort.Slice` semantics using `less`.
 pub(crate) fn go_pdqsort<T, F: Fn(&T, &T) -> bool>(data: &mut [T], less: &F) {
     let n = data.len();
     let limit = bits_len(n);
@@ -946,10 +946,12 @@ fn pdqsort<T, F: Fn(&T, &T) -> bool>(
             hint = HINT_INCREASING;
         }
 
-        if was_balanced && was_partitioned && hint == HINT_INCREASING {
-            if partial_insertion_sort(data, a, b, less) {
-                return;
-            }
+        if was_balanced
+            && was_partitioned
+            && hint == HINT_INCREASING
+            && partial_insertion_sort(data, a, b, less)
+        {
+            return;
         }
 
         // a > 0 && !less(a-1, pivot)

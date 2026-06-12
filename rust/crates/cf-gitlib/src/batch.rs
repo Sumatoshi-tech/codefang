@@ -1,40 +1,36 @@
 //! Batch configuration and batched blob access.
 //!
-//! [`BatchConfig`] is a faithful port of Go `pkg/gitlib/batch_config.go`
-//! (`BlobBatchSize`, `DiffBatchSize`, `Workers`, and `DefaultBatchConfig`).
+//! [`BatchConfig`] carries the blob/diff batch sizes and worker count.
 //!
-//! [`BlobBatch`] is the **Rust replacement for the Go cgo "clib" batch shim**
-//! (`pkg/gitlib/cgo_bridge.go`, `worker.go`, and the C sources under
-//! `pkg/gitlib/clib/`). The Go package fetched many blobs at once through a
-//! custom C shim over libgit2 to amortize cgo-crossing costs. Rust has no cgo
-//! boundary, so the batch reduces to ordinary per-thread `git2` lookups (DESIGN
-//! §3); this preserves the *interface* — a configurable batch that resolves a
-//! set of blob hashes to their contents — so callers (cache/uast/analyze) port
-//! over unchanged, while the entire C shim is dropped.
+//! [`BlobBatch`] is a configurable batch that resolves a set of blob hashes to
+//! their contents. The reference implementation fetched blobs through a custom
+//! C shim over libgit2 to amortize FFI-crossing costs; with libgit2 in-process
+//! there is no boundary to amortize, so the batch reduces to ordinary
+//! per-thread `git2` lookups (DESIGN §3) while preserving the interface for
+//! callers (cache/uast/analyze).
 
 use crate::error::Result;
 use crate::hash::Hash;
 use crate::repository::Repository;
 
-/// Default number of blobs to load per batch (Go `defaultBlobBatchSize`).
+/// Default number of blobs to load per batch.
 pub const DEFAULT_BLOB_BATCH_SIZE: usize = 100;
-/// Default number of diffs to compute per batch (Go `defaultDiffBatchSize`).
+/// Default number of diffs to compute per batch.
 pub const DEFAULT_DIFF_BATCH_SIZE: usize = 50;
 
-/// Batch processing parameters. Port of Go `BatchConfig`.
+/// Batch processing parameters.
 #[derive(Clone, Copy, Debug)]
 pub struct BatchConfig {
-    /// Number of blobs to load per batch. Default: 100 (Go `BlobBatchSize`).
+    /// Number of blobs to load per batch. Default: 100.
     pub blob_batch_size: usize,
-    /// Number of diffs to compute per batch. Default: 50 (Go `DiffBatchSize`).
+    /// Number of diffs to compute per batch. Default: 50.
     pub diff_batch_size: usize,
     /// Number of parallel workers. Default: 1 — sequential processing within
-    /// gitlib (Go `Workers`).
+    /// gitlib.
     pub workers: usize,
 }
 
 impl Default for BatchConfig {
-    /// Port of Go `DefaultBatchConfig`.
     fn default() -> Self {
         BatchConfig {
             blob_batch_size: DEFAULT_BLOB_BATCH_SIZE,
@@ -45,7 +41,7 @@ impl Default for BatchConfig {
 }
 
 impl BatchConfig {
-    /// Port of Go `DefaultBatchConfig`.
+    /// Alias for [`BatchConfig::default`].
     #[must_use]
     pub fn new_default() -> Self {
         BatchConfig::default()
@@ -67,14 +63,13 @@ impl BatchConfig {
 pub struct BlobResult {
     /// The requested blob hash.
     pub hash: Hash,
-    /// The blob's bytes, or [`None`] if the lookup failed (e.g. missing object),
-    /// matching the Go shim's per-entry failure handling.
+    /// The blob's bytes, or [`None`] if the lookup failed (e.g. missing
+    /// object); a failed entry does not abort the batch.
     pub contents: Option<Vec<u8>>,
 }
 
-/// A per-thread batched blob fetcher over a [`Repository`]. Replaces the Go cgo
-/// bridge / worker. Borrows the repository, so it is `!Send + !Sync` like
-/// everything else in this crate.
+/// A per-thread batched blob fetcher over a [`Repository`]. Borrows the
+/// repository, so it is `!Send + !Sync` like everything else in this crate.
 pub struct BlobBatch<'repo> {
     repo: &'repo Repository,
     config: BatchConfig,
@@ -109,8 +104,8 @@ impl<'repo> BlobBatch<'repo> {
     }
 
     /// Resolve every requested blob, chunked into batches of at most
-    /// [`BatchConfig::effective_blob_batch_size`] so peak memory stays bounded
-    /// like the Go shim. Results are returned in request order.
+    /// [`BatchConfig::effective_blob_batch_size`] so peak memory stays bounded.
+    /// Results are returned in request order.
     #[must_use]
     pub fn fetch_all(&self, hashes: &[Hash]) -> Vec<BlobResult> {
         let chunk = self.config.effective_blob_batch_size();
@@ -142,7 +137,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_matches_go() {
+    fn default_config_values() {
         let c = BatchConfig::default();
         assert_eq!(c.blob_batch_size, DEFAULT_BLOB_BATCH_SIZE);
         assert_eq!(c.diff_batch_size, DEFAULT_DIFF_BATCH_SIZE);

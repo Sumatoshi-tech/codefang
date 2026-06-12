@@ -1,21 +1,19 @@
 //! The lazy language [`Loader`] and its extension bloom filter.
 //!
-//! Direct port of Go `pkg/uast/loader.go`. The loader registers one
-//! [`LazyDslParser`] per embedded `.uastmap` mapping, deferring tree-sitter
-//! language initialization until the first `parse` call (matching Go's
-//! `loadFromEmbeddedMappingsLazy`). A small fixed-size bloom filter over the
-//! registered extensions provides a fast negative membership check.
+//! The loader registers one [`LazyDslParser`] per embedded `.uastmap` mapping,
+//! deferring tree-sitter language initialization until the first `parse`
+//! call. A small fixed-size bloom filter over the registered extensions
+//! provides a fast negative membership check.
 //!
-//! # Bloom-filter byte-parity
+//! # Bloom-filter kernel
 //!
 //! The generic [`cf_alg_bloom::Filter`] uses FNV-128a double hashing with a
-//! dynamically-sized bit array. The Go loader instead uses a **fixed 512-bit**
-//! array with **two FNV-1a-variant hashes** (`bloomHashes`) seeded from two
-//! different offset bases. Because `Loader::language_parser` consults the bloom
-//! filter before the map (and the loader tests assert membership), the exact
-//! hashing must be reproduced — so the loader keeps its own bloom kernel here
-//! rather than delegating to `cf-alg-bloom`. This is internal behavior only and
-//! never appears in machine output.
+//! dynamically-sized bit array. The loader instead keeps its own kernel: a
+//! **fixed 512-bit** array with **two FNV-1a-variant hashes** seeded from two
+//! different offset bases — the reference-implementation hashing, kept
+//! bit-identical because `Loader::language_parser` consults the bloom filter
+//! before the map (and the loader tests assert membership). This is internal
+//! behavior only and never appears in machine output.
 
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
@@ -26,29 +24,28 @@ use cf_uast_node::Node;
 use crate::lowering::Lowering;
 use crate::types::{LanguageParser, ParseError};
 
-/// The bit-array length for the extension bloom filter (Go `bloomSize`).
+/// The bit-array length for the extension bloom filter.
 const BLOOM_SIZE: usize = 512;
 
-/// The number of bits per word in the bloom bit-array (Go `bloomWord`).
+/// The number of bits per word in the bloom bit-array.
 const BLOOM_WORD: usize = 64;
 
 /// The number of `u64` words backing the bloom filter.
 const BLOOM_WORDS: usize = BLOOM_SIZE / BLOOM_WORD;
 
-/// Pre-compiled mapping data for one language (Go `PrecompiledMapping`).
+/// Pre-compiled mapping data for one language.
 ///
-/// In Go this is decoded from the generated `embedded_mappings.gen.go`; in Rust
-/// it points at the language's static table in [`cf_uast_mappings`] (the
-/// Rust-native mapping registry), whose `to_rules()` output is equality-gated
-/// against the DSL parser — so the lazy init below feeds the lowering the exact
-/// rules the DSL pipeline produced.
+/// For embedded languages it points at the language's static table in
+/// [`cf_uast_mappings`] (the native mapping registry), whose `to_rules()`
+/// output is equality-gated against the DSL parser — so the lazy init below
+/// feeds the lowering the exact rules the DSL pipeline produced.
 #[derive(Debug, Clone, Default)]
 pub struct PrecompiledMapping {
-    /// Language name (`json:"language"`).
+    /// Language name.
     pub language: String,
-    /// Supported file extensions (`json:"extensions"`).
+    /// Supported file extensions.
     pub extensions: Vec<String>,
-    /// Parsed mapping rules (`json:"rules"`).
+    /// Parsed mapping rules.
     pub rules: Vec<Rule>,
     /// The raw `.uastmap` DSL text the rules were parsed from. Kept for
     /// CUSTOM (user-supplied) mappings; empty for the embedded languages,
@@ -59,7 +56,7 @@ pub struct PrecompiledMapping {
     pub table: Option<&'static cf_uast_mapping::LanguageMapping>,
 }
 
-/// Loads UAST parsers for different languages (Go `Loader`).
+/// Loads UAST parsers for different languages.
 pub struct Loader {
     parsers: HashMap<String, Arc<dyn LanguageParser + Send + Sync>>,
     extensions: HashMap<String, Arc<dyn LanguageParser + Send + Sync>>,
@@ -68,10 +65,10 @@ pub struct Loader {
 
 impl Loader {
     /// Creates a loader populated from the embedded `.uastmap` mappings, with
-    /// every parser registered lazily (Go `NewLoader` →
-    /// `loadFromEmbeddedMappingsLazy`).
-    pub fn new() -> Loader {
-        let mut loader = Loader {
+    /// every parser registered lazily.
+    #[must_use]
+    pub fn new() -> Self {
+        let mut loader = Self {
             parsers: HashMap::new(),
             extensions: HashMap::new(),
             ext_bloom: [0u64; BLOOM_WORDS],
@@ -96,22 +93,21 @@ impl Loader {
 
     /// Registers an additional parser for a language and its extensions.
     ///
-    /// Used by [`crate::Parser::with_map`] to install custom mappings (Go
-    /// `loadCustomParsers` registering into `loader.parsers`/`loader.extensions`
-    /// and calling `bloomAdd`).
+    /// Used by [`crate::Parser::with_map`] to install custom mappings.
     pub(crate) fn register(&mut self, parser: Arc<dyn LanguageParser + Send + Sync>) {
-        self.parsers.insert(parser.language(), Arc::clone(&parser));
         for ext in parser.extensions() {
             let lower = ext.to_lowercase();
             self.extensions.insert(lower.clone(), Arc::clone(&parser));
             self.bloom_add(&lower);
         }
+        self.parsers.insert(parser.language(), parser);
     }
 
     /// Returns the parser registered for the given file extension, if any.
     ///
-    /// Port of Go `LanguageParser`: the extension is lowercased, the bloom
-    /// filter gives a fast negative pre-check, then the map is consulted.
+    /// The extension is lowercased, the bloom filter gives a fast negative
+    /// pre-check, then the map is consulted.
+    #[must_use]
     pub fn language_parser(
         &self,
         extension: &str,
@@ -123,19 +119,20 @@ impl Loader {
         self.extensions.get(&ext).cloned()
     }
 
-    /// Returns all loaded parsers keyed by language (Go `GetParsers`).
+    /// Returns all loaded parsers keyed by language.
+    #[must_use]
     pub fn get_parsers(&self) -> &HashMap<String, Arc<dyn LanguageParser + Send + Sync>> {
         &self.parsers
     }
 
-    /// Sets the two bloom bits for `ext` (Go `bloomAdd`).
+    /// Sets the two bloom bits for `ext`.
     fn bloom_add(&mut self, ext: &str) {
         let (h1, h2) = bloom_hashes(ext);
         self.ext_bloom[h1 / BLOOM_WORD] |= 1u64 << (h1 % BLOOM_WORD);
         self.ext_bloom[h2 / BLOOM_WORD] |= 1u64 << (h2 % BLOOM_WORD);
     }
 
-    /// Returns whether both bloom bits for `ext` are set (Go `bloomMayContain`).
+    /// Returns whether both bloom bits for `ext` are set.
     fn bloom_may_contain(&self, ext: &str) -> bool {
         let (h1, h2) = bloom_hashes(ext);
         self.ext_bloom[h1 / BLOOM_WORD] & (1u64 << (h1 % BLOOM_WORD)) != 0
@@ -145,25 +142,25 @@ impl Loader {
 
 impl Default for Loader {
     fn default() -> Self {
-        Loader::new()
+        Self::new()
     }
 }
 
-/// Returns two independent bloom bit positions for `s` (Go `bloomHashes`).
+/// Returns two independent bloom bit positions for `s`.
 ///
 /// Two FNV-1a-variant hashes are folded over the input bytes from two distinct
-/// 64-bit offset bases with the standard 64-bit FNV prime; each result is taken
-/// modulo [`BLOOM_SIZE`]. Go's `uint` arithmetic wraps at 64 bits, so this uses
-/// `wrapping_*` on `u64` to be bit-identical.
+/// 64-bit offset bases with the standard 64-bit FNV prime; each result is
+/// taken modulo [`BLOOM_SIZE`]. The arithmetic wraps at 64 bits
+/// (`wrapping_*`), bit-identical to the reference implementation.
 fn bloom_hashes(s: &str) -> (usize, usize) {
-    const FNV_BASIS_1: u64 = 14695981039346656037;
-    const FNV_BASIS_2: u64 = 17316225907498340287;
-    const FNV_PRIME: u64 = 1099511628211;
+    const FNV_BASIS_1: u64 = 14_695_981_039_346_656_037;
+    const FNV_BASIS_2: u64 = 17_316_225_907_498_340_287;
+    const FNV_PRIME: u64 = 1_099_511_628_211;
 
     let mut h1 = FNV_BASIS_1;
     let mut h2 = FNV_BASIS_2;
 
-    // Go ranges over `s[i]` (bytes of the string), not runes.
+    // Hash the raw bytes of the string, not chars.
     for &b in s.as_bytes() {
         h1 ^= u64::from(b);
         h1 = h1.wrapping_mul(FNV_PRIME);
@@ -178,10 +175,9 @@ fn bloom_hashes(s: &str) -> (usize, usize) {
 }
 
 /// Wraps a [`PrecompiledMapping`] and defers tree-sitter language
-/// initialization until the first `parse` call (Go `lazyDSLParser`).
+/// initialization until the first `parse` call.
 ///
-/// Initialization is performed at most once via a [`OnceLock`] (the analogue of
-/// Go's `sync.Once`).
+/// Initialization is performed at most once via a [`OnceLock`].
 struct LazyDslParser {
     mapping: PrecompiledMapping,
     extensions: Vec<String>,
@@ -191,29 +187,28 @@ struct LazyDslParser {
 
 /// The state produced when a lazy parser is initialized: a tree-sitter
 /// [`tree_sitter::Language`] plus the parsed rules / derived lookup structures
-/// needed to lower a concrete syntax tree to a UAST (Go `DSLParser` fields built
-/// in `initializeLanguage`).
+/// needed to lower a concrete syntax tree to a UAST.
 struct InitState {
     rules: Vec<Rule>,
     #[allow(dead_code)]
     lang_info: LanguageInfo,
-    /// First-occurrence-wins rule index keyed by node type (Go `ruleIndex`).
+    /// First-occurrence-wins rule index keyed by node type.
     rule_index: HashMap<String, usize>,
     /// The tree-sitter language, looked up via [`crate::languages::get_language`].
     /// `None` means no grammar is vendored for this language yet.
     ts_language: Option<tree_sitter::Language>,
-    /// Compiled-pattern matcher bound to `ts_language` (Go `patternMatcher`).
+    /// Compiled-pattern matcher bound to `ts_language`.
     /// `None` when no grammar is available.
     pattern_matcher: Option<PatternMatcher>,
-    /// Language name (Go `langInfo.Name`).
+    /// Language name.
     language: String,
 }
 
 impl LazyDslParser {
-    fn new(pm: PrecompiledMapping) -> LazyDslParser {
+    fn new(pm: PrecompiledMapping) -> Self {
         let extensions = pm.extensions.clone();
         let language = pm.language.clone();
-        LazyDslParser {
+        Self {
             mapping: pm,
             extensions,
             language,
@@ -221,8 +216,7 @@ impl LazyDslParser {
         }
     }
 
-    /// Initializes the parser once (Go `lazyDSLParser.init` →
-    /// `DSLParser.initializeLanguage`).
+    /// Initializes the parser once.
     fn init(&self) -> &Result<InitState, ParseError> {
         self.inited.get_or_init(|| {
             // Obtain rules + language info: embedded languages convert their
@@ -246,8 +240,8 @@ impl LazyDslParser {
                 )
             };
 
-            // Build the O(1) rule lookup index (first occurrence wins), matching
-            // Go `initializeLanguage`'s `ruleIndex` construction.
+            // Build the O(1) rule lookup index (first occurrence wins — rule
+            // order is observable).
             let mut rule_index: HashMap<String, usize> = HashMap::with_capacity(rules.len());
             for (i, r) in rules.iter().enumerate() {
                 rule_index.entry(r.name.clone()).or_insert(i);
@@ -277,21 +271,18 @@ impl LanguageParser for LazyDslParser {
             Err(e) => return Err(e.clone()),
         };
 
-        let lang = match state.ts_language.as_ref() {
-            Some(lang) => lang,
-            None => {
-                return Err(ParseError::Other(format!(
-                    "no tree-sitter grammar wired for language {} (grammar vendoring pending; see crate docs)",
-                    self.language
-                )))
-            }
+        let Some(lang) = state.ts_language.as_ref() else {
+            return Err(ParseError::Other(format!(
+                "no tree-sitter grammar wired for language {} (grammar vendoring pending; see crate docs)",
+                self.language
+            )));
         };
         let pattern_matcher = state.pattern_matcher.as_ref().expect(
             "pattern_matcher is always Some when ts_language is Some (built together in init)",
         );
 
-        // Go uses a pooled `*sitter.Parser`; a fresh parser per call is
-        // behavior-identical (pooling never affects output bytes — DESIGN).
+        // A fresh tree-sitter parser per call: pooling would be a perf-only
+        // refinement and never affects output bytes (DESIGN).
         let mut ts_parser = tree_sitter::Parser::new();
         ts_parser
             .set_language(lang)
@@ -310,13 +301,9 @@ impl LanguageParser for LazyDslParser {
             false,
         );
 
-        // Go returns `errNoRootNode` only when the root is null, which
-        // tree-sitter never produces for a successful parse. A root that lowers
-        // to `None` (e.g. an empty source file) yields an empty `File` root in
-        // Go's `outputNode` path is not reached — Go returns the canonical node
-        // directly. Here `lower` returning `None` means the root collapsed; we
-        // surface a default (empty) node to mirror Go's non-nil root for the
-        // empty-input case.
+        // `lower` returning `None` means the root collapsed (e.g. an empty
+        // source file); surface a default (empty) node so callers always get a
+        // non-null root (reference-implementation behavior).
         Ok(lowering.lower(&tree).unwrap_or_default())
     }
 
@@ -329,7 +316,7 @@ impl LanguageParser for LazyDslParser {
     }
 }
 
-/// Returns the embedded precompiled mappings (Go `embeddedMappingsData`).
+/// Returns the embedded precompiled mappings.
 ///
 /// Derived once from [`cf_uast_mappings::ALL`] (the static registry) — no
 /// DSL parsing and no embedded text; extensions come from the static tables.
@@ -353,7 +340,8 @@ fn embedded_mappings_data() -> &'static [PrecompiledMapping] {
     })
 }
 
-/// Whether any embedded mappings are available (Go `embeddedMappingsAvailable`).
+/// Whether any embedded mappings are available.
+#[must_use]
 pub fn embedded_mappings_available() -> bool {
     !embedded_mappings_data().is_empty()
 }
@@ -369,9 +357,9 @@ mod tests {
             let mut h1: u64 = 14695981039346656037;
             let mut h2: u64 = 17316225907498340287;
             for &b in s.as_bytes() {
-                h1 ^= b as u64;
+                h1 ^= u64::from(b);
                 h1 = h1.wrapping_mul(1099511628211);
-                h2 ^= b as u64;
+                h2 ^= u64::from(b);
                 h2 = h2.wrapping_mul(1099511628211);
             }
             ((h1 % 512) as usize, (h2 % 512) as usize)

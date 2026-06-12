@@ -1,20 +1,18 @@
-//! Tree traversal and transformation. Ported from the traversal helpers in
-//! `node.go` (`Find`, `VisitPreOrder`, `VisitPostOrder`, `PreOrder`,
-//! `Ancestors`, `Transform`, `TransformInPlace`).
+//! Tree traversal and transformation: `find`, `visit_pre_order`,
+//! `visit_post_order`, `pre_order`, `ancestors`, `transform`,
+//! `transform_in_place`.
 //!
-//! The Go implementation hand-rolls iterative stacks with depth-limit fallbacks
-//! purely as a performance/stack-safety optimization; the *observable* order is
-//! the same as a straightforward pre/post-order walk, so the Rust port uses
-//! plain iterative stacks that produce identical visitation order.
+//! All walks use plain iterative stacks; visitation order (pre/post-order,
+//! children left-to-right) is observable behavior relied on by analyzers.
 
 use crate::node::Node;
 
 impl Node {
     /// Returns references to all nodes (including self) for which `predicate`
-    /// returns `true`, in pre-order. Mirrors Go's `Find`.
-    pub fn find<F: Fn(&Node) -> bool>(&self, predicate: F) -> Vec<&Node> {
+    /// returns `true`, in pre-order.
+    pub fn find<F: Fn(&Self) -> bool>(&self, predicate: F) -> Vec<&Self> {
         let mut result = Vec::new();
-        let mut stack: Vec<&Node> = vec![self];
+        let mut stack: Vec<&Self> = vec![self];
         while let Some(curr) = stack.pop() {
             if predicate(curr) {
                 result.push(curr);
@@ -28,9 +26,9 @@ impl Node {
     }
 
     /// Visits every node in pre-order (root, then children left-to-right),
-    /// invoking `f` on each. Mirrors Go's `VisitPreOrder`.
-    pub fn visit_pre_order<F: FnMut(&Node)>(&self, mut f: F) {
-        let mut stack: Vec<&Node> = vec![self];
+    /// invoking `f` on each.
+    pub fn visit_pre_order<F: FnMut(&Self)>(&self, mut f: F) {
+        let mut stack: Vec<&Self> = vec![self];
         while let Some(curr) = stack.pop() {
             f(curr);
             for child in curr.children.iter().rev() {
@@ -40,10 +38,9 @@ impl Node {
     }
 
     /// Visits every node in post-order (children left-to-right, then root).
-    /// Mirrors Go's `VisitPostOrder`.
-    pub fn visit_post_order<F: FnMut(&Node)>(&self, mut f: F) {
+    pub fn visit_post_order<F: FnMut(&Self)>(&self, mut f: F) {
         // Frame holds a node and the index of the next child to descend into.
-        let mut stack: Vec<(&Node, usize)> = vec![(self, 0)];
+        let mut stack: Vec<(&Self, usize)> = vec![(self, 0)];
         while let Some(&mut (node, ref mut idx)) = stack.last_mut() {
             if *idx < node.children.len() {
                 let child = &node.children[*idx];
@@ -57,13 +54,13 @@ impl Node {
     }
 
     /// Returns all nodes (including self) in pre-order as an owned `Vec` of
-    /// references. The Go API returns a goroutine-backed channel (`PreOrder()`);
-    /// the eager `Vec` is the idiomatic Rust equivalent with identical order.
-    pub fn pre_order(&self) -> Vec<&Node> {
+    /// references — the eager counterpart of [`Node::visit_pre_order`].
+    #[must_use]
+    pub fn pre_order(&self) -> Vec<&Self> {
         // Built directly rather than via `visit_pre_order` so the returned
         // references can outlive a closure (closures invariant over `&Node`).
         let mut out = Vec::new();
-        let mut stack: Vec<&Node> = vec![self];
+        let mut stack: Vec<&Self> = vec![self];
         while let Some(curr) = stack.pop() {
             out.push(curr);
             for child in curr.children.iter().rev() {
@@ -74,12 +71,13 @@ impl Node {
     }
 
     /// Returns the chain of ancestors from the root down to the parent of
-    /// `target` (empty if `target` is the root, `None` if not found). Mirrors
-    /// Go's `Ancestors`, comparing by structural equality (Go compares by
-    /// pointer; for value trees structural identity is the faithful analogue).
-    pub fn ancestors<'a>(&'a self, target: &Node) -> Option<Vec<&'a Node>> {
+    /// `target` (empty if `target` is the root, `None` if not found). Matches
+    /// by pointer identity first, then structural equality (for value trees
+    /// structural identity is the analogue of reference identity).
+    #[must_use]
+    pub fn ancestors<'a>(&'a self, target: &Self) -> Option<Vec<&'a Self>> {
         // DFS carrying the path of ancestors to each node.
-        let mut stack: Vec<(&Node, Vec<&Node>)> = vec![(self, Vec::new())];
+        let mut stack: Vec<(&Self, Vec<&Self>)> = vec![(self, Vec::new())];
         while let Some((node, path)) = stack.pop() {
             if std::ptr::eq(node, target) || node == target {
                 return Some(path);
@@ -97,8 +95,8 @@ impl Node {
     }
 
     /// Mutates the tree in place in pre-order. `f` returns whether to continue
-    /// descending into the node's children. Mirrors Go's `TransformInPlace`.
-    pub fn transform_in_place<F: FnMut(&mut Node) -> bool>(&mut self, f: &mut F) {
+    /// descending into the node's children.
+    pub fn transform_in_place<F: FnMut(&mut Self) -> bool>(&mut self, f: &mut F) {
         let descend = f(self);
         if descend {
             for child in &mut self.children {
@@ -107,12 +105,13 @@ impl Node {
         }
     }
 
-    /// Returns a new tree where each node is replaced by `f(node)` in post-order
-    /// (children transformed first). Mirrors Go's `Transform`, which deep-copies
-    /// then applies the function bottom-up.
-    pub fn transform<F: Fn(Node) -> Node>(&self, f: &F) -> Node {
+    /// Returns a new tree where each node is replaced by `f(node)` in
+    /// post-order: the tree is deep-copied and the function applied bottom-up
+    /// (children transformed first).
+    #[must_use]
+    pub fn transform<F: Fn(Self) -> Self>(&self, f: &F) -> Self {
         let mut copy = self.clone();
-        let transformed_children: Vec<Node> =
+        let transformed_children: Vec<Self> =
             copy.children.iter().map(|c| c.transform(f)).collect();
         copy.children = transformed_children;
         f(copy)
@@ -132,7 +131,6 @@ mod tests {
 
     #[test]
     fn find_matches_predicate() {
-        // Mirrors Go TestNode_Find (3 children, 2 Functions).
         let mut root = Node::with_token("File", "");
         root.add_child(Node::with_token("Function", "a"));
         root.add_child(Node::with_token("Function", "b"));
@@ -143,7 +141,6 @@ mod tests {
 
     #[test]
     fn visit_pre_order_visits_root_then_children() {
-        // Mirrors Go TestNode_VisitPreOrder.
         let root = file_with_two_functions();
         let mut visited = Vec::new();
         root.visit_pre_order(|n| visited.push(n.node_type.clone()));

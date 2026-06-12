@@ -1,5 +1,4 @@
-//! `history/quality` plot sections — port of Go
-//! `internal/analyzers/quality/store_reader.go` + `plot.go`
+//! `history/quality` plot sections.
 //! (`GenerateStoreSections` → `buildStoreSections` over the `time_series` +
 //! `aggregate` store kinds, which are exactly the run's `ComputedMetrics`).
 
@@ -9,13 +8,13 @@ use cf_plotpage::{get_chart_palette, ChartOpts, Hint, Section, Theme};
 
 use crate::handlers::plot_sections::history_shared::{format_float, GridStats};
 
-/// quality plot.go constants.
+/// Reference quality plot-section constants.
 const LINE_WIDTH: f64 = 2.0;
 const LINE_WIDTH_THIN: f64 = 1.0;
 const EMPTY_CHART_HEIGHT: &str = "400px";
 const MAX_STATS_COLUMNS: usize = 4;
 
-/// One line series to plot (Go `chartSeries`).
+/// One line series to plot.
 struct ChartSeries {
     name: &'static str,
     values: Vec<f64>,
@@ -24,7 +23,7 @@ struct ChartSeries {
     dashed: bool,
 }
 
-/// Go `GenerateStoreSections`: an empty time series yields zero sections.
+/// The reference `GenerateStoreSections`: an empty time series yields zero sections.
 pub fn sections(metrics: &cf_quality::ComputedMetrics) -> Vec<Section> {
     if metrics.time_series.is_empty() {
         return Vec::new();
@@ -71,7 +70,7 @@ pub fn sections(metrics: &cf_quality::ComputedMetrics) -> Vec<Section> {
     ]
 }
 
-/// Go `buildComplexityChart`.
+/// The reference `buildComplexityChart`.
 fn build_complexity_chart(metrics: &cf_quality::ComputedMetrics) -> Chart {
     let palette = get_chart_palette(Theme::Dark);
     build_distribution_chart(
@@ -85,7 +84,7 @@ fn build_complexity_chart(metrics: &cf_quality::ComputedMetrics) -> Chart {
     )
 }
 
-/// Go `buildHalsteadChart`.
+/// The reference `buildHalsteadChart`.
 fn build_halstead_chart(metrics: &cf_quality::ComputedMetrics) -> Chart {
     let palette = get_chart_palette(Theme::Dark);
     build_distribution_chart(
@@ -99,7 +98,7 @@ fn build_halstead_chart(metrics: &cf_quality::ComputedMetrics) -> Chart {
     )
 }
 
-/// Go `buildDistributionChart`.
+/// The reference `buildDistributionChart`.
 fn build_distribution_chart(
     metrics: &cf_quality::ComputedMetrics,
     title: &str,
@@ -143,7 +142,7 @@ fn build_distribution_chart(
     )
 }
 
-/// Go `buildMultiSeriesChart`.
+/// The reference `buildMultiSeriesChart`.
 fn build_multi_series_chart(
     metrics: &cf_quality::ComputedMetrics,
     title: &str,
@@ -197,7 +196,7 @@ fn build_multi_series_chart(
     line
 }
 
-/// Go `buildQualityStatsSection`.
+/// The reference `buildQualityStatsSection`.
 fn build_quality_stats_section(metrics: &cf_quality::ComputedMetrics) -> Section {
     let agg = &metrics.aggregate;
     let grid = GridStats::new(MAX_STATS_COLUMNS)
@@ -219,7 +218,7 @@ fn build_quality_stats_section(metrics: &cf_quality::ComputedMetrics) -> Section
     }
 }
 
-/// Go `createEmptyChart`.
+/// The reference `createEmptyChart`.
 fn create_empty_chart(title: &str) -> Chart {
     let co = ChartOpts::default_dark();
     let mut line = Chart::new(ChartKind::Line);

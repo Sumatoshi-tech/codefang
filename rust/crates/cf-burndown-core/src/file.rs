@@ -1,29 +1,24 @@
 //! File-level line interval tracking for burndown analysis.
 //!
-//! Port of `internal/burndown/file.go`. A [`File`] encapsulates a
-//! [`TreapTimeline`] (line-interval storage) and cumulative length counters via
-//! [`Updater`] callbacks.
+//! A [`File`] encapsulates a [`TreapTimeline`] (line-interval storage) and
+//! cumulative length counters via [`Updater`] callbacks.
 
 use crate::range_query::RangeIndex;
 use crate::timeline::{TimeKey, Timeline};
 use crate::timeline_treap::{Segment, TreapTimeline};
 use crate::{TREE_END, TREE_MERGE_MARK};
 
-/// Callback invoked on [`File::update`].
+/// Callback invoked on [`File::update`] with `(current, previous, delta)`.
 ///
-/// Mirrors the Go alias `type Updater = func(currentTime, previousTime, delta int)`.
-/// The boxed `dyn FnMut` lets a [`File`] own a heterogeneous set of updaters, as
-/// the Go slice of closures does.
+/// The boxed `dyn FnMut` lets a [`File`] own a heterogeneous set of updaters.
 pub type Updater = Box<dyn FnMut(i64, i64, i64)>;
 
 /// Encapsulates a [`TreapTimeline`] (line-interval storage) and cumulative
 /// length counters via [`Updater`]s.
 ///
 /// Construct via [`File::new`]; [`File::len`] returns the line count;
-/// [`File::update`] mutates via the timeline and updaters. [`File::dump`] writes
-/// the tree to a string and [`File::validate`] checks integrity.
-///
-/// Mirrors the Go `File` struct.
+/// [`File::update`] mutates via the timeline and updaters. [`File::dump`]
+/// writes the tree to a string and [`File::validate`] checks integrity.
 pub struct File {
     timeline: TreapTimeline,
     updaters: Vec<Updater>,
@@ -37,12 +32,9 @@ impl File {
     /// length of the tree. `updaters` lists the attached interval length
     /// mappings.
     ///
-    /// Mirrors Go `NewFile`.
-    ///
     /// # Panics
     ///
-    /// Panics if `time` or `length` are outside the `[0, u32::MAX]` range
-    /// (matching Go's bounds checks).
+    /// Panics if `time` or `length` are outside the `[0, u32::MAX]` range.
     pub fn new(time: i64, length: i64, updaters: Vec<Updater>) -> Self {
         if !(0..=i64::from(u32::MAX)).contains(&time) {
             panic!("time is out of allowed range: {time}");
@@ -68,8 +60,6 @@ impl File {
     }
 
     /// Create a [`File`] from serialized segments without triggering updaters.
-    ///
-    /// Mirrors Go `NewFileFromSegments`.
     pub fn from_segments(segs: &[Segment], updaters: Vec<Updater>) -> Self {
         let mut timeline = TreapTimeline::empty();
         timeline.reconstruct_from_segments(segs);
@@ -102,9 +92,9 @@ impl File {
 
     /// Copy the file (shallow copy of the timeline).
     ///
-    /// Mirrors Go `CloneShallow`. The Go version shares the updater slice; in
-    /// Rust the boxed closures cannot be cloned, so the clone starts with no
-    /// updaters — set them via [`File::replace_updaters`] if needed.
+    /// The reference implementation shares the updater slice between the copies;
+    /// boxed closures cannot be cloned, so the clone starts with no updaters —
+    /// set them via [`File::replace_updaters`] if needed.
     pub fn clone_shallow(&self) -> File {
         File {
             timeline: self.timeline.clone_shallow(),
@@ -115,8 +105,6 @@ impl File {
 
     /// Copy the file (deep copy of the timeline). See [`File::clone_shallow`]
     /// regarding updaters.
-    ///
-    /// Mirrors Go `CloneDeep`.
     pub fn clone_deep(&self) -> File {
         File {
             timeline: self.timeline.clone_deep(),
@@ -125,46 +113,43 @@ impl File {
         }
     }
 
-    /// Deallocate the file's timeline. Mirrors Go `Delete`.
+    /// Deallocate the file's timeline.
     pub fn delete(&mut self) {
         self.timeline.erase();
     }
 
     /// Trim the timeline's internal node pool to retain at most `keep` free
-    /// nodes. Mirrors Go `ShrinkPool`.
+    /// nodes.
     pub fn shrink_pool(&mut self, keep: usize) {
         self.timeline.shrink_pool(keep);
     }
 
-    /// Replace the file's updaters with a new set. Mirrors Go `ReplaceUpdaters`.
+    /// Replace the file's updaters with a new set.
     pub fn replace_updaters(&mut self, updaters: Vec<Updater>) {
         self.updaters = updaters;
     }
 
-    /// Return the file's timeline segments as a compact slice. Mirrors Go
-    /// `Segments`.
+    /// Return the file's timeline segments as a compact slice.
     pub fn segments(&self) -> Vec<Segment> {
         self.timeline.segments()
     }
 
-    /// Rebuild the file's timeline from a compact segment slice. Mirrors Go
-    /// `ReconstructFromSegments`.
+    /// Rebuild the file's timeline from a compact segment slice.
     pub fn reconstruct_from_segments(&mut self, segs: &[Segment]) {
         self.timeline.reconstruct_from_segments(segs);
     }
 
-    /// Number of lines in the file. Mirrors Go `Len`.
+    /// Number of lines in the file.
     pub fn len(&self) -> i64 {
         self.timeline.len()
     }
 
-    /// `true` if the file has no lines. (No Go counterpart; added for idiomatic
-    /// Rust / clippy's `len_without_is_empty`.)
+    /// `true` if the file has no lines.
     pub fn is_empty(&self) -> bool {
         self.timeline.len() == 0
     }
 
-    /// Number of segments/nodes in the file. Mirrors Go `Nodes`.
+    /// Number of segments/nodes in the file.
     pub fn nodes(&self) -> i64 {
         self.timeline.nodes()
     }
@@ -172,12 +157,10 @@ impl File {
     /// Modify the timeline to reflect line changes and notify updaters
     /// (deletions and insertions).
     ///
-    /// Mirrors Go `Update`.
-    ///
     /// # Panics
     ///
     /// Panics on negative `time`/`pos`, `time >= u32::MAX`, `pos > u32::MAX`, or
-    /// negative `ins_length`/`del_length` (matching Go's bounds checks).
+    /// negative `ins_length`/`del_length`.
     pub fn update(&mut self, time: i64, pos: i64, ins_length: i64, del_length: i64) {
         if time < 0 {
             panic!("time may not be negative");
@@ -218,17 +201,16 @@ impl File {
     }
 
     /// Coalesce consecutive segments with the same time (reduces node count).
-    /// Mirrors Go `MergeAdjacentSameValue`.
     pub fn merge_adjacent_same_value(&mut self) {
         self.timeline.merge_adjacent_same_value();
     }
 
-    /// Combine several prepared files together. Mirrors Go `Merge`.
+    /// Combine several prepared files together.
     ///
     /// # Panics
     ///
     /// Panics if a line-count mismatch is detected between this file and any
-    /// other (file corruption), matching Go.
+    /// other (file corruption).
     pub fn merge(&mut self, day: i64, others: &[&File]) {
         let mut myself = self.timeline.flatten();
         merge_other_files(&mut myself, others);
@@ -246,7 +228,7 @@ impl File {
     }
 
     /// Format the underlying line interval tree into a string. Useful for error
-    /// messages and debugging. Mirrors Go `Dump`.
+    /// messages and debugging.
     pub fn dump(&self) -> String {
         let mut buffer = String::new();
         self.for_each(|line, value| {
@@ -255,13 +237,13 @@ impl File {
         buffer
     }
 
-    /// Check the timeline integrity. Mirrors Go `Validate`.
+    /// Check the timeline integrity.
     pub fn validate(&self) {
         self.timeline.validate();
     }
 
     /// Visit each segment start in the timeline in order (`line`, `value`);
-    /// `value` is `-1` for the `TreeEnd` sentinel. Mirrors Go `ForEach`.
+    /// `value` is `-1` for the `TreeEnd` sentinel.
     pub fn for_each<F: FnMut(i64, i64)>(&self, mut callback: F) {
         self.timeline.iterate(&mut |offset, _, t| {
             let v = if t == TREE_END { -1 } else { i64::from(t) };
@@ -281,14 +263,12 @@ impl File {
     }
 }
 
-/// Check whether a line value has the merge mark bit set. Mirrors Go
-/// `isMergeMarked`.
+/// Check whether a line value has the merge mark bit set.
 fn is_merge_marked(value: i64) -> bool {
     value & i64::from(TREE_MERGE_MARK) == i64::from(TREE_MERGE_MARK)
 }
 
-/// Merge the flattened lines of `others` into `myself`. Mirrors Go
-/// `mergeOtherFiles`.
+/// Merge the flattened lines of `others` into `myself`.
 ///
 /// # Panics
 ///
@@ -324,7 +304,7 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    /// Port of `TestMergeAdjacentSameValue` (file_test.go). Verifies merge does
+    /// Mirrors reference test `TestMergeAdjacentSameValue`. Verifies merge does
     /// not increase node count and preserves effective line→time.
     #[test]
     fn merge_adjacent_same_value() {
@@ -364,7 +344,7 @@ mod tests {
         file.validate();
     }
 
-    /// Port of `TestTreapTimeline_FileWithTimeline` (timeline_treap_test.go).
+    /// Mirrors reference test `TestTreapTimeline_FileWithTimeline`.
     #[test]
     fn file_with_timeline_update_sequence() {
         let mut file = File::new(0, 1000, Vec::new());
@@ -386,7 +366,7 @@ mod tests {
         assert_eq!(value_at(&file, 55), 1);
     }
 
-    /// Port of `TestNewFileFromSegments` (timeline_treap_test.go).
+    /// Mirrors reference test `TestNewFileFromSegments`.
     #[test]
     fn new_file_from_segments() {
         let mut original = File::new(1, 100, Vec::new());
@@ -406,7 +386,7 @@ mod tests {
     }
 
     /// `new` invokes the updater once with `(time, time, length)` for the
-    /// initial fill (Go `NewFile` -> `updateTime`).
+    /// initial fill.
     #[test]
     fn new_file_invokes_updater_on_initial_length() {
         let calls = Rc::new(RefCell::new(Vec::new()));
@@ -417,7 +397,7 @@ mod tests {
     }
 
     /// A pure-deletion `update` reports `(time, previous, -deleted)` for each
-    /// deleted interval (Go `Update`'s report loop).
+    /// deleted interval.
     #[test]
     fn update_deletion_reports_negative_delta() {
         let calls = Rc::new(RefCell::new(Vec::new()));
@@ -433,9 +413,9 @@ mod tests {
     }
 
     /// `dump` formats `line value\n` per visited segment start. The `TreeEnd`
-    /// sentinel has length 0, so (exactly like Go's `walkNodes`, which only
-    /// calls `fn` when `n.length > 0`) it is NOT emitted: a fresh `File(0, 5)`
-    /// dumps just its single data segment.
+    /// sentinel has length 0, so (the tree walk only visits segments with
+    /// `length > 0`) it is NOT emitted: a fresh `File(0, 5)` dumps just its
+    /// single data segment.
     #[test]
     fn dump_formats_segments() {
         let file = File::new(0, 5, Vec::new());
@@ -453,12 +433,12 @@ mod tests {
     }
 
     /// `merge` resolves merge-marked lines to `day` and reconstructs cleanly
-    /// (Go `Merge` on equal-length files).
+    /// (equal-length files).
     #[test]
     fn merge_two_files() {
         let mut file1 = File::new(0, 1000, Vec::new());
         let mut file2 = File::new(0, 1000, Vec::new());
-        // Grow both equally so Merge's equal-length invariant holds.
+        // Grow both equally so merge's equal-length invariant holds.
         file1.update(1, 100, 50, 0);
         file2.update(1, 100, 50, 0);
         file1.merge(2, &[&file2]);
@@ -466,7 +446,7 @@ mod tests {
         assert_eq!(file1.len(), 1050);
     }
 
-    /// Port of `TestFileShrinkPool` behavior (node_pool integration via File).
+    /// Node-pool shrink integration via `File`.
     #[test]
     fn file_shrink_pool() {
         let mut file = File::new(0, 1000, Vec::new());

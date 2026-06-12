@@ -1,37 +1,39 @@
-//! Line-mode diff port of `sergi/go-diff` `diffmatchpatch`, scoped to exactly
-//! the pipeline the burndown analyzer's `FileDiff` provider drives:
+//! Line-mode diff engine implementing the `diffmatchpatch` pipeline, scoped to
+//! exactly what the burndown analyzer's `FileDiff` provider drives:
 //!
 //! ```text
-//! src, dst, _ := dmp.DiffLinesToRunes(from, to)   // line -> rune-index encoding
-//! diffs := dmp.DiffMainRunes(src, dst, false)     // Myers diff (checklines=false)
-//! diffs = dmp.DiffCleanupMerge(
-//!             dmp.DiffCleanupSemanticLossless(diffs)) // cleanup
+//! 1. encode each text as one index per line   (DiffLinesToRunes)
+//! 2. Myers diff over the index sequences      (DiffMainRunes, checklines=false)
+//! 3. boundary cleanup                         (DiffCleanupSemanticLossless)
+//! 4. merge cleanup                            (DiffCleanupMerge)
 //! ```
 //!
-//! The downstream consumer (burndown `applyDiffs`) only counts **runes** per
-//! insert/delete segment (`utf8.RuneCountInString`), where one rune == one
-//! source line. Therefore this crate operates on the encoded line-index domain
-//! (`u32` per line) instead of materializing `intToRune` runes, and emits
-//! segments carrying only their *line count*.
+//! The downstream consumer (burndown's diff application) only counts encoded
+//! characters per insert/delete segment, where one character == one source
+//! line. Therefore this crate operates on the encoded line-index domain (`u32`
+//! per line) instead of materializing encoded characters, and emits segments
+//! carrying only their *line count*.
 //!
-//! # Why `DiffCleanupSemanticLossless` is omitted
+//! Compatibility: this is a frozen compatibility implementation — the segment
+//! stream must match the reference diff engine exactly, because the resulting
+//! added/removed line counts flow into reports. Output bytes are pinned against
+//! the reference binary by `rust/tests/compat`; do not alter the algorithms.
 //!
-//! That pass shifts characters between an edit and its surrounding equalities to
-//! land on word boundaries. It never converts an insert into a delete (or vice
-//! versa) and never changes the total number of inserted vs. deleted runes — it
-//! is purely cosmetic for boundary placement. Since burndown only needs the
-//! per-commit *count* of added/removed lines (and, within a single commit, the
-//! position only selects which already-older tick a removed line is debited
-//! from — irrelevant to the added/removed totals), the lossless pass is a no-op
-//! for our purpose. `DiffCleanupMerge`, by contrast, factors shared
-//! prefix/suffix lines of a delete+insert pair back into equalities (reducing
-//! the add/remove counts), so it *is* reproduced faithfully.
+//! # Pipeline notes
 //!
-//! `checklines` is always `false` here (FileDiff passes `false`), so the
-//! `diffLineMode` / `DiffCleanupSemantic` branch of `diffCompute` is
-//! unreachable and not ported. `diffHalfMatch` returns `nil` unless
-//! `DiffTimeout > 0`; FileDiff sets a 1000 ms default timeout, so half-match is
-//! active and is ported. The Myers `diffBisect` deadline bail-out is a no-op for
+//! `DiffCleanupSemanticLossless` shifts characters between an edit and its
+//! surrounding equalities to land on word boundaries. It never converts an
+//! insert into a delete (or vice versa) and never changes the total number of
+//! inserted vs. deleted characters on its own — but it repositions edits so the
+//! following `DiffCleanupMerge` can factor shared prefix/suffix lines of a
+//! delete+insert pair back into equalities (which *does* change the add/remove
+//! counts), so both passes are reproduced faithfully.
+//!
+//! `checklines` is always `false` here (`FileDiff` passes `false`), so the
+//! line-mode / `DiffCleanupSemantic` branch of the compute step is unreachable
+//! and not implemented. The half-match speedup only fires when a diff timeout
+//! is configured; `FileDiff` sets a 1000 ms default timeout, so half-match is
+//! active and is implemented. The Myers bisect deadline bail-out is a no-op for
 //! the small diffs exercised here and is therefore not time-gated.
 
 #![forbid(unsafe_code)]
@@ -69,12 +71,12 @@ fn lines_to_indices<'a>(
 ) -> Vec<u32> {
     let mut out = Vec::new();
     let mut line_start = 0usize;
-    // Mirror Go's `lineEnd < len(text)-1` loop with -1 sentinel semantics.
+    // The reference loop runs while `lineEnd < len(text) - 1` with `lineEnd`
+    // starting at -1; tracking the start cursor instead, that condition is
+    // exactly `line_start < n`.
     let n = text.len();
-    // Go condition: for lineEnd < len(text)-1, with lineEnd starting at -1.
-    // We track lineEnd as an isize-like via the start cursor instead.
     loop {
-        if !(line_start as isize <= n as isize - 1) {
+        if line_start >= n {
             break;
         }
         let line_end = match find_newline(text, line_start) {
@@ -117,8 +119,8 @@ pub fn line_diff(old: &[u8], new: &[u8], timeout_active: bool) -> Vec<Segment> {
 }
 
 /// Returns `(lines_added, lines_removed)` for a line diff: the total inserted
-/// and deleted line counts. Mirrors how burndown derives per-file deltas —
-/// every insert rune contributes +1 added, every delete rune contributes +1
+/// and deleted line counts. This is how burndown derives per-file deltas —
+/// every inserted line contributes +1 added, every deleted line contributes +1
 /// removed.
 pub fn added_removed(old: &[u8], new: &[u8], timeout_active: bool) -> (i64, i64) {
     let mut added = 0i64;
@@ -134,10 +136,10 @@ pub fn added_removed(old: &[u8], new: &[u8], timeout_active: bool) -> (i64, i64)
 }
 
 // ---------------------------------------------------------------------------
-// Core diff (operates on encoded line-index slices), port of diffMainRunes.
+// Core diff (operates on encoded line-index slices): DiffMainRunes.
 // ---------------------------------------------------------------------------
 
-/// `UNICODE_INVALID_RANGE_*` constants from go-diff stringutil.go.
+/// Constants of the diffmatchpatch index-to-character encoding.
 const UNICODE_INVALID_RANGE_START: u32 = 0xD800;
 const UNICODE_INVALID_RANGE_END: u32 = 0xDFFF;
 const UNICODE_INVALID_RANGE_DELTA: u32 = UNICODE_INVALID_RANGE_END - UNICODE_INVALID_RANGE_START + 1;
@@ -147,9 +149,10 @@ const TWO_BYTE_BITS: u32 = 11;
 const THREE_BYTE_BITS: u32 = 16;
 const FOUR_BYTE_BITS: u32 = 21;
 
-/// Converts a line index (0..~1112060) into the rune go-diff's `intToRune`
-/// produces, so `DiffCleanupSemanticLossless`'s boundary-character scoring
-/// inspects the same characters Go does.
+/// Converts a line index (0..~1112060) into the character the reference
+/// `intToRune` encoding produces, so `DiffCleanupSemanticLossless`'s
+/// boundary-character scoring inspects the same characters the reference
+/// implementation does.
 fn int_to_rune(i: u32) -> char {
     if i < (1 << ONE_BYTE_BITS) {
         return char::from_u32(i).unwrap_or('\u{FFFD}');
@@ -172,7 +175,7 @@ fn int_to_rune(i: u32) -> char {
 }
 
 /// Decodes a slice of line indices into a `String` of `int_to_rune` characters,
-/// mirroring the encoded-rune string go-diff's cleanup operates on.
+/// the encoded string the cleanup passes operate on.
 fn decode(lines: &[u32]) -> String {
     lines.iter().map(|&i| int_to_rune(i)).collect()
 }
@@ -256,7 +259,7 @@ fn diff_compute(text1: &[u32], text2: &[u32], timeout_active: bool) -> Vec<Segme
 fn diff_bisect(runes1: &[u32], runes2: &[u32]) -> Vec<Segment> {
     let runes1_len = runes1.len() as isize;
     let runes2_len = runes2.len() as isize;
-    let max_d = ((runes1_len + runes2_len + 1) / 2) as isize;
+    let max_d = (runes1_len + runes2_len + 1) / 2;
     let v_offset = max_d;
     let v_length = (2 * max_d) as usize;
 
@@ -358,7 +361,7 @@ fn diff_bisect_split(runes1: &[u32], runes2: &[u32], x: usize, y: usize) -> Vec<
 }
 
 // ---------------------------------------------------------------------------
-// diffHalfMatch port.
+// Half-match speedup: diffHalfMatch.
 // ---------------------------------------------------------------------------
 
 type HalfMatch = (Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>);
@@ -373,8 +376,8 @@ fn diff_half_match(text1: &[u32], text2: &[u32]) -> Option<HalfMatch> {
         return None;
     }
 
-    let hm1 = diff_half_match_i(longtext, shorttext, (longtext.len() + 3) / 4);
-    let hm2 = diff_half_match_i(longtext, shorttext, (longtext.len() + 1) / 2);
+    let hm1 = diff_half_match_i(longtext, shorttext, longtext.len().div_ceil(4));
+    let hm2 = diff_half_match_i(longtext, shorttext, longtext.len().div_ceil(2));
 
     let hm = match (hm1, hm2) {
         (None, None) => return None,
@@ -430,7 +433,7 @@ fn diff_half_match_i(l: &[u32], s: &[u32], i: usize) -> Option<HalfMatch> {
 }
 
 // ---------------------------------------------------------------------------
-// DiffCleanupMerge port (count-affecting cleanup).
+// DiffCleanupMerge (count-affecting cleanup).
 // ---------------------------------------------------------------------------
 
 fn cleanup_merge(mut diffs: Vec<Segment>) -> Vec<Segment> {
@@ -572,8 +575,8 @@ fn cleanup_merge(mut diffs: Vec<Segment>) -> Vec<Segment> {
 }
 
 // ---------------------------------------------------------------------------
-// DiffCleanupSemanticLossless port (boundary shifting; count-invariant on its
-// own, but it repositions edits so the following DiffCleanupMerge can factor out
+// DiffCleanupSemanticLossless (boundary shifting; count-invariant on its own,
+// but it repositions edits so the following DiffCleanupMerge can factor out
 // shared lines — which DOES change the add/remove totals).
 // ---------------------------------------------------------------------------
 
@@ -612,8 +615,8 @@ fn cleanup_semantic_score(one: &[u32], two: &[u32]) -> i32 {
     }
 }
 
-/// Go `\s` (regexp): ASCII `[\t\n\f\r ]` plus the Unicode whitespace property.
-/// For the encoded-rune domain only these matter.
+/// The reference whitespace class `\s`: ASCII `[\t\n\f\r ]` plus the Unicode
+/// whitespace property. For the encoded line-index domain only these matter.
 fn is_go_whitespace(c: char) -> bool {
     matches!(c, '\t' | '\n' | '\u{0B}' | '\u{0C}' | '\r' | ' ')
         || c.is_whitespace()
@@ -661,11 +664,9 @@ fn cleanup_semantic_lossless(mut diffs: Vec<Segment>) -> Vec<Segment> {
 
             while !edit.is_empty() && !equality2.is_empty() && edit[0] == equality2[0] {
                 equality1.push(edit[0]);
-                let first = edit[0];
                 edit.remove(0);
                 edit.push(equality2[0]);
                 equality2.remove(0);
-                let _ = first;
                 let score = cleanup_semantic_score(&equality1, &edit)
                     + cleanup_semantic_score(&edit, &equality2);
                 if score >= best_score {
@@ -688,9 +689,7 @@ fn cleanup_semantic_lossless(mut diffs: Vec<Segment>) -> Vec<Segment> {
                     diffs[pointer + 1].lines = best_equality2;
                 } else {
                     diffs.remove(pointer + 1);
-                    if pointer > 0 {
-                        pointer -= 1;
-                    }
+                    pointer = pointer.saturating_sub(1);
                 }
             }
         }
@@ -759,8 +758,8 @@ fn starts_with(text: &[u32], prefix: &[u32]) -> bool {
     prefix.len() <= text.len() && &text[..prefix.len()] == prefix
 }
 
-/// Replaces `amount` elements of `slice` starting at `index` with `elements`,
-/// mirroring go-diff's `splice`.
+/// Replaces `amount` elements of `slice` starting at `index` with `elements`
+/// (the reference `splice` helper).
 fn splice(slice: &mut Vec<Segment>, index: usize, amount: usize, elements: Vec<Segment>) {
     slice.splice(index..index + amount, elements);
 }

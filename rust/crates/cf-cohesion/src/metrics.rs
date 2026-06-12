@@ -1,57 +1,55 @@
-//! Computed metrics — port of `internal/analyzers/cohesion/metrics.go`.
+//! Computed metrics: the report view serialized to the machine formats.
 //!
-//! [`ComputedMetrics`] is the struct that is actually serialized to the machine
-//! formats (`FormatReportJSON`/`YAML`/`Binary` in the Go code all marshal
-//! `*ComputedMetrics`). Its JSON/YAML shape is **byte-identity critical**:
+//! [`ComputedMetrics`] is the struct that is actually serialized to JSON / YAML
+//! / binary. Its shape is **byte-identity critical** (pinned by the
+//! differential gate):
 //!
-//! * Fields serialize in **declaration order** (Go struct field order), honoring
-//!   `omitempty` for the optional string fields — reproduced here by emitting via the
-//!   fixed-order `GoMap` builder of `cf-gojson` / `cf-goyaml`.
-//! * `distribution` is a Go `map[string]int`; its keys are byte-sorted on encode.
-//! * Floats render with Go `strconv.AppendFloat('g', -1, 64)` semantics via
-//!   `cf-gojson::go_float`; HTML escaping is ON; the JSON path is `MarshalIndent`
-//!   (two-space indent, **no trailing newline**); the binary path is the CFB1
-//!   envelope over compact JSON; YAML is yaml.v3-compatible.
+//! * Fields serialize in **declaration order**, honoring `omitempty` for the
+//!   optional string fields.
+//! * `distribution` is a string-keyed map; its keys are byte-sorted on encode.
+//! * Floats render with shortest-round-trip `%g` semantics; HTML escaping is
+//!   ON; the JSON path is two-space-indented with **no trailing newline**; the
+//!   binary path is the CFB1 envelope over compact JSON.
 //!
-//! The encoding goes through [`crate::serialize::to_go_value`], which builds the
-//! Go-value tree with struct-origin objects (declaration order) and one map-origin
-//! object (the byte-sorted `distribution`).
+//! The encoding goes through [`crate::serialize::to_go_value`], which builds
+//! the value tree with struct-origin objects (declaration order) and one
+//! map-origin object (the byte-sorted `distribution`).
 
 use crate::report_value::{Report, ReportValue};
 use std::collections::BTreeMap;
 
-/// Go `analyze.SourceFileKey`.
+/// Stamped source-file key.
 pub const SOURCE_FILE_KEY: &str = "_source_file";
-/// Go `analyze.LanguageKey`.
+/// Stamped language key.
 pub const LANGUAGE_KEY: &str = "_language";
-/// Go `analyze.DirectoryKey`.
+/// Stamped directory key.
 pub const DIRECTORY_KEY: &str = "_directory";
 
-// --- Quality thresholds (metrics.go) ---
+// --- Quality thresholds ---
 
-/// `CohesionThresholdExcellent`.
+/// Cohesion at or above this is "Excellent".
 pub const COHESION_THRESHOLD_EXCELLENT: f64 = 0.6;
-/// `CohesionThresholdGood`.
+/// Cohesion at or above this is "Good".
 pub const COHESION_THRESHOLD_GOOD: f64 = 0.4;
-/// `CohesionThresholdFair`.
+/// Cohesion at or above this is "Fair".
 pub const COHESION_THRESHOLD_FAIR: f64 = 0.3;
-/// `healthScoreMultiplier`.
+/// Health score = cohesion score x this multiplier.
 pub const HEALTH_SCORE_MULTIPLIER: f64 = 100.0;
 
-// --- Distribution keys (metrics.go) ---
+// --- Distribution keys ---
 
-/// `MetricDistExcellent`.
+/// Distribution bucket key.
 pub const METRIC_DIST_EXCELLENT: &str = "excellent";
-/// `MetricDistGood`.
+/// Distribution bucket key.
 pub const METRIC_DIST_GOOD: &str = "good";
-/// `MetricDistFair`.
+/// Distribution bucket key.
 pub const METRIC_DIST_FAIR: &str = "fair";
-/// `MetricDistPoor`.
+/// Distribution bucket key.
 pub const METRIC_DIST_POOR: &str = "poor";
 
 // === Input data types ===
 
-/// Parsed input for metrics computation (Go `ReportData`).
+/// Parsed input for metrics computation.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ReportData {
     /// `total_functions`.
@@ -68,7 +66,7 @@ pub struct ReportData {
     pub message: String,
 }
 
-/// Cohesion data for one function (Go `FunctionData`).
+/// Cohesion data for one function.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct FunctionData {
     /// `name`.
@@ -83,10 +81,10 @@ pub struct FunctionData {
     pub cohesion: f64,
 }
 
-/// Extracts [`ReportData`] from an analyzer [`Report`] (Go `ParseReportData`).
+/// Extracts [`ReportData`] from an analyzer [`Report`].
 ///
-/// Mirrors Go's strict type assertions: a key that is missing or of the wrong
-/// dynamic type is left at its zero value.
+/// Type checks are strict (report-format contract): a key that is missing or
+/// of the wrong dynamic type is left at its zero value.
 #[must_use]
 pub fn parse_report_data(report: &Report) -> ReportData {
     let mut data = ReportData::default();
@@ -141,7 +139,7 @@ fn parse_function_data(fn_map: &BTreeMap<String, ReportValue>) -> FunctionData {
 
 // === Output data types ===
 
-/// Per-function cohesion output (Go `FunctionCohesionData`).
+/// Per-function cohesion output.
 ///
 /// Field order = JSON/YAML key order: `name`, `source_file?`, `language?`,
 /// `directory?`, `cohesion`, `quality_level`.
@@ -161,7 +159,7 @@ pub struct FunctionCohesionData {
     pub quality_level: String,
 }
 
-/// Low-cohesion function output (Go `LowCohesionFunctionData`).
+/// Low-cohesion function output.
 ///
 /// Field order: `name`, `source_file?`, `language?`, `directory?`, `cohesion`,
 /// `risk_level`, `recommendation`.
@@ -183,7 +181,7 @@ pub struct LowCohesionFunctionData {
     pub recommendation: String,
 }
 
-/// Aggregate summary statistics (Go `AggregateData`).
+/// Aggregate summary statistics.
 ///
 /// Field order: `total_functions`, `lcom`, `lcom_variant`, `cohesion_score`,
 /// `function_cohesion`, `health_score`, `message`.
@@ -205,7 +203,7 @@ pub struct AggregateData {
     pub message: String,
 }
 
-/// All computed metric results (Go `ComputedMetrics`).
+/// All computed metric results.
 ///
 /// Field order = top-level JSON/YAML key order: `function_cohesion`,
 /// `distribution`, `low_cohesion_functions`, `aggregate`.
@@ -213,7 +211,7 @@ pub struct AggregateData {
 pub struct ComputedMetrics {
     /// `function_cohesion`.
     pub function_cohesion: Vec<FunctionCohesionData>,
-    /// `distribution` — Go `map[string]int`, byte-sorted keys on encode.
+    /// `distribution` — string-keyed counts, byte-sorted keys on encode.
     pub distribution: BTreeMap<String, i64>,
     /// `low_cohesion_functions`.
     pub low_cohesion_functions: Vec<LowCohesionFunctionData>,
@@ -222,7 +220,7 @@ pub struct ComputedMetrics {
 }
 
 impl ComputedMetrics {
-    /// The analyzer name (Go `(*ComputedMetrics).AnalyzerName`).
+    /// The analyzer name.
     #[must_use]
     pub fn analyzer_name(&self) -> &'static str {
         crate::ANALYZER_NAME
@@ -231,9 +229,8 @@ impl ComputedMetrics {
 
 // === Metric implementations ===
 
-/// Classifies a cohesion score into a quality label (Go
-/// `classifyCohesionQuality` via `common.NewClassifier`). Returns the first label
-/// whose limit the score meets, scanning highest first; "Poor" otherwise.
+/// Classifies a cohesion score into a quality label: the first label whose
+/// limit the score meets, scanning highest first; "Poor" otherwise.
 #[must_use]
 pub fn classify_cohesion_quality(cohesion: f64) -> &'static str {
     if cohesion >= COHESION_THRESHOLD_EXCELLENT {
@@ -247,7 +244,7 @@ pub fn classify_cohesion_quality(cohesion: f64) -> &'static str {
     }
 }
 
-/// Distribution label for a function (Go `classifyCohesionLevel`).
+/// Distribution label for a function.
 #[must_use]
 pub fn classify_cohesion_level(cohesion: f64) -> &'static str {
     if cohesion >= COHESION_THRESHOLD_EXCELLENT {
@@ -261,8 +258,7 @@ pub fn classify_cohesion_level(cohesion: f64) -> &'static str {
     }
 }
 
-/// Computes the per-function cohesion list, sorted by cohesion ascending (Go
-/// `FunctionCohesionMetric.Compute`).
+/// Computes the per-function cohesion list, sorted by cohesion ascending.
 #[must_use]
 pub fn compute_function_cohesion(input: &ReportData) -> Vec<FunctionCohesionData> {
     let mut result: Vec<FunctionCohesionData> = input
@@ -277,16 +273,15 @@ pub fn compute_function_cohesion(input: &ReportData) -> Vec<FunctionCohesionData
             quality_level: classify_cohesion_quality(fd.cohesion).to_string(),
         })
         .collect();
-    // Go uses sort.Slice (pattern-defeating quicksort) with a strict-less comparator
-    // on cohesion. We use a total order on cohesion; equal-cohesion ordering is a
-    // canonicalized golden path (function-table nondeterminism).
+    // The reference sort is an unstable quicksort with a strict-less comparator
+    // on cohesion. We use a total order on cohesion; equal-cohesion ordering is
+    // a canonicalized golden path (function-table nondeterminism).
     result.sort_by(|a, b| a.cohesion.total_cmp(&b.cohesion));
     result
 }
 
-/// Computes the cohesion distribution counts (Go `DistributionMetric.Compute` via
-/// `stats.Distribution`). Only buckets that occur are inserted, matching Go's map
-/// behavior (absent buckets are not emitted).
+/// Computes the cohesion distribution counts. Only buckets that occur are
+/// inserted (absent buckets are not emitted — report-format contract).
 #[must_use]
 pub fn compute_distribution(input: &ReportData) -> BTreeMap<String, i64> {
     let mut dist: BTreeMap<String, i64> = BTreeMap::new();
@@ -297,13 +292,13 @@ pub fn compute_distribution(input: &ReportData) -> BTreeMap<String, i64> {
     dist
 }
 
-/// Computes the low-cohesion function list (Go `LowCohesionFunctionMetric.Compute`).
+/// Computes the low-cohesion function list.
 ///
 /// Includes only functions below [`COHESION_THRESHOLD_GOOD`]; high risk below
-/// [`COHESION_THRESHOLD_FAIR`]. NOTE: Go only copies `Name`, `SourceFile`,
-/// `Cohesion`, `RiskLevel`, `Recommendation` here (Language/Directory are left
-/// empty), so those fields stay zero and are omitted via `omitempty`. Faithfully
-/// reproduced.
+/// [`COHESION_THRESHOLD_FAIR`]. NOTE: only `name`, `source_file`, `cohesion`,
+/// `risk_level`, `recommendation` are populated here — `language`/`directory`
+/// stay empty and are omitted via `omitempty` (report-format contract; pinned
+/// by the differential gate).
 #[must_use]
 pub fn compute_low_cohesion_functions(input: &ReportData) -> Vec<LowCohesionFunctionData> {
     let mut result: Vec<LowCohesionFunctionData> = Vec::new();
@@ -311,8 +306,8 @@ pub fn compute_low_cohesion_functions(input: &ReportData) -> Vec<LowCohesionFunc
         if fd.cohesion >= COHESION_THRESHOLD_GOOD {
             continue;
         }
-        // Go uses the `pkg/metrics` RiskLevel string constants, which are
-        // UPPERCASE ("HIGH"/"MEDIUM"); see `metrics.RiskHigh`/`RiskMedium`.
+        // The risk-level strings are UPPERCASE ("HIGH"/"MEDIUM") in this
+        // report (CLI contract).
         let (risk_level, recommendation) = if fd.cohesion < COHESION_THRESHOLD_FAIR {
             ("HIGH", "Consider splitting into multiple focused functions")
         } else {
@@ -335,7 +330,7 @@ pub fn compute_low_cohesion_functions(input: &ReportData) -> Vec<LowCohesionFunc
     result
 }
 
-/// Computes aggregate statistics (Go `AggregateMetric.Compute`).
+/// Computes aggregate statistics.
 #[must_use]
 pub fn compute_aggregate(input: &ReportData) -> AggregateData {
     AggregateData {
@@ -349,7 +344,7 @@ pub fn compute_aggregate(input: &ReportData) -> AggregateData {
     }
 }
 
-/// Runs all cohesion metrics (Go `ComputeAllMetrics`).
+/// Runs all cohesion metrics.
 #[must_use]
 pub fn compute_all_metrics(report: &Report) -> ComputedMetrics {
     let input = parse_report_data(report);

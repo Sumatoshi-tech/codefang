@@ -1,22 +1,19 @@
-//! Standalone per-file Halstead analysis (Go `halstead.Analyzer.Analyze`).
+//! Standalone per-file Halstead analysis.
 //!
-//! This is the `findFunctions` / `Analyze` path used by the **quality** history
-//! analyzer (NOT the streaming `Visitor` path the static pipeline uses). For each
-//! changed file's UAST root it:
+//! This is the path used by the **quality** history analyzer (NOT the
+//! streaming visitor path the static pipeline uses). For each changed file's
+//! UAST root it:
 //!
 //!  1. finds every function node — UAST `Function`/`Method` type ∪ `Function`
-//!     role, at traversal depth ≤ [`crate::MAX_DEPTH`], each node once
-//!     (`findFunctions`, `UASTTraverser.FindNodes` with `MaxDepth: 10`);
-//!  2. collects operators/operands over each function's **full subtree**
-//!     (`calculateFunctionHalsteadMetrics` → `detector.CollectOperatorsAndOperands`);
+//!     role, at traversal depth ≤ [`crate::MAX_DEPTH`], each node once;
+//!  2. collects operators/operands over each function's **full subtree**;
 //!  3. aggregates per-function operator/operand maps into file-level distinct/
-//!     total counts and derives the file-level measures
-//!     (`calculateFileLevelMetrics` → `CalculateHalsteadMetrics`).
+//!     total counts and derives the file-level measures.
 //!
-//! Only the file-level scalars the quality analyzer reads — `volume`, `effort`,
-//! `delivered_bugs` — are returned; the CMS `estimated_total_*` path is omitted
-//! because it never feeds those scalars. A file with no functions yields all
-//! zeros (Go `buildEmptyResult`).
+//! Only the file-level scalars the quality analyzer reads — `volume`,
+//! `effort`, `delivered_bugs` — are returned; the CMS `estimated_total_*` path
+//! is omitted because it never feeds those scalars. A file with no functions
+//! yields all zeros.
 
 use std::collections::HashMap;
 
@@ -25,8 +22,7 @@ use cf_uast_node::Node;
 use crate::calculator::{HalsteadCounts, MetricsCalculator};
 use crate::detector::{HalNode, OperatorOperandDetector};
 
-/// File-level Halstead measures consumed by the quality analyzer
-/// (Go file `Metrics` subset).
+/// File-level Halstead measures consumed by the quality analyzer.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct FileHalstead {
     /// V — file-level volume.
@@ -37,11 +33,11 @@ pub struct FileHalstead {
     pub delivered_bugs: f64,
 }
 
-/// `HalNode` adapter over the production `cf_uast_node::Node`.
+/// [`HalNode`] adapter over the production `cf_uast_node::Node`.
 ///
-/// The detector reads `Type`, `Token`, `Roles`, `Props`, and `Children`; these
-/// map directly onto the node fields. The role/type strings are the UAST
-/// canonical strings the parser emits, which is what the detector matches.
+/// The detector reads the type, token, roles, props, and children; these map
+/// directly onto the node fields. The role/type strings are the canonical
+/// UAST strings the parser emits, which is what the detector matches.
 impl HalNode for Node {
     fn node_type(&self) -> &str {
         &self.node_type
@@ -61,8 +57,9 @@ impl HalNode for Node {
 }
 
 /// Runs the standalone Halstead analysis over `root`, returning the file-level
-/// measures (Go `Analyze` → `buildResult`).
+/// measures.
 #[must_use]
+#[allow(clippy::cast_possible_wrap)] // distinct-token counts fit i64
 pub fn analyze(root: &Node) -> FileHalstead {
     let functions = find_functions(root);
     if functions.is_empty() {
@@ -72,8 +69,7 @@ pub fn analyze(root: &Node) -> FileHalstead {
     let detector = OperatorOperandDetector::new();
     let calc = MetricsCalculator::new();
 
-    // Aggregate per-function operator/operand maps into file-level maps
-    // (`calculateFileLevelMetrics` → `aggregateOperatorsAndOperandsFromMetrics`).
+    // Aggregate per-function operator/operand maps into file-level maps.
     let mut file_operators: HashMap<String, i64> = HashMap::new();
     let mut file_operands: HashMap<String, i64> = HashMap::new();
 
@@ -105,16 +101,16 @@ pub fn analyze(root: &Node) -> FileHalstead {
     }
 }
 
-/// Finds all function nodes (`findFunctions`): UAST `Function`/`Method` types ∪
-/// `Function` role, traversal depth ≤ [`crate::MAX_DEPTH`], each node once.
+/// Finds all function nodes: UAST `Function`/`Method` types ∪ `Function` role,
+/// traversal depth ≤ [`crate::MAX_DEPTH`], each node once.
 ///
-/// Go unions a type-traversal and a role-traversal into a pointer-keyed set; both
-/// share the same pre-order DFS, so a node matching both appears once. A single
-/// DFS that yields any node matching either criterion is equivalent because each
-/// node is visited exactly once.
+/// The reference behavior unions a type-traversal and a role-traversal into an
+/// identity set; both share the same pre-order DFS, so a node matching both
+/// appears once. A single DFS that yields any node matching either criterion
+/// is equivalent because each node is visited exactly once.
 fn find_functions(root: &Node) -> Vec<&Node> {
     let mut out: Vec<&Node> = Vec::new();
-    // Iterative pre-order DFS with depth; root at depth 0 (FindNodes).
+    // Iterative pre-order DFS with depth; root at depth 0.
     let mut stack: Vec<(&Node, i64)> = vec![(root, 0)];
     while let Some((node, depth)) = stack.pop() {
         if depth <= crate::MAX_DEPTH {

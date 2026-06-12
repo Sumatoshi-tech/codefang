@@ -1,29 +1,22 @@
 //! Static import analyzer.
 //!
-//! Port of `internal/analyzers/imports/analyzer.go`. The static [`Analyzer`]
-//! provides the `imports` report key (plus a `count`): it walks a parsed UAST
-//! tree, extracts import paths from import nodes, deduplicates them, and applies
-//! per-language cleanup heuristics ([`clean_import_path`] / [`parse_import_format`]
-//! for Python/JavaScript/Go import-statement shapes).
+//! The static [`Analyzer`] provides the `imports` report key (plus a `count`):
+//! it walks a parsed UAST tree, extracts import paths from import nodes,
+//! deduplicates them, and applies per-language cleanup heuristics
+//! ([`clean_import_path`] / [`parse_import_format`] for Python/JavaScript/Go
+//! import-statement shapes).
 
 use crate::metrics::{compute_all_metrics, ComputedMetrics};
 use crate::node::{self, Node};
 use crate::report::ReportValue;
 
 /// Configuration key for the max dependency-risk rows shown in plots.
-///
-/// Mirrors Go `ConfigImportsMaxDependencyRiskRows`.
 pub const CONFIG_IMPORTS_MAX_DEPENDENCY_RISK_ROWS: &str = "Imports.MaxDependencyRiskRows";
-
-/// Minimum field count for the Python/JS import-format split heuristics.
-///
-/// Mirrors the Go `lenArg2`/`magic2*` constants (all equal to 2).
-const LEN_ARG2: usize = 2;
 
 /// Static import analyzer.
 ///
-/// Mirrors Go `Analyzer`. `cfg_max_dependency_risk_rows` of 0 means "use the
-/// default" (the field only affects plot output).
+/// `cfg_max_dependency_risk_rows` of 0 means "use the default" (the field only
+/// affects plot output).
 #[derive(Debug, Default, Clone)]
 pub struct Analyzer {
     /// Override for the default max dependency-risk rows; 0 = use default.
@@ -31,33 +24,35 @@ pub struct Analyzer {
 }
 
 impl Analyzer {
-    /// Creates a new analyzer. Mirrors Go `NewAnalyzer`.
+    /// Creates a new analyzer.
+    #[must_use]
     pub fn new() -> Self {
-        Analyzer::default()
+        Self::default()
     }
 
-    /// Returns the analyzer name. Mirrors Go `(*Analyzer).Name`.
+    /// Returns the analyzer name.
+    #[must_use]
     pub fn name(&self) -> &'static str {
         "imports"
     }
 
-    /// Returns the CLI flag. Mirrors Go `(*Analyzer).Flag`.
+    /// Returns the CLI flag.
+    #[must_use]
     pub fn flag(&self) -> &'static str {
         "imports-analysis"
     }
 
-    /// Returns the analyzer description. Mirrors Go `(*Analyzer).Description`.
+    /// Returns the analyzer description.
+    #[must_use]
     pub fn description(&self) -> &'static str {
         "Extracts and analyzes import statements from code"
     }
 
-    /// Configures the analyzer from a facts map.
-    ///
-    /// Mirrors Go `(*Analyzer).Configure`: reads
+    /// Configures the analyzer from a facts map: reads
     /// [`CONFIG_IMPORTS_MAX_DEPENDENCY_RISK_ROWS`] as an int when present.
     ///
     /// # Errors
-    /// Never fails; the `Result` matches the Go signature.
+    /// Never fails; the `Result` keeps the analyzer-interface signature.
     pub fn configure(
         &mut self,
         facts: &std::collections::BTreeMap<String, ReportValue>,
@@ -68,13 +63,12 @@ impl Analyzer {
         Ok(())
     }
 
-    /// Runs static analysis on a parsed UAST root.
-    ///
-    /// Mirrors Go `(*Analyzer).Analyze`, returning a report with `imports`
-    /// (the deduplicated import list, in first-seen order) and `count`.
+    /// Runs static analysis on a parsed UAST root, returning a report with
+    /// `imports` (the deduplicated import list, in first-seen order) and
+    /// `count`.
     ///
     /// # Errors
-    /// Never fails; the `Result` matches the Go signature.
+    /// Never fails; the `Result` keeps the analyzer-interface signature.
     pub fn analyze(&self, root: &Node) -> Result<ReportValue, std::convert::Infallible> {
         let imports = extract_imports_from_uast(root);
         let count = imports.len() as i64;
@@ -87,24 +81,21 @@ impl Analyzer {
         Ok(report)
     }
 
-    /// Computes [`ComputedMetrics`] for a report (JSON/YAML/bin payload).
-    ///
-    /// Mirrors the shared `ComputeAllMetrics(report)` call used by the Go
-    /// `FormatReportJSON`/`YAML`/`Binary` methods, with the same
-    /// "fall back to empty metrics on error" behaviour.
+    /// Computes [`ComputedMetrics`] for a report (JSON/YAML/bin payload),
+    /// falling back to empty metrics on a parse error.
+    #[must_use]
     pub fn compute_metrics(&self, report: &ReportValue) -> ComputedMetrics {
         compute_all_metrics(report).unwrap_or_default()
     }
 
-    /// Renders the JSON form of a report (`json.MarshalIndent` of
-    /// [`ComputedMetrics`]).
+    /// Renders the JSON form of a report: indented JSON of [`ComputedMetrics`].
     ///
-    /// Mirrors Go `(*Analyzer).FormatReportJSON`, which uses
-    /// `json.MarshalIndent(metrics, "", "  ")`. Routes through `cf-gojson`'s
-    /// `marshal_indent` over the struct-origin [`ComputedMetrics::to_go_value`]
-    /// so field order, the `dependencies`-nil-slice `null`, and float formatting
-    /// are byte-identical (DESIGN §2.3). (The history-run path serializes the
-    /// same value with compact `cf_gojson::marshal`.)
+    /// Routes through `cf-gojson`'s `marshal_indent` over the struct-origin
+    /// [`ComputedMetrics::to_go_value`] so field order, the
+    /// `dependencies`-nil-slice `null`, and float formatting all follow the
+    /// pinned report contract. (The history-run path serializes the same value
+    /// with compact `cf_gojson::marshal`.)
+    #[must_use]
     pub fn format_report_json(&self, report: &ReportValue) -> String {
         let bytes = cf_gojson::marshal_indent(&self.compute_metrics(report).to_go_value());
         String::from_utf8(bytes).expect("cf-gojson emits valid UTF-8")
@@ -112,9 +103,8 @@ impl Analyzer {
 
     /// Encodes a report as a CFB1 `bin` envelope.
     ///
-    /// Mirrors Go `(*Analyzer).FormatReportBinary` (which wraps the metrics in
-    /// `reportutil.EncodeBinaryEnvelope`). The envelope payload is compact
-    /// `json.Marshal` of the struct-origin metrics value, via cf-reportutil.
+    /// The envelope payload is the compact JSON encoding of the struct-origin
+    /// metrics value, via cf-reportutil.
     pub fn format_report_binary(&self, report: &ReportValue, out: &mut Vec<u8>) {
         let value = self.compute_metrics(report).to_go_value();
         let envelope = cf_reportutil::encode_binary_envelope(&value)
@@ -125,10 +115,10 @@ impl Analyzer {
 
 /// Extracts deduplicated import strings from a UAST tree.
 ///
-/// Mirrors Go `extractImportsFromUAST`. Pre-order traversal; a node contributes
-/// when its type is [`node::uast::IMPORT`] or it has the [`node::role::IMPORT`]
-/// role. Duplicates (by extracted path) are dropped, preserving first-seen
-/// order — the Go code uses a `seen` map and appends, which is insertion order.
+/// Pre-order traversal; a node contributes when its type is
+/// [`node::uast::IMPORT`] or it has the [`node::role::IMPORT`] role.
+/// Duplicates (by extracted path) are dropped, preserving first-seen order.
+#[must_use]
 pub fn extract_imports_from_uast(root: &Node) -> Vec<String> {
     let mut imports: Vec<String> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -145,10 +135,8 @@ pub fn extract_imports_from_uast(root: &Node) -> Vec<String> {
     imports
 }
 
-/// Extracts an import path from an import node.
-///
-/// Mirrors Go `extractImportPath`: prefer the node token (cleaned); otherwise
-/// search children.
+/// Extracts an import path from an import node: prefer the node token
+/// (cleaned); otherwise search children.
 fn extract_import_path(import_node: &Node) -> String {
     if !import_node.token.is_empty() {
         return clean_import_path(&import_node.token);
@@ -159,10 +147,8 @@ fn extract_import_path(import_node: &Node) -> String {
     extract_import_path_from_children(&import_node.children)
 }
 
-/// Searches children for an import path by type priority.
-///
-/// Mirrors Go `extractImportPathFromChildren`: first a literal with a token,
-/// then an identifier with a token, then recursively.
+/// Searches children for an import path by type priority: first a literal with
+/// a token, then an identifier with a token, then recursively.
 fn extract_import_path_from_children(children: &[Node]) -> String {
     for child in children {
         if child.type_ == node::uast::LITERAL && !child.token.is_empty() {
@@ -185,9 +171,8 @@ fn extract_import_path_from_children(children: &[Node]) -> String {
 
 /// Cleans an import path: strips quotes/semicolons and parses statement forms.
 ///
-/// Mirrors Go `cleanImportPath`. Trims any of `"`, `'`, `;` from both ends,
-/// skips empty/`{`/`}` results, then applies [`parse_import_format`]; falls back
-/// to the trimmed value.
+/// Trims any of `"`, `'`, `;` from both ends, skips empty/`{`/`}` results,
+/// then applies [`parse_import_format`]; falls back to the trimmed value.
 fn clean_import_path(path: &str) -> String {
     let path = path.trim_matches(|c| c == '"' || c == '\'' || c == ';');
 
@@ -203,23 +188,23 @@ fn clean_import_path(path: &str) -> String {
     path.to_string()
 }
 
-/// Extracts a module name from common import-statement formats.
-///
-/// Mirrors Go `parseImportFormat`, in the same branch order:
+/// Extracts a module name from common import-statement formats, in this branch
+/// order:
 ///
 /// 1. `from X import ...` (Python) -> `X`,
 /// 2. `... from '...'` (JS) -> the quoted target,
 /// 3. `import X ...` -> `X` (quotes trimmed),
 /// 4. `... import ...` -> the part after `import ` (quotes trimmed).
 ///
-/// Returns empty for destructuring/other shapes.
+/// Returns empty for destructuring/other shapes. The branch order and the
+/// whitespace-splitting details are part of the pinned classification behavior
+/// (which strings land in machine output), so they must not be "simplified".
 fn parse_import_format(path: &str) -> String {
-    if let Some(rest) = path.strip_prefix("from ") {
-        // Python: "from typing import List, Dict" -> "typing".
-        // Note Go fields() over the whole `path`, so index 1 is the word after "from".
-        let _ = rest;
+    if path.starts_with("from ") {
+        // Python: "from typing import List, Dict" -> "typing" (the word after
+        // "from", i.e. index 1 of the whitespace fields of the whole string).
         let parts: Vec<&str> = path.split_whitespace().collect();
-        if parts.len() >= LEN_ARG2 {
+        if parts.len() >= 2 {
             return parts[1].to_string();
         }
         return String::new();
@@ -228,7 +213,7 @@ fn parse_import_format(path: &str) -> String {
     if path.contains(" from ") {
         // JavaScript: "React from 'react'" -> "react".
         let parts: Vec<&str> = path.splitn(2, " from ").collect();
-        if parts.len() >= LEN_ARG2 {
+        if parts.len() >= 2 {
             return parts[1].trim_matches(|c| c == '"' || c == '\'').to_string();
         }
         return String::new();
@@ -237,7 +222,7 @@ fn parse_import_format(path: &str) -> String {
     if path.starts_with("import ") {
         // Python "import os" -> "os"; JS "import './styles.css'" -> "./styles.css".
         let parts: Vec<&str> = path.split_whitespace().collect();
-        if parts.len() >= LEN_ARG2 {
+        if parts.len() >= 2 {
             return parts[1].trim_matches(|c| c == '"' || c == '\'').to_string();
         }
         return String::new();
@@ -246,7 +231,7 @@ fn parse_import_format(path: &str) -> String {
     if path.contains("import ") {
         // JS fallback: "... import './styles.css'" -> "./styles.css".
         let parts: Vec<&str> = path.splitn(2, "import ").collect();
-        if parts.len() >= LEN_ARG2 {
+        if parts.len() >= 2 {
             return parts[1].trim_matches(|c| c == '"' || c == '\'').to_string();
         }
         return String::new();
@@ -260,8 +245,6 @@ fn parse_import_format(path: &str) -> String {
 mod tests {
     use super::*;
     use crate::node::{role, uast};
-
-    // --- ported from analyzer_test.go ---
 
     #[test]
     fn test_analyzer_analyze() {
@@ -317,7 +300,7 @@ mod tests {
         let imps4 = extract_imports_from_uast(&r4);
         assert_eq!(imps4, vec!["./styles.css".to_string()]);
 
-        // 5. Children traversal (RoleImport, literal child).
+        // 5. Children traversal (import role, literal child).
         let r5 = Node::new("")
             .with_roles([role::IMPORT])
             .with_children(vec![Node::new(uast::LITERAL).with_token("'module'")]);

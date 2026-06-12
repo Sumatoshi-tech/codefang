@@ -1,10 +1,9 @@
 //! [`Node::to_map`] — the byte-identity-critical conversion of a node to its map
-//! representation. Ported from `node.go`'s `ToMap` / `buildBaseMap` /
-//! `buildPositionMap` / `buildChildrenMap`.
+//! representation.
 //!
-//! In Go, `ToMap` returns `map[string]any`, which `encoding/json` serializes
-//! with keys sorted by raw UTF-8 byte order. To reproduce that byte-for-byte the
-//! Rust port returns a [`cf_gojson::GoValue`] whose objects are built with
+//! The report-format contract requires map keys to serialize in raw-UTF-8 byte
+//! order (pinned by `rust/tests/compat`). To guarantee that, `to_map` returns a
+//! [`cf_gojson::GoValue`] whose objects are built with
 //! [`cf_gojson::GoMap::from_map`] (sort-on-encode). The full key set a node can
 //! emit is `children, id, pos, props, roles, token, type`, which in byte order
 //! becomes exactly that sequence — see DESIGN.md §2.2.
@@ -13,44 +12,45 @@ use cf_gojson::{GoMap, GoValue};
 use crate::node::{Node, Positions};
 
 impl Node {
-    /// Converts this node (and its subtree) into a [`GoValue`] that serializes
-    /// byte-identically to Go's `Node.ToMap()` piped through `encoding/json`.
+    /// Converts this node (and its subtree) into a [`GoValue`] whose
+    /// serialization is part of the report-format contract (pinned by
+    /// `rust/tests/compat`).
     ///
     /// Map-origin objects are used throughout so keys byte-sort on encode. The
-    /// field-population rules match Go exactly:
+    /// field-population rules are frozen:
     /// - `type` is always present (even if empty).
-    /// - `id` present only when non-empty, hex-encoded (`fmt.Sprintf("%x", id)`).
+    /// - `id` present only when non-empty, lowercase-hex-encoded.
     /// - `token` present only when non-empty.
     /// - `props` present only when non-empty (its own keys also byte-sort).
     /// - `roles` always present (an array, empty when there are no roles).
     /// - `pos` always present (zeros when the node has no position).
     /// - `children` present only when the node has children.
     ///
-    /// Returns [`GoValue::Null`] for the conceptual nil-node case is *not*
-    /// applicable in Rust (a `&Node` is never nil); callers that need Go's
-    /// `ToMap()`-on-nil → `nil` behavior should branch on the `Option` before
-    /// calling, mirroring `if n == nil { return nil }`.
+    /// There is no nil-node case (a `&Node` is never null); callers that model
+    /// an absent node with `Option` should branch before calling.
+    #[must_use]
     pub fn to_map(&self) -> GoValue {
         let mut entries: Vec<(String, GoValue)> = Vec::with_capacity(7);
 
-        // buildBaseMap: type is unconditional.
+        // `type` is unconditional.
         entries.push(("type".to_string(), GoValue::Str(self.node_type.clone())));
 
-        // addIDToMap: only when non-empty; hex of the raw ID bytes.
+        // `id`: only when non-empty; lowercase hex of the raw ID bytes.
         if !self.id.is_empty() {
+            use std::fmt::Write;
             let mut hex = String::with_capacity(self.id.len() * 2);
             for b in &self.id {
-                hex.push_str(&format!("{:02x}", b));
+                let _ = write!(hex, "{b:02x}");
             }
             entries.push(("id".to_string(), GoValue::Str(hex)));
         }
 
-        // addTokenToMap: only when non-empty.
+        // `token`: only when non-empty.
         if !self.token.is_empty() {
             entries.push(("token".to_string(), GoValue::Str(self.token.clone())));
         }
 
-        // addPropsToMap: only when non-empty. props is itself a Go map → sorted.
+        // `props`: only when non-empty. It is map-origin, so its keys byte-sort.
         if !self.props.is_empty() {
             let prop_entries: Vec<(String, GoValue)> = self
                 .props
@@ -63,17 +63,17 @@ impl Node {
             ));
         }
 
-        // addRolesToMap: always present as a (possibly empty) string array.
+        // `roles`: always present as a (possibly empty) string array.
         let roles: Vec<GoValue> =
             self.roles.iter().map(|r| GoValue::Str(r.clone())).collect();
         entries.push(("roles".to_string(), GoValue::Array(roles)));
 
-        // ToMap: pos is always present.
+        // `pos` is always present.
         entries.push(("pos".to_string(), position_map(self.pos.as_ref())));
 
-        // ToMap: children only when present.
+        // `children`: only when present.
         if !self.children.is_empty() {
-            let children: Vec<GoValue> = self.children.iter().map(|c| c.to_map()).collect();
+            let children: Vec<GoValue> = self.children.iter().map(Self::to_map).collect();
             entries.push(("children".to_string(), GoValue::Array(children)));
         }
 
@@ -81,10 +81,10 @@ impl Node {
     }
 }
 
-/// Builds the position sub-map. Mirrors Go's `buildPositionMap`: a nil position
-/// yields all-zero fields; otherwise the six `Positions` fields. Either way the
-/// six keys (`end_col,end_line,end_offset,start_col,start_line,start_offset` in
-/// byte order) are always present.
+/// Builds the position sub-map: an absent position yields all-zero fields;
+/// otherwise the six `Positions` fields. Either way the six keys
+/// (`end_col,end_line,end_offset,start_col,start_line,start_offset` in byte
+/// order) are always present.
 fn position_map(pos: Option<&Positions>) -> GoValue {
     let p = pos.copied().unwrap_or_default();
     let entries = vec![
@@ -106,7 +106,6 @@ mod tests {
 
     #[test]
     fn to_map_basic_fields() {
-        // Mirrors Go TestNode_ToMap_Basic.
         let n = Builder::new()
             .with_type("Function")
             .with_token("foo")
@@ -130,7 +129,6 @@ mod tests {
 
     #[test]
     fn to_map_no_children_omits_children_key() {
-        // Mirrors Go TestNode_ToMap_NoChildren.
         let n = Node::with_token("Identifier", "x");
         let json = Encoder::marshal().encode_to_string(&n.to_map());
         assert!(!json.contains("\"children\""));
@@ -161,9 +159,9 @@ mod tests {
 
         // Assert the exact byte-sorted output (the byte-identity goal). Top-level
         // keys emit in raw-UTF-8 byte order: children, id, pos, props, roles,
-        // token, type; `id` is hex-encoded (`fmt.Sprintf("%x", id)`); the nested
-        // position map's keys are byte-sorted too. Using exact bytes (rather than
-        // a substring scan) avoids false matches from the child node's own `pos`.
+        // token, type; `id` is lowercase-hex-encoded; the nested position map's
+        // keys are byte-sorted too. Using exact bytes (rather than a substring
+        // scan) avoids false matches from the child node's own `pos`.
         assert_eq!(
             json,
             r#"{"children":[{"pos":{"end_col":0,"end_line":0,"end_offset":0,"start_col":0,"start_line":0,"start_offset":0},"roles":[],"token":"x","type":"Identifier"}],"id":"dead","pos":{"end_col":0,"end_line":0,"end_offset":0,"start_col":0,"start_line":0,"start_offset":0},"props":{"lang":"go"},"roles":["Name"],"token":"foo","type":"Function"}"#

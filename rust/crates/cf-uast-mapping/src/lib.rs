@@ -1,25 +1,21 @@
 //! `cf-uast-mapping` — UAST mapping PEG DSL, rule engine, and native
 //! tree-sitter query/capture compiler.
 //!
-//! Port of the Go package `pkg/uast/pkg/mapping`. Used by `cf-uast` and the
-//! `uast` binary.
+//! Used by `cf-uast` and the `uast` binary.
 //!
 //! # Modules
 //!
 //! - [`mapping_types`] — core data model (`NodeTypeInfo`, `FieldInfo`,
-//!   `ChildInfo`, `NodeCategory`, `Rule`, `Condition`, `UastSpec`). Port of
-//!   `mapping_types.go`.
-//! - [`dsl_parser`] — the mapping DSL parser. Ports `dsl_parser.go` plus the
-//!   `mapping.peg` grammar as a hand-written PEG parser. Since the static
-//!   registry cutover (specs/uastmap-rust-macros) this parses only RUNTIME
-//!   input: user-supplied custom maps (`Parser::with_map`, the dev server's
-//!   `WithMap` endpoint) and the `uast mapping` CLI analysis — the embedded
-//!   analysis pipeline is fed by the static tables instead.
+//!   `ChildInfo`, `NodeCategory`, `Rule`, `Condition`, `UastSpec`).
+//! - [`dsl_parser`] — the mapping DSL parser (a hand-written PEG parser).
+//!   Since the static registry cutover (specs/uastmap-rust-macros) this parses
+//!   only RUNTIME input: user-supplied custom maps (`Parser::with_map`, the
+//!   dev server's `WithMap` endpoint) and the `uast mapping` CLI analysis —
+//!   the embedded analysis pipeline is fed by the static tables instead.
 //! - [`grammar_analysis`] — node-type parsing, heuristic classification,
-//!   coverage analysis, and DSL generation. Port of `grammar_analysis.go`.
+//!   coverage analysis, and DSL generation.
 //! - [`pattern_matcher`] — the native tree-sitter query/capture compiler and
-//!   matcher (the piece tree-sitter does not provide). Port of
-//!   `pattern_matcher.go`.
+//!   matcher (the piece tree-sitter does not provide).
 //! - [`vocab`] — the closed mapping vocabularies (`UastType`, `Role`,
 //!   `TokenSource`) extracted from the `.uastmap` corpus; the typed foundation
 //!   of the Rust-native mapping definitions (specs/uastmap-rust-macros).

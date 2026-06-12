@@ -1,22 +1,16 @@
 //! Timeline interface for line-interval storage.
 //!
-//! Port of `internal/burndown/timeline.go`. A [`Timeline`] stores line
-//! intervals by (implicit or explicit) position and supports `replace` without
-//! O(N) key shifting. The default implementation is the implicit treap in
-//! [`crate::timeline_treap`].
+//! A [`Timeline`] stores line intervals by (implicit or explicit) position and
+//! supports `replace` without O(N) key shifting. The default implementation is
+//! the implicit treap in [`crate::timeline_treap`].
 
 use crate::timeline_treap::{Segment, TreapTimeline};
 
-/// `TimeKey` is the time (tick) associated with a line interval. Same semantics
-/// as the tree node value.
-///
-/// Mirrors the Go alias `type TimeKey = uint32`.
+/// The time (tick) associated with a line interval. Same semantics as the tree
+/// node value.
 pub type TimeKey = u32;
 
-/// `DeltaReport` is a single `(current, previous, delta)` tuple for updater
-/// callbacks.
-///
-/// Mirrors the Go struct `DeltaReport`.
+/// A single `(current, previous, delta)` tuple for updater callbacks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DeltaReport {
     /// The current time (tick) of the edit producing this report.
@@ -27,13 +21,12 @@ pub struct DeltaReport {
     pub delta: i64,
 }
 
-/// `Timeline` stores line intervals by position and supports `replace` without
-/// O(N) key shifting.
+/// Stores line intervals by position and supports `replace` without O(N) key
+/// shifting.
 ///
-/// This is the Rust analogue of the Go `Timeline` interface. The Go interface's
-/// `clone_shallow` / `clone_deep` methods return `*treapTimeline`; here they
-/// return [`TreapTimeline`] directly for the same reason. Implementors must
-/// uphold the invariants checked by [`Timeline::validate`].
+/// The `clone_shallow` / `clone_deep` methods return [`TreapTimeline`] directly
+/// (the only implementation). Implementors must uphold the invariants checked
+/// by [`Timeline::validate`].
 pub trait Timeline {
     /// Apply delete `[pos, pos+del_lines)` then insert `ins_lines` at `pos` with
     /// time `t`. Returns delta reports for the caller to apply to updaters (e.g.
@@ -64,13 +57,13 @@ pub trait Timeline {
     /// Returns a deep copy of the timeline.
     fn clone_deep(&self) -> TreapTimeline;
 
-    /// Clears all nodes (for `Delete`).
+    /// Clears all nodes (for [`crate::File::delete`]).
     fn erase(&mut self);
 
-    /// Returns line→time as a slice (for `Merge`).
+    /// Returns line→time as a slice (for [`crate::File::merge`]).
     fn flatten(&self) -> Vec<i64>;
 
-    /// Rebuilds from a line→time slice (for `Merge`).
+    /// Rebuilds from a line→time slice (for [`crate::File::merge`]).
     fn reconstruct(&mut self, lines: &[i64]);
 
     /// Coalesces consecutive segments with the same time (reduces node count).

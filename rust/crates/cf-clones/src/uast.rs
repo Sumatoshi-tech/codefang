@@ -1,27 +1,24 @@
 //! UAST type and role label constants used by clone detection.
 //!
-//! These mirror the Go `pkg/uast/pkg/node` constants
-//! (`node.UASTFunction`, `node.UASTMethod`, `node.RoleFunction`,
-//! `node.RoleDeclaration`, `node.RoleParameter`). The canonical home for these
-//! is the [`cf_uast_node`] crate; per DESIGN rule (5) they are mirrored locally
-//! because that crate currently exposes the same names through two ambiguous
-//! glob re-exports (`node::roles::*` and `types::*`), which makes the root-level
-//! paths unresolvable. The string *values* are the contract that matters for
-//! byte-identity (they are the labels stored on each [`cf_uast_node::Node`]), and
-//! they are identical to the Go constants.
+//! The canonical home for these is the [`cf_uast_node`] crate; per DESIGN rule
+//! (5) they are duplicated locally because that crate currently exposes the
+//! same names through two ambiguous glob re-exports (`node::roles::*` and
+//! `types::*`), which makes the root-level paths unresolvable. The string
+//! *values* are the contract that matters for byte-identity (they are the
+//! labels stored on each [`cf_uast_node::Node`]).
 
-/// Function node type. Mirrors Go `node.UASTFunction`.
+/// Function node type.
 pub const UAST_FUNCTION: &str = "Function";
-/// Method node type. Mirrors Go `node.UASTMethod`.
+/// Method node type.
 pub const UAST_METHOD: &str = "Method";
 
-/// Function role. Mirrors Go `node.RoleFunction`.
+/// Function role.
 pub const ROLE_FUNCTION: &str = "Function";
-/// Declaration role. Mirrors Go `node.RoleDeclaration`.
+/// Declaration role.
 pub const ROLE_DECLARATION: &str = "Declaration";
-/// Parameter role. Mirrors Go `node.RoleParameter`.
+/// Parameter role.
 pub const ROLE_PARAMETER: &str = "Parameter";
-/// Name role (used by entity-name extraction). Mirrors Go `node.RoleName`.
+/// Name role (used by entity-name extraction).
 pub const ROLE_NAME: &str = "Name";
 
 /// Test-only fluent [`cf_uast_node::Node`] builder.
@@ -78,7 +75,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn label_values_match_go() {
+    fn label_values_match_contract() {
         assert_eq!(UAST_FUNCTION, "Function");
         assert_eq!(UAST_METHOD, "Method");
         assert_eq!(ROLE_FUNCTION, "Function");

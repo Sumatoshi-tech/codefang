@@ -1,8 +1,7 @@
-//! `static/complexity` plot sections — port of Go
-//! `internal/analyzers/complexity/plot.go`.
+//! `static/complexity` plot sections.
 //!
 //! Consumes the AGGREGATED RAW complexity report (the `analyze.Report` value
-//! `complexity_raw_report_value` builds) exactly as Go's registered section
+//! `complexity_raw_report_value` builds) exactly as the reference implementation's registered section
 //! renderer does: the bar chart over the top-20 functions by cyclomatic
 //! complexity, the cyclomatic-vs-cognitive scatter, and the distribution pie.
 
@@ -15,7 +14,7 @@ use cf_plotpage::{build_pie_chart, get_chart_palette, ChartOpts, Hint, Section, 
 
 use crate::handlers::static_complexity::go_pdqsort;
 
-/// plot.go constants (plot.go:18).
+/// Reference plot-section constants.
 const TOP_FUNCTIONS_LIMIT: usize = 20;
 const X_AXIS_ROTATE: f64 = 45.0;
 const EMPTY_CHART_HEIGHT: &str = "400px";
@@ -27,12 +26,12 @@ const CYCLOMATIC_RED_LINE: i64 = 10;
 const COGNITIVE_RED_LINE: i64 = 15;
 const UNKNOWN_NAME: &str = "unknown";
 
-/// Plot display labels for the distribution pie (plot.go:31).
+/// Plot display labels for the distribution pie.
 const PLOT_LABEL_SIMPLE: &str = "Simple";
 const PLOT_LABEL_MODERATE: &str = "Moderate";
 const PLOT_LABEL_COMPLEX: &str = "Complex";
 
-/// Go `analyze.ReportFunctionListWithFallback(report, "functions",
+/// The reference `analyze.ReportFunctionListWithFallback(report, "functions",
 /// "function_complexity")`: the function maps under either key.
 fn report_function_list(report: &GoValue) -> Option<Vec<&GoMap>> {
     let top = report.as_map()?;
@@ -46,7 +45,7 @@ fn report_function_list(report: &GoValue) -> Option<Vec<&GoMap>> {
     Some(arr.iter().filter_map(GoValue::as_map).collect())
 }
 
-/// Go `reportutil.GetInt` over a function map (safeconv.ToInt semantics:
+/// The reference `reportutil.GetInt` over a function map (safeconv.ToInt semantics:
 /// ints pass through, floats truncate toward zero).
 fn get_int(m: &GoMap, key: &str) -> i64 {
     match m.get(key) {
@@ -57,7 +56,7 @@ fn get_int(m: &GoMap, key: &str) -> i64 {
     }
 }
 
-/// Go `reportutil.MapString`.
+/// The reference `reportutil.MapString`.
 fn map_string<'a>(m: &'a GoMap, key: &str) -> &'a str {
     match m.get(key) {
         Some(GoValue::Str(s)) => s.as_str(),
@@ -65,7 +64,7 @@ fn map_string<'a>(m: &'a GoMap, key: &str) -> &'a str {
     }
 }
 
-/// Go `filepath.Base`: the last path element (trailing separators trimmed;
+/// The reference `filepath.Base`: the last path element (trailing separators trimmed;
 /// empty path → `"."`).
 fn go_filepath_base(path: &str) -> &str {
     if path.is_empty() {
@@ -81,7 +80,7 @@ fn go_filepath_base(path: &str) -> &str {
     }
 }
 
-/// Go `formatPlotLabel` (plot.go:173): `basename:func` when `_source_file`
+/// The reference `formatPlotLabel`: `basename:func` when `_source_file`
 /// is stamped, otherwise just the name.
 fn format_plot_label(f: &GoMap) -> String {
     let mut name = map_string(f, "name");
@@ -95,7 +94,7 @@ fn format_plot_label(f: &GoMap) -> String {
     format!("{}:{}", go_filepath_base(sf), name)
 }
 
-/// Go `getComplexityColor` (plot.go:187).
+/// The reference `getComplexityColor`.
 fn complexity_color(complexity: i64) -> &'static str {
     if complexity <= CYCLOMATIC_YELLOW_LINE {
         "#91cc75"
@@ -106,10 +105,9 @@ fn complexity_color(complexity: i64) -> &'static str {
     }
 }
 
-/// The registered section renderer for `static/complexity` — Go
+/// The registered section renderer for `static/complexity` — the reference implementation
 /// `complexity.RegisterPlotSections` → `(&Analyzer{}).generateSections`
-/// (plot.go:61). Returns `None` when the report lacks the functions table
-/// (Go `ErrInvalidFunctionsData`).
+///. Returns `None` when the report lacks the functions table.
 pub fn sections(report: &GoValue) -> Option<Vec<Section>> {
     let bar = bar_chart(report)?;
     let scatter = scatter_chart(report)?;
@@ -162,14 +160,14 @@ pub fn sections(report: &GoValue) -> Option<Vec<Section>> {
     ])
 }
 
-/// Go `generateComplexityBarChart` + `createComplexityBarChart` (plot.go:121).
+/// The reference `generateComplexityBarChart` + `createComplexityBarChart`.
 fn bar_chart(report: &GoValue) -> Option<Chart> {
     let functions = report_function_list(report)?;
     if functions.is_empty() {
         return Some(empty_bar_chart());
     }
 
-    // mapx.SortAndLimit: copy, sort.Slice (Go's unstable pdqsort — reproduced
+    // mapx.SortAndLimit: copy, sort.Slice (the reference implementation's unstable pdqsort — reproduced
     // exactly by go_pdqsort so the tie order in the top 20 matches), truncate.
     let mut sorted = functions.clone();
     go_pdqsort(&mut sorted, &|a: &&GoMap, b: &&GoMap| {
@@ -254,8 +252,8 @@ fn bar_chart(report: &GoValue) -> Option<Chart> {
     Some(bar)
 }
 
-/// Go `generateComplexityScatterChart` + `createComplexityScatterChart`
-/// (plot.go:250).
+/// The reference `generateComplexityScatterChart` + `createComplexityScatterChart`
+///.
 fn scatter_chart(report: &GoValue) -> Option<Chart> {
     let functions = report_function_list(report)?;
     if functions.is_empty() {
@@ -343,8 +341,8 @@ fn scatter_chart(report: &GoValue) -> Option<Chart> {
     Some(scatter)
 }
 
-/// Go `generateComplexityPieChart` + `createComplexityDistributionPie`
-/// (plot.go:318).
+/// The reference `generateComplexityPieChart` + `createComplexityDistributionPie`
+///.
 fn pie_chart(report: &GoValue) -> Chart {
     let Some(functions) = report_function_list(report) else {
         return empty_pie_chart();
@@ -367,7 +365,7 @@ fn pie_chart(report: &GoValue) -> Chart {
             complex_count += 1;
         }
     }
-    // Distribution keys (kept for parity with the Go label constants).
+    // Distribution keys (kept for parity with the reference label constants).
     let _ = (PLOT_LABEL_SIMPLE, PLOT_LABEL_MODERATE, PLOT_LABEL_COMPLEX);
 
     let palette = get_chart_palette(Theme::Dark);
@@ -404,7 +402,7 @@ fn pie_chart(report: &GoValue) -> Chart {
     build_pie_chart(None, "Complexity", pie_data, PIE_RADIUS)
 }
 
-/// Go `createEmptyComplexityChart` (plot.go:355).
+/// The reference `createEmptyComplexityChart`.
 fn empty_bar_chart() -> Chart {
     let co = ChartOpts::default_dark();
     let mut bar = Chart::new(ChartKind::Bar);
@@ -414,7 +412,7 @@ fn empty_bar_chart() -> Chart {
     bar
 }
 
-/// Go `createEmptyScatterChart` (plot.go:367).
+/// The reference `createEmptyScatterChart`.
 fn empty_scatter_chart() -> Chart {
     let co = ChartOpts::default_dark();
     let mut scatter = Chart::new(ChartKind::Scatter);
@@ -424,7 +422,7 @@ fn empty_scatter_chart() -> Chart {
     scatter
 }
 
-/// Go `createEmptyComplexityPie` (plot.go:379).
+/// The reference `createEmptyComplexityPie`.
 fn empty_pie_chart() -> Chart {
     let co = ChartOpts::default_dark();
     let mut pie = Chart::new(ChartKind::Pie);

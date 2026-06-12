@@ -1,5 +1,4 @@
-//! `history/sentiment` plot sections — port of Go
-//! `internal/analyzers/sentiment/store_reader.go` + `plot.go`
+//! `history/sentiment` plot sections.
 //! (`GenerateStoreSections` → `buildStoreSections` over the `time_series`,
 //! `trend`, and `aggregate` store kinds — the run's `ComputedMetrics`).
 
@@ -10,7 +9,7 @@ use cf_plotpage::echarts::{
 };
 use cf_plotpage::{get_chart_palette, ChartOpts, Hint, Section, Theme};
 
-/// sentiment plot.go constants.
+/// Reference sentiment plot-section constants.
 const AREA_OPACITY: f64 = 0.3;
 const COMMENT_AXIS_INDEX: i64 = 1;
 const COMMENT_BAR_OPACITY: f64 = 0.4;
@@ -34,7 +33,7 @@ const DISTRIBUTION_INNER: &str = "40%";
 const DISTRIBUTION_OUTER: &str = "70%";
 const PIE_CHART_HEIGHT: &str = "400px";
 
-/// Go `GenerateStoreSections` → `buildStoreSections`: an empty time series
+/// The reference `GenerateStoreSections` → `buildStoreSections`: an empty time series
 /// yields zero sections.
 pub fn sections(metrics: &cf_sentiment::ComputedMetrics) -> Vec<Section> {
     if metrics.time_series.is_empty() {
@@ -57,7 +56,7 @@ pub fn sections(metrics: &cf_sentiment::ComputedMetrics) -> Vec<Section> {
     ]
 }
 
-/// Go `buildSentimentChart` (non-empty path; the caller already gated on the
+/// The reference `buildSentimentChart` (non-empty path; the caller already gated on the
 /// time series).
 fn build_sentiment_chart(metrics: &cf_sentiment::ComputedMetrics) -> Chart {
     let co = ChartOpts::default_dark();
@@ -96,7 +95,7 @@ fn build_sentiment_chart(metrics: &cf_sentiment::ComputedMetrics) -> Chart {
             .map(|_| GoValue::Float(cf_sentiment::SENTIMENT_NEGATIVE_THRESHOLD))
             .collect(),
     );
-    // Trend interpolation in FLOAT32 (Go: start/end/step are float32; each
+    // Trend interpolation in FLOAT32 (reference: start/end/step are float32; each
     // point is float64(start + step*float32(i))).
     let trend = {
         let start = metrics.trend.start_sentiment;
@@ -196,7 +195,7 @@ fn build_sentiment_chart(metrics: &cf_sentiment::ComputedMetrics) -> Chart {
     line
 }
 
-/// Go `initSentimentLine`: the dual-axis line frame.
+/// The reference `initSentimentLine`: the dual-axis line frame.
 fn init_sentiment_line(co: &ChartOpts) -> Chart {
     let mut line = Chart::new(ChartKind::Line);
     let (w, h, bg, theme) = co.init("100%", "500px");
@@ -254,7 +253,7 @@ fn init_sentiment_line(co: &ChartOpts) -> Chart {
     line
 }
 
-/// Go `buildDistributionChart`.
+/// The reference `buildDistributionChart`.
 fn build_distribution_chart(metrics: &cf_sentiment::ComputedMetrics) -> Chart {
     let palette = get_chart_palette(Theme::Dark);
     let co = ChartOpts::default_dark();
@@ -311,7 +310,7 @@ fn build_distribution_chart(metrics: &cf_sentiment::ComputedMetrics) -> Chart {
     pie
 }
 
-/// Go `buildMainChartHint`.
+/// The reference `buildMainChartHint`.
 fn build_main_chart_hint(metrics: &cf_sentiment::ComputedMetrics) -> Hint {
     let mut items = vec![
         "Green dashed line = positive threshold (0.6+), Red dashed line = negative threshold (0.4-)"
@@ -327,8 +326,8 @@ fn build_main_chart_hint(metrics: &cf_sentiment::ComputedMetrics) -> Hint {
         ));
     }
 
-    // Go's STORE path reconstructs ComputedMetrics WITHOUT LowSentimentPeriods
-    // (store_reader.go only reads time_series/trend/aggregate), so the
+    // The reference implementation's STORE path reconstructs ComputedMetrics WITHOUT LowSentimentPeriods
+    // (reference only reads time_series/trend/aggregate), so the
     // "low-sentiment period(s)" hint item never renders on plot pages — even
     // though the run metrics carry the periods.
 

@@ -1,46 +1,44 @@
-//! Git object hashes (SHA-1), ported from `pkg/gitlib/hash.go`.
+//! Git object hashes (SHA-1).
 //!
-//! [`Hash`] is a 20-byte SHA-1 digest with the same surface as the Go `Hash`
-//! type: hex parsing ([`Hash::new`]), lowercase hex rendering ([`Hash::to_hex`]
-//! via [`std::fmt::Display`]), a zero check ([`Hash::is_zero`]), and lossless
-//! conversion to/from a libgit2 [`git2::Oid`].
+//! [`Hash`] is a 20-byte SHA-1 digest: hex parsing ([`Hash::new`]), lowercase
+//! hex rendering ([`Hash::to_hex`] via [`std::fmt::Display`]), a zero check
+//! ([`Hash::is_zero`]), and lossless conversion to/from a libgit2
+//! [`git2::Oid`].
 //!
 //! # Byte-identity
 //!
-//! [`Hash::to_hex`] reproduces Go's `Hash.String()` exactly: a 40-character,
-//! lowercase, fixed-width hex string. Hashes surface into machine reports as
-//! these strings, so the rendering must match Go byte-for-byte.
+//! [`Hash::to_hex`] renders a 40-character, lowercase, fixed-width hex string.
+//! Hashes surface into machine reports as these strings, so the rendering is
+//! part of the report contract (pinned by `rust/tests/compat`).
 
 use std::fmt;
 
-/// Size of a SHA-1 hash in bytes (Go `HashSize`).
+/// Size of a SHA-1 hash in bytes.
 pub const HASH_SIZE: usize = 20;
 
-/// Size of a hex-encoded SHA-1 hash (Go `HashHexSize`).
+/// Size of a hex-encoded SHA-1 hash.
 pub const HASH_HEX_SIZE: usize = 40;
 
-/// Base offset for hex digits `a`..`f` (Go `hexBase`).
+/// Base offset for hex digits `a`..`f`.
 const HEX_BASE: u8 = 10;
 
-/// Bit shift for the high nibble of a byte (Go `hexShift`).
+/// Bit shift for the high nibble of a byte.
 const HEX_SHIFT: u8 = 4;
 
 /// A git object hash (SHA-1), a fixed 20-byte array.
 ///
-/// Mirrors Go's `type Hash [HashSize]byte`. Cheap to copy and compare by value.
+/// A fixed 20-byte array; cheap to copy and compare by value.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Hash(pub [u8; HASH_SIZE]);
 
 impl Hash {
     /// The zero-value hash (all bytes `0x00`), as an associated constant.
     ///
-    /// Equivalent to Go's `ZeroHash()` / the zero `Hash{}` value; provided as a
-    /// `const` so it can be used directly in struct-field initializers.
+    /// Provided as a `const` so it can be used directly in struct-field
+    /// initializers.
     pub const ZERO: Hash = Hash([0u8; HASH_SIZE]);
 
     /// Returns the zero-value hash (all bytes `0x00`).
-    ///
-    /// Equivalent to Go's `ZeroHash()` and the zero `Hash{}` value.
     #[must_use]
     pub const fn zero() -> Self {
         Hash::ZERO
@@ -48,11 +46,11 @@ impl Hash {
 
     /// Parses a [`Hash`] from a hex string.
     ///
-    /// Mirrors Go's `NewHash`: reads up to [`HASH_SIZE`] bytes from the string,
-    /// accepting upper- or lower-case hex digits, and leaves any not-yet-written
-    /// bytes as zero. Invalid characters decode to nibble `0` (matching Go's
-    /// `hexCharToNibble` default). A string shorter than 40 chars fills only the
-    /// leading bytes; the rest stay zero.
+    /// Reads up to [`HASH_SIZE`] bytes from the string, accepting upper- or
+    /// lower-case hex digits, and leaves any not-yet-written bytes as zero.
+    /// Invalid characters decode to nibble `0` (reference-implementation
+    /// behavior). A string shorter than 40 chars fills only the leading bytes;
+    /// the rest stay zero.
     ///
     /// # Examples
     ///
@@ -78,7 +76,7 @@ impl Hash {
         Hash(hash)
     }
 
-    /// Builds a [`Hash`] from a libgit2 [`git2::Oid`] (Go `HashFromOid`).
+    /// Builds a [`Hash`] from a libgit2 [`git2::Oid`].
     #[must_use]
     pub fn from_oid(oid: &git2::Oid) -> Self {
         let mut h = [0u8; HASH_SIZE];
@@ -89,7 +87,7 @@ impl Hash {
         Hash(h)
     }
 
-    /// Converts this hash to a libgit2 [`git2::Oid`] (Go `Hash.ToOid`).
+    /// Converts this hash to a libgit2 [`git2::Oid`].
     ///
     /// # Panics
     ///
@@ -101,7 +99,12 @@ impl Hash {
         git2::Oid::from_bytes(&self.0).expect("20-byte slice is always a valid SHA-1 OID")
     }
 
-    /// Returns the lowercase 40-character hex representation (Go `Hash.String`).
+    /// Returns the lowercase 40-character hex representation.
+    ///
+    /// # Panics
+    ///
+    /// Never panics in practice: every produced byte is an ASCII hex digit, so
+    /// the UTF-8 conversion always succeeds.
     #[must_use]
     pub fn to_hex(&self) -> String {
         const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
@@ -114,16 +117,16 @@ impl Hash {
         String::from_utf8(buf.to_vec()).expect("hex digits are valid UTF-8")
     }
 
-    /// Reports whether every byte is zero (Go `Hash.IsZero`).
+    /// Reports whether every byte is zero.
     #[must_use]
     pub fn is_zero(&self) -> bool {
         self.0.iter().all(|&b| b == 0)
     }
 }
 
-/// Converts a hex character to its 4-bit value (Go `hexCharToNibble`).
+/// Converts a hex character to its 4-bit value.
 ///
-/// Unrecognized characters map to `0`, matching Go's `default` arm.
+/// Unrecognized characters map to `0` (reference-implementation behavior).
 const fn hex_char_to_nibble(char: u8) -> u8 {
     match char {
         b'0'..=b'9' => char - b'0',
@@ -155,7 +158,7 @@ impl Default for Hash {
 mod tests {
     use super::*;
 
-    // Ported from hash_test.go::TestZeroHash.
+    // Mirrors reference test TestZeroHash.
     #[test]
     fn zero_hash() {
         let hash = Hash::zero();
@@ -163,7 +166,7 @@ mod tests {
         assert!(hash.is_zero());
     }
 
-    // Ported from hash_test.go::TestNewHash (table-driven).
+    // Mirrors reference test TestNewHash. (table-driven).
     #[test]
     fn new_hash_cases() {
         let full = [
@@ -198,7 +201,7 @@ mod tests {
         assert_eq!(Hash::new(""), Hash([0u8; HASH_SIZE]));
     }
 
-    // Ported from hash_test.go::TestHashString.
+    // Mirrors reference test TestHashString.
     #[test]
     fn hash_string_cases() {
         assert_eq!(
@@ -216,7 +219,7 @@ mod tests {
         assert_eq!(mixed.to_string(), "0123456789abcdef0123456789abcdef01234567");
     }
 
-    // Ported from hash_test.go::TestHashIsZero.
+    // Mirrors reference test TestHashIsZero.
     #[test]
     fn hash_is_zero_cases() {
         assert!(Hash::zero().is_zero());
@@ -228,14 +231,14 @@ mod tests {
         assert!(!Hash(last).is_zero());
     }
 
-    // Ported from hash_test.go::TestHashRoundTrip.
+    // Mirrors reference test TestHashRoundTrip.
     #[test]
     fn hash_round_trip() {
         let original = "0123456789abcdef0123456789abcdef01234567";
         assert_eq!(Hash::new(original).to_string(), original);
     }
 
-    // Ported from hash_test.go::TestHashFromOid / TestHashToOid / TestHashOidRoundTrip.
+    // Mirrors reference test TestHashFromOid. / TestHashToOid / TestHashOidRoundTrip.
     #[test]
     fn hash_oid_round_trip() {
         let bytes = [
@@ -248,7 +251,7 @@ mod tests {
         assert_eq!(hash.to_oid(), oid);
     }
 
-    // Ported from cgo_bridge_test.go::TestHashConstants (gitlib.HashSize / HashHexSize).
+    // Mirrors reference test TestHashConstants. (gitlib.HashSize / HashHexSize).
     #[test]
     fn hash_constants() {
         assert_eq!(HASH_SIZE, 20);

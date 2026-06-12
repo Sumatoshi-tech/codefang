@@ -1,9 +1,9 @@
 //! The cross-file clone-detection [`Aggregator`].
 //!
-//! Port of `internal/analyzers/clones/aggregator.go`. It collects the per-file
-//! `_func_signatures` exports, qualifies each function name with its source file
-//! (`sourceFile::name`), builds one global LSH index, finds cross-file clone
-//! pairs, and emits the same report shape as the per-file analyzer.
+//! Collects the per-file `_func_signatures` exports, qualifies each function
+//! name with its source file (`sourceFile::name`), builds one global LSH
+//! index, finds cross-file clone pairs, and emits the same report shape as the
+//! per-file analyzer.
 
 use cf_alg_minhash::Signature;
 use cf_analyze::{GoMap, GoValue, MapOrigin, Report};
@@ -18,21 +18,20 @@ use crate::{
     KEY_TOTAL_FUNCTIONS, MSG_NO_FUNCTIONS, NUM_BANDS, NUM_ROWS,
 };
 
-/// Collects per-file signatures and performs global cross-file clone detection.
-///
-/// Mirrors Go `Aggregator`.
+/// Collects per-file signatures and performs global cross-file clone
+/// detection.
 #[derive(Debug, Clone)]
 pub struct Aggregator {
     entries: Vec<FuncEntry>,
     total_functions: i64,
-    /// Caps the stored clone pairs in the report detail (`0` = unlimited). The
-    /// `total_clone_pairs` count stays exact. Mirrors Go `Aggregator.MaxClonePairs`.
+    /// Caps the stored clone pairs in the report detail (`0` = unlimited).
+    /// The `total_clone_pairs` count stays exact.
     pub max_clone_pairs: usize,
-    /// LSH bands. Mirrors Go `Aggregator.NumBands`.
+    /// LSH bands.
     pub num_bands: usize,
-    /// LSH rows per band. Mirrors Go `Aggregator.NumRows`.
+    /// LSH rows per band.
     pub num_rows: usize,
-    /// Type-3 similarity threshold. Mirrors Go `Aggregator.SimilarityType3`.
+    /// Type-3 similarity threshold.
     pub similarity_type3: f64,
 }
 
@@ -43,7 +42,7 @@ impl Default for Aggregator {
 }
 
 impl Aggregator {
-    /// Creates a new aggregator with the Go defaults. Mirrors Go `NewAggregator`.
+    /// Creates a new aggregator with the default parameters.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -56,8 +55,7 @@ impl Aggregator {
         }
     }
 
-    /// Folds a set of per-file reports into the aggregate. Mirrors Go
-    /// `Aggregator.Aggregate`.
+    /// Folds a set of per-file reports into the aggregate.
     pub fn aggregate(&mut self, results: &[(String, Report)]) {
         for (_, report) in results {
             self.total_functions += cf_reportutil::get_int(report, KEY_TOTAL_FUNCTIONS);
@@ -65,8 +63,8 @@ impl Aggregator {
         }
     }
 
-    /// Extracts the `_func_signatures` entries from one report, qualifying names
-    /// with the source file. Mirrors Go `collectSignatures`.
+    /// Extracts the `_func_signatures` entries from one report, qualifying
+    /// names with the source file.
     fn collect_signatures(&mut self, report: &Report) {
         let Some(GoValue::Array(items)) = cf_reportutil::get(report, KEY_FUNC_SIGNATURES) else {
             return;
@@ -90,9 +88,8 @@ impl Aggregator {
         }
     }
 
-    /// Builds the global LSH index, finds cross-file pairs, and emits the report.
-    ///
-    /// Mirrors Go `Aggregator.GetResult`.
+    /// Builds the global LSH index, finds cross-file pairs, and emits the
+    /// report.
     #[must_use]
     pub fn get_result(&self) -> Report {
         if self.total_functions == 0 {
@@ -120,8 +117,7 @@ impl Aggregator {
         report
     }
 
-    /// Builds one global LSH index and finds clone pairs. Mirrors Go
-    /// `detectGlobalClones`.
+    /// Builds one global LSH index and finds clone pairs.
     fn detect_global_clones(&self) -> ClonePairResult {
         if self.entries.is_empty() {
             return ClonePairResult::default();
@@ -136,8 +132,6 @@ impl Aggregator {
 }
 
 /// Returns `sourceFile::name` if `source_file` is non-empty, else `name`.
-///
-/// Mirrors Go `qualifyFuncName`.
 #[must_use]
 fn qualify_func_name(name: &str, source_file: &str) -> String {
     if source_file.is_empty() {
@@ -147,8 +141,7 @@ fn qualify_func_name(name: &str, source_file: &str) -> String {
     }
 }
 
-/// Reads `_source_file` from the first signature entry. Mirrors Go
-/// `extractSourceFile`.
+/// Reads `_source_file` from the first signature entry.
 #[must_use]
 fn extract_source_file(items: &[GoValue]) -> String {
     let Some(first) = items.first() else {

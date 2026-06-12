@@ -7,30 +7,28 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
-# cf-clones — static code-clone detection (MinHash 128 + LSH 16x8, fixed seeds).
-# Ports internal/analyzers/clones (Go id: static/clones).
+# cf-clones — static code-clone detection (MinHash 128 + LSH 16x8, fixed
+# seeds; analyzer id: static/clones).
 #
 # Report serialization routes exclusively through cf-gojson / cf-reportutil so
-# the machine-format bytes (json/yaml/ndjson/timeseries/compact/bin) match Go's
-# encoding/json + yaml.v3 byte-for-byte. See specs/rust-rewrite/DESIGN.md §2.
-# (YAML routes the SAME GoValue tree through cf-goyaml once that crate lands;
-# ComputedMetrics exposes `to_go_value()` for both the JSON and YAML paths.)
+# the machine-format bytes (json/yaml/ndjson/timeseries/compact/bin) match the
+# report contract byte-for-byte. See specs/rust-rewrite/DESIGN.md §2.
+# (YAML routes the SAME GoValue tree through cf-goyaml; ComputedMetrics
+# exposes `to_go_value()` for both the JSON and YAML paths.)
 
 [dependencies]
-# MinHash signatures (pkg/alg/minhash) — byte-identical seeds/hashing.
+# MinHash signatures — pinned seeds/hashing (bit-identical to the reference).
 cf-alg-minhash = { path = "../cf-alg-minhash" }
-# LSH index (pkg/alg/lsh) — byte-identical band hashing.
+# LSH index — pinned band hashing.
 cf-alg-lsh = { path = "../cf-alg-lsh" }
 # UAST node type, traversal, and the UAST/Role string constants.
 cf-uast-node = { path = "../cf-uast-node" }
 # Analyzer contracts (Analyzer/StaticAnalyzer/Report/Descriptor/Thresholds).
 cf-analyze = { path = "../cf-analyze" }
-# Go encoding/json-byte-compatible encoder (DESIGN §2.2). NEVER serde_json.
+# Report-contract JSON encoder (DESIGN §2.2). NEVER serde_json.
 cf-gojson = { path = "../cf-gojson" }
-# CFB1 binary envelope + report accessors/formatters (reportutil).
+# CFB1 binary envelope + report accessors/formatters.
 cf-reportutil = { path = "../cf-reportutil" }
-# ConfigurationOption type used by ListConfigurationOptions.
-cf-pipeline = { path = "../cf-pipeline" }
 
 [lints.clippy]
 pedantic = "warn"

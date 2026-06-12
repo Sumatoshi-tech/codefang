@@ -1,9 +1,11 @@
 //! `cf-analyzer-burndown` — burndown analyzer metrics + serialization.
 //!
-//! Port target documented in specs/rust-rewrite/DESIGN.md §1. The full history
-//! walk is still pending; [`metrics`] owns the byte-identity-critical
-//! `ComputedMetrics` serialization that `BaseHistoryAnalyzer.Serialize` emits for
-//! the `json` / `yaml` / `bin` machine formats.
+//! The full history walk lives in the command layer; [`metrics`] owns the
+//! `ComputedMetrics` model, the sparse→dense history densification, and the
+//! serialization emitted for the `json` / `yaml` / `bin` machine formats.
+//!
+//! Compatibility: output bytes are pinned against the reference implementation
+//! by `rust/tests/compat`.
 
 pub mod metrics;
 

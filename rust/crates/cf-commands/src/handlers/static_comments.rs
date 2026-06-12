@@ -1,6 +1,6 @@
 //! Static-analysis YAML report path for the UAST `static/comments` analyzer.
 //!
-//! Reproduces the Go static pipeline for the single-analyzer
+//! Reproduces the reference static pipeline for the single-analyzer
 //! `codefang run --analyzers static/comments --format yaml` capture
 //! (`StaticService.streamFiles` → `analyzeFile` → `comments.Analyzer.Analyze` →
 //! `StampSourceFile`/`StampLanguage` → `comments.Aggregator` (base metrics
@@ -32,7 +32,7 @@
 //!     (`ParseReportData` reads only `line` + the stamped source metadata off each
 //!     collection item; the convert maps carry neither `quality`/`type`/`score`
 //!     for comments nor `name`/`has_comment`/… for functions, so those per-item
-//!     fields stay at their zero values, exactly as in the Go golden), and emit
+//!     fields stay at their zero values, exactly as in the golden capture), and emit
 //!     `ComputedMetrics` through cf-goyaml (gopkg.in/yaml.v3 parity).
 
 use std::fs;
@@ -42,8 +42,8 @@ use cf_gojson::{GoMap, GoValue, MapOrigin};
 use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 use cf_uast::Parser;
 
-/// One collected comment item (post-stamp): the full Go
-/// `convertCommentReportItems` map (comments.go:681) — the raw aggregated
+/// One collected comment item (post-stamp): the full the reference implementation
+/// `convertCommentReportItems` map — the raw aggregated
 /// report (plot path / report.json) serializes every key; the YAML
 /// `ParseReportData` reads only `line` + the stamped source metadata.
 struct CommentItem {
@@ -57,8 +57,8 @@ struct CommentItem {
     directory: String,
 }
 
-/// One collected function item (post-stamp): the full Go
-/// `convertFunctionReportItems` map (comments.go:731). The machine
+/// One collected function item (post-stamp): the full the reference implementation
+/// `convertFunctionReportItems` map. The machine
 /// `ComputeAllMetrics` payload reads only the stamped source metadata; the raw
 /// aggregated report serializes every key.
 struct FunctionItem {
@@ -126,14 +126,14 @@ pub fn comments_report_bin(root_path: &str) -> Option<Vec<u8>> {
 /// Builds the `static/comments --format json` structured-report bytes for
 /// `root_path`, or `None` when the folder cannot be walked.
 ///
-/// The Go JSON path (`StaticService.FormatJSON` → `comments.CreateReportSection`
+/// The reference JSON path (`StaticService.FormatJSON` → `comments.CreateReportSection`
 /// → `renderer.SectionToJSON` → `json.Encoder.SetIndent("","  ").Encode`) emits
 /// a scored COMMENTS section: key metrics (Total/Good/Bad Comments, Doc
 /// Coverage, Good Ratio, Total Functions), a Documented/Undocumented
 /// distribution, and one info issue per UNDOCUMENTED function (assessment
-/// `"❌ No Comment"`), sorted by name. Go sorts via an unstable `sort.Slice`
+/// `"❌ No Comment"`), sorted by name. the reference implementation sorts via an unstable `sort.Slice`
 /// over functions collected in (parallel/map) order, so the tie order of
-/// same-named functions is intrinsically Go-nondeterministic (the project
+/// same-named functions is intrinsically nondeterministic in the reference binary (the project
 /// MANIFEST marks static_comments.json nonBinding). We emit the deterministic
 /// computation: the section score/labels/metrics/distribution are exact, and the
 /// issue list is sorted by name (file-walk order within equal names).
@@ -155,7 +155,7 @@ pub fn comments_report_value(root_path: &str) -> Option<GoValue> {
     comments_report_value_mode(root_path, false)
 }
 
-/// Builds the `static/comments` section tree in Go's `AggregationModeSummaryOnly`
+/// Builds the `static/comments` section tree in the reference implementation's `AggregationModeSummaryOnly`
 /// shape (`text` / `compact`): the detailed `comments`/`functions` collections are
 /// no-ops, so the top-issues list (undocumented functions, read from `functions`)
 /// is absent, while the Documented/Undocumented distribution — computed from the
@@ -182,10 +182,10 @@ fn comments_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoV
     let score_label = format_score(score);
 
     // --- status: NewReportSection reads the aggregate `message`; we emit the
-    // deterministic ThresholdLabeler value (matches the common Go output). ---
+    // deterministic ThresholdLabeler value (matches the common reference output). ---
     let status = comment_message(overall_score);
 
-    // --- metrics (report_section.go KeyMetrics order) ---
+    // --- metrics (reference KeyMetrics order) ---
     let metric = |label: &str, value: String| {
         let mut m = GoMap::new(MapOrigin::Struct);
         m.push("label", GoValue::Str(label.to_string()));
@@ -228,7 +228,7 @@ fn comments_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoV
         .iter()
         .filter(|f| f.assessment == "❌ No Comment")
         .collect();
-    // Go: mapx.SortAndLimit(buildIssues(), commentNameLess, 0) — unstable
+    // Reference: mapx.SortAndLimit(buildIssues(), commentNameLess, 0) — unstable
     // sort.Slice by Name ascending. Reproduce the pdqsort permutation.
     crate::handlers::go_sort::slice(&mut issue_fns, |a, b| a.function_name < b.function_name);
     let issues: Vec<GoValue> = issue_fns
@@ -265,7 +265,7 @@ fn comments_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoV
 }
 
 /// Builds the AGGREGATED RAW `analyze.Report` GoValue for `static/comments` —
-/// the value Go's `comments.Aggregator.GetResult()` returns (the base
+/// the value the reference implementation's `comments.Aggregator.GetResult()` returns (the base
 /// `BuildCollectionResult` + the `DetailedDataCollector.AddToResult`
 /// overwrite), which is what `--format plot` consumes and what
 /// `writeReportJSON` serializes into `report.json`:
@@ -284,7 +284,7 @@ fn comments_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoV
 ///   so with zero comments the key stays `[]`; `functions` appears only when
 ///   the detailed collection is non-empty.
 ///
-/// With no parsed files Go returns `buildEmptyResult` instead (8 keys, no
+/// With no parsed files the reference implementation returns `buildEmptyResult` instead (8 keys, no
 /// `analyzer_name`/collections).
 #[must_use]
 pub fn comments_raw_report_value(
@@ -432,7 +432,7 @@ fn comments_aggregate_opts(root_path: &str, opts: &PathPolicyOptions) -> Option<
         };
         let path_str = path.to_string_lossy();
 
-        // Go's static pipeline parses EVERY UAST-supported file and runs the
+        // The reference implementation's static pipeline parses EVERY UAST-supported file and runs the
         // analyzer; files whose tree has no functions/comments (markdown
         // READMEs) yield an empty report that still counts as one file in the
         // cross-file averages (`report_count`). Rust may lack a wired grammar
@@ -571,7 +571,7 @@ fn compute_metrics(agg: &Aggregated) -> GoValue {
     let good_comments_ratio = mean(agg.sum_good_comments_ratio);
     let documentation_coverage = mean(agg.sum_documentation_coverage);
 
-    // --- comment_quality: sorted by line_number ascending via Go sort.Slice ---
+    // --- comment_quality: sorted by line_number ascending via the reference `sort.Slice` ---
     // CommentQualityMetric.Compute calls sort.Slice (unstable pdqsort); the
     // equal-line ties must follow pdqsort's permutation, not a stable order.
     let mut comment_order: Vec<&CommentItem> = agg.comments.iter().collect();
@@ -661,7 +661,7 @@ fn compute_metrics(agg: &Aggregated) -> GoValue {
     GoValue::Map(root)
 }
 
-/// `common.ThresholdLabeler` for comments (aggregator.go thresholds).
+/// `common.ThresholdLabeler` for comments (reference thresholds).
 fn comment_message(score: f64) -> String {
     if score >= 0.8 {
         "Excellent comment quality and placement".to_string()
@@ -704,7 +704,7 @@ fn as_str(v: &GoValue) -> Option<&str> {
     }
 }
 
-/// `ParseReportData` reads `total_comments` etc. as Go `int`; the analyzer emits
+/// `ParseReportData` reads `total_comments` etc. as the reference `int`; the analyzer emits
 /// them as `GoValue::Int`.
 fn scalar_int(report: &GoValue, key: &str) -> i64 {
     map_get(report, key).and_then(as_int).unwrap_or(0)

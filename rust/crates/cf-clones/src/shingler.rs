@@ -1,21 +1,18 @@
 //! K-gram shingling of UAST function subtrees.
 //!
-//! Port of `internal/analyzers/clones/shingler.go`. A *shingle* is a sequence of
-//! `k` consecutive node types from a pre-order traversal, joined by `"|"`. These
-//! shingles are the set elements that feed each function's MinHash signature.
+//! A *shingle* is a sequence of `k` consecutive node types from a pre-order
+//! traversal, joined by `"|"`. These shingles are the set elements that feed
+//! each function's `MinHash` signature.
 
 use cf_uast_node::Node;
 
-/// Default k-gram window size for shingling. Mirrors Go `defaultShingleSize`.
+/// Default k-gram window size for shingling.
 pub const DEFAULT_SHINGLE_SIZE: usize = 5;
 
-/// Separator placed between node types within a shingle. Mirrors Go
-/// `shingleSeparator`.
+/// Separator placed between node types within a shingle.
 pub const SHINGLE_SEPARATOR: &str = "|";
 
 /// Extracts k-gram shingles from a function's UAST subtree.
-///
-/// Mirrors Go `Shingler`.
 #[derive(Debug, Clone, Copy)]
 pub struct Shingler {
     k: usize,
@@ -28,8 +25,7 @@ impl Default for Shingler {
 }
 
 impl Shingler {
-    /// Creates a new shingler with the given k-gram size. Mirrors Go
-    /// `NewShingler`.
+    /// Creates a new shingler with the given k-gram size.
     #[must_use]
     pub fn new(k: usize) -> Self {
         Self { k }
@@ -45,9 +41,7 @@ impl Shingler {
     ///
     /// Each shingle is the UTF-8 bytes of `k` consecutive node types joined by
     /// [`SHINGLE_SEPARATOR`]. Returns an empty vector if the subtree has fewer
-    /// than `k` typed nodes (mirroring Go's `nil` return).
-    ///
-    /// Mirrors Go `Shingler.ExtractShingles`.
+    /// than `k` typed nodes.
     #[must_use]
     pub fn extract_shingles(&self, func_node: &Node) -> Vec<Vec<u8>> {
         let types = collect_node_types(func_node);
@@ -65,8 +59,6 @@ impl Shingler {
 }
 
 /// Collects node types in pre-order, skipping empty-typed nodes.
-///
-/// Mirrors Go `collectNodeTypes`.
 #[must_use]
 pub fn collect_node_types(root: &Node) -> Vec<String> {
     let mut types = Vec::new();
@@ -78,7 +70,7 @@ pub fn collect_node_types(root: &Node) -> Vec<String> {
     types
 }
 
-/// Joins node-type strings with [`SHINGLE_SEPARATOR`]. Mirrors Go `joinTypes`.
+/// Joins node-type strings with [`SHINGLE_SEPARATOR`].
 #[must_use]
 fn join_types(types: &[String]) -> String {
     types.join(SHINGLE_SEPARATOR)

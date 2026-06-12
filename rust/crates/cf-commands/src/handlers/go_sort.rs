@@ -1,15 +1,15 @@
-//! Faithful port of Go's `sort.Slice` (pattern-defeating quicksort, `pdqsort`).
+//! Faithful port of the reference implementation's `sort.Slice` (pattern-defeating quicksort, `pdqsort`).
 //!
-//! Go's `sort.Slice` is **not** a stable sort; its exact element ordering for
-//! equal keys is an artifact of the pdqsort algorithm (`$GOROOT/src/sort`,
-//! `zsortfunc.go` + `slice.go`). Several codefang report metrics
+//! The reference `sort.Slice` is **not** a stable sort; its exact element
+//! ordering for equal keys is an artifact of the pdqsort algorithm. Several
+//! codefang report metrics
 //! (`complexity.FunctionComplexityMetric.Compute`, `HighRiskFunctionMetric`)
 //! call `sort.Slice` with comparators that have ties, so reproducing the
 //! emitted byte order requires reproducing pdqsort exactly rather than using a
 //! stable sort. This module is a line-for-line port operating on a slice of `T`
 //! via a caller-supplied `less(&T, &T) -> bool`.
 
-/// Sorts `data` using the same algorithm and pivot choices as Go's
+/// Sorts `data` using the same algorithm and pivot choices as the reference implementation's
 /// `sort.Slice(data, |i, j| less(data[i], data[j]))`.
 pub fn slice<T, F>(data: &mut [T], mut less: F)
 where
@@ -28,7 +28,7 @@ fn bits_len(x: u64) -> i32 {
 
 const MAX_INSERTION: usize = 12;
 
-// sortedHint values (sort.go).
+// sortedHint values.
 const UNKNOWN_HINT: i32 = 0;
 const INCREASING_HINT: i32 = 1;
 const DECREASING_HINT: i32 = 2;
@@ -379,7 +379,7 @@ fn next_power_of_two(length: usize) -> usize {
     1usize << shift
 }
 
-/// Go's `xorshift uint64` PRNG used by `breakPatterns`.
+/// The reference implementation's `xorshift uint64` PRNG used by `breakPatterns`.
 struct Xorshift(u64);
 
 impl Xorshift {

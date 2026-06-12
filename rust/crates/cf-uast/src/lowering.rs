@@ -1,29 +1,22 @@
 //! Tree-sitter concrete-syntax-tree → UAST lowering.
 //!
-//! Direct port of the conversion half of Go `pkg/uast/parser_dsl.go`
-//! (`parseContext` and `toCanonicalNode` and friends). Given a parsed
-//! tree-sitter [`Tree`] plus the language's mapping [`Rule`]s, it walks the named
-//! nodes and produces the canonical [`Node`] tree that feeds `uast parse`'s JSON
-//! output.
+//! Given a parsed tree-sitter [`Tree`] plus the language's mapping [`Rule`]s,
+//! it walks the named nodes and produces the canonical [`Node`] tree that
+//! feeds `uast parse`'s JSON output.
 //!
-//! # Byte-parity notes
+//! # Byte-parity notes (pinned by the differential gate)
 //!
-//! - **Node type resolution.** Go resolves a node's type via an alias-aware
-//!   symbol read (`readSymbol`) mapped through `language.SymbolName`, falling back
-//!   to `node.Type()`. tree-sitter's [`tsnode::Node::kind`] is exactly
-//!   `ts_node_type`, which is alias-aware and identical to the Go result, so it
-//!   is used directly.
-//! - **Children.** Only *named* children are visited, in tree order, exactly as
-//!   the Go `processChildren` family does (the cursor/batch/direct variants in Go
-//!   are performance-only and visit the same named children in the same order).
-//! - **Positions.** 1-based line/col, 0-based byte offsets — Go adds 1 to the
-//!   tree-sitter row/col (`startRow+1`, `startCol+1`).
-//! - **Synthetic collapsing.** An unmapped node with exactly one mapped child is
-//!   replaced by that child; with several, a `Synthetic` node spanning them is
-//!   produced; with none, it is dropped (`createSyntheticNode`).
-//! - **IDs.** Go assigns stable IDs in a later pass (the `uast parse` command
-//!   calls `AssignStableIDs`); this lowering leaves `id` empty, matching the Go
-//!   `Parse` return.
+//! - **Node type resolution.** A node's type is its alias-aware kind:
+//!   tree-sitter's [`TsNode::kind`] (`ts_node_type`) — but only when the node
+//!   was constructed via a named-child API; see [`Lowering::node_type`].
+//! - **Children.** Only *named* children are visited, in tree order.
+//! - **Positions.** 1-based line/col (tree-sitter row/col + 1), 0-based byte
+//!   offsets.
+//! - **Synthetic collapsing.** An unmapped node with exactly one mapped child
+//!   is replaced by that child; with several, a `Synthetic` node spanning them
+//!   is produced; with none, it is dropped.
+//! - **IDs.** Stable IDs are assigned in a later pass (the `uast parse`
+//!   command calls `assign_stable_ids`); this lowering leaves `id` empty.
 
 use std::collections::HashMap;
 
@@ -31,30 +24,28 @@ use cf_uast_mapping::{PatternMatcher, Rule};
 use cf_uast_node::{Node, Positions};
 use tree_sitter::{Node as TsNode, Tree};
 
-/// The minimum named-child count at which Go switches from `NamedChild(idx)` to
-/// cursor iteration. Behavioral-only in Go (same nodes, same order); kept as a
-/// doc constant for fidelity but not needed in Rust, which always uses the
-/// child iterator.
-#[allow(dead_code)]
+/// The minimum named-child count at which `process_unmapped_children`
+/// switches from per-index `named_child(idx)` construction to a raw cursor
+/// walk — an observable threshold, because the two traversals differ in alias
+/// assignment for "extra" nodes (see [`Lowering::node_type`]).
 const CURSOR_THRESHOLD: usize = 8;
 
-/// Per-parse lowering state (Go `parseContext`).
-pub(crate) struct Lowering<'a> {
+/// Per-parse lowering state.
+pub struct Lowering<'a> {
     source: &'a [u8],
     rules: &'a [Rule],
-    /// First-occurrence-wins rule index keyed by tree-sitter node type
-    /// (Go `ruleIndex`).
+    /// First-occurrence-wins rule index keyed by tree-sitter node type.
     rule_index: &'a HashMap<String, usize>,
-    /// Compiled-pattern matcher for the language (Go `patternMatcher`). Used only
-    /// for `@capture` token/prop extraction and conditions; the embedded Go
-    /// mappings exercise neither, but the path is ported for fidelity.
+    /// Compiled-pattern matcher for the language. Used only for `@capture`
+    /// token/prop extraction and conditions; the embedded mappings exercise
+    /// neither, but the path exists for custom mappings.
     pattern_matcher: &'a PatternMatcher,
     language: &'a str,
     include_unmapped: bool,
 }
 
 impl<'a> Lowering<'a> {
-    pub(crate) fn new(
+    pub(crate) const fn new(
         source: &'a [u8],
         rules: &'a [Rule],
         rule_index: &'a HashMap<String, usize>,
@@ -72,33 +63,34 @@ impl<'a> Lowering<'a> {
         }
     }
 
-    /// Lowers a parsed tree into the canonical UAST root (Go `Parse` body after
-    /// `RootNode`). Returns `None` only when the root collapses to nothing (e.g.
-    /// an empty `source_file`), matching Go's possible `nil` return.
+    /// Lowers a parsed tree into the canonical UAST root. Returns `None` only
+    /// when the root collapses to nothing (e.g. an empty `source_file`).
     pub(crate) fn lower(&self, tree: &Tree) -> Option<Node> {
         let root = tree.root_node();
         self.to_canonical_node(root, "")
     }
 
-    /// Go `nodeType`: the alias-aware node type — `kind()` (`ts_node_type`) —
-    /// **provided the node was constructed by a named-child-style API**.
+    /// The alias-aware node type — `kind()` (`ts_node_type`) — **provided the
+    /// node was constructed by a named-child-style API**.
     ///
     /// Aliases are assigned at node-construction time from the parent
-    /// production's alias sequence. `ts_node_named_child` (Go's `NamedChild` /
-    /// its CGO batch) assigns them only to true production children — an
-    /// **extra** (e.g. a comment) never receives one and keeps its raw kind. A
-    /// raw `TreeCursor` walk instead smears pending aliases onto extras: in
-    /// multi-document YAML the comment after a `---` reports `kind() ==
-    /// "document"` from a cursor but `"comment"` from `named_child`, which is
-    /// the difference between missing and matching the `comment` mapping rule
-    /// (kubernetes `nodelocaldns.yaml` lines 192-193 diverged this way). So
-    /// every traversal that feeds this function must construct nodes via
-    /// `named_children`/`named_child`, never via a raw cursor walk.
+    /// production's alias sequence. `ts_node_named_child` assigns them only to
+    /// true production children — an **extra** (e.g. a comment) never receives
+    /// one and keeps its raw kind. A raw `TreeCursor` walk instead smears
+    /// pending aliases onto extras: in multi-document YAML the comment after a
+    /// `---` reports `kind() == "document"` from a cursor but `"comment"` from
+    /// `named_child`, which is the difference between missing and matching the
+    /// `comment` mapping rule (kubernetes `nodelocaldns.yaml` lines 192-193
+    /// diverged this way against the reference binary). So every traversal
+    /// that feeds this function must construct nodes via
+    /// `named_children`/`named_child`, never via a raw cursor walk — except
+    /// where the cursor walk itself is the frozen behavior (see
+    /// [`Self::process_unmapped_children`]).
     fn node_type(&self, node: TsNode<'_>) -> &'static str {
         node.kind()
     }
 
-    /// Go `toCanonicalNode`.
+    /// Lowers one tree-sitter node (and its subtree) to a canonical node.
     fn to_canonical_node(&self, root: TsNode<'_>, parent_context: &str) -> Option<Node> {
         let node_type = self.node_type(root);
         let mapping_rule = self.find_mapping_rule(node_type);
@@ -119,40 +111,37 @@ impl<'a> Lowering<'a> {
         }
     }
 
-    /// Go `findMappingRule` + `resolveInheritance`. Returns an owned, fully
-    /// inheritance-merged rule so callers see the same fields Go's merged
-    /// `*mapping.Rule` exposes.
+    /// Looks up the node type's mapping rule. Returns an owned, fully
+    /// inheritance-merged rule.
     fn find_mapping_rule(&self, node_type: &str) -> Option<Rule> {
         let idx = *self.rule_index.get(node_type)?;
         Some(self.resolve_inheritance(self.rules[idx].clone()))
     }
 
-    /// Go `resolveInheritance`: recursively merges a base rule's fields, with the
-    /// child rule overriding non-empty scalar fields and copying/extending the
-    /// collection fields.
+    /// Recursively merges a base rule's fields, with the child rule overriding
+    /// non-empty scalar fields and copying/extending the collection fields.
     fn resolve_inheritance(&self, rule: Rule) -> Rule {
         if rule.extends.is_empty() {
             return rule;
         }
 
-        let base_idx = match self.rule_index.get(&rule.extends) {
-            Some(&i) => i,
-            None => return rule,
+        let Some(&base_idx) = self.rule_index.get(&rule.extends) else {
+            return rule;
         };
 
         let mut merged = self.rules[base_idx].clone();
 
         if !rule.pattern.is_empty() {
-            merged.pattern = rule.pattern.clone();
+            merged.pattern.clone_from(&rule.pattern);
         }
         if !rule.uast_spec.r#type.is_empty() {
-            merged.uast_spec.r#type = rule.uast_spec.r#type.clone();
+            merged.uast_spec.r#type.clone_from(&rule.uast_spec.r#type);
         }
         if !rule.uast_spec.token.is_empty() {
-            merged.uast_spec.token = rule.uast_spec.token.clone();
+            merged.uast_spec.token.clone_from(&rule.uast_spec.token);
         }
         if !rule.uast_spec.roles.is_empty() {
-            merged.uast_spec.roles = rule.uast_spec.roles.clone();
+            merged.uast_spec.roles.clone_from(&rule.uast_spec.roles);
         }
         if let Some(child_props) = &rule.uast_spec.props {
             let dst = merged.uast_spec.props.get_or_insert_with(Default::default);
@@ -161,7 +150,7 @@ impl<'a> Lowering<'a> {
             }
         }
         if !rule.uast_spec.children.is_empty() {
-            merged.uast_spec.children = rule.uast_spec.children.clone();
+            merged.uast_spec.children.clone_from(&rule.uast_spec.children);
         }
         if !rule.conditions.is_empty() {
             merged.conditions.extend(rule.conditions.iter().cloned());
@@ -170,16 +159,15 @@ impl<'a> Lowering<'a> {
         self.resolve_inheritance(merged)
     }
 
-    /// Go `processChildren` (collapsing the perf-only direct/cursor/batch
-    /// variants): visit named children in order, skipping those excluded by their
-    /// own rule's conditions, recursing into each.
+    /// Visits named children in order, skipping those excluded by their own
+    /// rule's conditions, recursing into each.
     fn process_children(&self, root: TsNode<'_>, mapping_rule: Option<&Rule>) -> Vec<Node> {
         let count = root.named_child_count();
         let mut children = Vec::with_capacity(count);
-        // Index-based `named_child(idx)` (Go `processChildrenDirect`), NOT a
-        // cursor walk and NOT the cursor-backed `named_children` iterator: only
-        // per-index construction assigns production aliases correctly (extras
-        // keep their raw kind) — see [`Self::node_type`].
+        // Index-based `named_child(idx)`, NOT a cursor walk and NOT the
+        // cursor-backed `named_children` iterator: only per-index construction
+        // assigns production aliases correctly (extras keep their raw kind) —
+        // see [`Self::node_type`].
         for idx in 0..count {
             let Some(child) = root.named_child(idx) else { continue };
             if !self.should_exclude_child(child, mapping_rule) {
@@ -192,7 +180,8 @@ impl<'a> Lowering<'a> {
         children
     }
 
-    /// Go `deriveParentContext`.
+    /// The context string a child sees: the parent rule's UAST type, or the
+    /// parent's raw node type when unmapped.
     fn derive_parent_context(&self, root: TsNode<'_>, mapping_rule: Option<&Rule>) -> String {
         if let Some(rule) = mapping_rule {
             if !rule.uast_spec.r#type.is_empty() {
@@ -202,10 +191,10 @@ impl<'a> Lowering<'a> {
         self.node_type(root).to_string()
     }
 
-    // ---- pattern matching / captures (Go matchPattern & friends) -----------
+    // ---- pattern matching / captures ----------------------------------------
 
-    /// Go `matchPattern`: compile the rule's pattern and return the first match's
-    /// captures, or `None` when there is no pattern / no match.
+    /// Compiles the rule's pattern and returns the first match's captures, or
+    /// `None` when there is no pattern / no match.
     fn match_pattern(
         &self,
         root: TsNode<'_>,
@@ -221,7 +210,8 @@ impl<'a> Lowering<'a> {
             .ok()
     }
 
-    /// Go `extractCaptureText`.
+    /// Resolves a `@capture` reference: query captures first, then a field
+    /// with that name, then a descendant of that type.
     fn extract_capture_text(&self, root: TsNode<'_>, capture_name: &str) -> String {
         let mapping_rule = self.find_mapping_rule(self.node_type(root));
         if let Some(captures) = self.match_pattern(root, mapping_rule.as_ref()) {
@@ -246,9 +236,9 @@ impl<'a> Lowering<'a> {
         String::new()
     }
 
-    // ---- conditions (Go evaluateConditions) --------------------------------
+    // ---- conditions ----------------------------------------------------------
 
-    /// Go `evaluateConditions`.
+    /// Evaluates a rule's conditions; vacuously true without conditions.
     fn evaluate_conditions(&self, root: TsNode<'_>, mapping_rule: Option<&Rule>) -> bool {
         let rule = match mapping_rule {
             Some(r) if !r.conditions.is_empty() => r,
@@ -263,7 +253,7 @@ impl<'a> Lowering<'a> {
         true
     }
 
-    /// Go `evaluateCondition` (simple `field == "v"` / `field != "v"`).
+    /// Evaluates one condition (simple `field == "v"` / `field != "v"`).
     fn evaluate_condition(
         &self,
         root: TsNode<'_>,
@@ -280,7 +270,8 @@ impl<'a> Lowering<'a> {
         false
     }
 
-    /// Go `evaluateComparisonOp`.
+    /// Evaluates one comparison: captured value first, then a field with that
+    /// name, then a named child of that type.
     fn evaluate_comparison_op(
         &self,
         root: TsNode<'_>,
@@ -306,8 +297,8 @@ impl<'a> Lowering<'a> {
             return compare(&self.extract_node_text(field_node), val);
         }
 
-        // Go `evaluateCondition` scans children via the CURSOR for all counts
-        // (parser_dsl.go:684) — cursor alias semantics included; mirror exactly.
+        // Child scanning here uses the CURSOR for all counts — cursor alias
+        // semantics included (frozen reference-implementation behavior).
         let mut cursor = root.walk();
         if cursor.goto_first_child() {
             loop {
@@ -323,9 +314,9 @@ impl<'a> Lowering<'a> {
         false
     }
 
-    // ---- inclusion / exclusion (Go shouldSkip*) ----------------------------
+    // ---- inclusion / exclusion ------------------------------------------------
 
-    /// Go `shouldSkipNode`.
+    /// A mapped node whose conditions fail is skipped.
     fn should_skip_node(&self, root: TsNode<'_>, mapping_rule: Option<&Rule>) -> bool {
         if mapping_rule.is_none() {
             return false;
@@ -333,7 +324,7 @@ impl<'a> Lowering<'a> {
         !self.evaluate_conditions(root, mapping_rule)
     }
 
-    /// Go `shouldExcludeChild`.
+    /// A child with a failing-conditions rule of its own is excluded.
     fn should_exclude_child(&self, child: TsNode<'_>, mapping_rule: Option<&Rule>) -> bool {
         if mapping_rule.is_none() {
             return false;
@@ -345,20 +336,20 @@ impl<'a> Lowering<'a> {
         !self.evaluate_conditions(child, child_rule.as_ref())
     }
 
-    /// Go `shouldSkipEmptyFile`.
+    /// An empty `source_file` with no children lowers to nothing.
     fn should_skip_empty_file(&self, node_type: &str, children: &[Node]) -> bool {
         node_type == "source_file" && children.is_empty() && self.source.is_empty()
     }
 
-    // ---- mapped node construction (Go createMappedNode) --------------------
+    // ---- mapped node construction ---------------------------------------------
 
-    /// Go `createMappedNode`.
+    /// Builds the canonical node for a rule-mapped tree-sitter node.
     fn create_mapped_node(&self, root: TsNode<'_>, rule: &Rule, children: Vec<Node>) -> Node {
         let roles = self.extract_roles(rule);
 
-        // Go lazily allocates the props map only when the rule has props or a
-        // name is found; an empty map serializes identically to a nil map under
-        // `omitempty`, so building one only when non-empty preserves bytes.
+        // An empty props map serializes identically to an absent one under
+        // `omitempty`, so eagerly building (and only conditionally filling)
+        // one preserves bytes.
         let mut props: HashMap<String, String> = HashMap::new();
         self.extract_properties(root, rule, &mut props);
         self.extract_name(root, rule, &mut props);
@@ -376,19 +367,19 @@ impl<'a> Lowering<'a> {
         );
         node.children = children;
 
-        // Go `extractToken` runs after construction and overrides the token if
-        // the rule's token spec resolves to a `fields.name`/`text` source.
+        // The post-construction pass overrides the token if the rule's token
+        // spec resolves to a `fields.name`/`text` source.
         self.extract_token(root, rule, &mut node);
 
         node
     }
 
-    /// Go `extractRoles`.
+    /// The rule's roles, verbatim.
     fn extract_roles(&self, rule: &Rule) -> Vec<String> {
         rule.uast_spec.roles.clone()
     }
 
-    /// Go `extractName` (always sourced from `fields.name`).
+    /// Fills `props["name"]` from the node's `name` field, when present.
     fn extract_name(&self, root: TsNode<'_>, _rule: &Rule, props: &mut HashMap<String, String>) {
         let name = self.extract_name_from_field(root, "name");
         if !name.is_empty() {
@@ -396,7 +387,7 @@ impl<'a> Lowering<'a> {
         }
     }
 
-    /// Go `extractNameFromField`.
+    /// The text of the node's `field_name` field, or empty.
     fn extract_name_from_field(&self, root: TsNode<'_>, field_name: &str) -> String {
         match root.child_by_field_name(field_name) {
             Some(field_node) => self.extract_node_text(field_node),
@@ -404,7 +395,7 @@ impl<'a> Lowering<'a> {
         }
     }
 
-    /// Go `extractNameFromText`.
+    /// The node's own text, leaf nodes only.
     fn extract_name_from_text(&self, root: TsNode<'_>) -> String {
         if root.child_count() == 0 {
             return self.extract_node_text(root);
@@ -412,7 +403,7 @@ impl<'a> Lowering<'a> {
         String::new()
     }
 
-    /// Go `extractProperties`.
+    /// Extracts the rule's props into the node's props map.
     fn extract_properties(&self, root: TsNode<'_>, rule: &Rule, props: &mut HashMap<String, String>) {
         let rule_props = match &rule.uast_spec.props {
             Some(p) => p,
@@ -426,7 +417,8 @@ impl<'a> Lowering<'a> {
         }
     }
 
-    /// Go `extractPropertyValue`.
+    /// Resolves one prop value: `@capture`, `descendant:<type>`, or a direct
+    /// child type.
     fn extract_property_value(&self, root: TsNode<'_>, prop: &str) -> String {
         if let Some(capture) = prop.strip_prefix('@') {
             if !capture.is_empty() {
@@ -439,7 +431,7 @@ impl<'a> Lowering<'a> {
         self.extract_direct_child_property(root, prop)
     }
 
-    /// Go `extractDirectChildProperty`.
+    /// The text of the first named child whose type equals `prop`.
     fn extract_direct_child_property(&self, root: TsNode<'_>, prop: &str) -> String {
         let count = root.named_child_count();
         for idx in 0..count {
@@ -452,7 +444,7 @@ impl<'a> Lowering<'a> {
         String::new()
     }
 
-    /// Go `extractToken` (post-construction override).
+    /// Post-construction token override (see [`Self::create_mapped_node`]).
     fn extract_token(&self, root: TsNode<'_>, rule: &Rule, node: &mut Node) {
         if rule.uast_spec.token.is_empty() {
             return;
@@ -463,7 +455,7 @@ impl<'a> Lowering<'a> {
         }
     }
 
-    /// Go `extractTokenFromNode`.
+    /// Resolves a `fields.*`/`props.name`/`text` token source.
     fn extract_token_from_node(&self, root: TsNode<'_>, source: &str) -> String {
         match source {
             "fields.name" => self.extract_name_from_field(root, "name"),
@@ -477,7 +469,7 @@ impl<'a> Lowering<'a> {
         }
     }
 
-    /// Go `extractTokenFromChildType`.
+    /// The text of the first named child of the given type.
     fn extract_token_from_child_type(&self, root: TsNode<'_>, node_type: &str) -> String {
         let count = root.named_child_count();
         for idx in 0..count {
@@ -490,7 +482,8 @@ impl<'a> Lowering<'a> {
         String::new()
     }
 
-    /// Go `findDescendantToken`.
+    /// The text of the first descendant (pre-order, including self) of the
+    /// given type.
     fn find_descendant_token(&self, root: TsNode<'_>, node_type: &str) -> String {
         if self.node_type(root) == node_type {
             return self.extract_node_text(root);
@@ -507,8 +500,8 @@ impl<'a> Lowering<'a> {
         String::new()
     }
 
-    /// Go `extractTokenText` (the token computed *before* construction and passed
-    /// to `NewNode`; `extractToken` may later override it).
+    /// The token computed *before* construction ([`Self::extract_token`] may
+    /// later override it).
     fn extract_token_text(&self, root: TsNode<'_>, rule: &Rule) -> String {
         let token_spec = &rule.uast_spec.token;
         if token_spec.is_empty() {
@@ -533,7 +526,7 @@ impl<'a> Lowering<'a> {
         }
     }
 
-    /// Go `extractPositions`: 1-based line/col, 0-based byte offsets.
+    /// 1-based line/col, 0-based byte offsets.
     fn extract_positions(&self, root: TsNode<'_>) -> Option<Positions> {
         let start = root.start_position();
         let end = root.end_position();
@@ -547,9 +540,9 @@ impl<'a> Lowering<'a> {
         })
     }
 
-    // ---- unmapped node construction (Go createUnmappedNode) ----------------
+    // ---- unmapped node construction ---------------------------------------------
 
-    /// Go `createUnmappedNode`.
+    /// Builds the result for a tree-sitter node with no mapping rule.
     fn create_unmapped_node(
         &self,
         root: TsNode<'_>,
@@ -564,18 +557,17 @@ impl<'a> Lowering<'a> {
         self.create_synthetic_node(mapped_children)
     }
 
-    /// Go `processUnmappedChildren` (perf variants collapsed): recurse into named
-    /// children carrying the same `parent_context`.
+    /// Recurses into named children carrying the same `parent_context`.
     fn process_unmapped_children(&self, root: TsNode<'_>, parent_context: &str) -> Vec<Node> {
         let count = root.named_child_count();
         let mut mapped = Vec::new();
-        // Go `processUnmappedChildren` dispatches on `cursorThreshold = 8`
-        // (parser_dsl.go:1025): below it, `NamedChild(idx)` — clean
-        // production-alias semantics (extras keep their raw kind); at or above
-        // it, the raw CURSOR — whose alias smearing onto extras is part of Go's
-        // observable behavior. Both halves must be mirrored exactly; see
-        // [`Self::node_type`]. (Note `processChildren` differs: its >= 8 path is
-        // a CGO batch built on `ts_node_named_child`, i.e. clean for all sizes.)
+        // The traversal dispatches on CURSOR_THRESHOLD = 8: below it,
+        // per-index `named_child(idx)` — clean production-alias semantics
+        // (extras keep their raw kind); at or above it, the raw CURSOR — whose
+        // alias smearing onto extras is observable, frozen behavior (pinned by
+        // the differential gate). Both halves must be kept exactly; see
+        // [`Self::node_type`]. (Note `process_children` differs: it uses the
+        // clean per-index construction for all sizes.)
         if count < CURSOR_THRESHOLD {
             for idx in 0..count {
                 let Some(child) = root.named_child(idx) else { continue };
@@ -602,7 +594,8 @@ impl<'a> Lowering<'a> {
         mapped
     }
 
-    /// Go `createIncludeUnmappedNode`.
+    /// Builds the `<language>:<node_type>` passthrough node used when
+    /// unmapped nodes are included.
     fn create_include_unmapped_node(
         &self,
         root: TsNode<'_>,
@@ -621,7 +614,7 @@ impl<'a> Lowering<'a> {
         node
     }
 
-    /// Go `tokenText` (leaf-only text).
+    /// The node's own text, leaf nodes only.
     fn token_text(&self, root: TsNode<'_>) -> String {
         if root.child_count() == 0 {
             return self.extract_node_text(root);
@@ -629,7 +622,8 @@ impl<'a> Lowering<'a> {
         String::new()
     }
 
-    /// Go `createSyntheticNode`.
+    /// Collapses unmapped children: one child passes through, several get a
+    /// spanning `Synthetic` parent, none vanishes.
     fn create_synthetic_node(&self, mapped_children: Vec<Node>) -> Option<Node> {
         match mapped_children.len() {
             1 => mapped_children.into_iter().next(),
@@ -644,21 +638,20 @@ impl<'a> Lowering<'a> {
         }
     }
 
-    /// Go `extractNodeText`: the node's source slice (an owned copy).
+    /// The node's source slice (an owned copy).
     fn extract_node_text(&self, ts_node: TsNode<'_>) -> String {
         let start = ts_node.start_byte();
         let end = ts_node.end_byte();
         if end <= self.source.len() {
-            // Go does `string(source[start:end])`, a lossy-free byte copy. The
-            // working-tree bytes are valid UTF-8 for source files; mirror Go's
-            // copy with a lossy decode that is a no-op for valid UTF-8.
+            // Source bytes are valid UTF-8 for source files; the lossy decode
+            // is a no-op for valid UTF-8 and total for anything else.
             return String::from_utf8_lossy(&self.source[start..end]).into_owned();
         }
         String::new()
     }
 }
 
-/// Go `findDescendantByType`.
+/// The first descendant (pre-order, including self) of the given type.
 fn find_descendant_by_type<'tree>(node: TsNode<'tree>, typ: &str) -> Option<TsNode<'tree>> {
     if node.kind() == typ {
         return Some(node);
@@ -674,8 +667,8 @@ fn find_descendant_by_type<'tree>(node: TsNode<'tree>, typ: &str) -> Option<TsNo
     None
 }
 
-/// Go `computeChildrenSpan` + `positionBounds`: the bounding span across all
-/// children that carry a position; `None` when no child has one.
+/// The bounding span across all children that carry a position; `None` when
+/// no child has one.
 fn compute_children_span(children: &[Node]) -> Option<Positions> {
     let mut found = false;
     let mut min_start_line = u64::MAX;

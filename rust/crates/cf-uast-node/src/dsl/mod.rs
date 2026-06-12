@@ -1,14 +1,7 @@
 //! The UAST query DSL: parsing, lowering, and execution.
 //!
-//! This ports the query-language half of `pkg/uast/pkg/node`
-//! (`querydsl.go`, `lowering.go`, `operators.go`, `field_access.go`) plus the
-//! grammar from `dsl_parser.peg`.
-//!
-//! **Generated-artifact note (rewrite rule 6):** the Go parser
-//! (`dsl_parser.peg.go`, ~1600 lines) is *generated* by `pointlander/peg` from
-//! `dsl_parser.peg`. We do NOT hand-translate that generated file. Instead
-//! [`parse`] is a hand-written recursive-descent parser implementing the same
-//! PEG grammar directly. The grammar is small and unambiguous:
+//! [`parse`] is a hand-written recursive-descent parser implementing the query
+//! grammar directly. The grammar is small and unambiguous:
 //!
 //! ```text
 //! Query        <- Pipeline EOT
@@ -42,11 +35,14 @@ use crate::node::Node;
 
 impl Node {
     /// Runs a DSL query string against this node's subtree, returning the
-    /// matching nodes (cloned). Mirrors Go's `FindDSL`.
+    /// matching nodes (cloned).
+    ///
+    /// # Errors
     ///
     /// Returns an error for an empty query (`"query string is empty"`), a parse
-    /// failure, or a lowering failure — matching the Go sentinel/wrapping flow.
-    pub fn find_dsl(&self, query: &str) -> Result<Vec<Node>, DslError> {
+    /// failure, or a lowering failure. The error strings are part of the CLI
+    /// compatibility contract.
+    pub fn find_dsl(&self, query: &str) -> Result<Vec<Self>, DslError> {
         if query.is_empty() {
             return Err(DslError::EmptyQuery);
         }
@@ -56,10 +52,11 @@ impl Node {
         Ok(runtime(initial))
     }
 
-    /// Chooses the initial input set for a query, mirroring Go's
-    /// `determineInitialInput` / `determinePipelineInput` /
-    /// `determineMapNodeInput` / `determineFieldNodeInput`.
-    fn determine_initial_input(&self, ast: &crate::types::DslNode) -> Vec<Node> {
+    /// Chooses the initial input set for a query: a `filter(...)` root and
+    /// pipelines start from the children, except a pipeline whose first stage
+    /// is exactly `map(.children)`, which starts from the node itself; any
+    /// other root also starts from the node itself.
+    fn determine_initial_input(&self, ast: &crate::types::DslNode) -> Vec<Self> {
         use crate::types::DslNode;
         match ast {
             DslNode::Filter(_) => self.children.clone(),

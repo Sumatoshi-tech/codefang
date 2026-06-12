@@ -1,20 +1,15 @@
-//! Operator / operand detection (`detector.go`).
+//! Operator / operand detection.
 //!
-//! Halstead classifies every token as an *operator* or an *operand*. This module
-//! reproduces the Go detector's classification tables and token-extraction rules
-//! exactly.
+//! Halstead classifies every token as an *operator* or an *operand*. The
+//! classification tables and token-extraction rules here are part of the
+//! report contract (pinned by the differential gate) and must not drift.
 //!
 //! ## Node abstraction
 //!
-//! The Go detector reads five fields off a `*node.Node`: `Type`, `Token`,
-//! `Roles`, `Props`, `Children`, plus the helper `HasAnyRole`. The real node
-//! type lives in `cf-uast-node`. To keep this analyzer testable in isolation
-//! (and to avoid hard-coupling to an API surface that is still settling), the
-//! detector is generic over the [`HalNode`] trait; the production wiring
-//! implements [`HalNode`] for `cf_uast_node::Node`.
-//!
-//! See the crate-level todos for the exact `cf_uast_node::Node` adapter that
-//! must be supplied at integration time.
+//! The detector reads only a node's type, token, roles, props, and children.
+//! To keep the analyzer testable in isolation it is generic over the
+//! [`HalNode`] trait; the production wiring implements [`HalNode`] for
+//! `cf_uast_node::Node` (see [`crate::standalone`]).
 
 use std::collections::HashMap;
 
@@ -23,88 +18,67 @@ use std::collections::HashMap;
 ///
 /// Implement this for `cf_uast_node::Node` in the integration layer. The string
 /// values returned for `node_type`, `token`, role names, and prop keys must be
-/// the same UAST canonical strings the Go `node` package emits (e.g. `"Function"`,
+/// the canonical UAST strings the parser emits (e.g. `"Function"`,
 /// `"Identifier"`, role `"Operator"`, prop `"operator"`), because those strings
 /// flow into the operator/operand maps and therefore into machine output.
 pub trait HalNode {
-    /// The node's UAST type string (`node.Type`), e.g. `"BinaryOp"`.
+    /// The node's UAST type string, e.g. `"BinaryOp"`.
     fn node_type(&self) -> &str;
-    /// The node's literal token text (`node.Token`), empty if none.
+    /// The node's literal token text, empty if none.
     fn token(&self) -> &str;
-    /// True if the node carries any of the named roles (`HasAnyRole`).
+    /// True if the node carries any of the named roles.
     fn has_any_role(&self, roles: &[&str]) -> bool;
-    /// Looks up a property by key (`node.Props[key]`).
+    /// Looks up a property by key.
     fn prop(&self, key: &str) -> Option<&str>;
-    /// The node's children, in order (`node.Children`).
+    /// The node's children, in order.
     fn children(&self) -> &[Self]
     where
         Self: Sized;
 }
 
-// --- UAST canonical strings the Go detector matches against ---
-//
-// These mirror the constants in `pkg/uast/pkg/node` referenced by detector.go.
+// --- Canonical UAST strings the detector matches against ---
 
 /// UAST type strings classified as operators.
 pub const OPERATOR_TYPES: &[&str] = &[
-    "BinaryOp",   // UASTBinaryOp
-    "UnaryOp",    // UASTUnaryOp
-    "Assignment", // UASTAssignment
-    "Call",       // UASTCall
-    "Index",      // UASTIndex
-    "Slice",      // UASTSlice
-    "Return",     // UASTReturn
+    "BinaryOp",
+    "UnaryOp",
+    "Assignment",
+    "Call",
+    "Index",
+    "Slice",
+    "Return",
 ];
 
 /// UAST role strings classified as operators.
-pub const OPERATOR_ROLES: &[&str] = &[
-    "Operator",   // RoleOperator
-    "Assignment", // RoleAssignment
-    "Call",       // RoleCall
-    "Return",     // RoleReturn
-];
+pub const OPERATOR_ROLES: &[&str] = &["Operator", "Assignment", "Call", "Return"];
 
 /// UAST type strings classified as operands.
-pub const OPERAND_TYPES: &[&str] = &[
-    "Identifier", // UASTIdentifier
-    "Literal",    // UASTLiteral
-    "Field",      // UASTField
-];
+pub const OPERAND_TYPES: &[&str] = &["Identifier", "Literal", "Field"];
 
 /// UAST role strings classified as operands.
-pub const OPERAND_ROLES: &[&str] = &[
-    "Name",     // RoleName
-    "Literal",  // RoleLiteral
-    "Variable", // RoleVariable
-    "Argument", // RoleArgument
-];
+pub const OPERAND_ROLES: &[&str] = &["Name", "Literal", "Variable", "Argument"];
 
 /// UAST type strings that represent declarations (parent context that suppresses
 /// counting a declaration identifier as an operand).
 pub const DECLARATION_TYPES: &[&str] = &[
-    "Function",     // UASTFunction
-    "FunctionDecl", // UASTFunctionDecl
-    "Method",       // UASTMethod
-    "Parameter",    // UASTParameter
-    "Variable",     // UASTVariable
-    "Field",        // UASTField
-    "Import",       // UASTImport
-    "Package",      // UASTPackage
-    "Struct",       // UASTStruct
-    "Class",        // UASTClass
-    "Interface",    // UASTInterface
-    "Enum",         // UASTEnum
+    "Function",
+    "FunctionDecl",
+    "Method",
+    "Parameter",
+    "Variable",
+    "Field",
+    "Import",
+    "Package",
+    "Struct",
+    "Class",
+    "Interface",
+    "Enum",
 ];
 
 /// Roles on the *parent* that mark a child name-identifier as a declaration.
-const DECLARATION_PARENT_ROLES: &[&str] = &[
-    "Declaration", // RoleDeclaration
-    "Parameter",   // RoleParameter
-    "Import",      // RoleImport
-    "Type",        // RoleType
-];
+const DECLARATION_PARENT_ROLES: &[&str] = &["Declaration", "Parameter", "Import", "Type"];
 
-/// Exact operator tokens for O(1) membership testing (`tokenOperatorSet`).
+/// Exact operator tokens for membership testing.
 const TOKEN_OPERATOR_SET: &[&str] = &[
     "===", "!==", "==", "!=", "<=", ">=", "&&", "||", "<<=", ">>=", "<<", ">>", "**", ":=", "+=",
     "-=", "*=", "/=", "%=", "&=", "|=", "^=", "+", "-", "*", "/", "%", "=", "<", ">", "&", "|",
@@ -112,14 +86,14 @@ const TOKEN_OPERATOR_SET: &[&str] = &[
 ];
 
 /// Operators sorted longest-first for containment matching so `===` matches
-/// before `==` (`tokenOperatorsByLength`). Order is load-bearing.
+/// before `==`. Order is load-bearing.
 const TOKEN_OPERATORS_BY_LENGTH: &[&str] = &[
     "===", "!==", "<<=", ">>=", "==", "!=", "<=", ">=", "&&", "||", "<<", ">>", "**", ":=", "+=",
     "-=", "*=", "/=", "%=", "&=", "|=", "^=", "+", "-", "*", "/", "%", "=", "<", ">", "&", "|",
     "^", "!",
 ];
 
-/// Detects operators and operands in UAST nodes (`OperatorOperandDetector`).
+/// Detects operators and operands in UAST nodes.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OperatorOperandDetector;
 
@@ -131,7 +105,7 @@ impl OperatorOperandDetector {
     }
 
     /// Recursively collects operators and operands from a node, accumulating
-    /// counts into the supplied maps (`CollectOperatorsAndOperands`).
+    /// counts into the supplied maps.
     pub fn collect<N: HalNode>(
         &self,
         node: &N,
@@ -183,21 +157,21 @@ impl OperatorOperandDetector {
         *operands.entry(operand).or_insert(0) += 1;
     }
 
-    /// True if the node is an operator by type or role (`IsOperator`).
+    /// True if the node is an operator by type or role.
     #[must_use]
     pub fn is_operator<N: HalNode>(&self, node: &N) -> bool {
         OPERATOR_TYPES.contains(&node.node_type()) || node.has_any_role(OPERATOR_ROLES)
     }
 
-    /// True if the node is an operand by type or role (`IsOperand`).
+    /// True if the node is an operand by type or role.
     #[must_use]
     pub fn is_operand<N: HalNode>(&self, node: &N) -> bool {
         OPERAND_TYPES.contains(&node.node_type()) || node.has_any_role(OPERAND_ROLES)
     }
 
-    /// Extracts the operator name (`GetOperatorName`): prefer the `operator`
-    /// prop, then a containment match inside the token, then the raw token, then
-    /// the node type.
+    /// Extracts the operator name: prefer the `operator` prop, then a
+    /// containment match inside the token, then the raw token, then the node
+    /// type.
     #[must_use]
     pub fn operator_name<N: HalNode>(&self, node: &N) -> String {
         if let Some(op) = node.prop("operator") {
@@ -212,8 +186,8 @@ impl OperatorOperandDetector {
         node.node_type().to_string()
     }
 
-    /// Extracts the operand name (`GetOperandName`): prefer the token, then the
-    /// `name` prop, then the `value` prop, else empty.
+    /// Extracts the operand name: prefer the token, then the `name` prop, then
+    /// the `value` prop, else empty.
     #[must_use]
     pub fn operand_name<N: HalNode>(&self, node: &N) -> String {
         if !node.token().is_empty() {
@@ -236,8 +210,8 @@ impl OperatorOperandDetector {
     }
 }
 
-/// True if `node` is a declaration's name identifier given its `parent`
-/// (`isDeclarationIdentifier`). Such identifiers are NOT counted as operands.
+/// True if `node` is a declaration's name identifier given its `parent`.
+/// Such identifiers are NOT counted as operands.
 fn is_declaration_identifier<N: HalNode>(node: &N, parent: Option<&N>) -> bool {
     let Some(parent) = parent else { return false };
 
@@ -252,9 +226,9 @@ fn is_declaration_identifier<N: HalNode>(node: &N, parent: Option<&N>) -> bool {
     DECLARATION_TYPES.contains(&parent.node_type())
 }
 
-/// Extracts an operator from a free-form token (`extractOperatorFromToken`):
-/// trims, tries an exact set match, then a longest-first containment match where
-/// the operator is surrounded by spaces (`" op "`).
+/// Extracts an operator from a free-form token: trims, tries an exact set
+/// match, then a longest-first containment match where the operator is
+/// surrounded by spaces (`" op "`).
 fn extract_operator_from_token(token: &str) -> Option<&'static str> {
     if token.trim().is_empty() {
         return None;
@@ -276,8 +250,7 @@ fn extract_operator_from_token(token: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 pub(crate) mod test_support {
-    //! A concrete in-crate node used by unit tests, mirroring how the Go tests
-    //! construct `node.New(...)` literals.
+    //! A concrete in-crate node used by unit tests.
     use super::HalNode;
     use std::collections::HashMap;
 
@@ -344,7 +317,6 @@ mod tests {
     use super::test_support::TestNode;
     use super::*;
 
-    /// Ported from `TestAnalyzer_OperatorOperandDetection`.
     #[test]
     fn operator_and_operand_detection() {
         let d = OperatorOperandDetector::new();
@@ -368,7 +340,6 @@ mod tests {
         assert!(d.is_operand(&lit));
     }
 
-    /// Ported from `TestExtractOperatorFromToken`-style benchmark inputs.
     #[test]
     fn extract_operator_from_token_cases() {
         assert_eq!(extract_operator_from_token("=="), Some("=="));
@@ -379,8 +350,8 @@ mod tests {
         assert_eq!(extract_operator_from_token("==="), Some("==="));
     }
 
-    /// `RealAggregation`-style structure: `x = (y + 5)` yields 2 operators
-    /// (`=`,`+`) and 3 operands (`x`,`y`,`5`).
+    /// `x = (y + 5)` yields 2 operators (`=`,`+`) and 3 operands
+    /// (`x`,`y`,`5`).
     #[test]
     fn collect_simple_function() {
         let function = TestNode::new("Function")
@@ -432,7 +403,7 @@ mod tests {
     }
 
     /// A declaration name-identifier under a declaration parent is NOT an
-    /// operand (mirrors `TestAnalyzer_DoesNotCountParameterNodeAsOperand`).
+    /// operand.
     #[test]
     fn declaration_identifier_not_counted() {
         let function = TestNode::new("Function")

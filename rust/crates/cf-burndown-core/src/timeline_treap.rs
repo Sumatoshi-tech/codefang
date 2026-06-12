@@ -1,29 +1,25 @@
 //! Implicit treap [`Timeline`] (position = implicit key). No key shifting on
 //! `replace`.
 //!
-//! Port of `internal/burndown/timeline_treap.go`.
-//!
 //! # Memory model
 //!
-//! The Go implementation manages `*treapNode` pointers via a free-list
-//! `nodePool`. To preserve the exact reuse/recycling behavior (LIFO free-list,
-//! zero-on-release, `shrink`, post-order subtree release) without `unsafe`, this
-//! Rust port stores nodes in an arena (`Vec<TreapNode>`) and references children
-//! by index ([`NodeIdx`]). The arena plus its free-list together play the role
-//! of the Go `nodePool`. Node "pointers" are arena indices, so the Go tests
-//! that assert pointer reuse (`acquire` returns the just-`release`d node)
-//! translate to index reuse.
+//! The reference implementation manages node pointers via a free-list pool. To
+//! preserve the exact reuse/recycling behavior (LIFO free-list,
+//! zero-on-release, `shrink`, post-order subtree release) without `unsafe`,
+//! nodes live in an arena (`Vec<TreapNode>`) and reference children by index
+//! ([`NodeIdx`]). The arena plus its free-list together play the role of the
+//! node pool. Node "pointers" are arena indices, so reference-suite tests that
+//! assert pointer reuse (`acquire` returns the just-`release`d node) translate
+//! to index reuse.
 
 use crate::timeline::{DeltaReport, TimeKey, Timeline};
 use crate::{TREE_END, TREE_MERGE_MARK};
 
-/// Used to compute the midpoint index when splitting a range in half.
-const MIDPOINT_DIVISOR: usize = 2;
-
 /// The initial non-zero seed for the xorshift64 PRNG.
 ///
-/// Any non-zero value produces a full-period sequence (2^64 - 1). Matches the Go
-/// constant `defaultPRNGSeed`.
+/// Any non-zero value produces a full-period sequence (2^64 - 1). The exact
+/// value is part of the reproducibility contract: it determines node
+/// priorities and therefore treap shapes.
 pub(crate) const DEFAULT_PRNG_SEED: u64 = 0x2545_F491_4F6C_DD1D;
 
 /// First left-shift constant in the xorshift64 algorithm.
@@ -38,9 +34,8 @@ const XORSHIFT64_UPPER_SHIFT: u32 = 32;
 /// Advance the PRNG state and return a `u32` priority from the upper bits.
 ///
 /// The algorithm is Marsaglia's xorshift64 with period 2^64 - 1; the state must
-/// be non-zero. Byte-for-byte equivalent to the Go `xorshift64` function, so
-/// treap shapes are identical between the Go and Rust implementations given the
-/// same sequence of node allocations.
+/// be non-zero. Bit-for-bit equivalent to the reference implementation, so
+/// treap shapes are identical given the same sequence of node allocations.
 pub(crate) fn xorshift64(state: &mut u64) -> u32 {
     let mut s = *state;
     s ^= s << XORSHIFT64_SHIFT_A;
@@ -54,7 +49,7 @@ pub(crate) fn xorshift64(state: &mut u64) -> u32 {
 /// A contiguous run of `length` lines with the same time `value`.
 ///
 /// Used for compact serialization of treap state (segments vs per-line
-/// expansion). Mirrors the Go `Segment` struct.
+/// expansion).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Segment {
     /// Number of lines in this run.
@@ -67,7 +62,7 @@ pub struct Segment {
 type NodeIdx = usize;
 
 /// A single segment: `length` lines with `value`. Position is implicit (the sum
-/// of left-subtree sizes). Mirrors the Go `treapNode` struct.
+/// of left-subtree sizes).
 #[derive(Debug, Clone, Copy, Default)]
 struct TreapNode {
     left: Option<NodeIdx>,
@@ -81,8 +76,8 @@ struct TreapNode {
 /// An implicit-treap [`Timeline`] (position = size of left subtree). `replace`
 /// is O(log N) without shifting keys.
 ///
-/// Mirrors the Go `treapTimeline` struct. The `arena` + `free` list together are
-/// the equivalent of the Go `nodePool` embedded in `treapTimeline`.
+/// The `arena` + `free` list together form the node pool (see the module
+/// docs).
 #[derive(Debug, Default)]
 pub struct TreapTimeline {
     root: Option<NodeIdx>,
@@ -95,8 +90,6 @@ pub struct TreapTimeline {
 impl TreapTimeline {
     /// Create a [`Timeline`] backed by an implicit treap with initial
     /// `[0, length)` at time `time`.
-    ///
-    /// Mirrors Go `NewTreapTimeline`.
     ///
     /// # Panics
     ///
@@ -128,11 +121,12 @@ impl TreapTimeline {
     }
 
     /// Construct an empty timeline (no nodes). Used by callers that immediately
-    /// `reconstruct_from_segments`. Mirrors the Go zero-value `&treapTimeline{}`.
+    /// `reconstruct_from_segments`.
     ///
-    /// The Go zero value has `prngState == 0`; `reconstruct_from_segments` does
+    /// The zero-state PRNG (`prng_state == 0`) is deliberate
+    /// (reference-implementation behavior): `reconstruct_from_segments` does
     /// not reset the seed, so the first allocation uses state `0`, which
-    /// xorshift64 maps to priority `0` deterministically — identical to Go.
+    /// xorshift64 maps to priority `0` deterministically.
     pub(crate) fn empty() -> Self {
         Self {
             root: None,
@@ -144,8 +138,6 @@ impl TreapTimeline {
     }
 
     /// Trim the internal node pool to retain at most `keep` free nodes.
-    ///
-    /// Mirrors Go `(*treapTimeline).ShrinkPool` / `nodePool.shrink`.
     pub fn shrink_pool(&mut self, keep: usize) {
         if self.free.len() <= keep {
             return;
@@ -157,7 +149,6 @@ impl TreapTimeline {
     // --- node pool (arena + free-list) ---
 
     /// Return a zeroed node index from the free-list, or allocate a new one.
-    /// Mirrors `nodePool.acquire`.
     fn acquire(&mut self) -> NodeIdx {
         if let Some(idx) = self.free.pop() {
             self.arena[idx] = TreapNode::default();
@@ -168,15 +159,13 @@ impl TreapTimeline {
         }
     }
 
-    /// Zero all fields and return the node to the free-list. Mirrors
-    /// `nodePool.release`.
+    /// Zero all fields and return the node to the free-list.
     fn release(&mut self, idx: NodeIdx) {
         self.arena[idx] = TreapNode::default();
         self.free.push(idx);
     }
 
-    /// Recursively release all nodes in the subtree (post-order). Mirrors
-    /// `nodePool.releaseSubtree`.
+    /// Recursively release all nodes in the subtree (post-order).
     fn release_subtree(&mut self, idx: Option<NodeIdx>) {
         let Some(idx) = idx else { return };
         let (l, r) = {
@@ -235,7 +224,7 @@ impl TreapTimeline {
     }
 
     /// Split so `left` has the first `pos` lines (0-indexed), `right` has the
-    /// rest. Mirrors `splitByLines`.
+    /// rest.
     fn split_by_lines(
         &mut self,
         root: Option<NodeIdx>,
@@ -369,7 +358,7 @@ impl TreapTimeline {
         if start >= end {
             return None;
         }
-        let mid = (start + end) / MIDPOINT_DIVISOR;
+        let mid = (start + end) / 2;
         let s = segs[mid];
         let idx = self.new_node(s.length, s.value);
         let left = self.build_from_segments(segs, start, mid);
@@ -495,11 +484,11 @@ impl Timeline for TreapTimeline {
     }
 
     fn clone_shallow(&self) -> TreapTimeline {
-        // Go's shallowCopy shares the same root pointer and omits the pool.
-        // Since our arena owns the nodes, a structural clone of the arena + root
-        // preserves the observable behavior (independent length tracking,
-        // identical iteration) without aliasing. The prng_state is carried over
-        // exactly as Go does.
+        // The reference shallow copy shares the same root pointer and omits the
+        // pool. Since our arena owns the nodes, a structural clone of the
+        // arena + root preserves the observable behavior (independent length
+        // tracking, identical iteration) without aliasing. The prng_state is
+        // carried over unchanged.
         TreapTimeline {
             root: self.root,
             total_length: self.total_length,
@@ -613,7 +602,7 @@ impl Timeline for TreapTimeline {
 }
 
 /// Merge adjacent segments with identical `value`. Returns a new vector; the
-/// input is not modified. Mirrors the Go `coalesceSegments`.
+/// input is not modified.
 pub(crate) fn coalesce_segments(segs: &[Segment]) -> Vec<Segment> {
     if segs.is_empty() {
         return Vec::new();
@@ -639,12 +628,12 @@ pub(crate) fn coalesce_segments(segs: &[Segment]) -> Vec<Segment> {
 mod tests {
     use super::*;
 
-    // --- ports of priority_test.go (xorshift64 PRNG) ---
+    // --- xorshift64 PRNG (mirrors the reference priority tests) ---
 
     const PRIO_TEST_SEED: u64 = 0xDEAD_BEEF_CAFE_BABE;
     const PRIO_TEST_SEQUENCE_LEN: usize = 1000;
 
-    /// Port of `TestXorshift64_NonZero`.
+    /// Mirrors reference test `TestXorshift64_NonZero`.
     #[test]
     fn xorshift64_non_zero() {
         let mut state = PRIO_TEST_SEED;
@@ -652,7 +641,7 @@ mod tests {
         assert!(produced_nonzero, "xorshift64 produced only zeros");
     }
 
-    /// Port of `TestXorshift64_Deterministic`.
+    /// Mirrors reference test `TestXorshift64_Deterministic`.
     #[test]
     fn xorshift64_deterministic() {
         let mut state1 = PRIO_TEST_SEED;
@@ -662,7 +651,7 @@ mod tests {
         }
     }
 
-    /// Port of `TestXorshift64_StateAdvances`.
+    /// Mirrors reference test `TestXorshift64_StateAdvances`.
     #[test]
     fn xorshift64_state_advances() {
         let mut state = PRIO_TEST_SEED;
@@ -674,7 +663,7 @@ mod tests {
         }
     }
 
-    /// Port of `TestXorshift64_Distribution`.
+    /// Mirrors reference test `TestXorshift64_Distribution`.
     #[test]
     fn xorshift64_distribution() {
         const BUCKET_COUNT: u64 = 16;
@@ -701,21 +690,21 @@ mod tests {
         }
     }
 
-    /// Port of `TestMaxDepth_NilRoot`.
+    /// Mirrors reference test `TestMaxDepth_NilRoot`.
     #[test]
     fn max_depth_nil_root() {
         let tl = TreapTimeline::empty();
         assert_eq!(tl.max_depth(), 0);
     }
 
-    /// Port of `TestMaxDepth_NonEmpty`.
+    /// Mirrors reference test `TestMaxDepth_NonEmpty`.
     #[test]
     fn max_depth_non_empty() {
         let tl = TreapTimeline::new(0, 500);
         assert!(tl.max_depth() >= 1);
     }
 
-    /// Port of `TestRandomPriority_Depth10K`: 10K sequential inserts keep the
+    /// Mirrors reference test `TestRandomPriority_Depth10K`: 10K sequential inserts keep the
     /// treap shallow (depth < 3 * log2(N)).
     #[test]
     fn random_priority_depth_10k() {
@@ -729,9 +718,9 @@ mod tests {
         assert!(d <= max_allowed, "tree depth {d} exceeds max {max_allowed}");
     }
 
-    // --- ports of timeline_treap_test.go ---
+    // --- treap timeline (mirrors the reference timeline tests) ---
 
-    /// Port of `TestTreapTimeline_ReplaceAndIterate`.
+    /// Mirrors reference test `TestTreapTimeline_ReplaceAndIterate`.
     #[test]
     fn treap_replace_and_iterate() {
         let mut tl = TreapTimeline::new(0, 1000);
@@ -761,7 +750,7 @@ mod tests {
         assert_eq!(value_at(&tl, 60), 1);
     }
 
-    /// Port of `TestSegments_RoundTrip` (timeline_treap_test.go).
+    /// Mirrors reference test `TestSegments_RoundTrip`.
     #[test]
     fn segments_round_trip() {
         let mut tl = TreapTimeline::new(0, 1000);
@@ -786,7 +775,7 @@ mod tests {
         assert_eq!(tl2.flatten(), original_flat);
     }
 
-    /// Port of `TestSegments_Empty`.
+    /// Mirrors reference test `TestSegments_Empty`.
     #[test]
     fn segments_empty() {
         let tl = TreapTimeline::empty();
@@ -797,7 +786,7 @@ mod tests {
         assert_eq!(tl2.len(), 0);
     }
 
-    /// Port of `TestSegments_SingleSegment`.
+    /// Mirrors reference test `TestSegments_SingleSegment`.
     #[test]
     fn segments_single_segment() {
         let tl = TreapTimeline::new(5, 42);
@@ -812,7 +801,7 @@ mod tests {
         assert_eq!(tl2.len(), 42);
     }
 
-    /// Port of `TestErase_PopulatesPool`.
+    /// Mirrors reference test `TestErase_PopulatesPool`.
     #[test]
     fn erase_populates_pool() {
         let mut tl = TreapTimeline::new(0, 1000);
@@ -823,7 +812,7 @@ mod tests {
         assert_eq!(tl.len(), 0);
     }
 
-    /// Port of `TestReconstruct_UsesPool`.
+    /// Mirrors reference test `TestReconstruct_UsesPool`.
     #[test]
     fn reconstruct_uses_pool() {
         let mut tl = TreapTimeline::new(0, 1000);
@@ -842,7 +831,7 @@ mod tests {
         }
     }
 
-    /// Port of `TestReplace_PoolReuse`.
+    /// Mirrors reference test `TestReplace_PoolReuse`.
     #[test]
     fn replace_pool_reuse() {
         let mut tl = TreapTimeline::new(0, 1000);
@@ -854,7 +843,7 @@ mod tests {
         assert!(tl.free_len() > 0, "expected free nodes after many replaces");
     }
 
-    /// Port of `TestCloneDeep_PreservesPRNG` + `TestCloneDeep_IndependentPool`.
+    /// Mirrors reference test `TestCloneDeep_PreservesPRNG` + `TestCloneDeep_IndependentPool`.
     #[test]
     fn clone_deep_independence() {
         let mut tl = TreapTimeline::new(0, 500);
@@ -871,9 +860,9 @@ mod tests {
         assert_ne!(tl.len(), clone.len());
     }
 
-    // --- ports of coalesce_test.go ---
+    // --- segment coalescing (mirrors the reference coalesce tests) ---
 
-    /// Port of `TestCoalesceSegments_MergesAdjacent`.
+    /// Mirrors reference test `TestCoalesceSegments_MergesAdjacent`.
     #[test]
     fn coalesce_segments_merges_adjacent() {
         let segs = [
@@ -887,7 +876,7 @@ mod tests {
         assert_eq!(result[1], Segment { length: 30, value: 2 });
     }
 
-    /// Port of `TestCoalesceSegments_NoMerge`.
+    /// Mirrors reference test `TestCoalesceSegments_NoMerge`.
     #[test]
     fn coalesce_segments_no_merge() {
         let segs = [
@@ -898,20 +887,20 @@ mod tests {
         assert_eq!(coalesce_segments(&segs), segs.to_vec());
     }
 
-    /// Port of `TestCoalesceSegments_Empty`.
+    /// Mirrors reference test `TestCoalesceSegments_Empty`.
     #[test]
     fn coalesce_segments_empty() {
         assert!(coalesce_segments(&[]).is_empty());
     }
 
-    /// Port of `TestCoalesceSegments_SingleSegment`.
+    /// Mirrors reference test `TestCoalesceSegments_SingleSegment`.
     #[test]
     fn coalesce_segments_single_segment() {
         let segs = [Segment { length: 50, value: 1 }];
         assert_eq!(coalesce_segments(&segs), segs.to_vec());
     }
 
-    /// Port of `TestCoalesceSegments_AllSameValue`.
+    /// Mirrors reference test `TestCoalesceSegments_AllSameValue`.
     #[test]
     fn coalesce_segments_all_same_value() {
         let segs = [
@@ -924,7 +913,7 @@ mod tests {
         assert_eq!(result[0], Segment { length: 60, value: 1 });
     }
 
-    /// Port of `TestMergeAdjacentSameValue_ReducesNodes` (coalesce_test.go).
+    /// Mirrors reference test `TestMergeAdjacentSameValue_ReducesNodes`.
     #[test]
     fn merge_adjacent_same_value_reduces_nodes() {
         let mut tl = TreapTimeline::new(0, 1000);
@@ -937,7 +926,7 @@ mod tests {
         tl.validate();
     }
 
-    /// Port of `TestMergeAdjacentSameValue_PreservesLen`.
+    /// Mirrors reference test `TestMergeAdjacentSameValue_PreservesLen`.
     #[test]
     fn merge_adjacent_same_value_preserves_len() {
         let mut tl = TreapTimeline::new(0, 1000);
@@ -948,7 +937,7 @@ mod tests {
         assert_eq!(tl.len(), before);
     }
 
-    /// Port of `TestMergeAdjacentSameValue_PreservesIterate`.
+    /// Mirrors reference test `TestMergeAdjacentSameValue_PreservesIterate`.
     #[test]
     fn merge_adjacent_same_value_preserves_iterate() {
         let mut tl = TreapTimeline::new(0, 1000);
@@ -959,7 +948,7 @@ mod tests {
         assert_eq!(tl.flatten(), before_flat);
     }
 
-    /// Port of `TestMergeAdjacentSameValue_EmptyTimeline`.
+    /// Mirrors reference test `TestMergeAdjacentSameValue_EmptyTimeline`.
     #[test]
     fn merge_adjacent_same_value_empty_timeline() {
         let mut tl = TreapTimeline::empty();
@@ -968,7 +957,7 @@ mod tests {
         assert_eq!(tl.nodes(), 0);
     }
 
-    /// Port of `TestMergeAdjacentSameValue_AlreadyOptimal`.
+    /// Mirrors reference test `TestMergeAdjacentSameValue_AlreadyOptimal`.
     #[test]
     fn merge_adjacent_same_value_already_optimal() {
         let mut tl = TreapTimeline::new(0, 1000);
@@ -980,7 +969,7 @@ mod tests {
         assert_eq!(tl.flatten(), before_flat);
     }
 
-    /// Port of `TestMergeAdjacentSameValue_ReplaceAfterCoalesce`.
+    /// Mirrors reference test `TestMergeAdjacentSameValue_ReplaceAfterCoalesce`.
     #[test]
     fn merge_adjacent_same_value_replace_after_coalesce() {
         let mut tl = TreapTimeline::new(0, 1000);
@@ -995,7 +984,7 @@ mod tests {
         assert!(!reports.is_empty());
     }
 
-    /// Port of `TestMergeAdjacentSameValue_Idempotent` (coalesce_test.go).
+    /// Mirrors reference test `TestMergeAdjacentSameValue_Idempotent`.
     #[test]
     fn merge_adjacent_same_value_idempotent() {
         let mut tl = TreapTimeline::new(0, 1000);
@@ -1009,7 +998,7 @@ mod tests {
         assert_eq!(tl.flatten(), flat1);
     }
 
-    /// Port of `TestMergeAdjacentSameValue_AllSameValue`.
+    /// Mirrors reference test `TestMergeAdjacentSameValue_AllSameValue`.
     #[test]
     fn merge_adjacent_same_value_all_same_value() {
         const HEAVY: i64 = 800;
@@ -1025,9 +1014,9 @@ mod tests {
         assert_eq!(tl.len(), HEAVY * 10);
     }
 
-    // --- ports of node_pool_test.go ---
+    // --- node pool (mirrors the reference pool tests) ---
 
-    /// Port of `TestNodePool_AcquireRelease`.
+    /// Mirrors reference test `TestNodePool_AcquireRelease`.
     #[test]
     fn node_pool_acquire_release() {
         let mut tl = TreapTimeline::empty();
@@ -1037,7 +1026,7 @@ mod tests {
         assert_eq!(tl.free_len(), 1);
     }
 
-    /// Port of `TestNodePool_ReleaseZerosFields`.
+    /// Mirrors reference test `TestNodePool_ReleaseZerosFields`.
     #[test]
     fn node_pool_release_zeros_fields() {
         let mut tl = TreapTimeline::empty();
@@ -1049,7 +1038,7 @@ mod tests {
         assert_eq!(tl.node_fields(n2), (0, 0, 0, 0));
     }
 
-    /// Port of `TestNodePool_Reuse`.
+    /// Mirrors reference test `TestNodePool_Reuse`.
     #[test]
     fn node_pool_reuse() {
         let mut tl = TreapTimeline::empty();
@@ -1058,7 +1047,7 @@ mod tests {
         assert_eq!(tl.acquire(), n, "expected reuse of released node");
     }
 
-    /// Port of `TestNodePool_GrowsOnDemand`.
+    /// Mirrors reference test `TestNodePool_GrowsOnDemand`.
     #[test]
     fn node_pool_grows_on_demand() {
         let mut tl = TreapTimeline::empty();
@@ -1069,7 +1058,7 @@ mod tests {
         }
     }
 
-    /// Port of `TestNodePool_ReleaseSubtree`.
+    /// Mirrors reference test `TestNodePool_ReleaseSubtree`.
     #[test]
     fn node_pool_release_subtree() {
         let mut tl = TreapTimeline::empty();
@@ -1081,7 +1070,7 @@ mod tests {
         assert_eq!(tl.free_len(), 3);
     }
 
-    /// Port of `TestNodePool_ReleaseNil`.
+    /// Mirrors reference test `TestNodePool_ReleaseNil`.
     #[test]
     fn node_pool_release_nil() {
         let mut tl = TreapTimeline::empty();
@@ -1089,7 +1078,7 @@ mod tests {
         assert_eq!(tl.free_len(), 0);
     }
 
-    /// `shrink_pool` trims the free-list (Go `ShrinkPool` / `nodePool.shrink`).
+    /// `shrink_pool` trims the free-list.
     #[test]
     fn node_pool_shrink() {
         let mut tl = TreapTimeline::empty();

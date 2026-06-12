@@ -1,23 +1,21 @@
 //! Tree-sitter → UAST mapping rule and grammar metadata types.
 //!
-//! Direct port of Go `pkg/uast/pkg/mapping/mapping_types.go`. Field names and
-//! semantics mirror the Go structs so that downstream behavior (rule extraction,
-//! grammar analysis, DSL generation) is reproduced exactly.
+//! Field semantics are part of the mapping pipeline's frozen behavior (rule
+//! extraction, grammar analysis, DSL generation).
 
 use std::collections::BTreeMap;
 
-/// Metadata for a Tree-sitter node type (mirrors Go `NodeTypeInfo`).
+/// Metadata for a Tree-sitter node type.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct NodeTypeInfo {
     /// Node type name.
     pub name: String,
     /// Fields keyed by field name.
     ///
-    /// A `BTreeMap` is used so the field set is deterministically ordered;
-    /// the Go original uses a `map[string]FieldInfo`, whose iteration order is
-    /// randomized. Every consumer in the Go code that depends on order sorts
-    /// first (see [`crate::grammar_analysis::collect_child_types`]), so a sorted
-    /// map reproduces the observable behavior deterministically.
+    /// A `BTreeMap` keeps the field set deterministically ordered; every
+    /// consumer that depends on order sorts first (see
+    /// [`crate::grammar_analysis::collect_child_types`]), so a sorted map
+    /// reproduces the observable behavior deterministically.
     pub fields: BTreeMap<String, FieldInfo>,
     /// Child node types.
     pub children: Vec<ChildInfo>,
@@ -27,7 +25,7 @@ pub struct NodeTypeInfo {
     pub is_named: bool,
 }
 
-/// Describes a field within a Tree-sitter node type (mirrors Go `FieldInfo`).
+/// Describes a field within a Tree-sitter node type.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FieldInfo {
     /// Field name.
@@ -40,7 +38,7 @@ pub struct FieldInfo {
     pub multiple: bool,
 }
 
-/// Describes a child node type (mirrors Go `ChildInfo`).
+/// Describes a child node type.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ChildInfo {
     /// Child type name.
@@ -51,11 +49,12 @@ pub struct ChildInfo {
 
 /// Classifies a Tree-sitter node as Leaf, Container, or Operator.
 ///
-/// The discriminants match the Go `iota` order (`Leaf = 0`, `Container = 1`,
-/// `Operator = 2`) so the integer values are identical.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The discriminant values (`Leaf = 0`, `Container = 1`, `Operator = 2`) are
+/// frozen: they are observable wherever a category is rendered numerically.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum NodeCategory {
     /// A leaf node (no children, no fields).
+    #[default]
     Leaf = 0,
     /// A container node.
     Container = 1,
@@ -63,14 +62,7 @@ pub enum NodeCategory {
     Operator = 2,
 }
 
-impl Default for NodeCategory {
-    fn default() -> Self {
-        // Go zero value of NodeCategory is `Leaf` (iota 0).
-        NodeCategory::Leaf
-    }
-}
-
-/// A mapping from a Tree-sitter pattern to a UAST specification (Go `Rule`).
+/// A mapping from a Tree-sitter pattern to a UAST specification.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Rule {
     /// Rule name (the DSL identifier on the left of `<-`).
@@ -85,14 +77,14 @@ pub struct Rule {
     pub conditions: Vec<Condition>,
 }
 
-/// A conditional expression in a mapping rule (Go `Condition`).
+/// A conditional expression in a mapping rule.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Condition {
     /// The condition expression as parsed from the DSL.
     pub expr: String,
 }
 
-/// The target UAST node structure for a mapping rule (Go `UASTSpec`).
+/// The target UAST node structure for a mapping rule.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct UastSpec {
     /// UAST type name.
@@ -103,9 +95,9 @@ pub struct UastSpec {
     pub roles: Vec<String>,
     /// Additional properties (key → value).
     ///
-    /// `None` mirrors the Go nil map; it is lazily allocated by
-    /// [`crate::dsl_parser`] only when a non-reserved field is encountered, so
-    /// `Rule.uast_spec.props.is_none()` matches the Go `Props == nil` check.
+    /// `None` means "never populated": [`crate::dsl_parser`] allocates the map
+    /// lazily, only when a non-reserved field is encountered, and downstream
+    /// consumers distinguish `None` from an empty map.
     pub props: Option<BTreeMap<String, String>>,
     /// Child references.
     pub children: Vec<String>,

@@ -1,5 +1,4 @@
-//! The cohesion [`Analyzer`] — port of `internal/analyzers/cohesion/cohesion.go`
-//! and `types.go`.
+//! The cohesion [`Analyzer`].
 //!
 //! Drives function discovery, variable extraction, per-function cohesion, the three
 //! module scalars, and assembly of the intermediate [`Report`].
@@ -9,44 +8,34 @@ use crate::report_value::{Report, ReportValue};
 use crate::uast::{role, ty, Node};
 use std::collections::BTreeMap;
 
-/// Default maximum UAST traversal depth (Go `MaxDepthValue`). Retained for parity;
-/// the depth limit is enforced by the shared traverser in the integrated build.
+/// Default maximum UAST traversal depth. The depth limit is enforced by the
+/// shared traverser in the integrated build.
 pub const MAX_DEPTH_VALUE: i64 = 10;
 
-// --- Assessment thresholds (cohesion.go) ---
+// --- Assessment thresholds (report contract) ---
 
-/// `cohesionThresholdHigh`.
 const COHESION_THRESHOLD_HIGH: f64 = 0.6;
-/// `cohesionThresholdMedium`.
 const COHESION_THRESHOLD_MEDIUM: f64 = 0.4;
-/// `cohesionThresholdLow`.
 const COHESION_THRESHOLD_LOW: f64 = 0.3;
 
-/// `countThresholdHigh`.
 const COUNT_THRESHOLD_HIGH: usize = 3;
-/// `lineCountThresholdHigh`.
 const LINE_COUNT_THRESHOLD_HIGH: i64 = 10;
-/// `magic7`.
 const MAGIC7: usize = 7;
-/// `magic30`.
 const MAGIC30: i64 = 30;
 
-// --- Detail-message thresholds (these come from aggregator.go's score* consts) ---
+// --- Detail-message thresholds (shared with the aggregated-score message) ---
 
-/// `scoreThresholdHigh` (aggregator.go).
 const SCORE_THRESHOLD_HIGH: f64 = 0.7;
-/// `scoreThresholdMedium` (aggregator.go).
 const SCORE_THRESHOLD_MEDIUM: f64 = 0.4;
-/// `scoreThresholdLow` (aggregator.go).
 const SCORE_THRESHOLD_LOW: f64 = 0.3;
 
-/// A function with its cohesion metrics (Go `cohesion.Function`).
+/// A function with its cohesion metrics.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Function {
     /// Function name.
     pub name: String,
-    /// All variable names found within the function (with duplicates, as Go collects
-    /// them; de-duplication happens later where the algorithm requires it).
+    /// All variable names found within the function (with duplicates;
+    /// de-duplication happens later where the algorithm requires it).
     pub variables: Vec<String>,
     /// Source line count.
     pub line_count: i64,
@@ -55,10 +44,10 @@ pub struct Function {
     pub cohesion: f64,
 }
 
-/// Typed per-function report item (Go `FunctionReportItem`).
+/// Typed per-function report item.
 ///
-/// Field order here is cosmetic (the JSON shape is produced by
-/// [`Analyzer::convert_cohesion_function_items`]); it follows the Go struct.
+/// Field order here is cosmetic; the JSON shape is produced by
+/// [`Analyzer::convert_cohesion_function_items`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionReportItem {
     /// Function name.
@@ -71,22 +60,23 @@ pub struct FunctionReportItem {
     pub size_assessment: String,
     /// Source line count.
     pub line_count: i64,
-    /// Distinct-with-duplicates variable count (Go `len(fn.Variables)`).
+    /// Variable count, duplicates included (the length of
+    /// [`Function::variables`]).
     pub variable_count: usize,
     /// Per-function cohesion.
     pub cohesion: f64,
 }
 
-/// The cohesion analyzer (Go `cohesion.Analyzer`).
+/// The cohesion analyzer.
 ///
-/// The Go struct holds a `traverser` and `extractor`; in this port those generic
-/// helpers are inlined into the extraction routines, so the struct is a zero-sized
-/// marker. Construct via [`Analyzer::new`].
+/// Stateless: the traversal and extraction helpers are inlined into the
+/// extraction routines, so the struct is a zero-sized marker. Construct via
+/// [`Analyzer::new`].
 #[derive(Debug, Clone, Default)]
 pub struct Analyzer;
 
-/// Error returned when [`Analyzer::analyze`] is given no root node (Go
-/// `analyze.ErrNilRootNode`).
+/// Error returned when [`Analyzer::analyze`] is given no root node. The error
+/// text is part of the CLI contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NilRootNode;
 
@@ -99,41 +89,41 @@ impl std::fmt::Display for NilRootNode {
 impl std::error::Error for NilRootNode {}
 
 impl Analyzer {
-    /// Creates a new analyzer (Go `NewAnalyzer`).
+    /// Creates a new analyzer.
     #[must_use]
     pub fn new() -> Self {
         Analyzer
     }
 
-    /// The analyzer name (Go `(*Analyzer).Name`).
+    /// The analyzer name.
     #[must_use]
     pub fn name(&self) -> &'static str {
         crate::ANALYZER_NAME
     }
 
-    /// The CLI flag (Go `(*Analyzer).Flag`).
+    /// The CLI flag.
     #[must_use]
     pub fn flag(&self) -> &'static str {
         "cohesion-analysis"
     }
 
-    /// The analyzer description (Go `(*Analyzer).Description` / `Descriptor`).
+    /// The analyzer description.
     #[must_use]
     pub fn description(&self) -> &'static str {
         "Calculates LCOM-HS (Henderson-Sellers) and cohesion metrics."
     }
 
-    /// Performs cohesion analysis on a UAST root (Go `(*Analyzer).Analyze`).
+    /// Performs cohesion analysis on a UAST root.
     ///
     /// Returns an intermediate [`Report`]; convert to the machine format with
     /// [`crate::metrics::compute_all_metrics`].
     ///
     /// # Errors
     ///
-    /// This port takes `&N` (non-nullable), so the Go `nil` check cannot fire; the
-    /// signature still returns `Result` to mirror Go and to leave room for the
-    /// integrated traverser to surface errors. Pass an explicitly-empty subtree to
-    /// model "no functions".
+    /// Currently never fails: the root is non-nullable, so the missing-root
+    /// error cannot fire. The `Result` signature leaves room for the integrated
+    /// traverser to surface errors. Pass an explicitly-empty subtree to model
+    /// "no functions".
     pub fn analyze<N: Node>(&self, root: &N) -> Result<Report, NilRootNode> {
         let functions = self.find_functions(root);
 
@@ -148,16 +138,16 @@ impl Analyzer {
         Ok(self.build_result(&functions, &metrics))
     }
 
-    /// Performs cohesion analysis the way the **static pipeline actually runs it**:
-    /// via the cohesion [`Visitor`](crate::visitor) (Go `cohesion.Visitor`), driven
-    /// by a preorder DFS over the UAST (Go `MultiAnalyzerTraverser.Traverse`).
+    /// Performs cohesion analysis the way the **static pipeline actually runs
+    /// it**: via the cohesion [`visitor`](crate::visitor), driven by a preorder
+    /// DFS over the UAST.
     ///
-    /// This is NOT the same as [`Analyze`](Self::analyze): the visitor's function
-    /// detection (`HasAnyType(Function,Method) OR HasAllRoles(Function,Declaration)`)
-    /// and its context-stack variable attribution (variables belong to the
-    /// *innermost* enclosing function) differ from the `findFunctions` path, and the
-    /// static pipeline (`Factory.runVisitors`) uses the visitor. Use this for
-    /// folder-walk parity.
+    /// This is NOT the same as [`analyze`](Self::analyze): the visitor's function
+    /// detection (type Function/Method OR roles {Function AND Declaration}) and
+    /// its context-stack variable attribution (variables belong to the
+    /// *innermost* enclosing function) differ from the [`find_functions`]
+    /// (Self::find_functions) path, and the static pipeline uses the visitor.
+    /// Use this for folder-walk parity.
     #[must_use]
     pub fn analyze_visitor<N: Node>(&self, root: &N) -> Report {
         let functions = crate::visitor::collect_functions_via_visitor(self, root);
@@ -170,16 +160,16 @@ impl Analyzer {
         self.build_result(&functions, &metrics)
     }
 
-    /// Visitor function predicate (Go `(*Visitor).isFunction`): type Function/Method
-    /// OR roles {Function AND Declaration}. Distinct from [`Self::is_function_node`].
+    /// Visitor function predicate: type Function/Method OR roles
+    /// {Function AND Declaration}. Distinct from the `find_functions` predicate.
     #[must_use]
     pub fn is_visitor_function<N: Node>(&self, n: &N) -> bool {
         n.has_any_type(&[ty::FUNCTION, ty::METHOD])
             || n.has_all_roles(&[role::FUNCTION, role::DECLARATION])
     }
 
-    /// Computes per-function cohesion via the global shared-variable Bloom filter
-    /// (Go `computePerFunctionCohesion`).
+    /// Computes per-function cohesion via the global shared-variable Bloom
+    /// filter.
     pub fn compute_per_function_cohesion(&self, functions: &mut [Function]) {
         let global_filter = calc::build_global_variable_filter(functions);
         for f in functions.iter_mut() {
@@ -187,8 +177,7 @@ impl Analyzer {
         }
     }
 
-    /// Builds the empty result map (Go `buildEmptyResult` /
-    /// `BuildCustomEmptyResult`).
+    /// Builds the empty result map (the "no functions" report shape).
     #[must_use]
     pub fn build_empty_result(&self) -> Report {
         let mut r = Report::new();
@@ -203,7 +192,7 @@ impl Analyzer {
         r
     }
 
-    /// Computes the three module scalars (Go `calculateMetrics`).
+    /// Computes the three module scalars.
     #[must_use]
     pub fn calculate_metrics(&self, functions: &[Function]) -> Metrics {
         let lcom = self.calculate_lcom(functions);
@@ -216,7 +205,7 @@ impl Analyzer {
         }
     }
 
-    /// Constructs the final intermediate result (Go `buildResult`).
+    /// Constructs the final intermediate result.
     #[must_use]
     pub fn build_result(&self, functions: &[Function], metrics: &Metrics) -> Report {
         let report_items = self.build_detailed_functions_table(functions);
@@ -248,7 +237,7 @@ impl Analyzer {
         r
     }
 
-    /// Builds the typed per-function table (Go `buildDetailedFunctionsTable`).
+    /// Builds the typed per-function table.
     #[must_use]
     pub fn build_detailed_functions_table(&self, functions: &[Function]) -> Vec<FunctionReportItem> {
         functions
@@ -265,9 +254,8 @@ impl Analyzer {
             .collect()
     }
 
-    /// Converts typed items to the dynamic `[]map[string]any` shape (Go
-    /// `convertCohesionFunctionItems`). `source_file`, when non-empty, is attached
-    /// under the `_source_file` key (Go `analyze.SourceFileKey`).
+    /// Converts typed items to the dynamic per-function map shape.
+    /// `source_file`, when non-empty, is attached under the `_source_file` key.
     #[must_use]
     pub fn convert_cohesion_function_items(
         &self,
@@ -308,9 +296,8 @@ impl Analyzer {
             .collect()
     }
 
-    /// Detail message keyed by cohesion score (Go `getCohesionMessage` +
-    /// `cohesionDetailMessageLabeler`). The labeler returns the first label whose
-    /// `Limit` the score meets or exceeds, scanning highest first.
+    /// Detail message keyed by cohesion score: the first label whose limit the
+    /// score meets or exceeds, scanning highest first.
     #[must_use]
     pub fn get_cohesion_message(&self, score: f64) -> String {
         if score >= SCORE_THRESHOLD_HIGH {
@@ -324,7 +311,7 @@ impl Analyzer {
         }
     }
 
-    /// Emoji cohesion assessment (Go `getCohesionAssessment`).
+    /// Emoji cohesion assessment.
     #[must_use]
     pub fn get_cohesion_assessment(&self, cohesion: f64) -> String {
         if cohesion >= COHESION_THRESHOLD_HIGH {
@@ -338,7 +325,7 @@ impl Analyzer {
         }
     }
 
-    /// Emoji variable-count assessment (Go `getVariableAssessment`).
+    /// Emoji variable-count assessment.
     #[must_use]
     pub fn get_variable_assessment(&self, count: usize) -> String {
         if count <= COUNT_THRESHOLD_HIGH {
@@ -350,7 +337,7 @@ impl Analyzer {
         }
     }
 
-    /// Emoji size assessment (Go `getSizeAssessment`).
+    /// Emoji size assessment.
     #[must_use]
     pub fn get_size_assessment(&self, line_count: i64) -> String {
         if line_count <= LINE_COUNT_THRESHOLD_HIGH {
@@ -362,10 +349,10 @@ impl Analyzer {
         }
     }
 
-    // --- Machine-format report writers (cohesion.go FormatReport*) ---
+    // --- Machine-format report writers ---
 
-    /// Writes the JSON machine report (Go `FormatReportJSON`): the report is reduced
-    /// to [`crate::metrics::ComputedMetrics`] then encoded with two-space indent,
+    /// Writes the JSON machine report: the report is reduced to
+    /// [`crate::metrics::ComputedMetrics`] then encoded with two-space indent,
     /// HTML escaping ON, and **no trailing newline**.
     ///
     /// # Errors
@@ -380,7 +367,7 @@ impl Analyzer {
         w.write_all(&crate::serialize::encode_json(&metrics))
     }
 
-    /// Writes the YAML machine report (Go `FormatReportYAML`).
+    /// Writes the YAML machine report.
     ///
     /// # Errors
     ///
@@ -394,7 +381,7 @@ impl Analyzer {
         w.write_all(&crate::serialize::encode_yaml(&metrics))
     }
 
-    /// Writes the binary (CFB1) machine report (Go `FormatReportBinary`).
+    /// Writes the binary (CFB1) machine report.
     ///
     /// # Errors
     ///
@@ -410,14 +397,15 @@ impl Analyzer {
 
     // --- Function discovery / extraction ---
 
-    /// Finds all functions in the tree (Go `findFunctions`).
+    /// Finds all functions in the tree.
     ///
-    /// The Go code combines role-based and type-based matches, deduplicates via a Go
-    /// map (which yields *nondeterministic* order — see the crate-level docs), then
-    /// extracts. This port deduplicates by walking once in a deterministic preorder;
-    /// because the downstream `functions` array order is a canonicalized golden path,
-    /// the only observable invariant that must hold is the *set* of functions and the
-    /// stable scalars derived from it.
+    /// The reference implementation combines role-based and type-based matches
+    /// and deduplicates via a map with *nondeterministic* iteration order (see
+    /// the crate-level docs). This implementation deduplicates by walking once
+    /// in a deterministic preorder; because the downstream `functions` array
+    /// order is a canonicalized golden path, the only observable invariant that
+    /// must hold is the *set* of functions and the stable scalars derived from
+    /// it.
     #[must_use]
     pub fn find_functions<N: Node>(&self, root: &N) -> Vec<Function> {
         let mut out = Vec::new();
@@ -434,14 +422,14 @@ impl Analyzer {
         }
     }
 
-    /// True if a node should be treated as a function (Go `findFunctions` matches
-    /// role "Function" OR type "Function"/"Method").
+    /// True if a node should be treated as a function: role `Function` OR type
+    /// `Function`/`Method`.
     fn is_function_node<N: Node>(&self, n: &N) -> bool {
         n.has_any_role(&[role::FUNCTION]) || n.has_any_type(&[ty::FUNCTION, ty::METHOD])
     }
 
-    /// Extracts a [`Function`] from a node (Go `extractFunction`). `cohesion` starts
-    /// at `0.0` and is filled later.
+    /// Extracts a [`Function`] from a node. `cohesion` starts at `0.0` and is
+    /// filled later.
     #[must_use]
     pub fn extract_function<N: Node>(&self, n: &N) -> Function {
         let variables = self.extract_variables(n);
@@ -455,14 +443,13 @@ impl Analyzer {
         }
     }
 
-    /// Extracts the function name (Go `extractFunctionName`).
+    /// Extracts the function name.
     #[must_use]
     pub fn extract_function_name<N: Node>(&self, n: &N) -> String {
         n.entity_name()
     }
 
-    /// Collects all variable names within a function subtree (Go `extractVariables`
-    /// -> `findVariables`).
+    /// Collects all variable names within a function subtree.
     #[must_use]
     pub fn extract_variables<N: Node>(&self, n: &N) -> Vec<String> {
         let mut vars = Vec::new();
@@ -477,12 +464,12 @@ impl Analyzer {
         }
     }
 
-    /// Processes a single node for variable extraction (Go `processVariableNode`).
+    /// Processes a single node for variable extraction.
     ///
-    /// NOTE the Go code checks declaration AND identifier independently (two `if`s,
-    /// not `else if`), so a node satisfying both contributes its name **twice** — a
-    /// quirk faithfully preserved here because it affects `len(fn.Variables)` and
-    /// therefore `variable_count` in the report.
+    /// NOTE: the declaration and identifier predicates are checked independently
+    /// (two `if`s, not `else if`), so a node satisfying both contributes its name
+    /// **twice** — a report-contract quirk that affects `variable_count` and is
+    /// pinned by the differential gate.
     fn process_variable_node<N: Node>(&self, n: &N, vars: &mut Vec<String>) {
         if self.is_variable_declaration(n) {
             self.add_variable_if_valid(n, vars);
@@ -500,15 +487,13 @@ impl Analyzer {
         n.has_any_type(&[ty::IDENTIFIER]) && n.has_any_role(&[role::VARIABLE, role::NAME])
     }
 
-    /// Public wrapper of the declaration predicate, used by the visitor module
-    /// (Go `(*Analyzer).isVariableDeclaration`).
+    /// Public wrapper of the declaration predicate, used by the visitor module.
     #[must_use]
     pub fn is_variable_declaration_pub<N: Node>(&self, n: &N) -> bool {
         self.is_variable_declaration(n)
     }
 
-    /// Public wrapper of the identifier predicate, used by the visitor module
-    /// (Go `(*Analyzer).isVariableIdentifier`).
+    /// Public wrapper of the identifier predicate, used by the visitor module.
     #[must_use]
     pub fn is_variable_identifier_pub<N: Node>(&self, n: &N) -> bool {
         self.is_variable_identifier(n)
@@ -554,7 +539,7 @@ mod tests {
             report.get("message"),
             Some(&ReportValue::Str("No functions found".into()))
         );
-        // Empty result has no analyzer_name / functions keys (Go BuildCustomEmptyResult).
+        // The empty result has no analyzer_name / functions keys.
         assert!(report.get("functions").is_none());
     }
 
@@ -603,7 +588,7 @@ mod tests {
     }
 
     #[test]
-    fn assessments_match_go_thresholds() {
+    fn assessments_match_contract_thresholds() {
         let a = Analyzer::new();
         assert_eq!(a.get_cohesion_assessment(0.6), "\u{1F7E2} Excellent");
         assert_eq!(a.get_cohesion_assessment(0.4), "\u{1F7E1} Good");
@@ -620,7 +605,7 @@ mod tests {
     }
 
     #[test]
-    fn detail_messages_match_go() {
+    fn detail_messages_match_contract() {
         let a = Analyzer::new();
         assert_eq!(
             a.get_cohesion_message(0.7),

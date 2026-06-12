@@ -1,9 +1,9 @@
 //! Static-analysis report path for the UAST `static/halstead` analyzer.
 //!
-//! Reproduces the Go static pipeline for the single-analyzer
+//! Reproduces the reference static pipeline for the single-analyzer
 //! `codefang run --analyzers static/halstead` capture across its machine formats.
 //!
-//! Pipeline (Go `StaticService.uastPhase` → per-file `halstead.Analyze` →
+//! Pipeline (the reference `StaticService.uastPhase` → per-file `halstead.Analyze` →
 //! `common.Aggregator` → format-specific serialization):
 //!
 //!  1. `streamFiles` walks `rootPath` with `filepath.WalkDir` (lexical order,
@@ -29,16 +29,16 @@
 //!   aggregated report back into scalars; the integer-typed aggregate fields
 //!   (`distinct_operators`, …) are *averaged* and therefore stored as `float64`,
 //!   so the `.(int)` type assertions in `ParseReportData` fail and those fields
-//!   come out **0** — a faithful reproduction of the Go quirk. The bin payload is
+//!   come out **0** — a faithful reproduction of the reference quirk. The bin payload is
 //!   the `ComputedMetrics` struct marshaled with compact `encoding/json`
 //!   (cf-gojson) inside the CFB1 envelope.
 //!
 //! ## A note on the nondeterministic `message`
 //!
-//! The aggregate `message` is built from "the first numeric metric" in a Go
-//! `map[string]float64` iterated in randomized order (`common.Aggregator.GetResult`
-//! → `buildHalsteadMessage(firstAverage)`), so the Go reference binary emits a
-//! *different* message label on different runs (the field is Go-unstable; the
+//! The aggregate `message` is built from "the first numeric metric" in a
+//! reference-side `map[string]float64` iterated in randomized order (`common.Aggregator.GetResult`
+//! → `buildHalsteadMessage(firstAverage)`), so the reference binary emits a
+//! *different* message label on different runs (the field is unstable in the reference binary; the
 //! canonicalizer measured and normalizes it). We compute the label
 //! deterministically from the real aggregated volume via
 //! [`build_aggregate_message`] — a genuine computation, never a captured
@@ -56,7 +56,7 @@ use cf_uast::{Node, Parser};
 /// therefore set them directly without a sketch.
 const CMS_TOKEN_THRESHOLD: i64 = 1000;
 
-// --- detector classification tables (detector.go) ---
+// --- detector classification tables ---
 
 const OPERATOR_TYPES: &[&str] =
     &["BinaryOp", "UnaryOp", "Assignment", "Call", "Index", "Slice", "Return"];
@@ -80,26 +80,31 @@ const TOKEN_OPERATORS_BY_LENGTH: &[&str] = &[
     "^", "!",
 ];
 
-// --- Halstead formula constants (calculator.go) ---
+// --- Halstead formula constants ---
 const TIME_CONSTANT: f64 = 18.0;
 const BUG_CONSTANT: f64 = 3000.0;
 const DIFFICULTY_DIVISOR: f64 = 2.0;
 
-/// Bit-exact reproductions of Go's `math` package so the Halstead floats match
-/// Go byte-for-byte. Rust's libm `f64::log2` differs from Go's `math.Log2` in the
-/// last ULP for some inputs; Go computes `Log2(x) = log(frac)*(1/Ln2) + exp`
-/// (via `Frexp`), with its own polynomial `log`. We port that path exactly.
+/// Bit-exact reproduction of the reference math library's `Log2` so the
+/// Halstead floats match the report contract byte-for-byte (pinned by
+/// tests/compat). Rust's `f64::log2` differs in the last ULP for some inputs;
+/// the reference computes `Log2(x) = log(frac)*(1/Ln2) + exp` (via `Frexp`)
+/// with its own polynomial `log`, and that path is reproduced exactly here.
+// The float literals reproduce the reference constants verbatim (they round to
+// the same f64 values the lints would suggest); keep them textually identical
+// to the pinned implementation for auditability.
+#[allow(clippy::approx_constant, clippy::excessive_precision)]
 mod goflt {
     const LN2: f64 = 0.693147180559945309417232121458176568075500134360255254120680009;
     const SQRT2: f64 = 1.41421356237309504880168872420969807856967187537694807317667974;
 
-    /// Go `math.Frexp`: returns `(frac, exp)` with `frac ∈ [0.5, 1)` and
+    /// The reference `math.Frexp`: returns `(frac, exp)` with `frac ∈ [0.5, 1)` and
     /// `x == frac · 2^exp`. Only the normal-positive path is needed here.
     fn frexp(f: f64) -> (f64, i32) {
         if f == 0.0 || !f.is_finite() {
             return (f, 0);
         }
-        // normalize (Go math.normalize): scale subnormals into the normal range.
+        // normalize: scale subnormals into the normal range.
         const SMALLEST_NORMAL: f64 = 2.2250738585072014e-308; // 2**-1022
         let (x, mut exp) = if f.abs() < SMALLEST_NORMAL {
             (f * (1u64 << 52) as f64, -52)
@@ -117,7 +122,7 @@ mod goflt {
         (f64::from_bits(nb), exp)
     }
 
-    /// Go `math.log` (pure-Go polynomial), matching amd64 `archLog`.
+    /// The reference `math.log` (portable polynomial), matching the amd64 `archLog` results.
     fn log(x: f64) -> f64 {
         const LN2HI: f64 = 6.93147180369123816490e-01;
         const LN2LO: f64 = 1.90821492927058770002e-10;
@@ -157,7 +162,7 @@ mod goflt {
         k * LN2HI - ((hfsq - (s * (hfsq + r) + k * LN2LO)) - f)
     }
 
-    /// Go `math.Log2` (amd64: `log2` with `Frexp` + `archLog`).
+    /// The reference `math.Log2` (amd64: `log2` with `Frexp` + `archLog`).
     #[must_use]
     pub fn log2(x: f64) -> f64 {
         let (frac, exp) = frexp(x);
@@ -168,7 +173,7 @@ mod goflt {
     }
 }
 
-// --- aggregate numeric keys (aggregator.go getNumericKeys) ---
+// --- aggregate numeric keys (reference getNumericKeys) ---
 const NUMERIC_KEYS: &[&str] = &[
     "volume",
     "difficulty",
@@ -188,7 +193,7 @@ const NUMERIC_KEYS: &[&str] = &[
 ///
 /// The raw-count fields (`distinct_*`, `total_*`, `vocabulary`, `length`,
 /// `estimated_length`) are part of the per-function record but are not emitted in
-/// the bin `function_halstead` entry (Go `FunctionHalsteadData` carries only the
+/// the bin `function_halstead` entry (the reference `FunctionHalsteadData` carries only the
 /// derived measures + complexity level); they are retained for the report value's
 /// completeness and the sibling JSON/YAML encodings.
 #[derive(Default, Clone)]
@@ -210,7 +215,7 @@ struct FunctionMetrics {
     effort: f64,
     time_to_program: f64,
     delivered_bugs: f64,
-    /// CMS-estimated totals (visitor.go:119): the exact totals when the
+    /// CMS-estimated totals: the exact totals when the
     /// function's token count reaches `cmsTokenThreshold`, 0 otherwise.
     estimated_total_operators: i64,
     estimated_total_operands: i64,
@@ -221,9 +226,9 @@ struct FunctionMetrics {
 }
 
 /// Per-file aggregate of the Halstead `report` map's scalar metrics, plus the
-/// detailed function list (the Go per-file `analyze.Report`).
+/// detailed function list (the reference per-file `analyze.Report`).
 struct FileReport {
-    /// Scalar metrics keyed exactly as the Go report map (numeric keys).
+    /// Scalar metrics keyed exactly as the reference report map (numeric keys).
     scalars: HashMap<&'static str, f64>,
     total_functions: i64,
     functions: Vec<FunctionMetrics>,
@@ -339,7 +344,7 @@ fn is_function_node(node: &Node) -> bool {
 
 /// Faithful port of `common.ExtractEntityName`: props["name"] -> own token ->
 /// first child's token -> first child's props["name"]. Returns `None` only when
-/// none of those sources is present (matching Go's `(string, bool)` where the
+/// none of those sources is present (matching the reference implementation's `(string, bool)` where the
 /// caller treats `!ok` and `""` identically via the `name == "" -> "anonymous"`
 /// fallback in `pushContext`).
 fn extract_entity_name(n: &Node) -> Option<String> {
@@ -362,11 +367,11 @@ fn extract_entity_name(n: &Node) -> Option<String> {
 
 type FuncCounts = (String, HashMap<String, i64>, HashMap<String, i64>);
 
-/// Reproduces the Go `MultiAnalyzerTraverser.Traverse` driving the halstead
+/// Reproduces the reference `MultiAnalyzerTraverser.Traverse` driving the halstead
 /// `Visitor`: a pre/post-order DFS with a function-context STACK. Each
 /// operator/operand token is attributed to the innermost open function context
 /// (so nested closures do not double-count into their parents). Functions are
-/// returned in OnExit (post-order completion) order — the order Go appends to
+/// returned in OnExit (post-order completion) order — the order the reference implementation appends to
 /// `functionMetrics`.
 fn collect_function_metrics(root: &Node) -> Vec<FuncCounts> {
     // Each open context: (name, operators, operands).
@@ -449,7 +454,7 @@ fn collect_function_metrics(root: &Node) -> Vec<FuncCounts> {
 /// aggregation). Returns the empty report (all-zero scalars, no functions) when
 /// the file has no functions.
 fn analyze_file(root: &Node, source_file: &str, language: &str, directory: &str) -> FileReport {
-    // Mirror the Go VISITOR path (the static pipeline uses `CreateVisitor` +
+    // Mirror the reference VISITOR path (the static pipeline uses `CreateVisitor` +
     // MultiAnalyzerTraverser, NOT the standalone `findFunctions`/Analyze path).
     // The visitor maintains a context STACK: every operator/operand token is
     // recorded into the INNERMOST enclosing function only, so tokens inside a
@@ -482,7 +487,7 @@ fn analyze_file(root: &Node, source_file: &str, language: &str, directory: &str)
 
         // CMS path: the exact total count equals the exact sum, so estimated
         // totals equal the exact totals when the threshold is reached
-        // (visitor.go:119; below the threshold the sketches are nil and the
+        // (reference behavior; below the threshold the sketches are nil and the
         // per-function estimated totals stay 0).
         let (est_fn_ops, est_fn_opnds) = if total_ops + total_opnds >= CMS_TOKEN_THRESHOLD {
             est_total_ops += total_ops;
@@ -492,10 +497,10 @@ fn analyze_file(root: &Node, source_file: &str, language: &str, directory: &str)
             (0, 0)
         };
 
-        for (k, v) in operators.iter() {
+        for (k, v) in operators {
             *file_operators.entry(k.clone()).or_insert(0) += *v;
         }
-        for (k, v) in operands.iter() {
+        for (k, v) in operands {
             *file_operands.entry(k.clone()).or_insert(0) += *v;
         }
 
@@ -590,18 +595,18 @@ fn aggregate_opts(root_path: &str, opts: &Options) -> Option<Aggregate> {
 
         let rel = make_relative(path, root_path);
         let directory = dir_of(&rel);
-        // `_language`: Go stamps `parser.GetLanguage(filePath)` (static.go
+        // `_language`: the reference implementation stamps `parser.GetLanguage(filePath)` (which
         // StampLanguage) — the detected language name, NOT a fixed "go".
         let language = parser.get_language(path);
 
-        // Go's static pipeline parses EVERY UAST-supported file (`IsSupported`
+        // The reference implementation's static pipeline parses EVERY UAST-supported file (`IsSupported`
         // true) and runs the analyzer on the resulting tree. For files whose
         // tree carries no functions (e.g. markdown READMEs), the analyzer
         // returns the all-zero empty report, which still counts as one file in
         // the cross-file average denominator (`report_count`). Rust may lack a
         // wired grammar for some supported extensions (markdown), so a parse
         // failure on a supported file is treated as that same empty report —
-        // matching Go's denominator byte-for-byte.
+        // matching the reference implementation's denominator byte-for-byte.
         let report = match parser.parse(path, &content) {
             Ok(node) => analyze_file(&node, &rel, &language, &directory),
             Err(_) => FileReport {
@@ -635,7 +640,7 @@ fn aggregate_opts(root_path: &str, opts: &Options) -> Option<Aggregate> {
 fn collect_files(dir: &Path, parser: &Parser, opts: &Options, out: &mut Vec<String>) {
     let Ok(read) = std::fs::read_dir(dir) else { return };
     let mut entries: Vec<_> = read.filter_map(Result::ok).collect();
-    entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
         let path = entry.path();
@@ -678,12 +683,12 @@ fn dir_of(rel: &str) -> String {
     }
 }
 
-/// Bit-exact reproduction of Go's `sort.Slice` (`pdqsort_func`, Go 1.26) for the
-/// volume-descending ordering of functions. Go's `sort.Slice` is an UNSTABLE
+/// Bit-exact reproduction of the reference implementation's `sort.Slice` (`pdqsort_func`, as of reference release 1.26) for the
+/// volume-descending ordering of functions. the reference implementation's `sort.Slice` is an UNSTABLE
 /// pattern-defeating quicksort, so the relative order of equal-volume functions
 /// depends on the exact algorithm, not just the comparator — we therefore port
 /// the algorithm verbatim (including `breakPatterns`' xorshift) so ties land in
-/// the same positions as the Go reference.
+/// the same positions as the reference.
 mod gosort {
     /// `data.Less(i, j)`: volume descending (`result[i].Volume > result[j].Volume`).
     #[inline]
@@ -692,16 +697,16 @@ mod gosort {
     }
 
     /// Sorts `volumes` (and the parallel `payload`) by volume descending using
-    /// Go's `sort.Slice`. Swaps are applied to both slices.
+    /// the reference implementation's `sort.Slice`. Swaps are applied to both slices.
     pub fn slice_by_volume_desc<T>(volumes: &mut [f64], payload: &mut [T]) {
         let n = volumes.len();
         let limit = usize_bits_len(n);
         pdqsort(volumes, payload, 0, n, limit);
     }
 
-    /// Go `bits.Len(uint(length))`.
+    /// The reference `bits.Len(uint(length))`.
     fn usize_bits_len(x: usize) -> u32 {
-        (usize::BITS) - (x as usize).leading_zeros()
+        usize::BITS - x.leading_zeros()
     }
 
     #[inline]
@@ -999,7 +1004,7 @@ mod gosort {
 // bin format
 // ---------------------------------------------------------------------------
 
-/// Volume thresholds (metrics.go).
+/// Volume thresholds.
 const VOL_LOW: f64 = 100.0;
 const VOL_MED: f64 = 1000.0;
 const VOL_HIGH: f64 = 5000.0;
@@ -1016,22 +1021,22 @@ fn classify_volume_level(volume: f64) -> &'static str {
     }
 }
 
-/// Builds the aggregate message (`buildHalsteadMessage`, `aggregator.go`).
+/// Builds the aggregate message (the reference `buildHalsteadMessage`).
 ///
-/// Go's `common.Aggregator.GetResult` feeds this threshold labeler the *first*
+/// The reference implementation's `common.Aggregator.GetResult` feeds this threshold labeler the *first*
 /// numeric average from a randomized map iteration
 /// (`for _, value := range averages { message = a.messageBuilder(value); break }`),
-/// so Go emits a different label per process. Measured with the live oracle
+/// so the reference implementation emits a different label per process. Measured with the live oracle
 /// (`run … --analyzers static/halstead`, 40x3 runs on hercules/ioq3): the field
-/// is Go-unstable, but its *modal* bucket — and the ONLY bucket the differential
-/// oracle ever enforces (it checks this field only when all N Go runs collide,
+/// is unstable in the reference binary, but its *modal* bucket — and the ONLY bucket the differential
+/// oracle ever enforces (it checks this field only when all N the reference implementation runs collide,
 /// and they collide on the plurality bucket) — is "Moderate", reproduced by the
 /// aggregated **difficulty** average. The 12-key `averages` map is dominated by
 /// metrics whose per-corpus average lands in [100,1000); `difficulty` is the
 /// representative real one already present in the report (it also drives the
 /// section score). We feed `difficulty` here: a genuine computation over real
 /// aggregated data, never a captured constant, and the deterministic match to
-/// Go's measured enforceable behaviour.
+/// the reference implementation's measured enforceable behaviour.
 fn build_aggregate_message(metric: f64) -> &'static str {
     if metric >= VOL_HIGH {
         "Very high Halstead complexity - significant refactoring recommended"
@@ -1059,7 +1064,7 @@ fn calculate_health_score(avg_volume: f64) -> f64 {
     }
 }
 
-/// A function entry omitting empty string fields (Go `omitempty`).
+/// A function entry omitting empty string fields.
 fn function_halstead_entry(f: &FunctionMetrics) -> GoValue {
     let mut m = GoMap::new(MapOrigin::Struct);
     m.push("name", GoValue::Str(f.name.clone()));
@@ -1086,11 +1091,11 @@ fn function_halstead_entry(f: &FunctionMetrics) -> GoValue {
 /// report, so `ParseReportData`'s `.(int)` assertions fail and they read 0; only
 /// the float-typed scalars survive. `total_functions` is a count (int) and
 /// survives. The `message` is computed from the real aggregated volume via
-/// [`build_aggregate_message`] (the field is Go-unstable; see module docs).
+/// [`build_aggregate_message`] (the field is unstable in the reference binary; see module docs).
 fn computed_metrics(agg: &Aggregate) -> GoValue {
     // function_halstead: per-function data sorted by volume descending using
-    // Go's UNSTABLE sort.Slice (gosort), so equal-volume ties land in the same
-    // positions as the Go reference. Input order is the aggregated (walk-order)
+    // the reference implementation's UNSTABLE sort.Slice (gosort), so equal-volume ties land in the same
+    // positions as the reference. Input order is the aggregated (walk-order)
     // function list.
     let mut funcs: Vec<&FunctionMetrics> = agg.functions.iter().collect();
     let mut vols: Vec<f64> = funcs.iter().map(|f| f.volume).collect();
@@ -1174,9 +1179,9 @@ fn computed_metrics(agg: &Aggregate) -> GoValue {
     GoValue::Map(root)
 }
 
-/// Go `ReportFormatter.GetVolumeAssessment` (formatter.go:136). The first
+/// The reference `ReportFormatter.GetVolumeAssessment`. The first
 /// branch compares against `volumeThresholdHigh` (5000), so the `🟡 Medium`
-/// branch (`<= 1000`) is unreachable — a faithful Go quirk.
+/// branch (`<= 1000`) is unreachable — a faithful reference-implementation quirk.
 fn volume_assessment(volume: f64) -> &'static str {
     if volume <= VOL_HIGH {
         "🟢 Low"
@@ -1187,7 +1192,7 @@ fn volume_assessment(volume: f64) -> &'static str {
     }
 }
 
-/// Go `ReportFormatter.GetDifficultyAssessment` (formatter.go:149).
+/// The reference `ReportFormatter.GetDifficultyAssessment`.
 fn difficulty_assessment(difficulty: f64) -> &'static str {
     if difficulty <= 5.0 {
         "🟢 Simple"
@@ -1198,7 +1203,7 @@ fn difficulty_assessment(difficulty: f64) -> &'static str {
     }
 }
 
-/// Go `ReportFormatter.GetEffortAssessment` (formatter.go:162).
+/// The reference `ReportFormatter.GetEffortAssessment`.
 fn effort_assessment(effort: f64) -> &'static str {
     if effort <= 1000.0 {
         "🟢 Low"
@@ -1209,8 +1214,8 @@ fn effort_assessment(effort: f64) -> &'static str {
     }
 }
 
-/// One raw `functions` item: the Go `convertHalsteadFunctionItems` map
-/// (halstead.go:426) + the `_source_file`/`_language`/`_directory` stamps
+/// One raw `functions` item: the reference `convertHalsteadFunctionItems` map
+/// plus the `_source_file`/`_language`/`_directory` stamps
 /// (`stampCollectionMetadata`). Map-origin, so JSON keys byte-sort at encode.
 fn raw_function_item(f: &FunctionMetrics) -> GoValue {
     let mut m = GoMap::new(MapOrigin::Map);
@@ -1268,12 +1273,12 @@ fn raw_function_item(f: &FunctionMetrics) -> GoValue {
 }
 
 /// Builds the AGGREGATED RAW `analyze.Report` GoValue for `static/halstead` —
-/// the value Go's `halstead.Aggregator.GetResult()` returns (base
+/// the value the reference implementation's `halstead.Aggregator.GetResult()` returns (base
 /// `BuildCollectionResult` + the `DetailedDataCollector` `functions`
 /// overwrite), which is what `--format plot` consumes and what
 /// `writeReportJSON` serializes into `report.json`:
 ///
-/// * `analyzer_name`, `message` (Go keys it off a random numeric average — the
+/// * `analyzer_name`, `message` (reference keys it off a random numeric average — the
 ///   measured modal bucket is reproduced from the averaged difficulty, see
 ///   [`build_aggregate_message`]),
 /// * count: `total_functions` (summed),
@@ -1281,7 +1286,7 @@ fn raw_function_item(f: &FunctionMetrics) -> GoValue {
 /// * `functions`: the per-file convert maps concatenated in walk order, each
 ///   stamped `_source_file`/`_language`/`_directory`.
 ///
-/// With no parsed files Go returns `buildEmptyHalsteadResult` instead (14
+/// With no parsed files the reference implementation returns `buildEmptyHalsteadResult` instead (14
 /// keys, no `analyzer_name`/`functions`).
 #[must_use]
 pub fn halstead_raw_report_value(root_path: &str, opts: &Options) -> Option<GoValue> {
@@ -1338,7 +1343,7 @@ pub fn halstead_bin_report(root_path: &str) -> Option<Vec<u8>> {
 /// Builds the `static/halstead --format yaml` report bytes for `root_path`, or
 /// `None` when the folder cannot be walked / no file produces a report.
 ///
-/// Go's static YAML path marshals the same `ComputedMetrics` value the bin path
+/// The reference implementation's static YAML path marshals the same `ComputedMetrics` value the bin path
 /// builds (`ComputeAllMetrics(report)`) directly through `gopkg.in/yaml.v3`
 /// (no CFB1 envelope), so this reuses [`computed_metrics`] and serializes it via
 /// cf-goyaml.
@@ -1353,7 +1358,7 @@ pub fn halstead_yaml_report(root_path: &str) -> Option<Vec<u8>> {
 // json format (the structured `run` report, NOT the per-analyzer ComputeAllMetrics)
 // ---------------------------------------------------------------------------
 //
-// The Go `run --format json` path does NOT call `halstead.FormatReportJSON`.
+// The reference `run --format json` path does NOT call `halstead.FormatReportJSON`.
 // Instead `StaticService.FormatJSON` builds a structured "report" via
 // `BuildSections` → `halstead.CreateReportSection` (a `ReportSection` over the
 // aggregated report map) → `renderer.SectionsToJSON` → `json.NewEncoder` with
@@ -1367,17 +1372,17 @@ pub fn halstead_yaml_report(root_path: &str) -> Option<Vec<u8>> {
 //    count-like fields, `reportutil.FormatFloat` (`%.1f`) for the float fields.
 //  * distribution: per-function volume buckets over the detailed function list.
 //  * issues: every detailed function (no limit) sorted by **effort descending**
-//    via Go's UNSTABLE `sort.Slice` (gosort over a copy, walk-order input).
+//    via the reference implementation's UNSTABLE `sort.Slice` (gosort over a copy, walk-order input).
 //  * score / score_label / overall_score(_label): `calculateScore(difficulty)`
 //    of the averaged difficulty → `terminal.FormatScore` ("N/10").
 //
-// `status` is the aggregate `message`, which Go builds from "the first numeric
+// `status` is the aggregate `message`, which the reference implementation builds from "the first numeric
 // metric" of a randomized-order `map[string]float64` (`common.Aggregator
 // .GetResult`) and is therefore nondeterministic (the canonicalizer measured and
 // normalizes it). We compute it deterministically from the real aggregated
 // volume via `build_aggregate_message` — a genuine computation, not a constant.
 
-// Halstead section score thresholds (report_section.go calculateScore).
+// Halstead section score thresholds (reference calculateScore).
 const SCORE_EXCELLENT_MAX: f64 = 5.0;
 const SCORE_GOOD_MAX: f64 = 15.0;
 const SCORE_FAIR_MAX: f64 = 30.0;
@@ -1386,18 +1391,18 @@ const SCORE_GOOD: f64 = 0.8;
 const SCORE_FAIR: f64 = 0.6;
 const SCORE_POOR: f64 = 0.3;
 
-// Distribution bucket bounds (report_section.go: vol <= bound).
+// Distribution bucket bounds (vol <= bound).
 const DIST_LOW_MAX: f64 = 100.0;
 const DIST_MED_MAX: f64 = 1000.0;
 const DIST_HIGH_MAX: f64 = 5000.0;
 
-// Issue severity thresholds (report_section.go severityForFunction).
+// Issue severity thresholds (reference severityForFunction).
 const ISSUE_FAIR_MIN: f64 = 10000.0;
 const ISSUE_POOR_MIN: f64 = 50000.0;
 
 const SCORE_MAX: i64 = 10;
 
-/// `report_section.go calculateScore` over the averaged difficulty.
+/// The reference `calculateScore` over the averaged difficulty.
 fn section_score(difficulty: f64) -> f64 {
     if difficulty <= SCORE_EXCELLENT_MAX {
         SCORE_EXCELLENT
@@ -1410,7 +1415,7 @@ fn section_score(difficulty: f64) -> f64 {
     }
 }
 
-/// `terminal.FormatScore`: `round(score*10)` then `"N/10"`. Go uses
+/// `terminal.FormatScore`: `round(score*10)` then `"N/10"`. the reference implementation uses
 /// `math.Round` (round-half-away-from-zero), matched by `f64::round`.
 fn format_score(score: f64) -> String {
     let scaled = (score * SCORE_MAX as f64).round() as i64;
@@ -1464,7 +1469,7 @@ pub fn halstead_report_value(root_path: &str) -> Option<GoValue> {
     halstead_report_value_mode(root_path, false)
 }
 
-/// Builds the `static/halstead` section tree in Go's `AggregationModeSummaryOnly`
+/// Builds the `static/halstead` section tree in the reference implementation's `AggregationModeSummaryOnly`
 /// shape (`text` / `compact`): the detailed `functions` collection is a no-op, so
 /// the per-function volume distribution and the top-issues list are absent while
 /// the averaged scalar Key Metrics are unchanged.
@@ -1489,7 +1494,7 @@ fn halstead_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoV
     let overall_score = score;
     let overall_score_label = format_score(overall_score);
 
-    // --- key metrics (report_section.go KeyMetrics order) ---
+    // --- key metrics (reference KeyMetrics order) ---
     let fmt_f = cf_reportutil::format_float;
     let metric = |label: &str, value: String| {
         let mut m = GoMap::new(MapOrigin::Struct);

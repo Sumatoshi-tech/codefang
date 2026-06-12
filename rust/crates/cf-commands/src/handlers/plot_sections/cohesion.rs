@@ -1,10 +1,9 @@
-//! `static/cohesion` plot sections — port of Go
-//! `internal/analyzers/cohesion/plot.go`.
+//! `static/cohesion` plot sections.
 //!
 //! Consumes the AGGREGATED RAW cohesion report (the `analyze.Report` value
 //! `cohesion_raw_report_value` builds): the score histogram, the distribution
 //! pie, and the per-directory box plot. Returns `None` when the report lacks
-//! the functions table (Go `ErrInvalidFunctions` — the empty-result report).
+//! the functions table (the reference `ErrInvalidFunctions` — the empty-result report).
 
 use cf_gojson::{GoMap, GoValue};
 use cf_plotpage::echarts::{
@@ -15,7 +14,7 @@ use cf_plotpage::{build_pie_chart, get_chart_palette, ChartOpts, Hint, Section, 
 
 use crate::handlers::go_sort;
 
-/// plot.go constants (plot.go:19).
+/// Reference plot-section constants.
 const EMPTY_CHART_HEIGHT: &str = "400px";
 const PIE_RADIUS: &str = "60%";
 const HISTOGRAM_BINS: usize = 10;
@@ -25,23 +24,23 @@ const MAX_DIRECTORIES: usize = 15;
 const MAX_PATH_COMPONENTS: usize = 3;
 const BOX_PLOT_LABEL_ROTATE: f64 = 30.0;
 
-/// Plot display labels for the cohesion distribution pie (plot.go:30).
+/// Plot display labels for the cohesion distribution pie.
 const PLOT_LABEL_EXCELLENT: &str = "Excellent";
 const PLOT_LABEL_GOOD: &str = "Good";
 const PLOT_LABEL_FAIR: &str = "Fair";
 const PLOT_LABEL_POOR: &str = "Poor";
 
-/// Distribution thresholds (report_section.go:20, exported Go constants).
+/// Distribution thresholds (exported reference constants).
 const DIST_EXCELLENT_MIN: f64 = 0.6;
 const DIST_GOOD_MIN: f64 = 0.4;
 const DIST_FAIR_MIN: f64 = 0.3;
 
-/// Percentile points (plot.go:34).
+/// Percentile points.
 const P_Q1: f64 = 0.25;
 const P_MEDIAN: f64 = 0.50;
 const P_Q3: f64 = 0.75;
 
-/// Go `analyze.ReportFunctionListWithFallback(report, "functions",
+/// The reference `analyze.ReportFunctionListWithFallback(report, "functions",
 /// "function_cohesion")`: the function maps under either key.
 fn report_function_list(report: &GoValue) -> Option<Vec<&GoMap>> {
     let top = report.as_map()?;
@@ -55,7 +54,7 @@ fn report_function_list(report: &GoValue) -> Option<Vec<&GoMap>> {
     Some(arr.iter().filter_map(GoValue::as_map).collect())
 }
 
-/// Go `getCohesionValue`: `fn["cohesion"].(float64)`, else 0.
+/// The reference `getCohesionValue`: `fn["cohesion"].(float64)`, else 0.
 fn cohesion_value(f: &GoMap) -> f64 {
     match f.get("cohesion") {
         Some(GoValue::Float(v)) => *v,
@@ -63,7 +62,7 @@ fn cohesion_value(f: &GoMap) -> f64 {
     }
 }
 
-/// Go `getCohesionColor` (plot.go:193).
+/// The reference `getCohesionColor`.
 fn cohesion_color(cohesion: f64) -> &'static str {
     if cohesion >= DIST_EXCELLENT_MIN {
         "#91cc75"
@@ -76,7 +75,7 @@ fn cohesion_color(cohesion: f64) -> &'static str {
     }
 }
 
-/// The registered section renderer for `static/cohesion` — Go
+/// The registered section renderer for `static/cohesion` — the reference implementation
 /// `cohesion.RegisterPlotSections` → `(&Analyzer{}).generateSections`.
 pub fn sections(report: &GoValue) -> Option<Vec<Section>> {
     let histogram = histogram_chart(report)?;
@@ -132,7 +131,7 @@ pub fn sections(report: &GoValue) -> Option<Vec<Section>> {
     ])
 }
 
-/// Go `generateHistogram` + `binScores` + `createHistogramChart` (plot.go:121).
+/// The reference `generateHistogram` + `binScores` + `createHistogramChart`.
 fn histogram_chart(report: &GoValue) -> Option<Chart> {
     let functions = report_function_list(report)?;
     if functions.is_empty() {
@@ -213,7 +212,7 @@ fn histogram_chart(report: &GoValue) -> Option<Chart> {
     Some(bar)
 }
 
-/// Go `generatePieChart` + `createCohesionPieChart` (plot.go:250).
+/// The reference `generatePieChart` + `createCohesionPieChart`.
 fn pie_chart(report: &GoValue) -> Chart {
     let Some(functions) = report_function_list(report) else {
         return empty_pie_chart();
@@ -260,14 +259,14 @@ fn pie_chart(report: &GoValue) -> Chart {
     build_pie_chart(None, "Cohesion", pie_data, PIE_RADIUS)
 }
 
-/// One directory group (Go `directoryGroup`): label + ascending scores.
+/// One directory group: label + ascending scores.
 struct DirectoryGroup {
     label: String,
     scores: Vec<f64>,
 }
 
-/// Go `generateBoxPlot` + `groupByDirectory` + `buildBoxPlotChart`
-/// (plot.go:320).
+/// The reference `generateBoxPlot` + `groupByDirectory` + `buildBoxPlotChart`
+///.
 fn box_plot_chart(report: &GoValue) -> Chart {
     let Some(functions) = report_function_list(report) else {
         return empty_box_plot();
@@ -276,9 +275,9 @@ fn box_plot_chart(report: &GoValue) -> Chart {
         return empty_box_plot();
     }
 
-    // groupByDirectory: group scores by the shortened source directory. Go
+    // groupByDirectory: group scores by the shortened source directory. the reference implementation
     // iterates the grouped map in RANDOM order before the median sort; we keep
-    // first-seen order (ties between equal medians are Go-nondeterministic and
+    // first-seen order (ties between equal medians are nondeterministic in the reference binary and
     // measured by the harness).
     let mut order: Vec<String> = Vec::new();
     let mut grouped: std::collections::HashMap<String, Vec<f64>> =
@@ -308,7 +307,7 @@ fn box_plot_chart(report: &GoValue) -> Chart {
         return empty_box_plot();
     }
 
-    // sort.Slice by median ascending (Go pdqsort; equal-median ties measured).
+    // sort.Slice by median ascending (reference: pdqsort; equal-median ties measured).
     go_sort::slice(&mut groups, |a, b| {
         percentile(&a.scores, P_MEDIAN) < percentile(&b.scores, P_MEDIAN)
     });
@@ -375,7 +374,7 @@ fn box_plot_chart(report: &GoValue) -> Chart {
     bp
 }
 
-/// Go `boxStats`: `[min, Q1, median, Q3, max]` over a sorted slice.
+/// The reference `boxStats`: `[min, Q1, median, Q3, max]` over a sorted slice.
 fn box_stats(sorted: &[f64]) -> [f64; 5] {
     if sorted.is_empty() {
         return [0.0; 5];
@@ -389,7 +388,7 @@ fn box_stats(sorted: &[f64]) -> [f64; 5] {
     ]
 }
 
-/// Go `stats.Percentile` (pkg/alg/stats/stats.go:64): linear interpolation
+/// The reference `stats.Percentile`: linear interpolation
 /// over the sorted values (callers pass pre-sorted slices).
 fn percentile(sorted: &[f64], p: f64) -> f64 {
     let count = sorted.len();
@@ -406,7 +405,7 @@ fn percentile(sorted: &[f64], p: f64) -> f64 {
     sorted[lower] * (1.0 - frac) + sorted[upper] * frac
 }
 
-/// Go `filepath.Dir` over the clean relative paths the report stamps.
+/// The reference `filepath.Dir` over the clean relative paths the report stamps.
 fn go_filepath_dir(path: &str) -> String {
     match path.rfind('/') {
         Some(0) => "/".to_string(),
@@ -415,7 +414,7 @@ fn go_filepath_dir(path: &str) -> String {
     }
 }
 
-/// Go `shortenDirectory`: the last `maxPathComponents` non-empty slash
+/// The reference `shortenDirectory`: the last `maxPathComponents` non-empty slash
 /// components.
 fn shorten_directory(dir: &str) -> String {
     let parts: Vec<&str> = dir.split('/').filter(|p| !p.is_empty()).collect();
@@ -423,7 +422,7 @@ fn shorten_directory(dir: &str) -> String {
     parts[start..].join("/")
 }
 
-/// Go `createEmptyCohesionChart` (plot.go:290).
+/// The reference `createEmptyCohesionChart`.
 fn empty_cohesion_chart() -> Chart {
     let co = ChartOpts::default_dark();
     let mut bar = Chart::new(ChartKind::Bar);
@@ -433,7 +432,7 @@ fn empty_cohesion_chart() -> Chart {
     bar
 }
 
-/// Go `createEmptyPieChart` (plot.go:302).
+/// The reference `createEmptyPieChart`.
 fn empty_pie_chart() -> Chart {
     let co = ChartOpts::default_dark();
     let mut pie = Chart::new(ChartKind::Pie);
@@ -443,7 +442,7 @@ fn empty_pie_chart() -> Chart {
     pie
 }
 
-/// Go `createEmptyBoxPlot` (plot.go:448).
+/// The reference `createEmptyBoxPlot`.
 fn empty_box_plot() -> Chart {
     let co = ChartOpts::default_dark();
     let mut bp = Chart::new(ChartKind::BoxPlot);

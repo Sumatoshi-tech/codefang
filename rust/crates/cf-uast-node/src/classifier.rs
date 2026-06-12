@@ -1,9 +1,9 @@
-//! Node classification helpers. Ported from `classifier.go`.
+//! Node classification helpers.
 
 use crate::node::uast_types::UAST_LITERAL;
 
-/// Returns `true` if the node type represents a literal value. Mirrors Go's
-/// `IsLiteralType`.
+/// Returns `true` if the node type represents a literal value.
+#[must_use]
 pub fn is_literal_type(node_type: &str) -> bool {
     node_type == UAST_LITERAL
 }

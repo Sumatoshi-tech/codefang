@@ -1,5 +1,4 @@
-//! Static comment density / quality analysis — Rust port of the Go package
-//! `internal/analyzers/comments`.
+//! Static comment density / quality analysis (analyzer id: `static/comments`).
 //!
 //! The analyzer walks a parsed UAST, groups consecutive `Comment` nodes into
 //! blocks (sorted by line), scores each block by its placement relative to the
@@ -12,21 +11,17 @@
 //! Per DESIGN §2, all report serialization is routed through
 //! [`cf_gojson::GoValue`] — never `serde_json`. The analyzer returns a
 //! *map-origin* [`cf_gojson::GoValue::Map`] whose keys the `cf-gojson` encoder
-//! byte-sorts at encode time, exactly reproducing Go's `Report = map[string]any`
-//! ordering.
+//! byte-sorts at encode time (report-format contract).
 //!
-//! # Module map (Go → Rust)
+//! # Module map
 //!
-//! | Go file | Rust module |
-//! | --- | --- |
-//! | `comments.go` | [`analyzer`] |
-//! | `types.go` | [`types`] |
-//! | `aggregator.go` | [`aggregator`] |
-//! | (common traverser / extractor) | [`traverse`] |
+//! [`analyzer`] (scoring + report building), [`types`] (data types),
+//! [`aggregator`] (cross-file numeric aggregation), [`traverse`] (UAST
+//! traversal helpers). The static-pipeline metric view and the terminal/HTML
+//! sections (non-binding per DESIGN §2.7) live in the command layer.
 //!
-//! `metrics.go` (the `ComputedMetrics` view used by `FormatReportJSON/YAML/Binary`)
-//! and `report_section.go` / `plot.go` (terminal/HTML, explicitly **non-binding**
-//! per DESIGN §2.7) are tracked as follow-up roadmap items, not stubbed here.
+//! Compatibility: output bytes are pinned against the reference implementation
+//! by the differential gate in `rust/tests/compat`.
 
 pub mod aggregator;
 pub mod analyzer;
@@ -42,8 +37,6 @@ pub use types::{
 
 #[cfg(test)]
 mod tests {
-    //! Tests ported from `internal/analyzers/comments/comments_test.go`.
-
     use super::*;
     use cf_gojson::GoValue;
     use cf_uast_node::{Builder, Node, Positions};
@@ -112,13 +105,11 @@ mod tests {
         named("Method", name, start, end)
     }
 
-    // Ported from Go TestAnalyzer_Name.
     #[test]
     fn analyzer_name() {
         assert_eq!(Analyzer::new().name(), "comments");
     }
 
-    // Ported from Go TestAnalyzer_DefaultConfig.
     #[test]
     fn default_config() {
         let cfg = Analyzer::new().default_config();
@@ -130,7 +121,6 @@ mod tests {
         assert_eq!(cfg.penalty_scores.get("Variable"), Some(&-0.1));
     }
 
-    // Ported from Go TestAnalyzer_Analyze_EmptyTree.
     #[test]
     fn analyze_empty_tree() {
         let root = file();
@@ -143,13 +133,12 @@ mod tests {
         assert_eq!(get_int(&res, "documented_functions"), 0);
     }
 
-    // Ported from Go TestAnalyzer_Analyze_Nil (analyze must reject a nil root).
+    // analyze must reject a missing root.
     #[test]
     fn analyze_nil_root() {
         assert!(Analyzer::new().analyze(None).is_err());
     }
 
-    // Ported from Go TestAnalyzer_Analyze_GoodCommentPlacement.
     #[test]
     fn analyze_good_comment_placement() {
         let mut root = file();
@@ -164,7 +153,6 @@ mod tests {
         assert_eq!(get_int(&res, "documented_functions"), 1);
     }
 
-    // Ported from Go TestAnalyzer_Analyze_BadCommentPlacement.
     #[test]
     fn analyze_bad_comment_placement() {
         let mut body = Builder::new()
@@ -185,7 +173,6 @@ mod tests {
         assert_eq!(get_int(&res, "documented_functions"), 0);
     }
 
-    // Ported from Go TestAnalyzer_Analyze_MixedCommentPlacement.
     #[test]
     fn analyze_mixed_comment_placement() {
         let mut root = file();
@@ -202,7 +189,6 @@ mod tests {
         assert_eq!(get_int(&res, "documented_functions"), 1);
     }
 
-    // Ported from Go TestAnalyzer_Analyze_ClassWithMethod.
     #[test]
     fn analyze_class_with_method() {
         let mut cls = class("TestClass", 2, 8);
@@ -220,7 +206,6 @@ mod tests {
         assert_eq!(get_int(&res, "documented_functions"), 2);
     }
 
-    // Ported from Go TestAnalyzer_Analyze_UnassociatedComment.
     #[test]
     fn analyze_unassociated_comment() {
         let mut root = file();
@@ -234,8 +219,7 @@ mod tests {
         assert_eq!(get_int(&res, "documented_functions"), 0);
     }
 
-    // Ported from Go TestAnalyzer_FindFunctions (function/method/class only;
-    // variable excluded).
+    // Function/method/class only; variable excluded.
     #[test]
     fn find_functions_excludes_variable() {
         let mut root = file();
@@ -247,8 +231,7 @@ mod tests {
         assert_eq!(funcs.len(), 3);
     }
 
-    // Ported from Go TestAnalyzer_FindComments (comments found at any depth, in
-    // document order).
+    // Comments are found at any depth, in document order.
     #[test]
     fn find_comments_in_document_order() {
         let mut func = typed("Function");

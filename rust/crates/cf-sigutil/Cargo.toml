@@ -8,6 +8,6 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-# OS signal handling: registers SIGINT/SIGTERM handlers. signal-hook is the
-# idiomatic Rust equivalent of Go's os/signal.Notify.
+# OS signal handling: registers the SIGINT/SIGTERM handlers behind
+# SignalCleanupGuard.
 signal-hook = { workspace = true }

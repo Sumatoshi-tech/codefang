@@ -1,9 +1,11 @@
-//! Tree-sitter grammar analysis and mapping-DSL generation.
-//!
-//! Port of Go `pkg/uast/pkg/mapping/grammar_analysis.go`: parsing
+//! Tree-sitter grammar analysis and mapping-DSL generation: parsing
 //! `node-types.json`, heuristic node classification, coverage analysis, and
 //! generation of a mapping DSL document from a grammar's node types using a
 //! canonical name→type/role table.
+//!
+//! The generated DSL text is observable through the `uast mapping` CLI, so the
+//! table order, quoting, and layout here are frozen (CLI compatibility
+//! contract).
 
 use std::collections::BTreeSet;
 
@@ -11,44 +13,33 @@ use serde_json::Value;
 
 use crate::mapping_types::{ChildInfo, FieldInfo, NodeCategory, NodeTypeInfo, Rule};
 
-/// Error returned when there are no node types to analyze (Go `errNoNodeTypes`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Error returned when there are no node types to analyze.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("no node types to analyze")]
 pub struct NoNodeTypes;
 
-impl std::fmt::Display for NoNodeTypes {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("no node types to analyze")
-    }
-}
-
-impl std::error::Error for NoNodeTypes {}
-
 /// Error returned when `node-types.json` cannot be parsed.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("failed to unmarshal node-types.json: {0}")]
 pub struct ParseNodeTypesError(pub String);
 
-impl std::fmt::Display for ParseNodeTypesError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "failed to unmarshal node-types.json: {}", self.0)
-    }
-}
-
-impl std::error::Error for ParseNodeTypesError {}
-
 /// Parses `node-types.json` and returns a slice of [`NodeTypeInfo`].
-/// Mirrors Go `ParseNodeTypes`.
+/// A non-array top level yields an empty slice.
+///
+/// # Errors
+///
+/// Returns [`ParseNodeTypesError`] when the input is not valid JSON.
 pub fn parse_node_types(json_data: &[u8]) -> Result<Vec<NodeTypeInfo>, ParseNodeTypesError> {
     let raw: Value =
         serde_json::from_slice(json_data).map_err(|e| ParseNodeTypesError(e.to_string()))?;
-    let arr = match raw {
-        Value::Array(a) => a,
-        _ => return Ok(Vec::new()),
+    let Value::Array(arr) = raw else {
+        return Ok(Vec::new());
     };
     Ok(arr.iter().map(parse_node_type_info).collect())
 }
 
-/// Applies heuristic rules to classify node types. Mirrors Go
-/// `ApplyHeuristicClassification`.
+/// Applies heuristic rules to classify node types.
+#[must_use]
 pub fn apply_heuristic_classification(mut nodes: Vec<NodeTypeInfo>) -> Vec<NodeTypeInfo> {
     for node in &mut nodes {
         node.category = classify_node_category(node);
@@ -56,8 +47,12 @@ pub fn apply_heuristic_classification(mut nodes: Vec<NodeTypeInfo>) -> Vec<NodeT
     nodes
 }
 
-/// Computes mapping coverage statistics. Mirrors Go `CoverageAnalysis`:
-/// returns `covered / total`, or [`NoNodeTypes`] when there are no node types.
+/// Computes mapping coverage statistics: the fraction of node types that have
+/// a same-named rule.
+///
+/// # Errors
+///
+/// Returns [`NoNodeTypes`] when there are no node types.
 pub fn coverage_analysis(rules: &[Rule], node_types: &[NodeTypeInfo]) -> Result<f64, NoNodeTypes> {
     let mapped: BTreeSet<&str> = rules.iter().map(|r| r.name.as_str()).collect();
     let total = node_types.len();
@@ -71,7 +66,7 @@ pub fn coverage_analysis(rules: &[Rule], node_types: &[NodeTypeInfo]) -> Result<
     Ok(covered as f64 / total as f64)
 }
 
-/// Port of Go `isValidIdentifier`: `[a-zA-Z_][a-zA-Z0-9_]*`.
+/// Whether `name` is a valid identifier: `[a-zA-Z_][a-zA-Z0-9_]*`.
 fn is_valid_identifier(name: &str) -> bool {
     let bytes = name.as_bytes();
     if bytes.is_empty() {
@@ -86,16 +81,15 @@ fn is_valid_identifier(name: &str) -> bool {
         .all(|&c| c.is_ascii_alphanumeric() || c == b'_')
 }
 
-/// A canonical name pattern → UAST type and roles (Go `canonicalTypeRole`).
+/// A canonical name pattern → UAST type and roles.
 struct CanonicalTypeRole {
     pattern: &'static str,
     r#type: &'static str,
     roles: &'static [&'static str],
 }
 
-/// The canonical type/role table, in the same order as Go's
-/// `canonicalTypeRoleMap` (order matters: the first `strings.Contains` match
-/// wins).
+/// The canonical type/role table. The order is frozen — the first
+/// substring match wins (see [`guess_uast_type_and_roles`]).
 const CANONICAL_TYPE_ROLE_MAP: &[CanonicalTypeRole] = &[
     CanonicalTypeRole { pattern: "function", r#type: "Function", roles: &["Function", "Declaration"] },
     CanonicalTypeRole { pattern: "method", r#type: "Method", roles: &["Function", "Declaration", "Member"] },
@@ -157,8 +151,8 @@ const CANONICAL_TYPE_ROLE_MAP: &[CanonicalTypeRole] = &[
     CanonicalTypeRole { pattern: "match", r#type: "Match", roles: &["Match"] },
 ];
 
-/// Port of Go `guessUASTTypeAndRoles`: lowercases the name and returns the first
-/// `Contains`-matching canonical entry, defaulting to `("Synthetic", &[])`.
+/// Lowercases the name and returns the first substring-matching canonical
+/// entry, defaulting to `("Synthetic", &[])`.
 fn guess_uast_type_and_roles(name: &str) -> (&'static str, &'static [&'static str]) {
     let lname = name.to_lowercase();
     for entry in CANONICAL_TYPE_ROLE_MAP {
@@ -169,8 +163,7 @@ fn guess_uast_type_and_roles(name: &str) -> (&'static str, &'static [&'static st
     ("Synthetic", &[])
 }
 
-/// Port of Go `guessTokenField`: returns `@name` when the node has a `name`
-/// field, else empty.
+/// Returns `@name` when the node has a `name` field, else empty.
 fn guess_token_field(node: &NodeTypeInfo) -> &'static str {
     if node.fields.contains_key("name") {
         "@name"
@@ -179,7 +172,7 @@ fn guess_token_field(node: &NodeTypeInfo) -> &'static str {
     }
 }
 
-/// Port of Go `parseNodeTypeInfo`.
+/// Parses one `node-types.json` entry.
 fn parse_node_type_info(entry: &Value) -> NodeTypeInfo {
     let name = entry
         .get("type")
@@ -198,17 +191,15 @@ fn parse_node_type_info(entry: &Value) -> NodeTypeInfo {
     }
 }
 
-/// Port of Go `parseFields`.
+/// Parses the `fields` object of a node-type entry.
 fn parse_fields(raw: Option<&Value>) -> std::collections::BTreeMap<String, FieldInfo> {
     let mut fields = std::collections::BTreeMap::new();
-    let map = match raw.and_then(Value::as_object) {
-        Some(m) => m,
-        None => return fields,
+    let Some(map) = raw.and_then(Value::as_object) else {
+        return fields;
     };
     for (fname, fval) in map {
-        let fmap = match fval.as_object() {
-            Some(m) => m,
-            None => continue,
+        let Some(fmap) = fval.as_object() else {
+            continue;
         };
         let required = fmap.get("required").and_then(Value::as_bool).unwrap_or(false);
         let types = parse_field_types(fmap.get("types"));
@@ -226,21 +217,20 @@ fn parse_fields(raw: Option<&Value>) -> std::collections::BTreeMap<String, Field
     fields
 }
 
-/// Port of Go `parseFieldTypes`.
+/// Parses the `types` list of a field entry.
 fn parse_field_types(raw: Option<&Value>) -> Vec<String> {
-    let arr = match raw.and_then(Value::as_array) {
-        Some(a) => a,
-        None => return Vec::new(),
+    let Some(arr) = raw.and_then(Value::as_array) else {
+        return Vec::new();
     };
     arr.iter()
         .filter_map(|e| e.as_object())
         .filter_map(|m| m.get("type").and_then(Value::as_str))
         .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
         .collect()
 }
 
-/// Port of Go `isFieldMultiple`.
+/// A field is "multiple" when it allows more than one type or says so.
 fn is_field_multiple(fmap: &serde_json::Map<String, Value>) -> bool {
     if let Some(arr) = fmap.get("types").and_then(Value::as_array) {
         if arr.len() > 1 {
@@ -250,11 +240,10 @@ fn is_field_multiple(fmap: &serde_json::Map<String, Value>) -> bool {
     fmap.get("multiple").and_then(Value::as_bool).unwrap_or(false)
 }
 
-/// Port of Go `parseChildren`.
+/// Parses the `children` list of a node-type entry.
 fn parse_children(raw: Option<&Value>) -> Vec<ChildInfo> {
-    let arr = match raw.and_then(Value::as_array) {
-        Some(a) => a,
-        None => return Vec::new(),
+    let Some(arr) = raw.and_then(Value::as_array) else {
+        return Vec::new();
     };
     arr.iter()
         .filter_map(|e| e.as_object())
@@ -265,7 +254,8 @@ fn parse_children(raw: Option<&Value>) -> Vec<ChildInfo> {
         .collect()
 }
 
-/// Port of Go `classifyNodeCategory`.
+/// Heuristic category: no children/fields → Leaf; operator-ish name →
+/// Operator; else Container.
 fn classify_node_category(node: &NodeTypeInfo) -> NodeCategory {
     if node.children.is_empty() && node.fields.is_empty() {
         return NodeCategory::Leaf;
@@ -283,11 +273,12 @@ fn classify_node_category(node: &NodeTypeInfo) -> NodeCategory {
     }
 }
 
-/// Go `%q`: a double-quoted, escaped Go string literal.
+/// Renders a double-quoted, escaped string literal (reference-implementation
+/// quoting; part of the generated-DSL byte contract).
 ///
-/// Reproduces `strconv.Quote` for the printable-ASCII / common-escape cases that
-/// occur in node type and role names (and extensions). Control and non-printable
-/// characters are rendered as `\xNN`/`\uNNNN`, matching Go.
+/// Covers the printable-ASCII / common-escape cases that occur in node type
+/// and role names (and extensions). Control and non-printable characters are
+/// rendered as `\xNN`/`\uNNNN`.
 fn go_quote(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
@@ -312,7 +303,8 @@ fn go_quote(s: &str) -> String {
     out
 }
 
-/// Port of Go `writeLanguageDeclaration`.
+/// Writes the `[language ... , extensions: ...]` header (skipped when either
+/// part is empty).
 fn write_language_declaration(sb: &mut String, language: &str, extensions: &[String]) {
     if language.is_empty() || extensions.is_empty() {
         return;
@@ -330,8 +322,8 @@ fn write_language_declaration(sb: &mut String, language: &str, extensions: &[Str
     sb.push_str("]\n\n");
 }
 
-/// Port of Go `collectChildTypes`: sorted, de-duplicated valid identifiers drawn
-/// from the node's children and field types.
+/// Collects sorted, de-duplicated valid identifiers drawn from the node's
+/// children and field types.
 fn collect_child_types(node: &NodeTypeInfo) -> Vec<String> {
     let mut set: BTreeSet<String> = BTreeSet::new();
     for child in &node.children {
@@ -349,7 +341,7 @@ fn collect_child_types(node: &NodeTypeInfo) -> Vec<String> {
     set.into_iter().collect()
 }
 
-/// Port of Go `writeRolesSection`.
+/// Writes the `roles:` section (skipped when empty).
 fn write_roles_section(sb: &mut String, roles: &[&str]) {
     if roles.is_empty() {
         return;
@@ -363,7 +355,7 @@ fn write_roles_section(sb: &mut String, roles: &[&str]) {
     }
 }
 
-/// Port of Go `writeChildrenSection`.
+/// Writes the `children:` section (skipped when empty).
 fn write_children_section(sb: &mut String, child_types: &[String]) {
     if child_types.is_empty() {
         return;
@@ -377,7 +369,7 @@ fn write_children_section(sb: &mut String, child_types: &[String]) {
     }
 }
 
-/// Port of Go `writeNodeMapping`.
+/// Writes one node's full mapping rule.
 fn write_node_mapping(sb: &mut String, node: &NodeTypeInfo) {
     let (uast_type, roles) = guess_uast_type_and_roles(&node.name);
     let is_leaf = node.children.is_empty() && node.fields.is_empty();
@@ -403,7 +395,8 @@ fn write_node_mapping(sb: &mut String, node: &NodeTypeInfo) {
 }
 
 /// Generates mapping DSL for a set of node types, using canonical UAST
-/// types/roles. Mirrors Go `GenerateMappingDSL`.
+/// types/roles. The output layout is frozen (CLI compatibility contract).
+#[must_use]
 pub fn generate_mapping_dsl(
     nodes: &[NodeTypeInfo],
     language: &str,
@@ -433,8 +426,7 @@ mod tests {
     }
 
     #[test]
-    fn generate_dsl_matches_go_layout() {
-        // Mirrors BenchmarkGenerateMappingDSL inputs.
+    fn generate_dsl_matches_reference_layout() {
         let nodes = vec![
             ti("function_declaration", true),
             ti("identifier", true),
@@ -445,11 +437,11 @@ mod tests {
         // function_declaration → Function with Function/Declaration roles.
         assert!(out.contains("function_declaration <- (function_declaration) => uast(\n    type: \"Function\""));
         assert!(out.contains("roles: \"Function\", \"Declaration\""));
-        // identifier → "If": Go's guessUASTTypeAndRoles returns the FIRST
-        // canonicalTypeRoleMap entry whose pattern is a substring of the
-        // lowercased name, and `strings.Contains("identifier", "if")` is true with
-        // the `if` entry preceding the `identifier` entry. This reproduces the Go
-        // output byte-for-byte (verified against GenerateMappingDSL).
+        // identifier → "If": guess_uast_type_and_roles returns the FIRST
+        // canonical-table entry whose pattern is a substring of the lowercased
+        // name, and "identifier" contains "if" with the `if` entry preceding
+        // the `identifier` entry. This quirk is frozen reference-implementation
+        // behavior (verified against the reference output byte-for-byte).
         assert!(out.contains("identifier <- (identifier) => uast(\n    type: \"If\""));
         // call_expression → Call (contains "call").
         assert!(out.contains("call_expression <- (call_expression) => uast(\n    type: \"Call\""));
@@ -465,7 +457,7 @@ mod tests {
                 ..FieldInfo::default()
             },
         );
-        // Has a field, so not a leaf by the Go definition → no token line.
+        // Has a field, so not a leaf → no token line.
         let out = generate_mapping_dsl(&[node], "", &[]);
         assert!(!out.contains("token:"));
 

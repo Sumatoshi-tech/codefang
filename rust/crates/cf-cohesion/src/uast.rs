@@ -1,44 +1,38 @@
 //! UAST node abstraction used by the cohesion analyzer.
 //!
-//! The Go code operates on `*node.Node` from `pkg/uast/pkg/node` and uses the
-//! generic `common.UASTTraverser` / `common.DataExtractor` helpers. While the shared
-//! `cf-uast-node` and `cf-analyzers-common` crates are still being ported, this
-//! module defines the **minimal trait surface** the cohesion analyzer actually needs.
-//!
-//! In the integrated workspace [`Node`] is implemented for / replaced by
-//! `cf_uast_node::Node`, and the type/role string constants come from that crate.
-//! See the crate todos.
+//! This module defines the **minimal trait surface** the cohesion analyzer
+//! needs; the production implementation is provided for `cf_uast_node::Node`
+//! below, and tests use [`TestNode`].
 //!
 //! # Constants
 //!
-//! The string constants below mirror the UAST type/role names referenced by the Go
-//! cohesion code (`node.UASTFunction`, `node.RoleDeclaration`, …). They must match
-//! `cf-uast-node` exactly because they select which AST nodes count as functions /
-//! variables, which in turn determines the report bytes.
+//! The string constants below are the canonical UAST type/role names. They
+//! must match `cf-uast-node` exactly because they select which AST nodes count
+//! as functions / variables, which in turn determines the report bytes.
 
 /// UAST node *type* names referenced by cohesion.
 pub mod ty {
-    /// `node.UASTFunction`.
+    /// `Function` type.
     pub const FUNCTION: &str = "Function";
-    /// `node.UASTMethod`.
+    /// `Method` type.
     pub const METHOD: &str = "Method";
-    /// `node.UASTVariable`.
+    /// `Variable` type.
     pub const VARIABLE: &str = "Variable";
-    /// `node.UASTParameter`.
+    /// `Parameter` type.
     pub const PARAMETER: &str = "Parameter";
-    /// `node.UASTIdentifier`.
+    /// `Identifier` type.
     pub const IDENTIFIER: &str = "Identifier";
 }
 
 /// UAST *role* names referenced by cohesion.
 pub mod role {
-    /// `node.RoleFunction`.
+    /// `Function` role.
     pub const FUNCTION: &str = "Function";
-    /// `node.RoleDeclaration`.
+    /// `Declaration` role.
     pub const DECLARATION: &str = "Declaration";
-    /// `node.RoleVariable`.
+    /// `Variable` role.
     pub const VARIABLE: &str = "Variable";
-    /// `node.RoleName`.
+    /// `Name` role.
     pub const NAME: &str = "Name";
 }
 
@@ -46,37 +40,35 @@ pub mod role {
 ///
 /// Implementations come from the UAST parser; tests use [`TestNode`].
 pub trait Node {
-    /// Child nodes, in source order (Go `node.Children`).
+    /// Child nodes, in source order.
     fn children(&self) -> &[Self]
     where
         Self: Sized;
 
-    /// True if the node's type is any of `types` (Go `node.HasAnyType`).
+    /// True if the node's type is any of `types`.
     fn has_any_type(&self, types: &[&str]) -> bool;
 
-    /// True if the node has any of `roles` (Go `node.HasAnyRole`).
+    /// True if the node has any of `roles`.
     fn has_any_role(&self, roles: &[&str]) -> bool;
 
-    /// True if the node has *all* of `roles` (Go `node.HasAllRoles`).
+    /// True if the node has *all* of `roles`.
     fn has_all_roles(&self, roles: &[&str]) -> bool;
 
-    /// The entity name carried by this node, if any (Go
-    /// `common.ExtractEntityName` / `extractor.ExtractName`). Empty string means
-    /// "no name", matching the Go `name == ""` checks.
+    /// The entity name carried by this node, if any. Empty string means
+    /// "no name".
     ///
-    /// Returns an owned `String` because the real UAST implementation derives the
-    /// name from props/token/child (Go `ExtractEntityName`), which is not a borrow
-    /// of any single field.
+    /// Returns an owned `String` because the real UAST implementation derives
+    /// the name from props/token/child, which is not a borrow of any single
+    /// field.
     fn entity_name(&self) -> String;
 
-    /// Number of source lines spanned by the node (Go `traverser.CountLines`).
+    /// Number of source lines spanned by the node (recursive; see the
+    /// `cf_uast_node::Node` impl).
     fn count_lines(&self) -> i64;
 }
 
-/// A simple in-memory [`Node`] implementation for unit tests.
-///
-/// This mirrors enough of the UAST node shape to drive the cohesion algorithm in
-/// the ported Go tests.
+/// A simple in-memory [`Node`] implementation for unit tests, covering enough
+/// of the UAST node shape to drive the cohesion algorithm.
 #[derive(Debug, Clone, Default)]
 pub struct TestNode {
     /// Node type names.
@@ -140,9 +132,8 @@ impl TestNode {
 
 // === Real UAST node adapter ===
 //
-// Implements the cohesion [`Node`] surface for the shared `cf_uast_node::Node`, so
-// the static pipeline can drive the analyzer over parsed source. Each method maps
-// to its Go counterpart in `pkg/uast/pkg/node` + `internal/analyzers/common`.
+// Implements the cohesion [`Node`] surface for the shared `cf_uast_node::Node`,
+// so the static pipeline can drive the analyzer over parsed source.
 
 impl Node for cf_uast_node::Node {
     fn children(&self) -> &[Self] {
@@ -166,8 +157,9 @@ impl Node for cf_uast_node::Node {
     }
 
     fn count_lines(&self) -> i64 {
-        // Go `UASTTraverser.CountLines`: (end_line - start_line + 1) for this node
-        // when a position is present, plus the recursive sum over children.
+        // (end_line - start_line + 1) for this node when a position is
+        // present, plus the recursive sum over children (report contract:
+        // nested spans are double-counted on purpose).
         let mut total: i64 = 0;
         if let Some(pos) = &self.pos {
             total = pos.end_line as i64 - pos.start_line as i64 + 1;
@@ -179,8 +171,8 @@ impl Node for cf_uast_node::Node {
     }
 }
 
-/// Go `common.ExtractEntityName`: try `props["name"]`, then a non-empty token,
-/// then the first child's token / `props["name"]`.
+/// The shared entity-name chain: try the `name` prop, then a non-empty token,
+/// then the first child's token / `name` prop.
 fn extract_entity_name(n: &cf_uast_node::Node) -> Option<String> {
     if let Some(name) = n.props.get("name") {
         return Some(name.clone());

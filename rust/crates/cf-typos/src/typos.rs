@@ -1,30 +1,23 @@
 //! Typo detection data model.
 //!
-//! Direct port of the types and dedup logic in Go
-//! `internal/analyzers/typos/analyzer.go`. The typos analyzer is a **commit
-//! history** analyzer: it scans each commit's diffs for line pairs that are
-//! within a small Levenshtein distance (default 4) and, when both the removed
-//! and added focused lines contain exactly one identifier, records a
-//! `(wrong -> correct)` typo-fix pair.
+//! The typos analyzer is a **commit history** analyzer: it scans each commit's
+//! diffs for line pairs that are within a small Levenshtein distance (default
+//! 4) and, when both the removed and added focused lines contain exactly one
+//! identifier, records a `(wrong -> correct)` typo-fix pair.
 
 use crate::compat::Hash;
 
 /// Default maximum Levenshtein distance for typo detection.
-///
-/// Port of Go `DefaultMaximumAllowedTypoDistance = 4`.
 pub const DEFAULT_MAXIMUM_ALLOWED_TYPO_DISTANCE: i32 = 4;
 
 /// Configuration key for the maximum Levenshtein distance.
-///
-/// Port of Go `ConfigTyposDatasetMaximumAllowedDistance`.
 pub const CONFIG_TYPOS_DATASET_MAXIMUM_ALLOWED_DISTANCE: &str =
     "TyposDatasetBuilder.MaximumAllowedDistance";
 
 /// A detected typo-fix pair in source code.
 ///
-/// Port of the Go `Typo` struct. Field order mirrors the Go declaration order
-/// (wrong, correct, file, commit, line), which is how `json.Marshal([]Typo)`
-/// renders each element.
+/// Field order (wrong, correct, file, commit, line) is the wire order when a
+/// typo list serializes as struct-origin records.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Typo {
     /// The misspelled identifier (the "before" token).
@@ -40,8 +33,6 @@ pub struct Typo {
 }
 
 /// Aggregated per-tick payload.
-///
-/// Port of Go `TickData`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TickData {
     /// Detected typos for this tick.
@@ -51,9 +42,10 @@ pub struct TickData {
 /// Removes duplicate typos, keying on `"wrong|correct"` and preserving
 /// first-seen order.
 ///
-/// Port of Go `deduplicateTypos`. The dedup is intentionally only on the
-/// `wrong|correct` pair (not file/commit/line), matching Go exactly: the first
-/// occurrence of a given pair wins and later occurrences are dropped.
+/// The dedup is intentionally only on the `wrong|correct` pair (not
+/// file/commit/line) — pinned analyzer behaviour: the first occurrence of a
+/// given pair wins and later occurrences are dropped.
+#[must_use]
 pub fn deduplicate_typos(typos: &[Typo]) -> Vec<Typo> {
     use std::collections::HashSet;
 
@@ -105,7 +97,7 @@ mod tests {
     }
 
     #[test]
-    fn defaults_match_go() {
+    fn defaults_match_contract() {
         assert_eq!(DEFAULT_MAXIMUM_ALLOWED_TYPO_DISTANCE, 4);
         assert_eq!(
             CONFIG_TYPOS_DATASET_MAXIMUM_ALLOWED_DISTANCE,

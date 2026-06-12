@@ -1,6 +1,4 @@
 //! [`Parser::parse_file`]: read a source file from disk and parse it.
-//!
-//! Direct port of Go `pkg/uast/parsefile.go`.
 
 use std::path::Path;
 
@@ -10,29 +8,33 @@ use crate::parser::Parser;
 use crate::types::ParseError;
 
 impl Parser {
-    /// Reads a source file and returns its UAST (Go `ParseFile`).
+    /// Reads a source file and returns its UAST.
     ///
-    /// If `lang` is non-empty it overrides extension-derived language detection:
-    /// the resolved path's extension is replaced with `.<lang>` before parsing,
-    /// exactly as Go does (`strings.TrimSuffix(resolvedPath, ext) + "." + lang`).
+    /// If `lang` is non-empty it overrides extension-derived language
+    /// detection: the resolved path's extension is replaced with `.<lang>`
+    /// before parsing.
     ///
-    /// Errors are wrapped as `read <path>: <e>` / `parse <path>: <e>` to mirror
-    /// Go's `fmt.Errorf` wrapping.
+    /// # Errors
     ///
-    /// # Note on `iosafety`
+    /// I/O and parse failures are wrapped as `read <path>: <e>` /
+    /// `parse <path>: <e>` (CLI compatibility contract).
     ///
-    /// Go reads via `iosafety.ReadFile`, which returns a *resolved* path (after
-    /// symlink/`..` safety checks). Until the `cf-iosafety` crate's reader is
-    /// available here, this reads the path directly with [`std::fs::read`] and
-    /// treats the input path as already-resolved. Behavior matches for ordinary
-    /// (non-symlinked, in-tree) paths; see crate todos.
+    /// # Note on path resolution
+    ///
+    /// The reference implementation reads through a safety layer that returns
+    /// a *resolved* path (after symlink/`..` checks). This reads the path
+    /// directly with [`std::fs::read`] and treats the input path as
+    /// already-resolved. Behavior matches for ordinary (non-symlinked,
+    /// in-tree) paths.
     pub fn parse_file(&self, path: &str, lang: &str) -> Result<Node, ParseError> {
         let code = std::fs::read(path)
             .map_err(|e| ParseError::Other(format!("read {path}: {e}")))?;
 
         let resolved_path = path;
 
-        let filename = if !lang.is_empty() {
+        let filename = if lang.is_empty() {
+            resolved_path.to_string()
+        } else {
             let ext = Path::new(resolved_path)
                 .extension()
                 .map(|e| format!(".{}", e.to_string_lossy()))
@@ -41,8 +43,6 @@ impl Parser {
                 .strip_suffix(&ext)
                 .unwrap_or(resolved_path);
             format!("{stem}.{lang}")
-        } else {
-            resolved_path.to_string()
         };
 
         self.parse(&filename, &code)

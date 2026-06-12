@@ -1,45 +1,39 @@
-//! Dynamic report value model — the Rust equivalent of Go's `analyze.Report`
-//! (`map[string]any`) restricted to the value shapes the cohesion analyzer produces.
+//! Dynamic report value model, restricted to the value shapes the cohesion
+//! analyzer produces.
 //!
-//! The Go analyzer builds an intermediate `analyze.Report = map[string]any` from
+//! The analyzer builds an intermediate dynamic [`Report`] map from
 //! [`crate::analyzer::Analyzer::analyze`], which is then re-parsed by
-//! [`crate::metrics::compute_all_metrics`] (the function that produces the actual
-//! machine-format output). We model that intermediate map explicitly so the
-//! round-trip (`build_result` -> `parse_report_data`) is faithful and testable
-//! without dragging in the full cross-crate `analyze.Report` type while it is still
-//! being ported.
-//!
-//! # Seam
-//!
-//! In the integrated workspace this should be replaced by / converted to the shared
-//! `cf-analyze::Report` type. The shape here is intentionally a strict subset:
-//! the keys and value types are exactly those the Go cohesion code reads and writes
-//! (see `metrics.go::ParseReportData`). See the crate todos.
+//! [`crate::metrics::compute_all_metrics`] (the function that produces the
+//! actual machine-format output). Modeling that intermediate map explicitly
+//! keeps the round-trip (`build_result` -> `parse_report_data`) faithful and
+//! testable in isolation. The shape is intentionally a strict subset of the
+//! shared dynamic-report type: exactly the keys and value types the cohesion
+//! pipeline reads and writes.
 
 use std::collections::BTreeMap;
 
 /// A value inside a cohesion [`Report`].
 ///
-/// Mirrors the concrete dynamic types stored in the Go `map[string]any`: `int`,
-/// `float64`, `string`, and `[]map[string]any` (the per-function table).
+/// The concrete dynamic types: integer, float, string, and a list of
+/// string-keyed maps (the per-function table). The integer/float distinction
+/// is significant: scalar parsing is a strict type assertion, never a
+/// coercion.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ReportValue {
-    /// A Go `int` (e.g. `total_functions`).
+    /// An integer (e.g. `total_functions`).
     Int(i64),
-    /// A Go `float64` (e.g. `lcom`, `cohesion_score`).
+    /// A float (e.g. `lcom`, `cohesion_score`).
     Float(f64),
-    /// A Go `string` (e.g. `message`, `analyzer_name`).
+    /// A string (e.g. `message`, `analyzer_name`).
     Str(String),
-    /// A list of string-keyed maps (the `functions` table).
-    ///
-    /// Each inner map preserves the per-function item keys produced by
-    /// `convertCohesionFunctionItems` in the Go code.
+    /// A list of string-keyed maps (the `functions` table), preserving the
+    /// per-function item keys.
     Functions(Vec<BTreeMap<String, ReportValue>>),
 }
 
 impl ReportValue {
-    /// Returns the value as an `i64` if it is [`ReportValue::Int`] (Go
-    /// `report[k].(int)`), else `None`.
+    /// Returns the value as an `i64` if it is [`ReportValue::Int`], else
+    /// `None`.
     #[must_use]
     pub fn as_int(&self) -> Option<i64> {
         match self {
@@ -48,12 +42,12 @@ impl ReportValue {
         }
     }
 
-    /// Returns the value as an `f64` if it is [`ReportValue::Float`] (Go
-    /// `report[k].(float64)`), else `None`.
+    /// Returns the value as an `f64` if it is [`ReportValue::Float`], else
+    /// `None`.
     ///
-    /// NOTE: this is a strict type assertion mirroring Go's `.(float64)`. An `Int`
-    /// is **not** coerced, exactly like Go's type switch — the cohesion scalars are
-    /// always stored as `float64`.
+    /// NOTE: this is a strict type assertion (report-format contract). An
+    /// `Int` is **not** coerced — the cohesion scalars are always stored as
+    /// floats.
     #[must_use]
     pub fn as_float(&self) -> Option<f64> {
         match self {
@@ -82,8 +76,8 @@ impl ReportValue {
     }
 }
 
-/// The analyzer's intermediate result map (Go `analyze.Report`).
+/// The analyzer's intermediate result map.
 ///
-/// A `BTreeMap` so iteration / encoding is byte-key-sorted by default, matching Go's
-/// `map[string]any` JSON encoding rule (DESIGN §2.2).
+/// A `BTreeMap` so iteration / encoding is byte-key-sorted by default,
+/// matching the report contract's map-key encoding rule (DESIGN §2.2).
 pub type Report = BTreeMap<String, ReportValue>;

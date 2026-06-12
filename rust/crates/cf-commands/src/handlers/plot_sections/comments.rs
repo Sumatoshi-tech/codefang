@@ -1,10 +1,9 @@
-//! `static/comments` plot sections — port of Go
-//! `internal/analyzers/comments/plot.go`.
+//! `static/comments` plot sections.
 //!
 //! Consumes the AGGREGATED RAW comments report (the `analyze.Report` value
 //! `comments_raw_report_value` builds): the overall-score liquid gauge, the
 //! per-function documentation bar, and the documentation-coverage pie. Returns
-//! `None` when the report lacks the functions table (Go
+//! `None` when the report lacks the functions table (reference:
 //! `ErrInvalidFunctionsData` — the empty-result report).
 
 use cf_gojson::{GoMap, GoValue};
@@ -15,13 +14,13 @@ use cf_plotpage::{build_pie_chart, get_chart_palette, ChartOpts, Hint, Section, 
 
 use crate::handlers::go_sort;
 
-/// plot.go constants (plot.go:15).
+/// Reference plot-section constants.
 const TOP_FUNCTIONS_LIMIT: usize = 20;
 const X_AXIS_ROTATE: f64 = 45.0;
 const EMPTY_CHART_HEIGHT: &str = "400px";
 const PIE_RADIUS: &str = "60%";
 
-/// Go `analyze.ReportFunctionListWithFallback(report, "functions",
+/// The reference `analyze.ReportFunctionListWithFallback(report, "functions",
 /// "function_documentation")`.
 fn report_function_list(report: &GoValue) -> Option<Vec<&GoMap>> {
     let top = report.as_map()?;
@@ -35,7 +34,7 @@ fn report_function_list(report: &GoValue) -> Option<Vec<&GoMap>> {
     Some(arr.iter().filter_map(GoValue::as_map).collect())
 }
 
-/// Go `reportValue` (plot.go:102): a top-level key, falling back to the
+/// The reference `reportValue`: a top-level key, falling back to the
 /// `aggregate` sub-map of binary-decoded reports.
 fn report_value<'a>(report: &'a GoValue, key: &str) -> Option<&'a GoValue> {
     let top = report.as_map()?;
@@ -45,7 +44,7 @@ fn report_value<'a>(report: &'a GoValue, key: &str) -> Option<&'a GoValue> {
     top.get("aggregate")?.as_map()?.get(key)
 }
 
-/// Go `getLinesValue`: int passes through, float truncates, else 0.
+/// The reference `getLinesValue`: int passes through, float truncates, else 0.
 fn lines_value(f: &GoMap) -> i64 {
     match f.get("lines") {
         Some(GoValue::Int(v)) => *v,
@@ -54,7 +53,7 @@ fn lines_value(f: &GoMap) -> i64 {
     }
 }
 
-/// Go `isDocumented` (plot.go:147): the in-memory `assessment` string, then
+/// The reference `isDocumented`: the in-memory `assessment` string, then
 /// the binary-decoded `is_documented` / `status` fallbacks.
 fn is_documented(f: &GoMap) -> bool {
     if let Some(GoValue::Str(assessment)) = f.get("assessment") {
@@ -69,7 +68,7 @@ fn is_documented(f: &GoMap) -> bool {
     false
 }
 
-/// Go `getFunctionName`: `function`, then `name`, then `"unknown"`.
+/// The reference `getFunctionName`: `function`, then `name`, then `"unknown"`.
 fn function_name(f: &GoMap) -> &str {
     if let Some(GoValue::Str(name)) = f.get("function") {
         return name;
@@ -80,7 +79,7 @@ fn function_name(f: &GoMap) -> &str {
     "unknown"
 }
 
-/// Go `reportValue`-read int (int or float64).
+/// The reference `reportValue`-read int (int or float64).
 fn report_int(report: &GoValue, key: &str) -> i64 {
     match report_value(report, key) {
         Some(GoValue::Int(v)) => *v,
@@ -89,7 +88,7 @@ fn report_int(report: &GoValue, key: &str) -> i64 {
     }
 }
 
-/// The registered section renderer for `static/comments` — Go
+/// The registered section renderer for `static/comments` — the reference implementation
 /// `comments.RegisterPlotSections` → `(&Analyzer{}).generateSections`.
 pub fn sections(report: &GoValue) -> Option<Vec<Section>> {
     let bar_chart = function_coverage_chart(report)?;
@@ -141,15 +140,15 @@ pub fn sections(report: &GoValue) -> Option<Vec<Section>> {
     ])
 }
 
-/// Go `generateFunctionCoverageChart` + `createFunctionCoverageBarChart`
-/// (plot.go:116).
+/// The reference `generateFunctionCoverageChart` + `createFunctionCoverageBarChart`
+///.
 fn function_coverage_chart(report: &GoValue) -> Option<Chart> {
     let functions = report_function_list(report)?;
     if functions.is_empty() {
         return Some(empty_comments_chart());
     }
 
-    // mapx.SortAndLimit by lines desc (Go's unstable sort.Slice over the
+    // mapx.SortAndLimit by lines desc (the reference implementation's unstable sort.Slice over the
     // walk-order input — go_sort reproduces the tie permutation).
     let mut sorted = functions.clone();
     go_sort::slice(&mut sorted, |a, b| lines_value(a) > lines_value(b));
@@ -205,11 +204,11 @@ fn function_coverage_chart(report: &GoValue) -> Option<Chart> {
     Some(bar)
 }
 
-/// Go `generateDocumentationPieChart` + `createDocumentationPieChart`
-/// (plot.go:236).
+/// The reference `generateDocumentationPieChart` + `createDocumentationPieChart`
+///.
 fn documentation_pie_chart(report: &GoValue) -> Chart {
     let documented = report_int(report, "documented_functions");
-    // Go computes `undocumented` only when `total_functions` is present (it
+    // The reference implementation computes `undocumented` only when `total_functions` is present (it
     // stays 0 otherwise).
     let undocumented = match report_value(report, "total_functions") {
         Some(GoValue::Int(t)) => *t - documented,
@@ -246,7 +245,7 @@ fn documentation_pie_chart(report: &GoValue) -> Chart {
     build_pie_chart(None, "Documentation", pie_data, PIE_RADIUS)
 }
 
-/// Go `generateOverallScoreGauge` + `createScoreLiquid` (plot.go:276): a
+/// The reference `generateOverallScoreGauge` + `createScoreLiquid`: a
 /// default-theme (`white`) liquid-fill chart on a 400x400 canvas.
 fn overall_score_gauge(report: &GoValue) -> Chart {
     let score = match report_value(report, "overall_score") {
@@ -267,7 +266,7 @@ fn overall_score_gauge(report: &GoValue) -> Chart {
     liquid
 }
 
-/// Go `createEmptyCommentsChart` (plot.go:302).
+/// The reference `createEmptyCommentsChart`.
 fn empty_comments_chart() -> Chart {
     let co = ChartOpts::default_dark();
     let mut bar = Chart::new(ChartKind::Bar);
@@ -277,7 +276,7 @@ fn empty_comments_chart() -> Chart {
     bar
 }
 
-/// Go `createEmptyCommentsPie` (plot.go:314).
+/// The reference `createEmptyCommentsPie`.
 fn empty_comments_pie() -> Chart {
     let co = ChartOpts::default_dark();
     let mut pie = Chart::new(ChartKind::Pie);

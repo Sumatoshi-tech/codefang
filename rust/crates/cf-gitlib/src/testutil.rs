@@ -3,9 +3,7 @@
 //! Helpers for constructing throwaway git repositories with deterministic
 //! commits, used by this crate's integration tests and available to downstream
 //! crates' tests via the `testutil` feature. Commit timestamps are fixed so any
-//! golden built on these repos is reproducible (DESIGN §2.8). This has no direct
-//! Go counterpart (the Go tests used `t.TempDir()` + raw git2go), but it backs
-//! the ported behavioral tests.
+//! golden built on these repos is reproducible (DESIGN §2.8).
 
 use crate::error::Result;
 use crate::hash::Hash;
@@ -254,7 +252,7 @@ mod tests {
         let c1 = commit_files(&test, "1", 1, &[("a.txt", b"l1\nl2\n")]).unwrap();
         let tree = test.repo.lookup_commit(c1).unwrap().tree().unwrap();
         let entry = tree.entry_by_path("a.txt").unwrap();
-        let cb = crate::cached_blob::CachedBlob::from_repo(&test.repo, entry.hash()).unwrap();
+        let cb = crate::blob::CachedBlob::from_repo(&test.repo, entry.hash()).unwrap();
         assert_eq!(cb.data, b"l1\nl2\n");
         assert_eq!(cb.size(), 6);
     }

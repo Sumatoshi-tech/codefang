@@ -1,46 +1,47 @@
 //! Report-bearing data types for the sentiment analyzer.
 //!
-//! Ports the output structs from `metrics.go` (`TimeSeriesData`, `TrendData`,
-//! `LowSentimentPeriodData`, `AggregateData`, `ComputedMetrics`). Each provides
-//! [`ToGoValue::to_go_value`] so it serializes through [`cf_gojson`] (and, later,
-//! `cf-goyaml`) byte-identically to Go's `encoding/json` / `yaml.v3`.
+//! The output structs (`TimeSeriesData`, `TrendData`, `LowSentimentPeriodData`,
+//! `AggregateData`, `ComputedMetrics`). Each provides
+//! [`ToGoValue::to_go_value`] so it serializes through [`cf_gojson`] (and
+//! `cf-goyaml`) per the report-format compatibility contract (pinned by
+//! `rust/tests/compat`).
 //!
-//! # Ordering (DESIGN §2.2)
+//! # Ordering
 //!
-//! These are all **wrapper structs**: fields are emitted in Go declaration order
+//! These are all **wrapper structs**: fields are emitted in declaration order
 //! via [`cf_gojson::GoMap::new_struct`], honoring `omitempty` on the
 //! `start_time` / `end_time` string fields.
 //!
-//! # `float32` parity (DESIGN §2.1, §7)
+//! # `f32` field precision
 //!
-//! Several fields are Go `float32` (`Sentiment`, `AverageSentiment`,
-//! `StartSentiment`, `EndSentiment`). Go's `encoding/json` formats `float32`
-//! fields with 32-bit shortest precision (`strconv.AppendFloat(_, 'g', -1, 32)`),
-//! which differs from 64-bit shortest. [`f32_float`] reproduces this by rounding
-//! the value to its `f32`-shortest decimal before handing it to `cf-gojson`'s
-//! 64-bit float formatter, so the rendered digits match Go.
+//! Several fields are 32-bit floats in the report contract (`sentiment`,
+//! `average_sentiment`, `start_sentiment`, `end_sentiment`). The reference
+//! encoder formats such fields with 32-bit shortest precision, which differs
+//! from 64-bit shortest. [`f32_float`] reproduces this by rounding the value to
+//! its `f32`-shortest decimal before handing it to `cf-gojson`'s 64-bit float
+//! formatter, so the rendered digits match the contract.
 
 use cf_gojson::{GoMap, GoValue};
 
-/// Converts a value into a [`GoValue`] tree for byte-identical serialization.
+/// Converts a value into a [`GoValue`] tree for byte-stable serialization.
 pub trait ToGoValue {
     /// Builds the [`GoValue`] representation of `self`.
     fn to_go_value(&self) -> GoValue;
 }
 
-/// Builds a [`GoValue::Float`] for a Go `float32` field with 32-bit shortest
-/// precision.
+/// Builds a [`GoValue::Float`] for a 32-bit float report field with 32-bit
+/// shortest precision.
 ///
-/// Go marshals `float32` via the float encoder with `bits == 32`, i.e.
-/// `strconv.AppendFloat(b, float64(f), 'g', -1, 32)`. Rust's `f32` `Display`
-/// produces the same shortest round-trip digit sequence; re-parsing that string
-/// into `f64` yields the exact decimal value whose `f64`-shortest representation
-/// equals the `f32`-shortest one, so [`cf_gojson`]'s `f64` formatter then renders
-/// the digits Go would. (Residual edge cases in Go's `'g'` exponent thresholds
-/// are tracked as a workspace-wide float risk in DESIGN §7.)
+/// The report contract renders such fields as the shortest decimal that
+/// round-trips through `f32`. Rust's `f32` `Display` produces that digit
+/// sequence; re-parsing it into `f64` yields the exact decimal value whose
+/// `f64`-shortest representation equals the `f32`-shortest one, so
+/// [`cf_gojson`]'s `f64` formatter then renders the contract digits. (Residual
+/// edge cases in the reference `'g'`-format exponent thresholds are a known,
+/// gate-covered float risk.)
 #[must_use]
 pub fn f32_float(f: f32) -> GoValue {
-    // `{}` on f32 = shortest round-trip for f32 (same digits as Go's bits=32).
+    // `{}` on f32 = shortest round-trip for f32.
     let s = format!("{f}");
     let as_f64: f64 = s.parse().unwrap_or(f64::from(f));
     GoValue::Float(as_f64)
@@ -51,7 +52,7 @@ fn string_array(items: &[String]) -> GoValue {
     GoValue::Array(items.iter().map(|s| GoValue::Str(s.clone())).collect())
 }
 
-/// Sentiment data for a single time period. Mirrors Go `TimeSeriesData`.
+/// Sentiment data for a single time period.
 ///
 /// JSON/YAML field order: `tick, start_time (omitempty), end_time (omitempty),
 /// sentiment, comment_count, commit_count, classification`.
@@ -63,7 +64,7 @@ pub struct TimeSeriesData {
     pub start_time: String,
     /// RFC3339 end time, empty when absent (`omitempty`).
     pub end_time: String,
-    /// Sentiment score in `[0,1]` (Go `float32`).
+    /// Sentiment score in `[0,1]` (32-bit float in the report contract).
     pub sentiment: f32,
     /// Number of comments in the tick.
     pub comment_count: i64,
@@ -91,7 +92,7 @@ impl ToGoValue for TimeSeriesData {
     }
 }
 
-/// Trend information. Mirrors Go `TrendData`.
+/// Trend information.
 ///
 /// Field order: `start_tick, end_tick, start_sentiment, end_sentiment,
 /// trend_direction, change_percent`.
@@ -101,13 +102,13 @@ pub struct TrendData {
     pub start_tick: i64,
     /// Last tick.
     pub end_tick: i64,
-    /// Regression-fitted sentiment at `start_tick` (Go `float32`).
+    /// Regression-fitted sentiment at `start_tick` (32-bit float field).
     pub start_sentiment: f32,
-    /// Regression-fitted sentiment at `end_tick` (Go `float32`).
+    /// Regression-fitted sentiment at `end_tick` (32-bit float field).
     pub end_sentiment: f32,
     /// `improving` / `declining` / `stable` (empty for an empty report).
     pub trend_direction: String,
-    /// Percentage change between endpoints (Go `float64`).
+    /// Percentage change between endpoints (64-bit float field).
     pub change_percent: f64,
 }
 
@@ -124,14 +125,14 @@ impl ToGoValue for TrendData {
     }
 }
 
-/// A period with negative sentiment. Mirrors Go `LowSentimentPeriodData`.
+/// A period with negative sentiment.
 ///
 /// Field order: `tick, sentiment, comments, risk_level`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LowSentimentPeriodData {
     /// Tick index.
     pub tick: i64,
-    /// Sentiment score (Go `float32`).
+    /// Sentiment score (32-bit float field).
     pub sentiment: f32,
     /// Comments observed in this period.
     pub comments: Vec<String>,
@@ -144,8 +145,8 @@ impl LowSentimentPeriodData {
         let mut m = GoMap::new_struct();
         m.push("tick", GoValue::Int(self.tick));
         m.push("sentiment", f32_float(self.sentiment));
-        // Go has no omitempty on `comments`: a nil slice marshals to JSON `null`
-        // (encoding/json) but to `[]` under `gopkg.in/yaml.v3`.
+        // `comments` has no omitempty. An absent list renders as JSON `null`
+        // but as YAML `[]` (report-format contract; pinned by tests/compat).
         if self.comments.is_empty() {
             m.push(
                 "comments",
@@ -165,7 +166,7 @@ impl ToGoValue for LowSentimentPeriodData {
     }
 }
 
-/// Summary statistics. Mirrors Go `AggregateData`.
+/// Summary statistics.
 ///
 /// Field order: `total_ticks, total_comments, total_commits, average_sentiment,
 /// positive_ticks, neutral_ticks, negative_ticks`.
@@ -177,7 +178,7 @@ pub struct AggregateData {
     pub total_comments: i64,
     /// Total commit count across ticks.
     pub total_commits: i64,
-    /// Mean sentiment across ticks (Go `float32`).
+    /// Mean sentiment across ticks (32-bit float field).
     pub average_sentiment: f32,
     /// Number of positive ticks.
     pub positive_ticks: i64,
@@ -201,7 +202,7 @@ impl ToGoValue for AggregateData {
     }
 }
 
-/// All computed metric results. Mirrors Go `ComputedMetrics`.
+/// All computed metric results.
 ///
 /// Field order: `time_series, trend, low_sentiment_periods, aggregate`.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -216,18 +217,16 @@ pub struct ComputedMetrics {
     pub aggregate: AggregateData,
 }
 
-/// Analyzer name reported by `ComputedMetrics.AnalyzerName`.
+/// Analyzer name reported by [`ComputedMetrics::analyzer_name`].
 pub const ANALYZER_NAME_SENTIMENT: &str = "sentiment";
 
 impl ComputedMetrics {
-    /// Returns the analyzer name. Mirrors `ComputedMetrics.AnalyzerName`.
+    /// Returns the analyzer name.
     #[must_use]
     pub fn analyzer_name(&self) -> &'static str {
         ANALYZER_NAME_SENTIMENT
     }
-}
 
-impl ComputedMetrics {
     fn build(&self, nil_as_empty: bool) -> GoValue {
         let mut m = GoMap::new_struct();
         m.push(
@@ -235,8 +234,8 @@ impl ComputedMetrics {
             GoValue::Array(self.time_series.iter().map(ToGoValue::to_go_value).collect()),
         );
         m.push("trend", self.trend.to_go_value());
-        // `low_sentiment_periods` has no omitempty: nil slice => JSON `null`
-        // (encoding/json) but => `[]` under `gopkg.in/yaml.v3`.
+        // `low_sentiment_periods` has no omitempty: an absent list renders as
+        // JSON `null` but as YAML `[]` (report-format contract).
         if self.low_sentiment_periods.is_empty() {
             m.push(
                 "low_sentiment_periods",
@@ -257,8 +256,8 @@ impl ComputedMetrics {
         GoValue::Object(m)
     }
 
-    /// Build the YAML value tree (`gopkg.in/yaml.v3`: nil slice → `[]`), used by
-    /// the `--format yaml` / `--format bin` (YAML-bodied) serializers.
+    /// Build the YAML value tree (absent list → `[]`), used by the
+    /// `--format yaml` / `--format bin` (YAML-bodied) serializers.
     #[must_use]
     pub fn to_go_value_yaml(&self) -> GoValue {
         self.build(true)
@@ -267,7 +266,7 @@ impl ComputedMetrics {
 
 impl ToGoValue for ComputedMetrics {
     fn to_go_value(&self) -> GoValue {
-        // JSON/bin path: nil slice → `null` (encoding/json).
+        // JSON/bin path: absent list → `null`.
         self.build(false)
     }
 }

@@ -1,8 +1,8 @@
 //! Static-analysis YAML report path for the UAST `static/complexity` analyzer.
 //!
 //! Reproduces `codefang run --analyzers static/complexity --format yaml` over a
-//! Go source tree (`static/static_complexity.yaml`). The Go static pipeline
-//! (run.go → `StaticService.AnalyzeFolder` → per-file UAST parse →
+//! Go source tree (`static/static_complexity.yaml`). The reference static pipeline
+//! (`StaticService.AnalyzeFolder` → per-file UAST parse →
 //! `complexity.Analyzer.Analyze` → `StampSourceFile`/`StampLanguage` →
 //! `complexity.Aggregator` (detailed `functions` collection in file-walk order +
 //! summed totals) → `StaticService.FormatPerAnalyzer` →
@@ -19,8 +19,8 @@
 //!     `DetailedDataCollector` appends without re-sorting) plus summing the
 //!     aggregate totals;
 //!  4. `ComputeAllMetrics` over the assembled report — `function_complexity`
-//!     (Go `sort.Slice` by cyclomatic desc, reproduced via [`crate::handlers::go_sort`]),
-//!     `distribution`, `high_risk_functions` (Go `sort.Slice` by risk priority),
+//!     (the reference `sort.Slice` by cyclomatic desc, reproduced via [`crate::handlers::go_sort`]),
+//!     `distribution`, `high_risk_functions` (the reference `sort.Slice` by risk priority),
 //!     `aggregate`;
 //!  5. marshaling the `ComputedMetrics` struct through cf-goyaml
 //!     (`gopkg.in/yaml.v3` parity; the static YAML path writes the marshaled
@@ -28,8 +28,8 @@
 //!
 //! The aggregate `cognitive_complexity`/`nesting_depth` are emitted as `0`
 //! because the aggregator stores them as float64 *averages*; `ParseReportData`'s
-//! `int` type assertion fails on a float, leaving the zero value (a faithful Go
-//! quirk — see `metrics.go` `parseReportScalars`).
+//! `int` type assertion fails on a float, leaving the zero value (a faithful the reference implementation
+//! quirk — see the reference `parseReportScalars`).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -44,7 +44,7 @@ use cf_uast_node::Node as UNode;
 
 use crate::handlers::go_sort;
 
-// Risk thresholds (metrics.go).
+// Risk thresholds.
 const CYCLOMATIC_THRESHOLD_HIGH: i64 = 10;
 const CYCLOMATIC_THRESHOLD_MODERATE: i64 = 5;
 const COGNITIVE_THRESHOLD_HIGH: i64 = 15;
@@ -134,7 +134,7 @@ fn walk(
         return;
     };
     let mut entries: Vec<_> = read.filter_map(Result::ok).collect();
-    entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
         let path = entry.path();
@@ -162,9 +162,9 @@ fn walk(
             continue;
         }
         // pathpolicy.Exclude(path, nil, opts): skip vendored / generated paths,
-        // exactly as the Go static `streamFiles` filter does (without this, the
+        // exactly as the reference static `streamFiles` filter does (without this, the
         // walk over a repo with a `vendor/` tree pulls in thousands of extra
-        // functions and the report diverges from Go).
+        // functions and the report diverges from the reference output).
         if exclude(&path_str, None, &Options::default()) {
             continue;
         }
@@ -236,7 +236,7 @@ fn bridge(u: &UNode) -> CNode {
     c
 }
 
-/// Go `analyze.MakeRelativePath(filePath, rootPath)`: path relative to root.
+/// The reference `analyze.MakeRelativePath(filePath, rootPath)`: path relative to root.
 /// When the file is directly under the analyzed dir, this is the bare filename.
 fn make_relative_path(path: &Path, root_path: &str) -> String {
     let root = Path::new(root_path);
@@ -246,7 +246,7 @@ fn make_relative_path(path: &Path, root_path: &str) -> String {
     }
 }
 
-/// Go `filepath.Dir(stamped)`: directory portion (`.` for a bare filename).
+/// The reference `filepath.Dir(stamped)`: directory portion (`.` for a bare filename).
 fn parent_dir(stamped: &str) -> String {
     let p = PathBuf::from(stamped);
     match p.parent() {
@@ -429,7 +429,7 @@ fn build_aggregate(
     GoValue::Map(m)
 }
 
-/// `classifyFunctionRisk` (metrics.go).
+/// `classifyFunctionRisk`.
 fn classify_function_risk(cyclomatic: i64, cognitive: i64, nesting: i64) -> &'static str {
     let mut score = 0i64;
     if cyclomatic >= CYCLOMATIC_THRESHOLD_HIGH {
@@ -468,7 +468,7 @@ fn risk_priority(level: &str) -> i64 {
     }
 }
 
-/// `calculateHealthScore` (metrics.go).
+/// `calculateHealthScore`.
 fn calculate_health_score(avg: f64) -> f64 {
     const PERFECT: f64 = 100.0;
     const GOOD_BASE: f64 = 80.0;
@@ -487,7 +487,7 @@ fn calculate_health_score(avg: f64) -> f64 {
     }
 }
 
-/// `buildComplexityMessage` (aggregator.go).
+/// `buildComplexityMessage`.
 fn build_complexity_message(score: f64) -> &'static str {
     if score <= 1.0 {
         "Excellent complexity - functions are simple and maintainable"

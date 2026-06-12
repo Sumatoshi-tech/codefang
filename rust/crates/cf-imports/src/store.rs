@@ -1,26 +1,20 @@
 //! Store records for the history analyzer.
 //!
-//! Port of `internal/analyzers/imports/store_reader.go` and `store_writer.go`.
 //! The history analyzer persists pre-computed per-import usage as a stream of
 //! [`ImportUsageRecord`]s (kind [`KIND_IMPORT_USAGE`]), aggregated across all
 //! authors/languages/ticks and ordered by count descending, so plots can be
 //! rebuilt without recomputing metrics.
 //!
-//! The Go code streams these through the framework's `ReportWriter`/`ReportReader`
-//! (file-backed store). Per DESIGN §3, persisted state uses a Rust-native codec
-//! (the gob path is dropped) — the on-disk store belongs to the not-yet-ported
-//! `cf-persist`/`cf-analyze` crates. This module ports the record type and the
-//! pure transform ([`compute_usage_records`]) that the writer applies; the
-//! actual store I/O is wired in once those crates exist (see crate todos).
+//! This module owns the record type and the pure transform
+//! ([`compute_usage_records`]) that the store writer applies; the on-disk store
+//! I/O belongs to the persistence layer.
 
 use crate::history::{aggregate_import_counts, top_imports, ImportsMap};
 
-/// Store record kind for per-import usage. Mirrors Go `KindImportUsage`.
+/// Store record kind for per-import usage.
 pub const KIND_IMPORT_USAGE: &str = "import_usage";
 
 /// Pre-computed import usage count for a single import path.
-///
-/// Mirrors Go `ImportUsageRecord`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportUsageRecord {
     /// The import path.
@@ -29,11 +23,10 @@ pub struct ImportUsageRecord {
     pub count: i64,
 }
 
-/// Computes the ordered import-usage records the writer would persist.
-///
-/// Mirrors the pure core of Go `(*HistoryAnalyzer).WriteToStore`: merge all
-/// ticks' maps, aggregate per-import counts, take the top imports (count desc),
-/// and emit one record per import in that order.
+/// Computes the ordered import-usage records the writer persists: merge all
+/// ticks' maps, aggregate per-import counts, take the top imports (count
+/// descending), and emit one record per import in that order.
+#[must_use]
 pub fn compute_usage_records(tick_maps: &[ImportsMap]) -> Vec<ImportUsageRecord> {
     let mut merged: ImportsMap = ImportsMap::new();
     for m in tick_maps {
@@ -67,8 +60,8 @@ mod tests {
         m
     }
 
-    // Mirrors TestWriteToStore_RoundTrip (the pure-transform portion): fmt has
-    // the highest count (3+5+2=10) and must be first; os totals 5.
+    // Round-trip of the pure transform: fmt has the highest count (3+5+2=10)
+    // and must be first; os totals 5.
     #[test]
     fn test_compute_usage_records_round_trip() {
         let tick0 = mk(&[
@@ -91,7 +84,6 @@ mod tests {
         assert_eq!(os.count, 5);
     }
 
-    // Mirrors TestWriteToStore_EmptyTicks.
     #[test]
     fn test_compute_usage_records_empty() {
         assert!(compute_usage_records(&[]).is_empty());

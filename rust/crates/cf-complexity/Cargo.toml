@@ -7,20 +7,19 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
-# cf-complexity — static cyclomatic/cognitive/nesting complexity analyzer.
-# Ports internal/analyzers/complexity (Go id: static/complexity). Also used by
-# the quality analyzer.
+# cf-complexity — static cyclomatic/cognitive/nesting complexity analyzer
+# (analyzer id: static/complexity). Also used by the quality analyzer.
 #
-# Report serialization routes exclusively through cf-gojson (and cf-goyaml once
-# it lands) so the machine-format bytes (json/yaml/ndjson/timeseries/compact/bin)
-# match Go's encoding/json + yaml.v3 byte-for-byte. See DESIGN.md §2.
+# Report serialization routes exclusively through cf-gojson (and cf-goyaml) so
+# the machine-format bytes (json/yaml/ndjson/timeseries/compact/bin) match the
+# report contract byte-for-byte. See DESIGN.md §2.
 
 [dependencies]
-# Go encoding/json-byte-compatible value model + encoder (DESIGN §2.2). The
-# analyzer builds its report as a GoValue tree; serialization is owned by the
-# report layer. NEVER serde_json.
+# Report-contract value model + encoder (DESIGN §2.2). The analyzer builds its
+# report as a GoValue tree; serialization is owned by the report layer.
+# NEVER serde_json.
 cf-gojson = { workspace = true }
-# Go sort.Slice (pdqsort) parity for tie ordering, shared across analyzers.
+# Pinned unstable sort (pdqsort) for tie ordering, shared across analyzers.
 cf-gosort = { workspace = true }
 
 [lints.clippy]

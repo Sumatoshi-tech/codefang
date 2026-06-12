@@ -1,36 +1,33 @@
-//! Clone-type classification and the [`ComputedMetrics`] machine-export struct.
-//!
-//! Port of `internal/analyzers/clones/report.go`. Defines the clone types, the
-//! [`ClonePair`] record, the similarity-threshold classifier, the clone-type
-//! distribution counts, and the [`ComputedMetrics`] projection used by the
-//! JSON/YAML/binary export path.
+//! Clone-type classification and the [`ComputedMetrics`] machine-export
+//! struct: the clone types, the [`ClonePair`] record, the similarity-threshold
+//! classifier, the clone-type distribution counts, and the
+//! [`ComputedMetrics`] projection used by the JSON/YAML/binary export path.
 
 use cf_gojson::{GoMap, GoValue};
 
-/// Exact clone (identical AST structure and tokens). Mirrors Go `CloneType1`.
+/// Exact clone (identical AST structure and tokens).
 pub const CLONE_TYPE1: &str = "Type-1";
-/// Renamed clone (identical AST structure, different tokens). Mirrors Go
-/// `CloneType2`.
+/// Renamed clone (identical AST structure, different tokens).
 pub const CLONE_TYPE2: &str = "Type-2";
-/// Near-miss clone (similar AST structure). Mirrors Go `CloneType3`.
+/// Near-miss clone (similar AST structure).
 pub const CLONE_TYPE3: &str = "Type-3";
 
-/// Threshold for Type-1 (exact) clones. Mirrors Go `similarityExact`.
+/// Threshold for Type-1 (exact) clones.
 pub const SIMILARITY_EXACT: f64 = 1.0;
-/// Minimum threshold for Type-2 (renamed) clones. Mirrors Go `similarityType2`.
+/// Minimum threshold for Type-2 (renamed) clones.
 pub const SIMILARITY_TYPE2: f64 = 0.8;
-/// Minimum threshold for Type-3 (near-miss) clones, and the minimum similarity
-/// for a pair to be reported at all. Mirrors Go `similarityType3`.
+/// Minimum threshold for Type-3 (near-miss) clones, and the minimum
+/// similarity for a pair to be reported at all.
 pub const SIMILARITY_TYPE3: f64 = 0.5;
 
 /// Maximum number of clone pairs stored in the report detail. The
-/// `total_clone_pairs` count remains exact (not capped). Zero means unlimited.
-/// Mirrors Go `DefaultMaxClonePairs`.
+/// `total_clone_pairs` count remains exact (not capped). Zero means
+/// unlimited.
 pub const DEFAULT_MAX_CLONE_PAIRS: usize = 1000;
 
 /// A detected clone relationship between two functions.
 ///
-/// Mirrors Go `ClonePair`. Field order matches the Go struct's JSON/YAML tags:
+/// Field order is the JSON/YAML key order (report contract):
 /// `func_a, func_b, similarity, clone_type`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClonePair {
@@ -38,14 +35,14 @@ pub struct ClonePair {
     pub func_a: String,
     /// Second function name (`func_b`).
     pub func_b: String,
-    /// Estimated MinHash similarity (`similarity`).
+    /// Estimated `MinHash` similarity (`similarity`).
     pub similarity: f64,
     /// Classified clone type (`clone_type`).
     pub clone_type: String,
 }
 
 impl ClonePair {
-    /// Builds the struct-origin [`GoValue`] for this pair, emitting fields in Go
+    /// Builds the struct-origin [`GoValue`] for this pair, emitting fields in
     /// declaration order (`func_a, func_b, similarity, clone_type`).
     #[must_use]
     pub fn to_go_value(&self) -> GoValue {
@@ -58,11 +55,9 @@ impl ClonePair {
     }
 }
 
-/// Determines the clone type from a similarity score.
-///
-/// Mirrors Go `classifyCloneType` (a `common.NewClassifier` with descending
-/// thresholds `{1.0 -> Type-1, 0.8 -> Type-2}` and default `Type-3`): the first
-/// threshold whose limit `similarity` meets (`>=`) wins.
+/// Determines the clone type from a similarity score: descending thresholds
+/// `{1.0 -> Type-1, 0.8 -> Type-2}` with default `Type-3`; the first threshold
+/// whose limit `similarity` meets (`>=`) wins.
 #[must_use]
 pub fn classify_clone_type(similarity: f64) -> &'static str {
     if similarity >= SIMILARITY_EXACT {
@@ -74,7 +69,7 @@ pub fn classify_clone_type(similarity: f64) -> &'static str {
     }
 }
 
-/// Per-clone-type counts. Mirrors Go `cloneTypeCounts`.
+/// Per-clone-type counts.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CloneTypeCounts {
     /// Type-1 (exact) count.
@@ -86,8 +81,7 @@ pub struct CloneTypeCounts {
 }
 
 impl CloneTypeCounts {
-    /// Increments the counter for `clone_type`. Mirrors Go
-    /// `cloneTypeCounts.increment`.
+    /// Increments the counter for `clone_type`.
     pub fn increment(&mut self, clone_type: &str) {
         match clone_type {
             CLONE_TYPE1 => self.type1 += 1,
@@ -104,7 +98,7 @@ impl CloneTypeCounts {
     }
 }
 
-/// Counts clone pairs by type. Mirrors Go `categorizeClonePairs`.
+/// Counts clone pairs by type.
 #[must_use]
 pub fn categorize_clone_pairs(pairs: &[ClonePair]) -> CloneTypeCounts {
     let mut counts = CloneTypeCounts::default();
@@ -114,8 +108,8 @@ pub fn categorize_clone_pairs(pairs: &[ClonePair]) -> CloneTypeCounts {
     counts
 }
 
-/// Builds the `clone_type_distribution` map (a Go `map[string]int`, byte-sorted
-/// on encode). Mirrors Go `cloneTypeDistMap`.
+/// Builds the `clone_type_distribution` map (map-origin: keys byte-sorted on
+/// encode).
 #[must_use]
 pub fn clone_type_dist_map(c: CloneTypeCounts) -> GoValue {
     // Map-origin: keys byte-sort on encode (Type-1 < Type-2 < Type-3 anyway).
@@ -128,10 +122,9 @@ pub fn clone_type_dist_map(c: CloneTypeCounts) -> GoValue {
 
 /// Computed clone-detection metrics for JSON/YAML/binary export.
 ///
-/// Mirrors Go `ComputedMetrics`. Field declaration order (the emitted order, as
-/// `cf-gojson` treats structs as declaration-ordered) is:
-/// `total_functions, total_clone_pairs, clone_ratio,
-/// clone_type_distribution (omitempty), clone_pairs, message`.
+/// Field declaration order (the emitted order, as `cf-gojson` treats structs
+/// as declaration-ordered) is: `total_functions, total_clone_pairs,
+/// clone_ratio, clone_type_distribution (omitempty), clone_pairs, message`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ComputedMetrics {
     /// Total functions analyzed (`total_functions`).
@@ -142,8 +135,7 @@ pub struct ComputedMetrics {
     pub clone_ratio: f64,
     /// Clone-type distribution (`clone_type_distribution`, `omitempty`).
     ///
-    /// `None` reproduces Go's `omitempty` on a nil `map[string]int` (the key is
-    /// omitted entirely).
+    /// `None` omits the key entirely (`omitempty` on an absent map).
     pub clone_type_dist: Option<CloneTypeCounts>,
     /// The detected clone pairs (`clone_pairs`).
     pub clone_pairs: Vec<ClonePair>,
@@ -152,12 +144,11 @@ pub struct ComputedMetrics {
 }
 
 impl ComputedMetrics {
-    /// Builds the struct-origin [`GoValue`] tree for this metrics struct.
-    ///
-    /// Reproduces Go's `encoding/json` of `ComputedMetrics`: fields emit in
-    /// declaration order, `clone_type_distribution` is omitted when `None`
-    /// (`omitempty`), and `clone_pairs` emits `null` for an empty/nil slice
-    /// (Go's default for a slice without `omitempty`).
+    /// Builds the struct-origin [`GoValue`] tree for this metrics struct
+    /// (report-format contract): fields emit in declaration order,
+    /// `clone_type_distribution` is omitted when `None` (`omitempty`), and
+    /// `clone_pairs` emits `null` for an empty slice (the contract's rendering
+    /// of an absent list without `omitempty`).
     #[must_use]
     pub fn to_go_value(&self) -> GoValue {
         let mut m = GoMap::new_struct();
@@ -165,10 +156,10 @@ impl ComputedMetrics {
         m.push("total_clone_pairs", GoValue::Int(self.total_clone_pairs));
         m.push("clone_ratio", GoValue::Float(self.clone_ratio));
         if let Some(counts) = self.clone_type_dist {
-            // omitempty: a non-nil map is emitted even if all counts are zero.
+            // omitempty: a present map is emitted even if all counts are zero.
             m.push("clone_type_distribution", clone_type_dist_map(counts));
         }
-        // `clone_pairs` has no omitempty tag: Go emits `null` for a nil slice.
+        // `clone_pairs` has no omitempty: an empty list renders as `null`.
         if self.clone_pairs.is_empty() {
             m.push("clone_pairs", GoValue::Null);
         } else {
@@ -188,7 +179,7 @@ mod tests {
     use cf_gojson::Encoder;
 
     #[test]
-    fn classify_matches_go_thresholds() {
+    fn classify_matches_contract_thresholds() {
         assert_eq!(classify_clone_type(1.0), CLONE_TYPE1);
         assert_eq!(classify_clone_type(1.5), CLONE_TYPE1);
         assert_eq!(classify_clone_type(0.9), CLONE_TYPE2);

@@ -1,70 +1,68 @@
 //! Comment extraction, merging, and filtering pipeline.
 //!
-//! Ports the pure (UAST-independent) logic of `analyzer.go`: grouping comment
-//! nodes by line, merging adjacent comments, stripping comment delimiters, and
-//! filtering comments down to those suitable for sentiment analysis.
+//! The pure (UAST-independent) part of the analyzer: grouping comment nodes by
+//! line, merging adjacent comments, stripping comment delimiters, and filtering
+//! comments down to those suitable for sentiment analysis.
 //!
-//! The UAST-bound pieces (`Consume`, `Fork`, snapshots, the `BaseHistoryAnalyzer`
-//! wiring) live behind the not-yet-ported `cf-uast-node` / `cf-plumbing` /
-//! `cf-analyze` framework; this module provides the deterministic text pipeline
-//! plus the analyzer's identity constants and config defaults, all directly
-//! testable (and ported from `analyzer_test.go`).
+//! The UAST-bound pieces (`Consume`, `Fork`, snapshots, the history-analyzer
+//! wiring) live in the framework crates; this module provides the deterministic
+//! text pipeline plus the analyzer's identity constants and config defaults,
+//! all directly testable.
 //!
-//! # Regex note (byte parity)
+//! # Pattern semantics (report compatibility)
 //!
-//! Go uses RE2 via `regexp`. The patterns here are reproduced with hand-written
-//! Unicode-class scans (no `regex` crate dependency) so length/letter-ratio
-//! checks use **byte** lengths exactly like Go's `len(string)`:
-//! * `filteredFirstCharRE = [^\p{L}\p{N}]` — first char must be a Unicode letter
-//!   or number;
-//! * `filteredCharsRE = [^\p{L}\p{N}\-_:;,./?!#&%+*=\n \t()]+` — strip runs of
-//!   disallowed characters;
-//! * `charsRE = \p{L}+` — count letter bytes for the 60% letters ratio;
-//! * `functionNameRE = \s*[a-zA-Z_][a-zA-Z_0-9]*\(\)` — strip `name()` tokens;
-//! * `whitespaceRE = \s+` — collapse whitespace to a single space;
-//! * `licenseRE = (?i)(licen[cs]e|copyright|©)` — drop license/copyright text.
+//! The reference implementation expresses these filters as RE2 patterns. They
+//! are reproduced here with hand-written Unicode-class scans (no `regex` crate
+//! dependency) so that length/letter-ratio checks use **byte** lengths, exactly
+//! as the reference does:
+//! * `[^\p{L}\p{N}]` — first char must be a Unicode letter or number;
+//! * `[^\p{L}\p{N}\-_:;,./?!#&%+*=\n \t()]+` — strip runs of disallowed
+//!   characters;
+//! * `\p{L}+` — count letter bytes for the 60% letters ratio;
+//! * `\s*[a-zA-Z_][a-zA-Z_0-9]*\(\)` — strip `name()` tokens;
+//! * `\s+` — collapse whitespace to a single space (RE2 `\s` is the ASCII set
+//!   `[\t\n\f\r ]`);
+//! * `(?i)(licen[cs]e|copyright|©)` — drop license/copyright text.
 
-/// Analyzer ID. Mirrors Go `Descriptor.ID`.
+/// Analyzer ID as it appears in reports and on the CLI.
 pub const ANALYZER_ID: &str = "history/sentiment";
 
-/// Analyzer description. Mirrors Go `Descriptor.Description`.
+/// Analyzer description shown in CLI help.
 pub const ANALYZER_DESCRIPTION: &str =
     "Classifies each new or changed comment per commit as containing positive or negative emotions.";
 
 /// Minimum comment length below which the configured value is replaced by the
-/// default. Mirrors Go `MinCommentLengthThresholdHigh`.
+/// default.
 pub const MIN_COMMENT_LENGTH_THRESHOLD_HIGH: i64 = 10;
 
-/// Default minimum comment length. Mirrors Go
-/// `DefaultCommentSentimentCommentMinLength`.
+/// Default minimum comment length.
 pub const DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH: i64 = 20;
 
-/// Default sentiment gap threshold. Mirrors Go `DefaultCommentSentimentGap`.
+/// Default sentiment gap threshold.
 pub const DEFAULT_COMMENT_SENTIMENT_GAP: f32 = 0.5;
 
-/// Minimum letters ratio for a comment. Mirrors Go `CommentLettersRatio`.
+/// Minimum letters ratio for a comment.
 pub const COMMENT_LETTERS_RATIO: f32 = 0.6;
 
-/// Estimated bytes of TC payload per commit. Mirrors Go `sentimentAvgTCSize`.
+/// Estimated bytes of TC payload per commit.
 pub const SENTIMENT_AVG_TC_SIZE: i64 = 500;
 
-/// Config key for the minimum comment length. Mirrors Go
-/// `ConfigCommentSentimentMinLength`.
+/// Config key for the minimum comment length.
 pub const CONFIG_MIN_LENGTH: &str = "CommentSentiment.MinLength";
-/// Config key for the sentiment gap. Mirrors Go `ConfigCommentSentimentGap`.
+/// Config key for the sentiment gap.
 pub const CONFIG_GAP: &str = "CommentSentiment.Gap";
 
 /// Comment prefixes stripped before analysis, longest first so `///` matches
-/// before `//`. Mirrors Go `commentPrefixes`.
+/// before `//`.
 pub const COMMENT_PREFIXES: &[&str] =
     &["///", "//!", "//", "/**", "/*", "#!", "##", "#", "--", ";;", ";"];
 
-/// Comment suffixes stripped from lines. Mirrors Go `commentSuffixes`.
+/// Comment suffixes stripped from lines.
 pub const COMMENT_SUFFIXES: &[&str] = &["*/"];
 
-/// Configuration shared by the analyzer. Mirrors the configurable fields of Go
-/// `Analyzer` that affect the text pipeline.
-#[derive(Debug, Clone, Copy)]
+/// Configuration shared by the analyzer: the configurable fields that affect
+/// the text pipeline.
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Config {
     /// Minimum comment byte length.
     pub min_comment_length: i64,
@@ -72,17 +70,8 @@ pub struct Config {
     pub gap: f32,
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            min_comment_length: 0,
-            gap: 0.0,
-        }
-    }
-}
-
 impl Config {
-    /// Clamps invalid configuration to defaults. Mirrors Go `validate`.
+    /// Clamps invalid configuration to defaults.
     pub fn validate(&mut self) {
         if self.gap < 0.0 || self.gap >= 1.0 {
             self.gap = DEFAULT_COMMENT_SENTIMENT_GAP;
@@ -98,19 +87,19 @@ fn is_letter(c: char) -> bool {
     c.is_alphabetic()
 }
 
-/// Returns true if `c` is a Unicode number (`\p{N}`).
+/// Returns true if `c` is a Unicode number (`\p{N}` = Nd | Nl | No, which is
+/// exactly what `char::is_numeric` matches).
 fn is_number(c: char) -> bool {
-    // Go's \p{N} covers Nd, Nl, No. Rust's char::is_numeric matches Nd|Nl|No.
     c.is_numeric()
 }
 
-/// Returns true if `c` is whitespace per Go `\s` (`[\t\n\f\r ]`, and Go RE2 `\s`
-/// is ASCII-only by default: `[\t\n\f\r ]`).
+/// Returns true if `c` is whitespace per RE2's default `\s`, the ASCII set
+/// `[\t\n\f\r ]` plus vertical tab.
 fn is_ascii_space(c: char) -> bool {
     matches!(c, '\t' | '\n' | '\u{0B}' | '\u{0C}' | '\r' | ' ')
 }
 
-/// Whether `c` is an allowed character for `filteredCharsRE`'s negated class:
+/// Whether `c` is an allowed character for the filtered-chars negated class:
 /// `\p{L}` | `\p{N}` | one of `-_:;,./?!#&%+*=` | `\n` | ` ` | `\t` | `(` | `)`.
 fn is_allowed_filtered_char(c: char) -> bool {
     if is_letter(c) || is_number(c) {
@@ -140,12 +129,12 @@ fn is_allowed_filtered_char(c: char) -> bool {
     )
 }
 
-/// Trims leading/trailing whitespace, matching Go `strings.TrimSpace`.
+/// Trims leading/trailing Unicode whitespace.
 fn trim_space(s: &str) -> &str {
     s.trim_matches(|c: char| c.is_whitespace())
 }
 
-/// Removes common comment syntax from each line. Mirrors `stripCommentDelimiters`.
+/// Removes common comment syntax from each line.
 #[must_use]
 pub fn strip_comment_delimiters(text: &str) -> String {
     let mut lines: Vec<String> = Vec::new();
@@ -168,28 +157,24 @@ pub fn strip_comment_delimiters(text: &str) -> String {
     trim_space(&lines.join(" ")).to_string()
 }
 
-/// Strips `name()` tokens, mirroring `functionNameRE.ReplaceAllString(s, "")`.
+/// Strips `name()` tokens (pattern `\s*[a-zA-Z_][a-zA-Z_0-9]*\(\)`).
 ///
-/// The pattern is `\s*[a-zA-Z_][a-zA-Z_0-9]*\(\)`: an optional run of whitespace
-/// followed by an identifier immediately followed by `()`. All non-overlapping
-/// matches are removed.
+/// An optional run of ASCII whitespace followed by an identifier immediately
+/// followed by `()`. All non-overlapping matches are removed.
 fn strip_function_names(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = String::with_capacity(s.len());
     let mut i = 0usize;
     while i < bytes.len() {
         // Try to match at position i: \s* then ident then "()".
+        // RE2's default \s is ASCII-only: [\t\n\f\r ].
         let mut j = i;
-        while j < bytes.len() && (bytes[j] as char).is_ascii_whitespace() && is_ascii_space(bytes[j] as char) {
-            // Go \s in RE2 default = [\t\n\f\r ]; restrict to those.
+        while j < bytes.len() && bytes[j].is_ascii_whitespace() {
             j += 1;
         }
-        let ident_start = j;
         if j < bytes.len() && (bytes[j].is_ascii_alphabetic() || bytes[j] == b'_') {
             j += 1;
-            while j < bytes.len()
-                && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_')
-            {
+            while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
                 j += 1;
             }
             if j + 1 < bytes.len() && bytes[j] == b'(' && bytes[j + 1] == b')' {
@@ -198,8 +183,7 @@ fn strip_function_names(s: &str) -> String {
                 continue;
             }
         }
-        // No match at i: emit the byte at i and advance by one UTF-8 char.
-        let _ = ident_start;
+        // No match at i: emit the char at i and advance by one UTF-8 char.
         let ch_len = utf8_char_len(bytes[i]);
         out.push_str(&s[i..i + ch_len]);
         i += ch_len;
@@ -207,7 +191,7 @@ fn strip_function_names(s: &str) -> String {
     out
 }
 
-/// Removes runs of disallowed characters, mirroring `filteredCharsRE`.
+/// Removes runs of disallowed characters (the filtered-chars class).
 fn strip_filtered_chars(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
@@ -219,9 +203,7 @@ fn strip_filtered_chars(s: &str) -> String {
     out
 }
 
-/// Collapses runs of whitespace to a single space, mirroring `whitespaceRE`.
-///
-/// Go's RE2 `\s+` (default flags) matches ASCII `[\t\n\f\r ]` runs.
+/// Collapses runs of ASCII whitespace (`[\t\n\f\r ]+`) to a single space.
 fn collapse_whitespace(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut in_ws = false;
@@ -244,8 +226,8 @@ fn count_letter_bytes(s: &str) -> usize {
     s.chars().filter(|&c| is_letter(c)).map(char::len_utf8).sum()
 }
 
-/// Returns true if `s` contains a license/copyright marker, mirroring
-/// `licenseRE = (?i)(licen[cs]e|copyright|©)`.
+/// Returns true if `s` contains a license/copyright marker
+/// (`(?i)(licen[cs]e|copyright|©)`).
 #[must_use]
 pub fn is_license(s: &str) -> bool {
     let lower = s.to_lowercase();
@@ -257,8 +239,8 @@ pub fn is_license(s: &str) -> bool {
 
 /// Filters merged comments down to those suitable for sentiment analysis.
 ///
-/// Mirrors Go `filterComments` operation-for-operation. `min_length` is compared
-/// against the **byte** length, matching Go's `len`.
+/// `min_length` is compared against the **byte** length (report compatibility:
+/// the reference implementation compares byte lengths).
 #[must_use]
 pub fn filter_comments(comments: &[String], min_length: i64) -> Vec<String> {
     let mut filtered = Vec::with_capacity(comments.len());
@@ -271,7 +253,7 @@ pub fn filter_comments(comments: &[String], min_length: i64) -> Vec<String> {
             continue;
         }
 
-        // First rune must be a letter/number (filteredFirstCharRE is negated).
+        // First rune must be a letter/number.
         let Some(first_rune) = comment.chars().next() else {
             continue;
         };
@@ -289,7 +271,8 @@ pub fn filter_comments(comments: &[String], min_length: i64) -> Vec<String> {
         comment = collapse_whitespace(&comment);
 
         let chars_count = count_letter_bytes(&comment);
-        // Go: charsCount < int(float32(len(comment))*CommentLettersRatio).
+        // Letter bytes must be at least 60% of the byte length (the threshold
+        // is computed in f32 and truncated, per the report contract).
         let threshold = (comment.len() as f32 * COMMENT_LETTERS_RATIO) as i64;
         if (chars_count as i64) < threshold {
             continue;
@@ -307,7 +290,7 @@ pub fn filter_comments(comments: &[String], min_length: i64) -> Vec<String> {
 
 /// A minimal comment node for line-grouping/merging.
 ///
-/// Stand-in for `node.Node` with `Pos.StartLine`/`Pos.EndLine` and `Token`. The
+/// Stand-in for a UAST node with start/end line positions and a token. The
 /// full UAST node lives in `cf-uast-node`; the merge logic is independent of it.
 #[derive(Debug, Clone)]
 pub struct CommentNode {
@@ -321,14 +304,14 @@ pub struct CommentNode {
 
 /// Merges adjacent comment nodes into comment strings.
 ///
-/// Mirrors `groupCommentsByLine` + `mergeAdjacentComments`: group nodes by start
-/// line, sort lines ascending, and emit a merged comment whenever the next line
-/// is not within `maxEnd + 1` of the current group.
+/// Groups nodes by start line, walks lines in ascending order, and emits a
+/// merged comment whenever the next line is not within `maxEnd + 1` of the
+/// current group.
 #[must_use]
 pub fn merge_adjacent_comments(nodes: &[CommentNode]) -> Vec<String> {
     use std::collections::BTreeMap;
 
-    // Group by start line (BTreeMap keeps lines ascending == sort.Ints).
+    // Group by start line (BTreeMap keeps lines ascending).
     let mut lines: BTreeMap<i64, Vec<&CommentNode>> = BTreeMap::new();
     for n in nodes {
         lines.entry(n.start_line).or_default().push(n);
@@ -363,8 +346,7 @@ pub fn merge_adjacent_comments(nodes: &[CommentNode]) -> Vec<String> {
     merged
 }
 
-/// Full comment pipeline: merge adjacent nodes then filter. Mirrors
-/// `Analyzer.mergeComments`.
+/// Full comment pipeline: merge adjacent nodes then filter.
 #[must_use]
 pub fn merge_comments(nodes: &[CommentNode], min_length: i64) -> Vec<String> {
     let merged = merge_adjacent_comments(nodes);
@@ -393,8 +375,6 @@ mod tests {
     fn s(v: &[&str]) -> Vec<String> {
         v.iter().map(|x| x.to_string()).collect()
     }
-
-    // --- analyzer_test.go ports ---
 
     #[test]
     fn validate_clamps() {

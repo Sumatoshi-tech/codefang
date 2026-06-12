@@ -1,9 +1,7 @@
-//! Data types for the comments analyzer, ported from
-//! `internal/analyzers/comments/types.go`.
+//! Data types for the comments analyzer.
 //!
-//! Field names mirror the Go structs. Report key names are produced explicitly
-//! in [`crate::analyzer`] (routed through `cf-gojson`) so they match the Go
-//! `Report = map[string]any` keys byte-for-byte.
+//! Report key names are produced explicitly in [`crate::analyzer`] (routed
+//! through `cf-gojson`); the key strings are part of the report contract.
 
 use std::collections::BTreeMap;
 
@@ -11,8 +9,8 @@ use cf_uast_node::Node;
 
 /// UAST node-type strings used by the comments analyzer.
 ///
-/// These mirror the Go `node.UAST*` string constants. The string values are the
-/// contract; [`cf_uast_node::Type`] is a string newtype carrying exactly these.
+/// The string values are the contract; [`cf_uast_node::Type`] is a string
+/// newtype carrying exactly these.
 pub mod uast {
     /// Comment node type.
     pub const COMMENT: &str = "Comment";
@@ -32,27 +30,25 @@ pub mod uast {
     pub const IDENTIFIER: &str = "Identifier";
 }
 
-/// The `Name` role string (mirrors Go `node.RoleName`).
+/// The `Name` role string.
 pub const ROLE_NAME: &str = "Name";
 
-/// Per-analysis configuration (Go `CommentConfig`).
+/// Per-analysis configuration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CommentConfig {
     /// Score awarded to a well-placed comment.
     pub reward_score: f64,
-    /// Maximum comment length (informational; Go field `MaxCommentLength`).
+    /// Maximum comment length (informational).
     pub max_comment_length: i64,
     /// Penalty scores keyed by target node type.
     pub penalty_scores: BTreeMap<String, f64>,
 }
 
 impl CommentConfig {
-    /// Returns the default configuration, matching Go `(*Analyzer).DefaultConfig`
-    /// (`comments.go::getDefaultPenaltyScores`).
-    ///
-    /// Asserted by the ported `TestAnalyzer_DefaultConfig`: `reward_score = 1.0`,
-    /// `max_comment_length = 500`, penalties `Function/Method -0.5`,
-    /// `Class/Interface/Struct -0.3`, `Variable/Assignment/Call -0.1`.
+    /// Returns the default configuration (report contract):
+    /// `reward_score = 1.0`, `max_comment_length = 500`, penalties
+    /// `Function/Method -0.5`, `Class/Interface/Struct -0.3`,
+    /// `Variable/Assignment/Call -0.1`.
     pub fn default_config() -> Self {
         let mut penalty_scores = BTreeMap::new();
         penalty_scores.insert(uast::FUNCTION.to_string(), -0.5);
@@ -71,7 +67,7 @@ impl CommentConfig {
     }
 }
 
-/// A contiguous block of comment nodes (Go `CommentBlock`).
+/// A contiguous block of comment nodes.
 #[derive(Debug, Clone)]
 pub struct CommentBlock {
     /// The comment nodes composing this block, in line order.
@@ -84,7 +80,7 @@ pub struct CommentBlock {
     pub full_text: String,
 }
 
-/// Per-comment analysis detail (Go `CommentDetail`).
+/// Per-comment analysis detail.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CommentDetail {
     /// Node type of the comment.
@@ -105,7 +101,7 @@ pub struct CommentDetail {
     pub line_number: i64,
 }
 
-/// Documentation status for a single function (Go `FunctionInfo`).
+/// Documentation status for a single function.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionInfo {
     /// Function name.
@@ -118,7 +114,7 @@ pub struct FunctionInfo {
     pub comment_type: String,
 }
 
-/// Aggregate metrics for a file (Go `CommentMetrics`).
+/// Aggregate metrics for a file.
 #[derive(Debug, Clone)]
 pub struct CommentMetrics {
     /// Total number of comment details.
@@ -139,7 +135,7 @@ pub struct CommentMetrics {
     pub documented_functions: i64,
 }
 
-/// A row of the detailed comments table (Go `CommentReportItem`).
+/// A row of the detailed comments table.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CommentReportItem {
     /// Comment line number.
@@ -154,7 +150,7 @@ pub struct CommentReportItem {
     pub assessment: String,
 }
 
-/// A row of the detailed functions table (Go `FunctionReportItem`).
+/// A row of the detailed functions table.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionReportItem {
     /// Function name.

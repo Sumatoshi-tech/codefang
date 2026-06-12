@@ -1,10 +1,9 @@
-//! Repository handle and log/diff operations, ported from
-//! `pkg/gitlib/repository.go`.
+//! Repository handle and log/diff operations.
 //!
 //! [`Repository`] wraps a libgit2 [`git2::Repository`]. Per the design it is
 //! **per-thread**: `git2::Repository` is already `!Send`/`!Sync`, and a
-//! [`std::marker::PhantomData`]`<*const ()>` field makes that intent explicit and
-//! future-proof. RAII [`Drop`] replaces Go's explicit `Free()`.
+//! `PhantomData<*const ()>` field makes that intent explicit
+//! and future-proof. RAII [`Drop`] frees the handle.
 
 use std::marker::PhantomData;
 
@@ -16,14 +15,14 @@ use crate::hash::Hash;
 use crate::revwalk::RevWalk;
 use crate::tree::Tree;
 
-/// Options controlling commit-log iteration (Go `gitlib.LogOptions`).
+/// Options controlling commit-log iteration.
 #[derive(Debug, Clone, Default)]
 pub struct LogOptions {
-    /// Only include commits at/after this author time (Go `Since *time.Time`).
+    /// Only include commits at/after this author time.
     pub since: Option<git2::Time>,
-    /// Follow only the first parent (Go `FirstParent`, `git log --first-parent`).
+    /// Follow only the first parent (`git log --first-parent`).
     pub first_parent: bool,
-    /// Yield oldest commits first (Go `Reverse`, adds `SortReverse`).
+    /// Yield oldest commits first (adds `SortReverse` to the walk).
     pub reverse: bool,
 }
 
@@ -49,7 +48,7 @@ fn tune_libgit2() {
     });
 }
 
-/// A libgit2 repository (Go `gitlib.Repository`).
+/// A libgit2 repository.
 ///
 /// **Not** `Send`/`Sync`: libgit2 repositories are single-threaded, so each
 /// thread owns its own handle (the design's per-thread model). The contained
@@ -62,11 +61,11 @@ pub struct Repository {
 }
 
 impl Repository {
-    /// Opens a git repository at `path` (Go `OpenRepository`).
+    /// Opens a git repository at `path`.
     ///
     /// # Errors
     ///
-    /// Returns [`GitError::OpenRepository`] (Go `open repository: %w`) when the
+    /// Returns [`GitError::OpenRepository`] when the
     /// repository cannot be opened.
     pub fn open(path: &str) -> Result<Self> {
         tune_libgit2();
@@ -78,17 +77,17 @@ impl Repository {
         })
     }
 
-    /// Returns the repository path (Go `Repository.Path`).
+    /// Returns the repository path.
     #[must_use]
     pub fn path(&self) -> &str {
         &self.path
     }
 
-    /// Returns the HEAD reference target hash (Go `Repository.Head`).
+    /// Returns the HEAD reference target hash.
     ///
     /// # Errors
     ///
-    /// Returns [`GitError::GetHead`] (Go `get HEAD: %w`) on failure.
+    /// Returns [`GitError::GetHead`] on failure.
     pub fn head(&self) -> Result<Hash> {
         let head = self.repo.head().map_err(GitError::GetHead)?;
         let target = head
@@ -97,11 +96,11 @@ impl Repository {
         Ok(Hash::from_oid(&target))
     }
 
-    /// Looks up the commit with the given hash (Go `Repository.LookupCommit`).
+    /// Looks up the commit with the given hash.
     ///
     /// # Errors
     ///
-    /// Returns [`GitError::LookupCommit`] (Go `lookup commit: %w`).
+    /// Returns [`GitError::LookupCommit`].
     pub fn lookup_commit(&self, hash: Hash) -> Result<Commit<'_>> {
         let commit = self
             .repo
@@ -110,11 +109,11 @@ impl Repository {
         Ok(Commit::new(commit, self))
     }
 
-    /// Looks up the blob with the given hash (Go `Repository.LookupBlob`).
+    /// Looks up the blob with the given hash.
     ///
     /// # Errors
     ///
-    /// Returns [`GitError::LookupBlob`] (Go `lookup blob: %w`).
+    /// Returns [`GitError::LookupBlob`].
     pub fn lookup_blob(&self, hash: Hash) -> Result<Blob<'_>> {
         let blob = self
             .repo
@@ -123,11 +122,11 @@ impl Repository {
         Ok(Blob::new(blob))
     }
 
-    /// Looks up the tree with the given hash (Go `Repository.LookupTree`).
+    /// Looks up the tree with the given hash.
     ///
     /// # Errors
     ///
-    /// Returns [`GitError::LookupTree`] (Go `lookup tree: %w`).
+    /// Returns [`GitError::LookupTree`].
     pub fn lookup_tree(&self, hash: Hash) -> Result<Tree<'_>> {
         let tree = self
             .repo
@@ -136,22 +135,23 @@ impl Repository {
         Ok(Tree::new(tree, self))
     }
 
-    /// Creates a new revision walker (Go `Repository.Walk`).
+    /// Creates a new revision walker.
     ///
     /// # Errors
     ///
-    /// Returns [`GitError::CreateRevwalk`] (Go `create revwalk: %w`).
+    /// Returns [`GitError::CreateRevwalk`].
     pub fn walk(&self) -> Result<RevWalk<'_>> {
         let walk = self.repo.revwalk().map_err(GitError::CreateRevwalk)?;
         Ok(RevWalk::new(walk, self))
     }
 
-    /// Returns a commit iterator starting from HEAD (Go `Repository.Log`).
+    /// Returns a commit iterator starting from HEAD.
     ///
     /// Pushes HEAD, applies `SortTime | SortTopological` (plus `SortReverse`
-    /// when `opts.reverse`), and `simplify_first_parent` when `opts.first_parent`
-    /// — reproducing Go's ordering exactly. The topological order prevents
-    /// diffing against a descendant (Go's burndown-integrity comment).
+    /// when `opts.reverse`), and `simplify_first_parent` when
+    /// `opts.first_parent`. The commit order feeds the history analyzers and is
+    /// part of the report contract; the topological order prevents diffing
+    /// against a descendant (burndown integrity).
     ///
     /// # Errors
     ///
@@ -179,8 +179,7 @@ impl Repository {
         Ok(CommitIter::new(walk, self, opts.since))
     }
 
-    /// Counts commits matching `opts` without materializing commits
-    /// (Go `Repository.CommitCount`).
+    /// Counts commits matching `opts` without materializing commits.
     ///
     /// O(N) time, O(1) memory; the `reverse` option is irrelevant to the count.
     ///
@@ -190,9 +189,8 @@ impl Repository {
     pub fn commit_count(&self, opts: &LogOptions) -> Result<usize> {
         let mut iter = self.log(opts)?;
         let mut count = 0;
-        // skip(1) returns Ok; we drain until next_commit yields nothing, but to
-        // mirror Go's skip-based counting (which honors the since filter) we
-        // iterate via the iterator's own skip path.
+        // Drain until next_commit yields nothing; counting through the iterator
+        // keeps the since filter applied identically to real iteration.
         loop {
             // Reuse next_commit so the since cutoff is applied identically.
             if iter.next_commit().is_some() {
@@ -204,14 +202,14 @@ impl Repository {
         Ok(count)
     }
 
-    /// Computes the diff between two trees (Go `Repository.DiffTreeToTree`).
+    /// Computes the diff between two trees.
     ///
     /// Either side may be `None` (an added/removed whole tree). Uses libgit2's
-    /// default diff options, matching `git2go.DefaultDiffOptions`.
+    /// default diff options.
     ///
     /// # Errors
     ///
-    /// Returns [`GitError::DiffTrees`] (Go `diff trees: %w`).
+    /// Returns [`GitError::DiffTrees`].
     pub fn diff_tree_to_tree(
         &self,
         old_tree: Option<&Tree<'_>>,
@@ -229,11 +227,11 @@ impl Repository {
     }
 
     /// Resolves a time spec that may be a duration/RFC3339/date or a commit
-    /// ref/SHA (Go `Repository.ResolveTime`).
+    /// ref/SHA.
     ///
     /// When `spec` is not a recognizable time string, it is interpreted as a
     /// revision and the referenced commit's author time is returned (as a Unix
-    /// epoch second count), matching Go's `RevparseSingle`/`AsCommit` fallback.
+    /// epoch second count).
     ///
     /// # Errors
     ///
@@ -259,7 +257,7 @@ impl Repository {
         Ok(when.seconds())
     }
 
-    /// Returns the underlying libgit2 repository (Go `Repository.Native`).
+    /// Returns the underlying libgit2 repository.
     #[must_use]
     pub fn native(&self) -> &git2::Repository {
         &self.repo
@@ -271,7 +269,7 @@ mod tests {
     use super::*;
     use crate::testing::TestRepo;
 
-    // Ported from gitlib_test.go::TestOpenRepository.
+    // Mirrors reference test TestOpenRepository.
     #[test]
     fn open_repository() {
         let tr = TestRepo::new();
@@ -282,14 +280,14 @@ mod tests {
         assert_eq!(repo.path(), tr.path());
     }
 
-    // Ported from gitlib_test.go::TestOpenRepositoryNotFound.
+    // Mirrors reference test TestOpenRepositoryNotFound.
     #[test]
     fn open_repository_not_found() {
         let err = Repository::open("/nonexistent/path/to/repo").err().unwrap();
         assert!(err.to_string().contains("open repository"));
     }
 
-    // Ported from gitlib_test.go::TestRepositoryHead.
+    // Mirrors reference test TestRepositoryHead.
     #[test]
     fn repository_head() {
         let tr = TestRepo::new();
@@ -300,7 +298,7 @@ mod tests {
         assert_eq!(repo.head().unwrap(), expected);
     }
 
-    // Ported from gitlib_test.go::TestLookupCommit.
+    // Mirrors reference test TestLookupCommit.
     #[test]
     fn lookup_commit() {
         let tr = TestRepo::new();
@@ -315,7 +313,7 @@ mod tests {
         assert_eq!(commit.author().email, "test@example.com");
     }
 
-    // Ported from gitlib_test.go::TestLookupCommitNotFound.
+    // Mirrors reference test TestLookupCommitNotFound.
     #[test]
     fn lookup_commit_not_found() {
         let tr = TestRepo::new();
@@ -327,7 +325,7 @@ mod tests {
         assert!(repo.lookup_commit(invalid).is_err());
     }
 
-    // Ported from gitlib_test.go::TestCommitParent.
+    // Mirrors reference test TestCommitParent.
     #[test]
     fn commit_parent() {
         let tr = TestRepo::new();
@@ -345,7 +343,7 @@ mod tests {
         assert_eq!(parent.hash(), first);
     }
 
-    // Ported from gitlib_test.go::TestCommitParentNotFound.
+    // Mirrors reference test TestCommitParentNotFound.
     #[test]
     fn commit_parent_not_found() {
         let tr = TestRepo::new();
@@ -358,7 +356,7 @@ mod tests {
         assert!(matches!(commit.parent(0), Err(GitError::ParentNotFound)));
     }
 
-    // Ported from gitlib_test.go::TestCommitTree + TestTreeEntry.
+    // Mirrors reference test TestCommitTree + TestTreeEntry.
     #[test]
     fn commit_tree_and_entry() {
         let tr = TestRepo::new();
@@ -377,7 +375,7 @@ mod tests {
         assert_eq!(entry.object_type(), Some(git2::ObjectType::Blob));
     }
 
-    // Ported from gitlib_test.go::TestTreeEntryByPath + ByPathNotFound + OutOfBounds.
+    // Mirrors reference test TestTreeEntryByPath + ByPathNotFound + OutOfBounds.
     #[test]
     fn tree_entry_by_path() {
         let tr = TestRepo::new();
@@ -396,7 +394,7 @@ mod tests {
         assert!(tree.entry_by_index(999).is_none());
     }
 
-    // Ported from gitlib_test.go::TestCommitFiles.
+    // Mirrors reference test TestCommitFiles.
     #[test]
     fn commit_files() {
         let tr = TestRepo::new();
@@ -419,7 +417,7 @@ mod tests {
         assert!(names.contains(&"dir/c.txt".to_string()));
     }
 
-    // Ported from gitlib_test.go::TestCommitFile + TestCommitFileNotFound.
+    // Mirrors reference test TestCommitFile + TestCommitFileNotFound.
     #[test]
     fn commit_file() {
         let tr = TestRepo::new();
@@ -437,7 +435,7 @@ mod tests {
         assert!(commit.file("nonexistent.txt").is_err());
     }
 
-    // Ported from gitlib_test.go::TestLookupBlob + TestLookupBlobNotFound.
+    // Mirrors reference test TestLookupBlob + TestLookupBlobNotFound.
     #[test]
     fn lookup_blob() {
         let tr = TestRepo::new();
@@ -457,7 +455,7 @@ mod tests {
         assert!(repo.lookup_blob(invalid).is_err());
     }
 
-    // Ported from gitlib_test.go::TestLookupTree + TestLookupTreeNotFound.
+    // Mirrors reference test TestLookupTree + TestLookupTreeNotFound.
     #[test]
     fn lookup_tree() {
         let tr = TestRepo::new();
@@ -477,7 +475,7 @@ mod tests {
         assert!(repo.lookup_tree(invalid).is_err());
     }
 
-    // Ported from gitlib_test.go::TestDiffTreeToTree + TestDiffStats + TestDiffDelta.
+    // Mirrors reference test TestDiffTreeToTree + TestDiffStats + TestDiffDelta.
     #[test]
     fn diff_tree_to_tree() {
         let tr = TestRepo::new();
@@ -502,7 +500,7 @@ mod tests {
         assert_eq!(diff.num_deltas().unwrap(), 3);
     }
 
-    // Ported from gitlib_test.go::TestDiffStats.
+    // Mirrors reference test TestDiffStats.
     #[test]
     fn diff_stats() {
         let tr = TestRepo::new();
@@ -524,7 +522,7 @@ mod tests {
         assert!(stats.deletions() > 0);
     }
 
-    // Ported from gitlib_test.go::TestRepositoryLog + TestCommitIterNext.
+    // Mirrors reference test TestRepositoryLog + TestCommitIterNext.
     #[test]
     fn repository_log() {
         let tr = TestRepo::new();
@@ -546,7 +544,7 @@ mod tests {
         assert_eq!(count, 3);
     }
 
-    // Ported from gitlib_test.go::TestLogFirstParent.
+    // Mirrors reference test TestLogFirstParent.
     #[test]
     fn log_first_parent() {
         let tr = TestRepo::new();
@@ -590,7 +588,7 @@ mod tests {
         }
     }
 
-    // Ported from gitlib_test.go::TestRepositoryLogWithSince.
+    // Mirrors reference test TestRepositoryLogWithSince.
     #[test]
     fn repository_log_with_since() {
         let tr = TestRepo::new();
@@ -628,7 +626,7 @@ mod tests {
         assert!(count >= 2);
     }
 
-    // Ported from gitlib_test.go::TestResolveTime_CommitSHA + FallbackToParseTime + InvalidInput.
+    // Mirrors reference test TestResolveTime_CommitSHA + FallbackToParseTime + InvalidInput.
     #[test]
     fn resolve_time() {
         let tr = TestRepo::new();
@@ -649,7 +647,7 @@ mod tests {
         assert!(matches!(err, GitError::InvalidTimeFormat(_)));
     }
 
-    // Ported from commit_iter_test.go: Close after exhaustion / before / Next after Close.
+    // Mirrors reference tests: Close after exhaustion / before / Next after Close.
     #[test]
     fn commit_iter_close_semantics() {
         let tr = TestRepo::new();
@@ -672,7 +670,7 @@ mod tests {
         assert!(iter2.next_commit().is_none());
     }
 
-    // Ported from gitlib_test.go::TestRevWalk + PushHead + Iterate + PushInvalid.
+    // Mirrors reference test TestRevWalk + PushHead + Iterate + PushInvalid.
     #[test]
     fn revwalk() {
         let tr = TestRepo::new();

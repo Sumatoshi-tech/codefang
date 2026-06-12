@@ -1,28 +1,28 @@
 //! Typos metrics computation.
 //!
-//! Direct port of Go `internal/analyzers/typos/metrics.go`. Given the analyzer
-//! report (a list of [`Typo`]), it computes four metrics — `typo_list`,
-//! `patterns`, `file_typos`, `aggregate` — exactly as Go does, including the
-//! sort orders and the "frequency > 1" filter.
+//! Given the analyzer report (a list of [`Typo`]), computes four metrics —
+//! `typo_list`, `patterns`, `file_typos`, `aggregate` — with the pinned sort
+//! orders and the "frequency > 1" filter (report contract, pinned by
+//! `rust/tests/compat`).
 
 use std::collections::BTreeMap;
 
 use crate::compat::{GoValue, Hash};
 use crate::typos::Typo;
 
-/// Analyzer name used for the MetricsOutput interface (Go `analyzerNameTypos`).
+/// Analyzer name used for the metrics-output interface.
 pub const ANALYZER_NAME_TYPOS: &str = "typos";
 
-/// Metric name: per-typo list (Go `metricNameTypoList`).
+/// Metric name: per-typo list.
 pub const METRIC_NAME_TYPO_LIST: &str = "typo_list";
-/// Metric name: recurring patterns (Go `metricNamePatterns`).
+/// Metric name: recurring patterns.
 pub const METRIC_NAME_PATTERNS: &str = "patterns";
-/// Metric name: per-file typo counts (Go `metricNameFileTypos`).
+/// Metric name: per-file typo counts.
 pub const METRIC_NAME_FILE_TYPOS: &str = "file_typos";
-/// Metric name: aggregate summary (Go `metricNameAggregate`).
+/// Metric name: aggregate summary.
 pub const METRIC_NAME_AGGREGATE: &str = "aggregate";
 
-/// Parsed input data for metrics computation (Go `ReportData`).
+/// Parsed input data for metrics computation.
 #[derive(Debug, Clone, Default)]
 pub struct ReportData {
     /// The typos to compute metrics over.
@@ -31,8 +31,8 @@ pub struct ReportData {
 
 /// Information about a single typo fix.
 ///
-/// Port of Go `TypoData`. JSON/YAML field order: wrong, correct, file, line,
-/// commit. `commit` is the hex string form of the hash (Go `Hash.String()`).
+/// JSON/YAML field order: wrong, correct, file, line, commit. `commit` is the
+/// lowercase hex string form of the hash.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypoData {
     /// Misspelled identifier.
@@ -49,6 +49,7 @@ pub struct TypoData {
 
 impl TypoData {
     /// Encodes as a struct-origin object (field declaration order preserved).
+    #[must_use]
     pub fn to_govalue(&self) -> GoValue {
         GoValue::Struct(vec![
             ("wrong".to_string(), GoValue::Str(self.wrong.clone())),
@@ -62,19 +63,20 @@ impl TypoData {
 
 /// A recurring typo pattern with its frequency.
 ///
-/// Port of Go `TypoPatternData`. Field order: wrong, correct, frequency.
+/// Field order: wrong, correct, frequency.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypoPatternData {
     /// Misspelled identifier.
     pub wrong: String,
     /// Corrected identifier.
     pub correct: String,
-    /// Number of occurrences (always > 1, per Go's filter).
+    /// Number of occurrences (always > 1, per the patterns filter).
     pub frequency: i64,
 }
 
 impl TypoPatternData {
     /// Encodes as a struct-origin object.
+    #[must_use]
     pub fn to_govalue(&self) -> GoValue {
         GoValue::Struct(vec![
             ("wrong".to_string(), GoValue::Str(self.wrong.clone())),
@@ -86,19 +88,20 @@ impl TypoPatternData {
 
 /// Typo statistics for a single file.
 ///
-/// Port of Go `FileTypoData`. Field order: file, typo_count, fixed_typos.
+/// Field order: file, typo_count, fixed_typos.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileTypoData {
     /// File path.
     pub file: String,
     /// Number of typos detected in the file.
     pub typo_count: i64,
-    /// Number of typos fixed (equal to `typo_count` in the Go source).
+    /// Number of typos fixed (always equal to `typo_count`).
     pub fixed_typos: i64,
 }
 
 impl FileTypoData {
     /// Encodes as a struct-origin object.
+    #[must_use]
     pub fn to_govalue(&self) -> GoValue {
         GoValue::Struct(vec![
             ("file".to_string(), GoValue::Str(self.file.clone())),
@@ -110,8 +113,8 @@ impl FileTypoData {
 
 /// Summary statistics across all typos.
 ///
-/// Port of Go `AggregateData`. Field order: total_typos, unique_patterns,
-/// affected_files, affected_commits.
+/// Field order: total_typos, unique_patterns, affected_files,
+/// affected_commits.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AggregateData {
     /// Total number of typos.
@@ -126,6 +129,7 @@ pub struct AggregateData {
 
 impl AggregateData {
     /// Encodes as a struct-origin object (field declaration order preserved).
+    #[must_use]
     pub fn to_govalue(&self) -> GoValue {
         GoValue::Struct(vec![
             ("total_typos".to_string(), GoValue::Int(self.total_typos)),
@@ -145,7 +149,8 @@ impl AggregateData {
     }
 }
 
-/// Computes the `typo_list` metric (Go `computeTypoList`). Preserves input order.
+/// Computes the `typo_list` metric. Preserves input order.
+#[must_use]
 pub fn compute_typo_list(input: &ReportData) -> Vec<TypoData> {
     input
         .typos
@@ -160,12 +165,13 @@ pub fn compute_typo_list(input: &ReportData) -> Vec<TypoData> {
         .collect()
 }
 
-/// Computes the `patterns` metric (Go `computeTypoPatterns`).
+/// Computes the `patterns` metric.
 ///
 /// Counts `wrong|correct` occurrences, keeps only frequency > 1, and sorts by
-/// frequency descending. Go's `sort.Slice` is unstable so equal-frequency ties
-/// have unspecified order in Go; this port breaks ties by the `wrong|correct`
-/// key for determinism (documented in the port notes).
+/// frequency descending. The reference implementation leaves equal-frequency
+/// tie order unspecified (unstable sort); this implementation breaks ties by
+/// the `wrong|correct` key for determinism.
+#[must_use]
 pub fn compute_typo_patterns(input: &ReportData) -> Vec<TypoPatternData> {
     let mut counts: BTreeMap<String, i64> = BTreeMap::new();
     for t in &input.typos {
@@ -195,10 +201,11 @@ pub fn compute_typo_patterns(input: &ReportData) -> Vec<TypoPatternData> {
     result
 }
 
-/// Computes the `file_typos` metric (Go `computeFileTypos`).
+/// Computes the `file_typos` metric.
 ///
-/// Counts typos per file and sorts by typo count descending. Ties are broken by
-/// file name (ascending) for determinism (Go's `sort.Slice` is unstable).
+/// Counts typos per file and sorts by typo count descending. Ties are broken
+/// by file name (ascending) for determinism (the reference sort is unstable).
+#[must_use]
 pub fn compute_file_typos(input: &ReportData) -> Vec<FileTypoData> {
     let mut file_counts: BTreeMap<String, i64> = BTreeMap::new();
     for t in &input.typos {
@@ -223,7 +230,8 @@ pub fn compute_file_typos(input: &ReportData) -> Vec<FileTypoData> {
     result
 }
 
-/// Computes the `aggregate` metric (Go `computeAggregate`).
+/// Computes the `aggregate` metric.
+#[must_use]
 pub fn compute_aggregate(input: &ReportData) -> AggregateData {
     use std::collections::HashSet;
 
@@ -245,7 +253,7 @@ pub fn compute_aggregate(input: &ReportData) -> AggregateData {
     }
 }
 
-/// A computed metric result (name + value), mirroring Go `common.MetricResult`.
+/// A computed metric result (name + value).
 #[derive(Debug, Clone, PartialEq)]
 pub struct MetricResult {
     /// Metric name.
@@ -254,9 +262,9 @@ pub struct MetricResult {
     pub value: GoValue,
 }
 
-/// Runs all typos metrics in the fixed Go order and returns the results.
-///
-/// Port of Go `ComputeAllMetrics`: typo_list, patterns, file_typos, aggregate.
+/// Runs all typos metrics in the fixed computation order and returns the
+/// results: typo_list, patterns, file_typos, aggregate.
+#[must_use]
 pub fn compute_all_metrics(input: &ReportData) -> Vec<MetricResult> {
     vec![
         MetricResult {
@@ -267,11 +275,11 @@ pub fn compute_all_metrics(input: &ReportData) -> Vec<MetricResult> {
         },
         MetricResult {
             name: METRIC_NAME_PATTERNS.to_string(),
-            // Go `computeTypoPatterns` returns a nil slice (`var result
-            // []TypoPatternData`) until the "frequency > 1" filter appends to
-            // it, so an empty result marshals to JSON `null`, NOT `[]`. The
-            // `typo_list`/`file_typos` metrics use `make([]T, 0, …)` and so
-            // marshal to `[]` when empty — keep that asymmetry exact.
+            // The patterns metric is a nil-when-empty slice in the report
+            // contract: no pattern survives the "frequency > 1" filter ->
+            // JSON `null`, NOT `[]`. The `typo_list`/`file_typos` metrics are
+            // always-present slices and marshal to `[]` when empty — keep
+            // that asymmetry exact (pinned by the differential gate).
             value: {
                 let patterns = compute_typo_patterns(input);
                 if patterns.is_empty() {
@@ -300,27 +308,25 @@ pub fn compute_all_metrics(input: &ReportData) -> Vec<MetricResult> {
 /// Builds the metrics report value: a **map-origin** object keyed by metric
 /// name, so JSON encoding sorts the keys by raw UTF-8 bytes.
 ///
-/// Go `common.MetricSet.ToJSON()` returns a `map[string]any` (one entry per
-/// metric), and `json.Marshal` sorts map keys. So the top-level order is the
-/// byte-sorted `aggregate`, `file_typos`, `patterns`, `typo_list` — NOT the
-/// `typo_list`, `patterns`, `file_typos`, `aggregate` computation order. Using
+/// The metric set serializes as a dynamic map (one entry per metric) with
+/// byte-sorted keys. So the top-level order is `aggregate`, `file_typos`,
+/// `patterns`, `typo_list` — NOT the computation order. Using
 /// [`GoValue::Map`] (sorted at encode time) reproduces that exactly.
+#[must_use]
 pub fn metrics_report_value(input: &ReportData) -> GoValue {
     let metrics = compute_all_metrics(input);
     GoValue::Map(metrics.into_iter().map(|m| (m.name, m.value)).collect())
 }
 
-/// Builds the metrics value for **YAML** serialization (Go `MetricSet.ToYAML()`
-/// marshaled by `gopkg.in/yaml.v3`).
+/// Builds the metrics value for **YAML** serialization.
 ///
-/// `ToYAML()` returns the same `map[string]any` as [`metrics_report_value`], but
-/// Go's YAML encoder renders a typed **nil slice** (`[]TypoPatternData(nil)`) as
-/// `[]`, whereas `encoding/json` renders it as `null`. `computeTypoPatterns`
-/// returns such a nil slice when no pattern repeats, so the only json/yaml shape
-/// difference is the empty `patterns` metric: JSON `null` vs YAML `[]`. This
-/// builder reproduces the YAML side by promoting an empty `patterns` value
-/// ([`GoValue::Null`]) to an empty [`GoValue::Array`]; every other metric is
-/// identical to the JSON value.
+/// The YAML value tree is the same map as [`metrics_report_value`], but the
+/// YAML encoding of a nil-when-empty slice is `[]`, whereas the JSON encoding
+/// is `null`. The patterns metric is nil when no pattern repeats, so the only
+/// json/yaml shape difference is the empty `patterns` metric: JSON `null` vs
+/// YAML `[]`. This builder reproduces the YAML side by promoting an empty
+/// `patterns` value ([`GoValue::Null`]) to an empty [`GoValue::Array`]; every
+/// other metric is identical to the JSON value.
 #[must_use]
 pub fn metrics_yaml_value(input: &ReportData) -> GoValue {
     let metrics = compute_all_metrics(input);
@@ -423,7 +429,7 @@ mod tests {
     fn metrics_report_value_sorted_keys_and_json() {
         // Single typo -> typo_list has one entry, patterns empty (one
         // occurrence, filtered out -> nil -> null), file_typos one, aggregate
-        // totals 1. Go `MetricSet.ToJSON()` is a map, so keys are byte-sorted:
+        // totals 1. The metric set is a dynamic map, so keys are byte-sorted:
         // aggregate, file_typos, patterns, typo_list.
         let input = ReportData {
             typos: vec![typo("tets", "test", "main.go", 10, Hash::default())],
@@ -440,7 +446,8 @@ mod tests {
     #[test]
     fn metrics_report_value_empty_matches_golden_bytes() {
         // The run/history_typos.json golden: zero typos -> the exact 138-byte
-        // compact JSON the Go binary emits for the empty typos metric set.
+        // compact JSON the reference binary emits for the empty typos metric
+        // set.
         let json = metrics_report_value(&ReportData::default()).to_json();
         assert_eq!(
             json,

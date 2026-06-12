@@ -1,9 +1,10 @@
-//! Tree change computation, ported from `pkg/gitlib/changes.go`.
+//! Tree change computation.
 //!
-//! [`tree_diff`] computes file-level changes between two trees; [`initial_tree_changes`]
-//! treats every file in a tree as an insertion (for a root commit); [`tree_files`]
-//! materializes all blob files in a tree. The [`Change`] / [`ChangeEntry`] /
-//! [`ChangeAction`] types mirror the Go structs field-for-field.
+//! [`tree_diff`] computes file-level changes between two trees;
+//! [`initial_tree_changes`] treats every file in a tree as an insertion (for a
+//! root commit); [`tree_files`] materializes all blob files in a tree. The
+//! change stream feeds the history analyzers, so its ordering and contents are
+//! part of the report contract (pinned by `rust/tests/compat`).
 
 use crate::error::Result;
 use crate::file::File;
@@ -11,18 +12,18 @@ use crate::hash::Hash;
 use crate::tree::{walk_tree, Tree, TreeEntry};
 use crate::Repository;
 
-/// The kind of change a [`Change`] represents (Go `ChangeAction`).
+/// The kind of change a [`Change`] represents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChangeAction {
-    /// A new file was added (Go `Insert`).
+    /// A new file was added.
     Insert,
-    /// A file was removed (Go `Delete`).
+    /// A file was removed.
     Delete,
-    /// A file was modified (Go `Modify`).
+    /// A file was modified.
     Modify,
 }
 
-/// One side (old or new) of a change (Go `ChangeEntry`).
+/// One side (old or new) of a change.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ChangeEntry {
     /// File path.
@@ -35,7 +36,7 @@ pub struct ChangeEntry {
     pub mode: u16,
 }
 
-/// A single file change between two trees (Go `Change`).
+/// A single file change between two trees.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Change {
     /// The kind of change.
@@ -46,16 +47,16 @@ pub struct Change {
     pub to: ChangeEntry,
 }
 
-/// A collection of [`Change`]s (Go `Changes`).
+/// A collection of [`Change`]s.
 pub type Changes = Vec<Change>;
 
-/// Computes the changes between two trees (Go `TreeDiff`).
+/// Computes the changes between two trees.
 ///
 /// Skips the libgit2 diff entirely when both tree OIDs are equal (e.g.
-/// metadata-only commits), returning an empty change set — matching Go exactly.
-/// Renames and copies are surfaced as [`ChangeAction::Modify`] (as in Go);
-/// unmodified / ignored / untracked / type-change / unreadable / conflicted
-/// deltas are skipped.
+/// metadata-only commits), returning an empty change set. Renames and copies
+/// are surfaced as [`ChangeAction::Modify`]; unmodified / ignored / untracked /
+/// type-change / unreadable / conflicted deltas are skipped
+/// (reference-implementation behavior).
 ///
 /// # Errors
 ///
@@ -126,8 +127,7 @@ pub fn tree_diff(
     Ok(changes)
 }
 
-/// Creates changes for an initial commit: every blob file is an insertion
-/// (Go `InitialTreeChanges`).
+/// Creates changes for an initial commit: every blob file is an insertion.
 ///
 /// # Errors
 ///
@@ -158,7 +158,7 @@ pub fn initial_tree_changes(repo: &Repository, tree: Option<&Tree<'_>>) -> Resul
     Ok(changes)
 }
 
-/// Returns all blob files in a tree (Go `TreeFiles`).
+/// Returns all blob files in a tree.
 ///
 /// # Errors
 ///
@@ -176,7 +176,7 @@ pub(crate) fn tree_files<'repo>(
     Ok(files)
 }
 
-/// Public wrapper matching Go's exported `TreeFiles(repo, tree) ([]*File, error)`.
+/// Public wrapper over [`tree_files`].
 ///
 /// # Errors
 ///

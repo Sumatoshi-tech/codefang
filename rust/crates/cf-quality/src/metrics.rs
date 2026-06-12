@@ -1,18 +1,17 @@
 //! Quality statistics: per-tick stats, time-series and aggregate computation.
 //!
-//! Direct port of `internal/analyzers/quality/metrics.go`. All numeric routines
-//! delegate to [`cf_alg_stats`] (the Rust port of `pkg/alg/stats`) so that the
-//! mean / median / P95 / max / min / sum values flowing into machine reports are
-//! computed operation-for-operation as in Go.
+//! All numeric routines delegate to [`cf_alg_stats`] (the shared statistics
+//! kernel) so that the mean / median / P95 / max / min / sum values flowing
+//! into machine reports are computed operation-for-operation as in the
+//! reference implementation.
 //!
-//! # Byte-identity
+//! # Compatibility
 //!
 //! [`TickStats`], [`TimeSeriesEntry`], [`AggregateData`] and [`ComputedMetrics`]
-//! are *wrapper* structs: their fields serialize in **declaration order** (which
-//! matches the Go struct tags one-for-one), honoring `omitempty` on
-//! `start_time` / `end_time`. They are emitted through the fixed-order `GoMap`
-//! builder in [`crate::serialize`], never via serde defaults, per
-//! `specs/rust-rewrite/DESIGN.md` §2.
+//! are *wrapper* structs: their fields serialize in **declaration order**,
+//! honoring `omitempty` on `start_time` / `end_time`. They are emitted through
+//! the fixed-order `GoMap` builder in [`crate::serialize`], never via serde
+//! defaults; output bytes are pinned by `rust/tests/compat`.
 
 use std::collections::BTreeMap;
 
@@ -35,9 +34,8 @@ pub const DIM_COHESION_MIN: &str = "cohesion_min";
 
 /// Computed statistics for a single tick.
 ///
-/// Mirrors Go `quality.TickStats`. Field order is the Go declaration order and
-/// is the serialization order for both JSON and YAML (see the `json:` / `yaml:`
-/// tags on the Go struct, all snake_case identical to the field comments).
+/// Field order is the declaration order and is the serialization order for
+/// both JSON and YAML (the snake_case wire names are noted on each field).
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct TickStats {
     // Complexity.
@@ -87,10 +85,10 @@ pub struct TickStats {
     pub max_complexity: i64,
 }
 
-/// Computes per-tick statistics (Go `computeTickStats`).
+/// Computes per-tick statistics.
 ///
-/// Returns the zero value when no files were analyzed, exactly as Go returns an
-/// empty `TickStats{}` for `n == 0`.
+/// Returns the zero value when no files were analyzed (pinned report
+/// behaviour for empty ticks).
 #[must_use]
 pub fn compute_tick_stats(tq: &TickQuality) -> TickStats {
     let n = tq.files_analyzed();
@@ -132,9 +130,8 @@ pub fn compute_tick_stats(tq: &TickQuality) -> TickStats {
 
 /// Tick boundary timestamps used to populate `start_time` / `end_time`.
 ///
-/// Mirrors the relevant surface of Go `analyze.TickBounds`. The strings are the
-/// already-formatted RFC3339 values (`FormatStartTime` / `FormatEndTime` in Go);
-/// formatting is owned by the framework layer.
+/// The strings are the already-formatted RFC3339 values; formatting is owned
+/// by the framework layer.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TickBounds {
     /// Pre-formatted start time (RFC3339), empty when unknown.
@@ -143,7 +140,7 @@ pub struct TickBounds {
     pub end_time: String,
 }
 
-/// Per-tick time-series entry (Go `quality.TimeSeriesEntry`).
+/// Per-tick time-series entry.
 ///
 /// `start_time` / `end_time` are `omitempty`: empty strings are omitted from the
 /// machine output.
@@ -159,9 +156,9 @@ pub struct TimeSeriesEntry {
     pub stats: TickStats,
 }
 
-/// Overall summary statistics (Go `quality.AggregateData`).
+/// Overall summary statistics.
 ///
-/// Field order is the Go declaration order (= serialization order).
+/// Field order is the declaration order (= serialization order).
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct AggregateData {
     /// `total_ticks`
@@ -186,7 +183,7 @@ pub struct AggregateData {
     pub min_cohesion: f64,
 }
 
-/// All computed metric results (Go `quality.ComputedMetrics`).
+/// All computed metric results.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ComputedMetrics {
     /// `time_series`
@@ -195,7 +192,7 @@ pub struct ComputedMetrics {
     pub aggregate: AggregateData,
 }
 
-/// Parsed input data for metrics computation (Go `quality.ReportData`).
+/// Parsed input data for metrics computation.
 #[derive(Debug, Clone, Default)]
 pub struct ReportData {
     /// Per-tick merged quality (keyed by tick number).
@@ -204,12 +201,12 @@ pub struct ReportData {
     pub tick_bounds: BTreeMap<i64, TickBounds>,
 }
 
-/// Groups per-commit quality into per-tick quality (Go `AggregateCommitsToTicks`).
+/// Groups per-commit quality into per-tick quality.
 ///
 /// For every tick, merges the [`TickQuality`] of each of its commit hashes (in
 /// the order given by `commits_by_tick`), skipping hashes absent from
-/// `commit_quality`. Ticks with no present commits are omitted. Returns an empty
-/// map when either input is empty (Go returns `nil`).
+/// `commit_quality`. Ticks with no present commits are omitted. Returns an
+/// empty map when either input is empty.
 #[must_use]
 pub fn aggregate_commits_to_ticks(
     commit_quality: &BTreeMap<String, TickQuality>,
@@ -239,11 +236,10 @@ pub fn aggregate_commits_to_ticks(
     result
 }
 
-/// Builds [`ReportData`] from the canonical inputs (Go `ParseReportData`).
+/// Builds [`ReportData`] from the canonical inputs.
 ///
-/// Mirrors Go: aggregates per-commit quality into per-tick quality only when
-/// both `commit_quality` and `commits_by_tick` are present and the former is
-/// non-empty; otherwise `tick_quality` is empty.
+/// Aggregates per-commit quality into per-tick quality only when
+/// `commit_quality` is non-empty; otherwise `tick_quality` is empty.
 #[must_use]
 pub fn parse_report_data(
     commit_quality: &BTreeMap<String, TickQuality>,
@@ -262,13 +258,13 @@ pub fn parse_report_data(
     }
 }
 
-/// Runs all quality metrics (Go `ComputeAllMetrics`).
+/// Runs all quality metrics.
 ///
-/// Iterates ticks in ascending order (Go `mapx.SortedKeys`). The global minimum
-/// comment-score and cohesion are seeded to `+∞` and updated only for ticks with
-/// `files_analyzed > 0` whose value is strictly smaller; if no such tick exists
-/// the field is reset to `0` — reproducing the Go `math.Inf(1)` / `math.IsInf`
-/// dance exactly.
+/// Iterates ticks in ascending order. The global minimum comment-score and
+/// cohesion are seeded to `+∞` and updated only for ticks with
+/// `files_analyzed > 0` whose value is strictly smaller; if no such tick
+/// exists the field is reset to `0` — this infinity-seed/reset sequence is
+/// pinned reference behaviour and must be reproduced exactly.
 #[must_use]
 pub fn compute_all_metrics(input: &ReportData) -> ComputedMetrics {
     let ticks: Vec<i64> = input.tick_quality.keys().copied().collect();
@@ -348,9 +344,8 @@ pub fn compute_all_metrics(input: &ReportData) -> ComputedMetrics {
 
 /// Per-commit summary used by the unified timeseries / drain paths.
 ///
-/// Mirrors the `map[string]any` value built by Go `ExtractCommitTimeSeries` /
-/// `drainQualityCommitData`. Field order here is irrelevant — the machine output
-/// for this map is *map-origin* and therefore byte-sorts its keys on encode.
+/// Field order here is irrelevant — the machine output for this map is
+/// *map-origin* and therefore byte-sorts its keys on encode.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CommitSummary {
     /// `complexity_median`
@@ -379,8 +374,8 @@ pub struct CommitSummary {
 
 /// Computes the per-commit summary for one [`TickQuality`].
 ///
-/// Shared by the Go `ExtractCommitTimeSeries` and `drainQualityCommitData`
-/// paths, which build identical maps.
+/// Shared by the commit-timeseries and drain paths, which build identical
+/// maps.
 #[must_use]
 pub fn commit_summary(tq: &TickQuality) -> CommitSummary {
     let ts = compute_tick_stats(tq);
@@ -399,9 +394,9 @@ pub fn commit_summary(tq: &TickQuality) -> CommitSummary {
     }
 }
 
-/// Builds the per-commit summary map (Go `ExtractCommitTimeSeries`).
+/// Builds the per-commit summary map.
 ///
-/// Returns an empty map when `commit_quality` is empty (Go returns `nil`).
+/// Returns an empty map when `commit_quality` is empty.
 #[must_use]
 pub fn extract_commit_time_series(
     commit_quality: &BTreeMap<String, TickQuality>,
@@ -434,7 +429,7 @@ mod tests {
     const HASH_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const HASH_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
-    // Port of TestComputeTickStats.
+    // Mirrors reference test TestComputeTickStats.
     #[test]
     fn compute_tick_stats_matches_go() {
         let tq = TickQuality {
@@ -468,7 +463,7 @@ mod tests {
         assert_eq!(ts.max_complexity, 10);
     }
 
-    // Port of TestComputeTickStats_ZeroFiles.
+    // Mirrors reference test TestComputeTickStats_ZeroFiles.
     #[test]
     fn compute_tick_stats_zero_files() {
         let ts = compute_tick_stats(&TickQuality::default());
@@ -477,7 +472,7 @@ mod tests {
         delta(ts.complexity_median, 0.0, 0.01);
     }
 
-    // Port of TestComputeAllMetrics_FromCommitData.
+    // Mirrors reference test TestComputeAllMetrics_FromCommitData.
     #[test]
     fn compute_all_metrics_from_commit_data() {
         let commit_quality = cq(&[
@@ -514,7 +509,7 @@ mod tests {
         assert_eq!(computed.aggregate.total_files_analyzed, 3);
     }
 
-    // Port of TestComputeAllMetrics_FromCanonical.
+    // Mirrors reference test TestComputeAllMetrics_FromCanonical.
     #[test]
     fn compute_all_metrics_from_canonical() {
         let commit_quality = cq(&[(
@@ -538,7 +533,7 @@ mod tests {
         assert_eq!(computed.aggregate.total_files_analyzed, 2);
     }
 
-    // Port of TestComputeAllMetrics_Empty.
+    // Mirrors reference test TestComputeAllMetrics_Empty.
     #[test]
     fn compute_all_metrics_empty() {
         let input = parse_report_data(&BTreeMap::new(), &BTreeMap::new(), BTreeMap::new());
@@ -547,7 +542,7 @@ mod tests {
         assert_eq!(computed.aggregate.total_ticks, 0);
     }
 
-    // Port of TestComputeAllMetrics_Basic (buildTestQualityReport).
+    // Mirrors reference test TestComputeAllMetrics_Basic (buildTestQualityReport).
     #[test]
     fn compute_all_metrics_basic() {
         let commit_quality = cq(&[
@@ -615,7 +610,7 @@ mod tests {
         assert!(computed.aggregate.total_delivered_bugs > 0.0);
     }
 
-    // Port of TestAggregateCommitsToTicks_* .
+    // Mirrors reference test TestAggregateCommitsToTicks_* .
     #[test]
     fn aggregate_single_commit_per_tick() {
         let commit_quality = cq(&[
@@ -690,7 +685,7 @@ mod tests {
         assert_eq!(result[&0].complexities.len(), 1);
     }
 
-    // Port of TestExtractCommitTimeSeries.
+    // Mirrors reference test TestExtractCommitTimeSeries.
     #[test]
     fn extract_commit_time_series_matches_go() {
         let commit_quality = cq(&[

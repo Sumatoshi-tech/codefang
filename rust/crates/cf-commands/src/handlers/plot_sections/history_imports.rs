@@ -1,11 +1,10 @@
-//! `history/imports` (`imports-per-dev`) plot sections — port of Go
-//! `internal/analyzers/imports/store_reader.go` (`GenerateStoreSections` →
+//! `history/imports` (`imports-per-dev`) plot sections  (`GenerateStoreSections` →
 //! `buildImportsStoreSections` over the `import_usage` store kind).
 //!
-//! The store records are Go `topImports(aggregateImportCounts(merged))`: the
+//! The store records are the reference `topImports(aggregateImportCounts(merged))`: the
 //! per-import total counts sorted count-descending and cut to the top 20. The
 //! caller passes the name-ascending aggregated counts
-//! (`imports_run_usage_counts`); the Go-pdqsort descending sort + cut happen
+//! (`imports_run_usage_counts`); the pdqsort descending sort + cut happen
 //! here, mirroring `WriteToStore`.
 
 use cf_plotpage::echarts::{
@@ -15,16 +14,16 @@ use cf_plotpage::{get_chart_palette, ChartOpts, Hint, Section, Theme};
 
 use crate::handlers::go_sort;
 
-/// imports plot.go `topImportsLimit`.
+/// imports the reference `topImportsLimit`.
 const TOP_IMPORTS_LIMIT: usize = 20;
-/// imports plot.go `xAxisRotate`.
+/// imports the reference `xAxisRotate`.
 const X_AXIS_ROTATE: f64 = 60.0;
 
-/// Go `GenerateStoreSections`: zero records yield zero sections.
+/// The reference `GenerateStoreSections`: zero records yield zero sections.
 pub fn sections(usage_counts: &[(String, i64)]) -> Vec<Section> {
-    // Go `topImports`: count-descending `sort.Slice` over the aggregate map's
+    // The reference `topImports`: count-descending `sort.Slice` over the aggregate map's
     // (random-order) entries, then the top-20 cut. The name-ascending input is
-    // the deterministic stand-in for the map order; ties are Go-variant.
+    // the deterministic stand-in for the map order; ties are reference-variant.
     let mut records: Vec<(String, i64)> = usage_counts.to_vec();
     go_sort::slice(&mut records, |a, b| a.1 > b.1);
     records.truncate(TOP_IMPORTS_LIMIT);
@@ -52,7 +51,7 @@ pub fn sections(usage_counts: &[(String, i64)]) -> Vec<Section> {
     }]
 }
 
-/// Go `buildBarChartFromUsageRecords` → `createImportsBarChart` (+ the
+/// The reference `buildBarChartFromUsageRecords` → `createImportsBarChart` (+ the
 /// follow-up `WithXAxisOpts` override, which re-sets the identical axis).
 fn build_bar_chart_from_usage_records(records: &[(String, i64)]) -> Chart {
     let co = ChartOpts::default_dark();

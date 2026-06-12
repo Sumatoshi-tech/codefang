@@ -1,11 +1,8 @@
-//! Halstead derived-metric calculation (`metrics.go`).
+//! Halstead derived-metric calculation.
 //!
-//! The Go code expresses the calculation against a set of getter/setter
-//! interfaces so the same routine drives both the file-level `Metrics` and the
-//! per-function `FunctionHalsteadMetrics`. In Rust we model the four inputs as a
-//! small [`HalsteadCounts`] value and return the derived measures, which both
-//! aggregate types then store. This is behaviorally identical and avoids the
-//! interface indirection.
+//! Takes the four raw Halstead counts ([`HalsteadCounts`]) and returns the
+//! eight derived measures ([`DerivedMetrics`]), which both the file-level and
+//! per-function aggregate views then store.
 
 /// Standard constant used in time-to-program estimation (18 seconds).
 pub const TIME_CONSTANT: f64 = 18.0;
@@ -50,7 +47,7 @@ pub struct DerivedMetrics {
     pub delivered_bugs: f64,
 }
 
-/// Stateless calculator of Halstead derived metrics (`MetricsCalculator`).
+/// Stateless calculator of Halstead derived metrics.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MetricsCalculator;
 
@@ -61,7 +58,7 @@ impl MetricsCalculator {
         Self
     }
 
-    /// Sums all values in an integer map (`SumMap`).
+    /// Sums all values in an integer count map.
     #[must_use]
     pub fn sum_map<S: ::std::hash::BuildHasher>(
         &self,
@@ -72,10 +69,11 @@ impl MetricsCalculator {
 
     /// Calculates all derived Halstead metrics from the four raw counts.
     ///
-    /// Reproduces `CalculateHalsteadMetrics` exactly, including the zero-guards:
-    /// estimated length is 0 unless both distinct counts are positive; volume is
-    /// 0 when vocabulary is 0; difficulty is 0 when distinct operands is 0.
+    /// The zero-guards are part of the report contract: estimated length is 0
+    /// unless both distinct counts are positive; volume is 0 when vocabulary
+    /// is 0; difficulty is 0 when distinct operands is 0.
     #[must_use]
+    #[allow(clippy::cast_precision_loss)] // token counts are far below 2^52
     pub fn calculate(&self, counts: HalsteadCounts) -> DerivedMetrics {
         let distinct_ops = counts.distinct_operators;
         let distinct_opnds = counts.distinct_operands;
@@ -121,20 +119,21 @@ impl MetricsCalculator {
     }
 }
 
-// --- Bit-exact Go `math.Log2` ----------------------------------------------
+// --- Bit-exact base-2 logarithm (reference-implementation port) -------------
 //
-// Rust's libm `f64::log2` differs from Go's `math.Log2` in the last ULP for some
-// inputs (e.g. n=3), which shifts derived Halstead floats (volume/effort) and
-// any downstream percentile that interpolates near those values. Go computes
-// `Log2(x) = log(frac)·(1/Ln2) + exp` via `Frexp`, with its own polynomial
-// `log` (amd64 `archLog`); we port that path exactly so the volumes are
-// byte-identical to Go.
+// The platform libm `f64::log2` differs from the reference implementation's
+// Log2 in the last ULP for some inputs (e.g. n=3), which shifts derived
+// Halstead floats (volume/effort) and any downstream percentile that
+// interpolates near those values. The reference computes
+// `Log2(x) = log(frac)·(1/ln2) + exp` via Frexp, with its own polynomial log;
+// this path is ported exactly so the volumes are byte-identical in reports
+// (pinned by the differential gate). The algorithm and coefficients below are
+// FROZEN.
 
-const GO_LN2: f64 = 0.693_147_180_559_945_309_417_232_121_458_176_568_075_5;
-const GO_SQRT2: f64 = 1.414_213_562_373_095_048_801_688_724_209_698_078_569_7;
+use std::f64::consts::{LN_2, SQRT_2};
 
-/// Go `math.Frexp` (normal-positive path): `(frac, exp)` with `frac ∈ [0.5, 1)`
-/// and `x == frac · 2^exp`.
+/// Frexp (normal-positive path): `(frac, exp)` with `frac ∈ [0.5, 1)` and
+/// `x == frac · 2^exp`.
 fn go_frexp(f: f64) -> (f64, i32) {
     if f == 0.0 || !f.is_finite() {
         return (f, 0);
@@ -156,7 +155,11 @@ fn go_frexp(f: f64) -> (f64, i32) {
     (f64::from_bits(nb), exp)
 }
 
-/// Go `math.log` (pure-Go polynomial, matching amd64 `archLog`).
+/// Natural log via the pinned polynomial approximation.
+///
+/// The coefficient literals keep their full published precision on purpose;
+/// they round to the exact f64 bit patterns the reference uses.
+#[allow(clippy::excessive_precision)]
 fn go_log(x: f64) -> f64 {
     const LN2HI: f64 = 6.931_471_803_691_238_164_9e-01;
     const LN2LO: f64 = 1.908_214_929_270_587_700_02e-10;
@@ -179,7 +182,7 @@ fn go_log(x: f64) -> f64 {
     }
 
     let (mut f1, mut ki) = go_frexp(x);
-    if f1 < GO_SQRT2 / 2.0 {
+    if f1 < SQRT_2 / 2.0 {
         f1 *= 2.0;
         ki -= 1;
     }
@@ -196,22 +199,22 @@ fn go_log(x: f64) -> f64 {
     k * LN2HI - ((hfsq - (s * (hfsq + r) + k * LN2LO)) - f)
 }
 
-/// Go `math.Log2` (amd64: `log2` with `Frexp` + `archLog`).
+/// Bit-exact base-2 logarithm (Frexp + pinned polynomial log).
 #[must_use]
 pub fn go_log2(x: f64) -> f64 {
     let (frac, exp) = go_frexp(x);
     if frac == 0.5 {
         return f64::from(exp - 1);
     }
-    go_log(frac) * (1.0 / GO_LN2) + f64::from(exp)
+    go_log(frac) * (1.0 / LN_2) + f64::from(exp)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Ported from `TestAnalyzer_CalculateMetrics`: vocabulary and length are
-    /// exact sums; the derived measures are positive.
+    /// Vocabulary and length are exact sums; the derived measures are
+    /// positive.
     #[test]
     fn calculate_metrics_known_values() {
         let d = MetricsCalculator::new().calculate(HalsteadCounts {
@@ -227,7 +230,6 @@ mod tests {
         assert!(d.effort > 0.0);
     }
 
-    /// Ported from `TestMetricsCalculator_DeliveredBugsUsesVolume`.
     #[test]
     fn delivered_bugs_uses_volume() {
         let d = MetricsCalculator::new().calculate(HalsteadCounts {
@@ -250,5 +252,18 @@ mod tests {
         assert_eq!(d.difficulty, 0.0);
         assert_eq!(d.effort, 0.0);
         assert_eq!(d.delivered_bugs, 0.0);
+    }
+
+    /// Bit-level regression pin for the ported log2 path: these are the exact
+    /// outputs the report contract depends on (the platform `f64::log2`
+    /// differs in the last ULP for some of these, e.g. 3.0).
+    #[test]
+    fn go_log2_bit_pins() {
+        assert_eq!(go_log2(3.0).to_bits(), 0x3ff9_5c01_a39f_bd69);
+        assert_eq!(go_log2(5.0).to_bits(), 0x4002_934f_0979_a371);
+        assert_eq!(go_log2(7.0).to_bits(), 0x4006_7576_7f54_042d);
+        assert_eq!(go_log2(10.0).to_bits(), 0x400a_934f_0979_a371);
+        assert_eq!(go_log2(1000.0).to_bits(), 0x4023_ee7b_471b_3a95);
+        assert_eq!(go_log2(8.0), 3.0);
     }
 }

@@ -1,20 +1,20 @@
-//! Burndown `ComputedMetrics` model and byte-identical serialization.
+//! Burndown `ComputedMetrics` model and report serialization.
 //!
-//! Mirrors Go `internal/analyzers/burndown/metrics.go`: the per-analyzer
-//! `ComputedMetrics` struct that `BaseHistoryAnalyzer.Serialize` marshals for the
-//! `json` / `yaml` / `bin` machine formats. Field/key order follows the Go struct
-//! declaration order (`aggregate`, `global_survival`, `file_survival`,
-//! `developer_survival`, `interactions`), which the struct-origin [`GoMap`]
-//! preserves.
+//! The per-analyzer `ComputedMetrics` struct that the history serializer
+//! marshals for the `json` / `yaml` / `bin` machine formats. Field/key order
+//! follows the declaration order (`aggregate`, `global_survival`,
+//! `file_survival`, `developer_survival`, `interactions`), which the
+//! struct-origin [`GoMap`] preserves (report-format contract; pinned by
+//! `rust/tests/compat`).
 //!
-//! Go nil-slice asymmetry: `encoding/json` renders a nil slice as `null`, while
-//! `gopkg.in/yaml.v3` renders both nil and empty slices as `[]`. The two builders
+//! Nil-slice asymmetry (report-format contract): an absent list renders as
+//! `null` in JSON but as `[]` in YAML. The two builders
 //! [`ComputedMetrics::to_go_value`] (JSON/bin) and
 //! [`ComputedMetrics::to_go_value_yaml`] (YAML) differ only on this point.
 
 use cf_gojson::{GoMap, GoValue};
 
-/// Code-survival statistics for one sample (Go `SurvivalData`).
+/// Code-survival statistics for one sample.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SurvivalData {
     /// `sample_index`.
@@ -41,7 +41,7 @@ impl SurvivalData {
     }
 }
 
-/// Summary statistics (Go `AggregateData`).
+/// Summary statistics.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct AggregateData {
     /// `total_current_lines`.
@@ -77,10 +77,10 @@ impl AggregateData {
     }
 }
 
-/// All computed burndown metric results (Go `ComputedMetrics`).
+/// All computed burndown metric results.
 ///
 /// `file_survival`, `developer_survival`, and `interactions` are modeled as
-/// optional vectors; `None` reproduces a Go nil slice (`null` in JSON, `[]` in
+/// optional vectors; `None` reproduces an absent list (`null` in JSON, `[]` in
 /// YAML), `Some` an explicit (possibly empty) slice (`[]` in both).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ComputedMetrics {
@@ -88,11 +88,11 @@ pub struct ComputedMetrics {
     pub aggregate: AggregateData,
     /// `global_survival`.
     pub global_survival: Vec<SurvivalData>,
-    /// `file_survival`: `None` = Go nil slice.
+    /// `file_survival`: `None` = absent list.
     pub file_survival: Option<Vec<GoValue>>,
-    /// `developer_survival`: `None` = Go nil slice.
+    /// `developer_survival`: `None` = absent list.
     pub developer_survival: Option<Vec<GoValue>>,
-    /// `interactions`: `None` = Go nil slice.
+    /// `interactions`: `None` = absent list.
     pub interactions: Option<Vec<GoValue>>,
 }
 
@@ -123,13 +123,13 @@ impl ComputedMetrics {
         GoValue::Map(m)
     }
 
-    /// Build the JSON/bin value tree (Go `encoding/json`: nil slice → `null`).
+    /// Build the JSON/bin value tree (absent list → `null`).
     #[must_use]
     pub fn to_go_value(&self) -> GoValue {
         self.build(false)
     }
 
-    /// Build the YAML value tree (`gopkg.in/yaml.v3`: nil slice → `[]`).
+    /// Build the YAML value tree (absent list → `[]`).
     #[must_use]
     pub fn to_go_value_yaml(&self) -> GoValue {
         self.build(true)
@@ -137,46 +137,38 @@ impl ComputedMetrics {
 }
 
 /// Sparse global history accumulated across the commit walk:
-/// `curTick -> prevTick -> lineCountDelta`. Mirrors the Go `sparseHistory`
-/// (`map[int]map[int]int64`) that the burndown aggregator builds by additively
-/// merging every per-commit `CommitResult.GlobalDeltas`.
+/// `curTick -> prevTick -> lineCountDelta`. The burndown aggregator builds this
+/// by additively merging every per-commit set of global deltas.
 pub type SparseHistory = std::collections::BTreeMap<i64, std::collections::BTreeMap<i64, i64>>;
 
-/// Dense burndown matrix (Go `DenseHistory = [][]int64`): rows are samples,
-/// columns are cohort bands.
+/// Dense burndown matrix: rows are samples, columns are cohort bands.
 pub type DenseHistory = Vec<Vec<i64>>;
 
-/// `groupSparseHistory` (Go `internal/analyzers/burndown/history_dense.go`):
-/// densify a sparse tick history into a `samples x bands` matrix. `sampling` and
-/// `granularity` are the band/sample sizes (both 30 by default); `last_tick` is
-/// the maximum tick observed across the whole walk.
+/// Densify a sparse tick history into a `samples x bands` matrix.
+///
+/// `sampling` and `granularity` are the band/sample sizes (both 30 by
+/// default); `last_tick` is the maximum tick observed across the whole walk
+/// and determines the matrix dimensions.
 #[must_use]
 pub fn group_sparse_history(history: &SparseHistory, sampling: i64, granularity: i64, last_tick: i64) -> DenseHistory {
     if history.is_empty() {
         return Vec::new();
     }
 
-    // normalizeTicks: sorted tick keys (BTreeMap already sorted); append
-    // last_tick if it exceeds the largest key (last_tick >= 0 here).
+    // Sorted tick keys (BTreeMap is already sorted); append last_tick when it
+    // exceeds the largest key so the carry-forward loop fills the tail rows.
     let mut ticks: Vec<i64> = history.keys().copied().collect();
-    let resolved_last = if let Some(&max_key) = ticks.last() {
-        if max_key < last_tick {
-            ticks.push(last_tick);
-            last_tick
-        } else {
-            last_tick
-        }
-    } else {
-        last_tick.max(0)
-    };
+    if ticks.last().is_some_and(|&max_key| max_key < last_tick) {
+        ticks.push(last_tick);
+    }
 
-    let samples = (resolved_last / sampling + 1) as usize;
-    let bands = (resolved_last / granularity + 1) as usize;
+    let samples = (last_tick / sampling + 1) as usize;
+    let bands = (last_tick / granularity + 1) as usize;
 
     let mut result: DenseHistory = vec![vec![0i64; bands]; samples];
 
-    // fillDenseHistory: carry forward state across empty sample rows, then add
-    // each tick's per-band deltas into its sample row.
+    // Carry forward state across empty sample rows, then add each tick's
+    // per-band deltas into its sample row.
     let mut prevsi: usize = 0;
     for &tick in &ticks {
         let si = (tick / sampling) as usize;
@@ -200,8 +192,8 @@ pub fn group_sparse_history(history: &SparseHistory, sampling: i64, granularity:
     result
 }
 
-/// `findPeakLines` (Go `metrics.go`): sum, over every band, of that band's
-/// maximum value across all samples — the total lines ever written.
+/// Sum, over every band, of that band's maximum value across all samples — the
+/// total lines ever written.
 fn find_peak_lines(history: &DenseHistory) -> i64 {
     if history.is_empty() {
         return 0;
@@ -218,12 +210,12 @@ fn find_peak_lines(history: &DenseHistory) -> i64 {
     band_peaks.iter().sum()
 }
 
-/// `sumPositiveValues` (Go `metrics.go`).
+/// Sum of the positive values in a band row.
 fn sum_positive(values: &[i64]) -> i64 {
     values.iter().filter(|&&v| v > 0).sum()
 }
 
-/// `computeSurvivalSample` (Go `metrics.go`).
+/// Survival statistics for one sample row.
 fn compute_survival_sample(index: i64, sample: &[i64], peak_lines: i64) -> SurvivalData {
     let mut breakdown = vec![0i64; sample.len()];
     let mut total = 0i64;
@@ -237,17 +229,17 @@ fn compute_survival_sample(index: i64, sample: &[i64], peak_lines: i64) -> Survi
     SurvivalData { sample_index: index, total_lines: total, survival_rate, band_breakdown: breakdown }
 }
 
-/// `ComputeAllMetrics` (Go `metrics.go`) for the default report shape
-/// (`PeopleNumber == 0`, `TrackFiles == false`): only `GlobalHistory`,
-/// `Sampling`, `Granularity`, and `TickSize` feed the output, so
-/// `file_survival` / `developer_survival` stay empty and `interactions` nil.
+/// Computes all metrics for the default report shape (no per-people and no
+/// per-file tracking): only the global history, `sampling`, `granularity`, and
+/// the tick size feed the output, so `file_survival` / `developer_survival`
+/// stay empty and `interactions` stays absent.
 ///
 /// `tick_size_hours` is the configured tick size in hours (24 by default);
 /// `analysis_period_days = (num_samples-1) * sampling * tick_size_hours / 24`,
-/// matching Go's `time.Duration` arithmetic in `computeAggregate`.
+/// integer-truncated (report contract).
 #[must_use]
 pub fn compute_global_metrics(global_dense: &DenseHistory, sampling: i64, tick_size_hours: i64) -> ComputedMetrics {
-    // computeGlobalSurvival.
+    // Global survival per sample row.
     let peak = find_peak_lines(global_dense);
     let global_survival: Vec<SurvivalData> = global_dense
         .iter()
@@ -255,7 +247,7 @@ pub fn compute_global_metrics(global_dense: &DenseHistory, sampling: i64, tick_s
         .map(|(i, sample)| compute_survival_sample(i as i64, sample, peak))
         .collect();
 
-    // computeAggregate (TrackedFiles/TrackedDevelopers are 0: no per-file /
+    // Aggregate (tracked_files/tracked_developers are 0: no per-file /
     // per-people histories in the default report).
     let mut aggregate = AggregateData::default();
     if !global_dense.is_empty() {
@@ -263,7 +255,6 @@ pub fn compute_global_metrics(global_dense: &DenseHistory, sampling: i64, tick_s
         aggregate.num_samples = num_samples;
         aggregate.num_bands = global_dense[0].len() as i64;
         let total_ticks = (num_samples - 1) * sampling;
-        // time.Duration(totalTicks) * tickSize / 24h, integer-truncated.
         aggregate.analysis_period_days = total_ticks * tick_size_hours / 24;
         aggregate.total_peak_lines = peak;
         aggregate.total_current_lines = sum_positive(&global_dense[num_samples as usize - 1]);
@@ -276,11 +267,11 @@ pub fn compute_global_metrics(global_dense: &DenseHistory, sampling: i64, tick_s
     ComputedMetrics {
         aggregate,
         global_survival,
-        // computeFileSurvival over an empty FileOwnership map → empty slice
-        // (make([]FileSurvivalData, 0, ...)); same for developer_survival.
+        // File/developer survival over empty ownership maps → explicit empty
+        // slices; interactions over an empty people matrix → absent list
+        // (report contract).
         file_survival: Some(Vec::new()),
         developer_survival: Some(Vec::new()),
-        // computeInteraction over an empty PeopleMatrix → nil slice.
         interactions: None,
     }
 }

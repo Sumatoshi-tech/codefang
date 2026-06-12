@@ -1,46 +1,42 @@
 //! Machine-format serialization for [`ComputedMetrics`].
 //!
-//! Implements the Go `(*Analyzer).FormatReportJSON` / `FormatReportYAML` /
-//! `FormatReportBinary` paths:
+//! Encoder configs (report-format contract):
 //!
-//! | Method | Go call | Encoder config |
-//! | --- | --- | --- |
-//! | JSON   | `json.MarshalIndent(metrics, "", "  ")` | indent `"  "`, HTML-escape ON, no trailing newline |
-//! | YAML   | `yaml.Marshal(metrics)` | yaml.v3-compatible emitter |
-//! | binary | `reportutil.EncodeBinaryEnvelope(metrics, w)` | CFB1 = `"CFB1"` + u32-LE len + compact JSON |
+//! | Method | Encoder config |
+//! | --- | --- |
+//! | JSON   | indent `"  "`, HTML-escape ON, no trailing newline |
+//! | YAML   | block-style emitter |
+//! | binary | CFB1 = `"CFB1"` + u32-LE len + compact JSON |
 //!
 //! # Routing (DESIGN §2, project rule 1)
 //!
-//! Per the design, machine-format bytes MUST go through the shared `cf-gojson` /
-//! `cf-goyaml` / `cf-reportutil` crates rather than raw serde. This module builds the
-//! Go-value tree via [`to_go_value`] and is written to hand that tree to those
-//! crates. While those crates are still scaffolds, this module also carries a
-//! self-contained reference encoder ([`encode_json`]) that implements the exact Go
-//! `encoding/json` rules (declaration-order struct fields, byte-sorted map keys, HTML
-//! escaping, Go `'g'/-1/64` float formatting, two-space indent, no trailing newline)
-//! so the crate compiles, is testable, and produces correct bytes. Swapping
-//! [`encode_json`]/[`encode_yaml`]/[`encode_binary`] to delegate to
-//! `cf-gojson`/`cf-goyaml`/`cf-reportutil` is a mechanical follow-up tracked in the
-//! crate todos.
+//! The production machine-format bytes go through the shared `cf-gojson` /
+//! `cf-goyaml` / `cf-reportutil` crates (the static-pipeline handler owns that
+//! path). This module builds the value tree via [`to_go_value`] and carries a
+//! self-contained reference encoder ([`encode_json`]) implementing the exact
+//! report-contract JSON rules (declaration-order struct fields, byte-sorted
+//! map keys, HTML escaping, shortest-round-trip `%g` float formatting,
+//! two-space indent, no trailing newline) so the crate is testable in
+//! isolation.
 
 use crate::metrics::{ComputedMetrics, FunctionCohesionData};
 
-/// A Go-`encoding/json` value, mirroring `cf_gojson::GoValue`.
+/// A report-contract JSON value, mirroring `cf_gojson::GoValue`.
 ///
 /// `Object` distinguishes struct-origin (declaration order, `omitempty` already
 /// applied by the builder) from map-origin (`sorted = true`, keys byte-sorted on
 /// encode) so the dual-mode ordering rule of DESIGN §2.2 is honored.
 #[derive(Debug, Clone, PartialEq)]
 pub enum GoValue {
-    /// Go `int` / `int64`.
+    /// An integer.
     Int(i64),
-    /// Go `float64`.
+    /// A float.
     Float(f64),
-    /// Go `string`.
+    /// A string.
     Str(String),
-    /// Go slice.
+    /// An array.
     Array(Vec<GoValue>),
-    /// Go struct (ordered) or map (sorted-on-encode).
+    /// A struct-origin (ordered) or map-origin (sorted-on-encode) object.
     Object {
         /// Key/value pairs.
         fields: Vec<(String, GoValue)>,
@@ -149,13 +145,13 @@ fn distribution_value(dist: &std::collections::BTreeMap<String, i64>) -> GoValue
     }
 }
 
-// === Reference Go-compatible encoders (to be delegated to cf-gojson/cf-goyaml) ===
+// === Reference encoders (the production path delegates to cf-gojson/cf-goyaml) ===
 
-/// CFB1 magic (Go `reportutil.BinaryMagic`).
+/// CFB1 binary-envelope magic.
 pub const BINARY_MAGIC: &[u8; 4] = b"CFB1";
 
-/// Encodes `metrics` as Go `json.MarshalIndent(metrics, "", "  ")`: two-space
-/// indent, HTML escaping ON, and no trailing newline.
+/// Encodes `metrics` as indented JSON: two-space indent, HTML escaping ON, and
+/// no trailing newline.
 #[must_use]
 pub fn encode_json(metrics: &ComputedMetrics) -> Vec<u8> {
     let mut out = String::new();
@@ -163,8 +159,8 @@ pub fn encode_json(metrics: &ComputedMetrics) -> Vec<u8> {
     out.into_bytes()
 }
 
-/// Encodes `metrics` as compact Go `json.Marshal(metrics)`: no spaces, HTML
-/// escaping ON, no trailing newline. This is the CFB1 payload.
+/// Encodes `metrics` as compact JSON: no spaces, HTML escaping ON, no trailing
+/// newline. This is the CFB1 payload.
 #[must_use]
 pub fn encode_compact_json(metrics: &ComputedMetrics) -> Vec<u8> {
     let mut out = String::new();
@@ -172,9 +168,8 @@ pub fn encode_compact_json(metrics: &ComputedMetrics) -> Vec<u8> {
     out.into_bytes()
 }
 
-/// Encodes `metrics` as a single CFB1 envelope record (Go
-/// `reportutil.EncodeBinaryEnvelope`): `"CFB1"` + `u32` little-endian payload
-/// length + compact-JSON payload.
+/// Encodes `metrics` as a single CFB1 envelope record: `"CFB1"` + `u32`
+/// little-endian payload length + compact-JSON payload.
 #[must_use]
 pub fn encode_binary(metrics: &ComputedMetrics) -> Vec<u8> {
     let payload = encode_compact_json(metrics);
@@ -185,8 +180,8 @@ pub fn encode_binary(metrics: &ComputedMetrics) -> Vec<u8> {
     out
 }
 
-/// Renders a [`GoValue`] into `out`. `indent = Some("  ")` reproduces
-/// `MarshalIndent`; `indent = None` reproduces compact `Marshal`.
+/// Renders a [`GoValue`] into `out`. `indent = Some("  ")` produces the
+/// indented form; `indent = None` the compact form.
 fn write_value(out: &mut String, v: &GoValue, indent: Option<&str>, depth: usize) {
     match v {
         GoValue::Int(n) => out.push_str(&n.to_string()),
@@ -225,7 +220,7 @@ fn write_object(
         out.push_str("{}");
         return;
     }
-    // For map-origin objects, byte-sort keys at encode time (Go map JSON rule).
+    // For map-origin objects, byte-sort keys at encode time (map JSON rule).
     let mut ordered: Vec<&(String, GoValue)> = fields.iter().collect();
     if sorted {
         ordered.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
@@ -256,9 +251,9 @@ fn newline_indent(out: &mut String, indent: Option<&str>, depth: usize) {
     }
 }
 
-/// Writes a Go-`encoding/json`-escaped string (HTML escaping ON): escapes `"`, `\`,
-/// control chars (`\n`/`\r`/`\t` shortcuts, else `\u00XX`), and `<`, `>`, `&`,
-/// `U+2028`, `U+2029`.
+/// Writes a JSON string with HTML escaping ON (report contract): escapes `"`,
+/// `\`, control chars (`\n`/`\r`/`\t` shortcuts, else `\u00XX`), and `<`,
+/// `>`, `&`, `U+2028`, `U+2029`.
 fn write_json_string(out: &mut String, s: &str) {
     out.push('"');
     for ch in s.chars() {
@@ -282,37 +277,39 @@ fn write_json_string(out: &mut String, s: &str) {
     out.push('"');
 }
 
-/// Formats an `f64` with Go `strconv.AppendFloat(b, f, 'g', -1, 64)` semantics, as
-/// used by `encoding/json`'s float encoder (DESIGN §2.2).
+/// Formats an `f64` with shortest-round-trip `%g` semantics, as used by the
+/// report contract's float encoder (DESIGN §2.2).
 ///
-/// Rules reproduced: shortest round-trip digits; switch to exponential when
+/// Rules: shortest round-trip digits; switch to exponential when
 /// `exp < -4 || exp >= 21`; exponent rendered `e±NN` with sign and >= 2 digits;
 /// integer-valued floats printed without a decimal point (`1.0` -> `1`); `±0`
 /// printed as `0`.
 ///
-/// This is the high-risk path; the integrated build should delegate to
-/// `cf_gojson::go_float`, which is fuzzed against Go in the golden harness
-/// (DESIGN §6 Layer A).
+/// This is the high-risk path; the production build delegates to
+/// `cf_gojson::go_float`, which is fuzzed against the reference implementation
+/// in the golden harness (DESIGN §6 Layer A).
 #[must_use]
 pub fn go_float(f: f64) -> String {
     if f == 0.0 {
-        // encoding/json renders both +0.0 and -0.0 as "0".
+        // Both +0.0 and -0.0 render as "0".
         return "0".to_string();
     }
     if f.is_nan() || f.is_infinite() {
-        // Go's encoding/json errors on NaN/Inf; here we fall back to "0", which never
-        // occurs for cohesion values (all finite in [0,1] or 0..100). The integrated
-        // cf-gojson path returns an error instead.
+        // The report contract has no NaN/Inf rendering (the reference encoder
+        // errors); fall back to "0", which never occurs for cohesion values
+        // (all finite in [0,1] or 0..100). The cf-gojson path returns an error
+        // instead.
         return "0".to_string();
     }
 
-    // Obtain the shortest round-tripping decimal via Rust's formatter, which uses a
-    // Grisu/Ryū-style shortest representation matching Go's digit sequence.
+    // Obtain the shortest round-tripping decimal via Rust's formatter, whose
+    // Grisu/Ryū-style shortest representation matches the reference digit
+    // sequence.
     let shortest = format!("{f}");
     reformat_go_g(&shortest)
 }
 
-/// Re-renders a shortest decimal string into Go `'g'` form.
+/// Re-renders a shortest decimal string into `%g` form.
 fn reformat_go_g(shortest: &str) -> String {
     let (sign, body) = if let Some(stripped) = shortest.strip_prefix('-') {
         ("-", stripped)
@@ -322,9 +319,9 @@ fn reformat_go_g(shortest: &str) -> String {
 
     let (mantissa_digits, decimal_exp) = decompose(body);
 
-    // decimal_exp is the power of ten of the FIRST significant digit (scientific).
-    // Go 'g' uses exponential when exp < -4 || exp >= 21.
-    let use_exp = decimal_exp < -4 || decimal_exp >= 21;
+    // decimal_exp is the power of ten of the FIRST significant digit
+    // (scientific). '%g' uses exponential when exp < -4 || exp >= 21.
+    let use_exp = !(-4..21).contains(&decimal_exp);
 
     let rendered = if use_exp {
         render_exponential(&mantissa_digits, decimal_exp)
@@ -398,12 +395,12 @@ fn render_exponential(digits: &str, exp: i32) -> String {
     format!("{mantissa}e{sign}{mag:02}")
 }
 
-/// Encodes `metrics` as yaml.v3-compatible YAML.
+/// Encodes `metrics` as block-style YAML.
 ///
-/// NOTE: the integrated build MUST delegate to `cf_goyaml` (DESIGN §2.4, highest
-/// residual risk). This reference implementation covers the cohesion shape only and
-/// is intentionally minimal; it is not asserted byte-identical here and exists so the
-/// YAML method compiles and round-trips structurally.
+/// NOTE: the production build MUST delegate to `cf_goyaml` (DESIGN §2.4,
+/// highest residual risk). This reference implementation covers the cohesion
+/// shape only and is intentionally minimal; it is not asserted byte-identical
+/// here and exists so the YAML method compiles and round-trips structurally.
 #[must_use]
 pub fn encode_yaml(metrics: &ComputedMetrics) -> Vec<u8> {
     let mut out = String::new();

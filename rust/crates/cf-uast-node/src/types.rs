@@ -1,15 +1,14 @@
-//! DSL AST node types. Ported from `types.go`.
+//! DSL AST node types.
 //!
-//! Go models the DSL AST as a set of separate struct types behind the empty
-//! interface `DSLNode any`. In Rust the natural encoding is a single enum
-//! ([`DslNode`]) — pattern matching replaces Go's type switches in `lowering.go`.
+//! The DSL AST is a single enum ([`DslNode`]); lowering pattern-matches on the
+//! variants.
 
 /// A literal value parsed from a DSL expression.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DslLiteral {
     /// A quoted string literal.
     Str(String),
-    /// A numeric literal (kept as text to preserve the exact token, as Go does).
+    /// A numeric literal (kept as text to preserve the exact token).
     Number(String),
     /// A boolean literal.
     Bool(bool),
@@ -17,49 +16,47 @@ pub enum DslLiteral {
 
 /// A node in the DSL abstract syntax tree.
 ///
-/// Each variant corresponds to one of Go's `*MapNode`, `*FilterNode`, etc. The
-/// `DSLNodeType` string constants from Go are exposed via [`DslNode::type_name`].
+/// Each variant's canonical name string is exposed via [`DslNode::type_name`].
 #[derive(Debug, Clone, PartialEq)]
 pub enum DslNode {
     /// `map(<expr>)` — applies `expr` to each input node.
-    Map(Box<DslNode>),
+    Map(Box<Self>),
     /// `filter(<expr>)` — keeps nodes for which `expr` holds.
-    Filter(Box<DslNode>),
-    /// `reduce(<expr>)` — fold (currently identity, as in Go).
-    Reduce(Box<DslNode>),
+    Filter(Box<Self>),
+    /// `reduce(<expr>)` — fold (currently identity).
+    Reduce(Box<Self>),
     /// Field access: `.a.b.c` → `["a","b","c"]`.
     Field(Vec<String>),
     /// A literal value.
     Literal(DslLiteral),
     /// A function call `name(arg, ...)`.
-    Call { name: String, args: Vec<DslNode> },
+    Call { name: String, args: Vec<Self> },
     /// A pipeline of stages separated by `|`.
-    Pipeline(Vec<DslNode>),
-    /// `rmap(<expr>)` — reverse map (identity in Go).
-    RMap(Box<DslNode>),
-    /// `rfilter(<expr>)` — reverse filter (identity in Go).
-    RFilter(Box<DslNode>),
+    Pipeline(Vec<Self>),
+    /// `rmap(<expr>)` — reverse map (identity).
+    RMap(Box<Self>),
+    /// `rfilter(<expr>)` — reverse filter (identity).
+    RFilter(Box<Self>),
     /// A comparison `<lhs> <op> <rhs>` produced by the grammar's `Comparison`.
-    Comparison { lhs: Box<DslNode>, op: String, rhs: Box<DslNode> },
+    Comparison { lhs: Box<Self>, op: String, rhs: Box<Self> },
 }
 
 impl DslNode {
-    /// Returns the Go `DSLNodeType` string for this node (`"Map"`, `"Filter"`,
-    /// `"Reduce"`, `"Field"`, `"Literal"`, `"Call"`, `"Pipeline"`, `"RMap"`,
-    /// `"RFilter"`). Comparisons have no Go `DSLNodeType` (they are an `Expr`
-    /// sub-form), so they return `"Comparison"`.
-    pub fn type_name(&self) -> &'static str {
+    /// Returns the canonical name string for this node kind (`"Map"`,
+    /// `"Filter"`, `"Reduce"`, `"Field"`, `"Literal"`, `"Call"`, `"Pipeline"`,
+    /// `"RMap"`, `"RFilter"`, `"Comparison"`).
+    pub const fn type_name(&self) -> &'static str {
         match self {
-            DslNode::Map(_) => "Map",
-            DslNode::Filter(_) => "Filter",
-            DslNode::Reduce(_) => "Reduce",
-            DslNode::Field(_) => "Field",
-            DslNode::Literal(_) => "Literal",
-            DslNode::Call { .. } => "Call",
-            DslNode::Pipeline(_) => "Pipeline",
-            DslNode::RMap(_) => "RMap",
-            DslNode::RFilter(_) => "RFilter",
-            DslNode::Comparison { .. } => "Comparison",
+            Self::Map(_) => "Map",
+            Self::Filter(_) => "Filter",
+            Self::Reduce(_) => "Reduce",
+            Self::Field(_) => "Field",
+            Self::Literal(_) => "Literal",
+            Self::Call { .. } => "Call",
+            Self::Pipeline(_) => "Pipeline",
+            Self::RMap(_) => "RMap",
+            Self::RFilter(_) => "RFilter",
+            Self::Comparison { .. } => "Comparison",
         }
     }
 }

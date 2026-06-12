@@ -1,8 +1,7 @@
 //! Composition aggregator.
 //!
-//! Ported from Go `internal/analyzers/composition/aggregator.go`. Accumulates
-//! per-file classification results into a breakdown / percentages / total-files
-//! report.
+//! Accumulates per-file classification results into a breakdown / percentages /
+//! total-files report.
 
 use std::collections::HashMap;
 
@@ -19,16 +18,14 @@ pub const KEY_TOTAL_FILES: &str = "total_files";
 /// Report key holding the per-file category string.
 pub const KEY_CATEGORY: &str = "category";
 
-/// 100.0, used to convert a fraction to a percentage. Mirrors Go
-/// `percentMultiplier`.
+/// 100.0, used to convert a fraction to a percentage.
 const PERCENT_MULTIPLIER: f64 = 100.0;
 
 /// Aggregates file composition results across multiple files.
 ///
-/// Mirrors Go `Aggregator`. The Go type embeds `common.PerFileRetainer` (which
-/// retains per-file reports for later HTML rendering); that retention is not
-/// observable in the machine-format report this crate is responsible for, so it
-/// is intentionally omitted here and noted in the crate `todos`.
+/// Per-file report retention for HTML rendering is a framework concern and is
+/// not observable in the machine-format report this crate is responsible for,
+/// so it is intentionally omitted here.
 #[derive(Debug, Default)]
 pub struct Aggregator {
     counts: CategoryCounts,
@@ -44,12 +41,11 @@ impl Aggregator {
 
     /// Accumulates per-file classification results.
     ///
-    /// `results` mirrors Go's `map[string]analyze.Report`: each value is a
-    /// single-file report whose `category` key holds the classification string.
-    /// Every report increments `total_files`; a present-and-string `category`
-    /// additionally increments the per-category counter. A missing or
-    /// non-string `category` is skipped (the file is still counted) — matching
-    /// Go's `cat, ok := report[keyCategory].(string); if !ok { continue }`.
+    /// `results` maps analyzer name -> single-file report whose `category` key
+    /// holds the classification string. Every report increments `total_files`;
+    /// a present-and-string `category` additionally increments the
+    /// per-category counter. A missing or non-string `category` is skipped
+    /// (the file is still counted).
     pub fn aggregate(&mut self, results: &HashMap<String, HashMap<String, GoValue>>) {
         for report in results.values() {
             self.total_files += 1;
@@ -70,17 +66,16 @@ impl Aggregator {
     /// Builds the aggregated composition report.
     ///
     /// The returned [`GoMap`] is a *map-origin* container, so `cf-gojson` sorts
-    /// its keys by raw UTF-8 bytes at encode time — exactly as Go encodes a
-    /// `map[string]any` report (`breakdown`, `percentages`, `total_files`).
-    /// The nested `breakdown` / `percentages` maps are likewise map-origin and
+    /// its keys by raw UTF-8 bytes at encode time (`breakdown`, `percentages`,
+    /// `total_files`), per the report contract for dynamic maps. The nested
+    /// `breakdown` / `percentages` maps are likewise map-origin and
     /// byte-sorted.
     ///
-    /// Percentages are only emitted when `total_files > 0`, matching Go (an
-    /// empty repo yields an empty `percentages` map).
+    /// Percentages are only emitted when `total_files > 0` (an empty repo
+    /// yields an empty `percentages` map — pinned report behaviour).
     #[must_use]
     pub fn get_result(&self) -> GoMap {
-        // All three containers mirror Go maps (`map[string]int`,
-        // `map[string]float64`, `map[string]any`), so they are map-origin and
+        // All three containers are dynamic maps, so they are map-origin and
         // byte-sort their keys at encode time.
         let mut breakdown = GoMap::new(MapOrigin::Map);
         let mut percentages = GoMap::new(MapOrigin::Map);

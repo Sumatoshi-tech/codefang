@@ -1,37 +1,36 @@
-//! `cf-quality` — Rust port of the Go `internal/analyzers/quality` package.
+//! `cf-quality` — the composite **quality** history analyzer (`history/quality`).
 //!
-//! The composite **quality** history analyzer (ID `history/quality`) runs four
-//! static component analyzers — complexity, Halstead, comments, and cohesion —
-//! on each changed file's UAST per commit, recording **scalars only**, and
-//! aggregates them **order-independently** (per-commit results keyed by hash;
-//! `Merge` is a no-op). It is ported after its components, per
-//! `specs/rust-rewrite/DESIGN.md` §1.1.
+//! Runs four static component analyzers — complexity, Halstead, comments, and
+//! cohesion — on each changed file's UAST per commit, recording **scalars
+//! only**, and aggregates them **order-independently** (per-commit results
+//! keyed by hash; merging is a no-op).
 //!
-//! # Module map (Go file → Rust module)
+//! # Module map
 //!
-//! | Go file | Rust module |
-//! | --- | --- |
-//! | `analyzer.go` (data types) | [`data`] |
-//! | `analyzer.go` (Consume/aggregator) | [`analyzer`] |
-//! | `metrics.go` | [`metrics`] |
-//! | `store_writer.go` / `store_reader.go` | [`store`] |
-//! | (serialization) | [`serialize`] |
-//! | `plot.go` | non-binding cosmetic (titles in [`store`]); charts not ported |
+//! * [`data`] — per-tick / per-commit data containers.
+//! * [`analyzer`] — consume/accumulate glue over the component analyzers.
+//! * [`metrics`] — per-tick statistics, time-series and aggregate computation.
+//! * [`store`] — store record kinds and plot-section titles.
+//! * [`serialize`] — report serialization (charts themselves are non-binding
+//!   cosmetic output).
 //!
-//! # Byte-identity
+//! # Compatibility
 //!
-//! Every machine-format report is serialized through [`cf_gojson`] / [`cf_goyaml`]
-//! and the CFB1 envelope via [`cf_reportutil`] (see [`serialize`]), never serde
-//! defaults, per DESIGN §2. Wrapper structs ([`metrics::TickStats`],
-//! [`metrics::TimeSeriesEntry`], [`metrics::AggregateData`],
-//! [`metrics::ComputedMetrics`]) emit fields in Go declaration order honoring
-//! `omitempty`; the per-commit summary map is map-origin and byte-sorts its keys.
+//! Every machine-format report is serialized through [`cf_gojson`] /
+//! [`cf_goyaml`] and the CFB1 envelope via [`cf_reportutil`] (see
+//! [`serialize`]), never serde defaults; the bytes are pinned against the
+//! reference binary by `rust/tests/compat`. Wrapper structs
+//! ([`metrics::TickStats`], [`metrics::TimeSeriesEntry`],
+//! [`metrics::AggregateData`], [`metrics::ComputedMetrics`]) emit fields in
+//! declaration order honoring `omitempty`; the per-commit summary map is
+//! map-origin and byte-sorts its keys.
 //!
 //! # Numeric parity
 //!
 //! All statistics (`mean`/`median`/`P95`/`max`/`min`/`sum`) come from
-//! [`cf_alg_stats`], the operation-for-operation port of `pkg/alg/stats`, so the
-//! values flowing into reports are bit-faithful to Go.
+//! [`cf_alg_stats`], the operation-for-operation statistics kernel shared with
+//! the reference implementation, so the values flowing into reports are
+//! bit-faithful.
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 

@@ -1,7 +1,7 @@
 //! Range (overlap) queries over a [`File`]'s line ownership.
 //!
-//! Port of `internal/burndown/range_query.go`. Builds a lazy interval-tree index
-//! from the timeline segments and answers overlap queries against it.
+//! Builds a lazy interval-tree index from the timeline segments and answers
+//! overlap queries against it.
 
 use crate::file::File;
 use crate::interval::Tree;
@@ -9,8 +9,6 @@ use crate::timeline::{TimeKey, Timeline};
 use crate::TREE_END;
 
 /// A line range `[start_line, end_line)` with a single owner (time value).
-///
-/// Mirrors the Go `OwnershipSegment` struct.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OwnershipSegment {
     /// Inclusive start line of the run.
@@ -22,8 +20,6 @@ pub struct OwnershipSegment {
 }
 
 /// Holds the lazy interval-tree index for range queries.
-///
-/// Mirrors the Go `rangeIndex` struct.
 pub(crate) struct RangeIndex {
     tree: Tree,
     dirty: bool,
@@ -34,8 +30,6 @@ impl File {
     ///
     /// The interval-tree index is rebuilt lazily when the timeline has been
     /// modified. `TreeEnd` sentinel segments are excluded from results.
-    ///
-    /// Mirrors Go `(*File).QueryRange`.
     pub fn query_range(&mut self, start_line: i64, end_line: i64) -> Vec<OwnershipSegment> {
         self.ensure_index();
 
@@ -59,15 +53,14 @@ impl File {
     }
 
     /// Mark the interval-tree index as needing a rebuild. Called automatically
-    /// by [`File::update`]. Mirrors Go `InvalidateIndex`.
+    /// by [`File::update`].
     pub fn invalidate_index(&mut self) {
         if let Some(idx) = self.index_mut() {
             idx.dirty = true;
         }
     }
 
-    /// Rebuild the interval-tree index if it is dirty or uninitialized. Mirrors
-    /// Go `ensureIndex`.
+    /// Rebuild the interval-tree index if it is dirty or uninitialized.
     fn ensure_index(&mut self) {
         if self.index_mut().is_none() {
             *self.index_mut() = Some(RangeIndex {
@@ -83,8 +76,7 @@ impl File {
         self.rebuild_index();
     }
 
-    /// Reconstruct the interval tree from the current timeline segments. Mirrors
-    /// Go `rebuildIndex`.
+    /// Reconstruct the interval tree from the current timeline segments.
     fn rebuild_index(&mut self) {
         // Collect segments first to avoid borrowing `self` two ways.
         let mut entries: Vec<(u32, u32, TimeKey)> = Vec::new();
@@ -114,7 +106,7 @@ mod tests {
     const RQ_INITIAL_LENGTH: i64 = 100;
     const RQ_LARGE_FILE_LENGTH: i64 = 10_000;
 
-    /// Port of `TestQueryRange_Basic`.
+    /// Mirrors reference test `TestQueryRange_Basic`.
     #[test]
     fn query_range_basic() {
         let mut file = File::new(0, RQ_INITIAL_LENGTH, Vec::new());
@@ -125,7 +117,7 @@ mod tests {
         assert_eq!(results[0].owner, 0);
     }
 
-    /// Port of `TestQueryRange_AfterUpdate`.
+    /// Mirrors reference test `TestQueryRange_AfterUpdate`.
     #[test]
     fn query_range_after_update() {
         let mut file = File::new(0, RQ_INITIAL_LENGTH, Vec::new());
@@ -137,7 +129,7 @@ mod tests {
         assert_eq!(owner1.end_line, 60);
     }
 
-    /// Port of `TestQueryRange_PartialOverlap`.
+    /// Mirrors reference test `TestQueryRange_PartialOverlap`.
     #[test]
     fn query_range_partial_overlap() {
         let mut file = File::new(0, RQ_INITIAL_LENGTH, Vec::new());
@@ -146,21 +138,21 @@ mod tests {
         assert!(results.iter().any(|s| s.owner == 1), "should find time=1 segment");
     }
 
-    /// Port of `TestQueryRange_NoOverlap`.
+    /// Mirrors reference test `TestQueryRange_NoOverlap`.
     #[test]
     fn query_range_no_overlap() {
         let mut file = File::new(0, RQ_INITIAL_LENGTH, Vec::new());
         assert!(file.query_range(200, 300).is_empty());
     }
 
-    /// Port of `TestQueryRange_EmptyFile`.
+    /// Mirrors reference test `TestQueryRange_EmptyFile`.
     #[test]
     fn query_range_empty_file() {
         let mut file = File::new(0, 0, Vec::new());
         assert!(file.query_range(0, 10).is_empty());
     }
 
-    /// Port of `TestQueryRange_LazyRebuild`.
+    /// Mirrors reference test `TestQueryRange_LazyRebuild`.
     #[test]
     fn query_range_lazy_rebuild() {
         let mut file = File::new(0, RQ_INITIAL_LENGTH, Vec::new());
@@ -171,7 +163,7 @@ mod tests {
         assert!(results2.len() > 1, "should have more segments after update");
     }
 
-    /// Port of `TestQueryRange_LargeFile`.
+    /// Mirrors reference test `TestQueryRange_LargeFile`.
     #[test]
     fn query_range_large_file() {
         let mut file = File::new(0, RQ_LARGE_FILE_LENGTH, Vec::new());
@@ -184,7 +176,7 @@ mod tests {
         assert_eq!(total_lines, file.len(), "total segment lines should match file length");
     }
 
-    /// Port of `TestQueryRange_ExcludesTreeEnd`.
+    /// Mirrors reference test `TestQueryRange_ExcludesTreeEnd`.
     #[test]
     fn query_range_excludes_tree_end() {
         let mut file = File::new(0, RQ_INITIAL_LENGTH, Vec::new());

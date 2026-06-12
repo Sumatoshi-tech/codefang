@@ -6,30 +6,20 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "Import/dependency analysis: static import IDs (`imports`) plus per-developer/per-language import usage history (`ImportsPerDeveloper`, id `history/imports`, additive merge). Rust port of the Go internal/analyzers/imports package."
+description = "Import/dependency analysis: static import IDs (`imports`) plus per-developer/per-language import usage history (`ImportsPerDeveloper`, id `history/imports`, additive merge)."
 
 [dependencies]
-# DESIGN §2/§3: all MACHINE report bytes MUST flow through cf-gojson, the
-# go-compat encoder that models Go struct-declaration key order vs byte-sorted
-# map keys and Go nil-slice -> JSON `null`. `ComputedMetrics::to_go_value`
-# builds a struct-origin `GoValue` so json/bin output is byte-identical to Go
-# `json.Marshal(*ComputedMetrics)` (e.g. `dependencies:null` for the empty
-# report, and declaration field order import_list/categories/dependencies/
-# aggregate rather than a byte-sorted alphabetical order).
+# Report-format JSON encoder: models struct-declaration key order vs byte-sorted
+# map keys and nil-slice -> JSON `null`. `ComputedMetrics::to_go_value` builds a
+# struct-origin `GoValue` so json/bin output keeps the pinned report contract
+# (e.g. `dependencies:null` for the empty report, and declaration field order
+# import_list/categories/dependencies/aggregate rather than byte-sorted order).
+# Pinned by the differential gate in rust/tests/compat.
 cf-gojson = { workspace = true }
-# CFB1 `bin` envelope (DESIGN §3.6): "CFB1" + LE u32 len + compact json.Marshal
-# of the struct-origin metrics value. Routes through cf-gojson internally.
+# CFB1 `bin` envelope: "CFB1" + LE u32 len + compact JSON payload. Routes
+# through cf-gojson internally.
 cf-reportutil = { path = "../cf-reportutil" }
 #
-# In the integrated workspace it will depend on path crates that supply the
-# canonical types: cf-uast-node (the Node model + VisitPreOrder/HasAnyRole),
-# cf-reportutil (the Report/ReportValue map[string]any model + the CFB1 `bin`
-# envelope, which itself routes through cf-gojson), cf-gojson / cf-goyaml (the
-# go-compat json/yaml encoders that DESIGN §2 mandates for byte-identical
-# MACHINE output), cf-metrics (the Metric/MetricMeta primitives), and the
-# cf-framework / cf-analyze / cf-plumbing / cf-persist pipeline crates. Some of
-# those siblings are already ported (cf-uast-node, cf-reportutil, cf-metrics);
-# others remain scaffolds. This crate intentionally carries minimal local shims
-# (`node`, `report`) so the analyzer logic and its ported tests stand alone and
-# verifiable; the integration swap is enumerated in the port todos. No external
-# registry crates are required to compile.
+# This crate intentionally carries minimal local shims (`node`, `report`) so the
+# analyzer logic and its tests stand alone and verifiable; the canonical types
+# live in cf-uast-node / cf-reportutil and the pipeline crates.

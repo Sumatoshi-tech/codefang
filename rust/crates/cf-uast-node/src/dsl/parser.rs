@@ -1,25 +1,22 @@
 //! Hand-written recursive-descent parser for the UAST query DSL.
 //!
-//! Implements the grammar in `dsl_parser.peg` directly (see the module docs in
-//! `dsl/mod.rs`). This replaces the `pointlander/peg`-generated
-//! `dsl_parser.peg.go` rather than hand-translating it (rewrite rule 6).
+//! Implements the PEG grammar documented in the [`dsl`](crate::dsl) module
+//! docs.
 
 use crate::types::{DslLiteral, DslNode};
 
-/// A DSL parse error. Mirrors the message wrapping Go applies in
-/// `parseDSLQuery` (`"DSL parse error: ..."`) — callers add that prefix.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A DSL parse error. Callers wrap it with the `"DSL parse error: ..."` prefix
+/// (part of the CLI compatibility contract).
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
 pub struct ParseError(pub String);
 
-impl std::fmt::Display for ParseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl std::error::Error for ParseError {}
-
 /// Parses a DSL query string into its AST. Entry point for `Query <- Pipeline EOT`.
+///
+/// # Errors
+///
+/// Returns a [`ParseError`] describing the first grammar violation (unexpected
+/// trailing input, unterminated literal, missing delimiter, ...).
 pub fn parse(input: &str) -> Result<DslNode, ParseError> {
     let mut p = Parser { src: input.as_bytes(), pos: 0 };
     p.spacing();
@@ -39,7 +36,7 @@ struct Parser<'a> {
     pos: usize,
 }
 
-impl<'a> Parser<'a> {
+impl Parser<'_> {
     fn peek(&self) -> Option<u8> {
         self.src.get(self.pos).copied()
     }
@@ -147,9 +144,8 @@ impl<'a> Parser<'a> {
 
     /// `Reduce <- 'reduce' ((Spacing '(' Spacing ReducerName Spacing ')') / (Spacing ReducerName))`
     /// where `ReducerName <- [a-zA-Z_][a-zA-Z0-9_]*`. The reducer name becomes a
-    /// bare `Call{name, args:[]}` (Go `convertReduceNode` -> `CallNode{Name, Args:nil}`),
-    /// NOT a general `Expr` — so `reduce(count)` parses `count` as an identifier,
-    /// not as a literal.
+    /// bare `Call{name, args:[]}`, NOT a general `Expr` — so `reduce(count)`
+    /// parses `count` as an identifier, not as a literal.
     fn reduce_op(&mut self) -> Result<Option<DslNode>, ParseError> {
         let save = self.pos;
         if !self.consume("reduce") {
@@ -230,15 +226,12 @@ impl<'a> Parser<'a> {
             let save = self.pos;
             if self.consume(".") {
                 self.spacing();
-                match self.identifier() {
-                    Some(id) => {
-                        fields.push(id);
-                        self.spacing();
-                    }
-                    None => {
-                        self.pos = save;
-                        break;
-                    }
+                if let Some(id) = self.identifier() {
+                    fields.push(id);
+                    self.spacing();
+                } else {
+                    self.pos = save;
+                    break;
                 }
             } else {
                 self.pos = save;
@@ -324,7 +317,7 @@ impl<'a> Parser<'a> {
     /// `Literal <- StringLiteral / NumberLiteral / BoolLiteral`
     fn literal(&mut self) -> Result<DslNode, ParseError> {
         match self.peek() {
-            Some(b'\'') | Some(b'"') => {
+            Some(b'\'' | b'"') => {
                 let quote = self.peek().unwrap();
                 self.pos += 1;
                 let start = self.pos;
@@ -346,14 +339,14 @@ impl<'a> Parser<'a> {
             }
             Some(c) if c.is_ascii_digit() => {
                 let start = self.pos;
-                while self.peek().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+                while self.peek().is_some_and(|c| c.is_ascii_digit()) {
                     self.pos += 1;
                 }
                 if self.peek() == Some(b'.') {
                     let save = self.pos;
                     self.pos += 1;
-                    if self.peek().map(|c| c.is_ascii_digit()).unwrap_or(false) {
-                        while self.peek().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+                    if self.peek().is_some_and(|c| c.is_ascii_digit()) {
+                        while self.peek().is_some_and(|c| c.is_ascii_digit()) {
                             self.pos += 1;
                         }
                     } else {

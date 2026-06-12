@@ -1,11 +1,10 @@
-//! `history/couples` plot sections — port of Go
-//! `internal/analyzers/couples/store_reader.go` + `plot.go`
+//! `history/couples` plot sections.
 //! (`GenerateStoreSections` → `buildStoreSections` over the `file_coupling`,
 //! `dev_matrix` and `ownership` store kinds).
 //!
 //! The dev-coupling heatmap section is gated on the `dev_matrix` names, which
 //! every `run` pipeline leaves EMPTY (the aggregator's `reversedNames` comes
-//! only from a preloaded people dict) — so, like the live Go pages, only the
+//! only from a preloaded people dict) — so, like the live reference pages, only the
 //! file-couples bar and the ownership pie can render.
 
 use cf_couples::{bucket_ownership, FileCouplingData, FileOwnershipData};
@@ -14,7 +13,7 @@ use cf_plotpage::echarts::{AxisLabel, BarData, Chart, ChartKind, ItemStyle, Labe
 use cf_plotpage::echarts::PieData;
 use cf_plotpage::{build_pie_chart, get_chart_palette, ChartOpts, Hint, Section, Theme};
 
-/// couples plot.go constants.
+/// Reference couples plot-section constants.
 const LABEL_FONT_SIZE: i64 = 10;
 const INNER_LABEL_SIZE: f64 = 9.0;
 const BAR_CHART_HEIGHT: &str = "500px";
@@ -22,9 +21,9 @@ const PIE_RADIUS: &str = "65%";
 const MAX_FILE_COUPLES: usize = 20;
 const MAX_PATH_LEN: usize = 30;
 
-/// Go `buildStoreSections` over the store kinds. `dev_names` is the
+/// The reference `buildStoreSections` over the store kinds. `dev_names` is the
 /// `dev_matrix` record's name list (empty on every run pipeline; the heatmap
-/// section is skipped exactly as Go skips it).
+/// section is skipped exactly as the reference implementation skips it).
 pub fn sections(
     file_coupling: &[FileCouplingData],
     dev_names: &[String],
@@ -52,7 +51,7 @@ pub fn sections(
 
     // Section 2 (developer coupling heatmap) requires dev_matrix names; the
     // run pipelines never populate them, so this is unreachable in practice —
-    // the gate is kept for Go parity.
+    // the gate is kept for reference parity.
     debug_assert!(dev_names.is_empty(), "run pipelines never carry dev names");
 
     if let Some(chart) = build_ownership_pie_chart(ownership) {
@@ -76,7 +75,7 @@ pub fn sections(
     result
 }
 
-/// Go `truncatePath`.
+/// The reference `truncatePath`.
 fn truncate_path(path: &str) -> String {
     if path.len() <= MAX_PATH_LEN {
         return path.to_string();
@@ -84,7 +83,7 @@ fn truncate_path(path: &str) -> String {
     format!("...{}", &path[path.len() - MAX_PATH_LEN + 3..])
 }
 
-/// Go `buildFileCouplingBarChartFromData`: horizontal bar of the top couples
+/// The reference `buildFileCouplingBarChartFromData`: horizontal bar of the top couples
 /// (reversed into ascending display order); `None` when there are no pairs.
 fn build_file_coupling_bar_chart(couples: &[FileCouplingData]) -> Option<Chart> {
     if couples.is_empty() {
@@ -156,7 +155,7 @@ fn build_file_coupling_bar_chart(couples: &[FileCouplingData]) -> Option<Chart> 
     Some(bar)
 }
 
-/// Go `buildOwnershipPieChartFromData`: bucketed contributor counts; `None`
+/// The reference `buildOwnershipPieChartFromData`: bucketed contributor counts; `None`
 /// when there is no ownership data.
 fn build_ownership_pie_chart(ownership: &[FileOwnershipData]) -> Option<Chart> {
     if ownership.is_empty() {

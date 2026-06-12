@@ -1,11 +1,9 @@
-//! File handles and the file iterator, ported from `pkg/gitlib/changes.go`
-//! (the `File` type) and `pkg/gitlib/file.go` (the `FileIter` type).
+//! File handles ([`File`]) and the file iterator ([`FileIter`]).
 //!
 //! A [`File`] names a blob within a tree and can fetch its contents on demand;
 //! [`FileIter`] is a simple in-memory iterator over a materialized file list,
-//! implementing the shared [`cf_alg::PullIterator`] contract so it interoperates
-//! with `cf-alg`'s `collect_n` just like the Go `gitlib.FileIter` satisfies
-//! `alg.Iterator[*File]`.
+//! implementing the shared [`cf_alg::PullIterator`] contract so it
+//! interoperates with `cf-alg`'s `collect_n`.
 
 use cf_alg::{IteratorError, PullIterator};
 
@@ -15,15 +13,14 @@ use crate::Repository;
 
 /// A file in a tree, with content accessible on demand.
 ///
-/// Mirrors Go's `gitlib.File`. Borrows the owning [`Repository`] so it can look
-/// up its blob lazily (Go stores an unexported `repo` pointer).
+/// Borrows the owning [`Repository`] so it can look up its blob lazily.
 #[derive(Clone)]
 pub struct File<'repo> {
-    /// The file path within the tree (Go exported field `Name`).
+    /// The file path within the tree.
     pub name: String,
-    /// The blob hash (Go exported field `Hash`).
+    /// The blob hash.
     pub hash: Hash,
-    /// The file mode (Go exported field `Mode`); `0` when unknown.
+    /// The file mode; `0` when unknown.
     pub mode: u16,
     repo: &'repo Repository,
 }
@@ -39,7 +36,7 @@ impl<'repo> File<'repo> {
         }
     }
 
-    /// Returns the file contents (Go `File.Contents` / `File.ContentsContext`).
+    /// Returns the file contents.
     ///
     /// # Errors
     ///
@@ -49,7 +46,7 @@ impl<'repo> File<'repo> {
         Ok(blob.contents())
     }
 
-    /// Returns the blob object for this file (Go `File.Blob` / `File.BlobContext`).
+    /// Returns the blob object for this file.
     ///
     /// # Errors
     ///
@@ -59,12 +56,12 @@ impl<'repo> File<'repo> {
     }
 }
 
-/// An iterator over the files in a tree, ported from Go `gitlib.FileIter`.
+/// An iterator over the files in a tree.
 ///
 /// Holds a materialized list of files and yields them in order. Implements
-/// [`cf_alg::PullIterator`] (Go's `alg.Iterator[*File]`): [`next`](FileIter::next)
-/// returns [`IteratorError::Eof`] when exhausted, and [`close`](FileIter::close)
-/// is a no-op marking the iterator drained (Go sets `idx = len(files)`).
+/// [`cf_alg::PullIterator`]: [`next`](FileIter::next) returns
+/// [`IteratorError::Eof`] when exhausted, and [`close`](FileIter::close) marks
+/// the iterator drained.
 pub struct FileIter<'repo> {
     files: Vec<File<'repo>>,
     idx: usize,
@@ -79,8 +76,7 @@ impl<'repo> FileIter<'repo> {
 
     /// Returns the next file, advancing the cursor.
     ///
-    /// Convenience inherent method mirroring Go's `FileIter.Next() (*File, error)`
-    /// returning `nil, io.EOF` at the end. Returns `None` at exhaustion.
+    /// Convenience inherent method; returns `None` at exhaustion.
     #[must_use]
     pub fn next_file(&mut self) -> Option<File<'repo>> {
         if self.idx >= self.files.len() {
@@ -91,7 +87,7 @@ impl<'repo> FileIter<'repo> {
         Some(f)
     }
 
-    /// Calls `cb` for each remaining file (Go `FileIter.ForEach`).
+    /// Calls `cb` for each remaining file.
     ///
     /// Stops and returns the first error produced by `cb`.
     ///
@@ -108,8 +104,7 @@ impl<'repo> FileIter<'repo> {
         Ok(())
     }
 
-    /// Marks the iterator drained (Go `FileIter.Close`, a no-op setting
-    /// `idx = len(files)`).
+    /// Marks the iterator drained.
     pub fn close(&mut self) {
         self.idx = self.files.len();
     }

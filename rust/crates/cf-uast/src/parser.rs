@@ -1,9 +1,9 @@
 //! The aggregate [`Parser`] facade.
 //!
-//! Direct port of Go `pkg/uast/parser.go`. The parser owns a [`Loader`] (which
-//! registers one lazy parser per embedded `.uastmap` mapping) plus a set of
-//! user-supplied custom maps. It is the entry point callers use to detect
-//! support, resolve a language, and parse a file into a UAST.
+//! The parser owns a [`Loader`] (which registers one lazy parser per embedded
+//! `.uastmap` mapping) plus a set of user-supplied custom maps. It is the
+//! entry point callers use to detect support, resolve a language, and parse a
+//! file into a UAST.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -14,7 +14,7 @@ use cf_uast_node::Node;
 use crate::loader::Loader;
 use crate::types::{get_file_extension, LanguageParser, Map, ParseError};
 
-/// The main entry point for UAST parsing (Go `Parser`).
+/// The main entry point for UAST parsing.
 ///
 /// Holds the language [`Loader`] and any custom mappings installed via
 /// [`Parser::with_map`].
@@ -24,26 +24,28 @@ pub struct Parser {
 }
 
 impl Parser {
-    /// Creates a parser with DSL-based language parsers loaded from the embedded
-    /// `.uastmap` mappings (Go `NewParser`).
+    /// Creates a parser with DSL-based language parsers loaded from the
+    /// embedded `.uastmap` mappings.
     ///
-    /// Unlike Go this is infallible: the embedded table is validated at build
-    /// time by `cf-uast-uastmaps`, so there is no I/O that can fail here.
-    pub fn new() -> Parser {
-        Parser {
+    /// Infallible: the embedded table is validated at build time by
+    /// `cf-uast-uastmaps`, so there is no I/O that can fail here.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
             loader: Loader::new(),
             custom_maps: HashMap::new(),
         }
     }
 
-    /// Adds custom UAST mappings, registering a parser for each (Go `WithMap` +
-    /// `loadCustomParsers`).
+    /// Adds custom UAST mappings, registering a parser for each.
     ///
-    /// Each custom map's DSL text is parsed; on success the resulting parser is
-    /// registered by its language name and by each of its (lowercased)
-    /// extensions, which are also added to the loader's bloom filter. A map whose
-    /// DSL fails to parse is silently skipped, matching Go's `continue`.
-    pub fn with_map(mut self, uast_maps: HashMap<String, Map>) -> Parser {
+    /// Each custom map's DSL text is parsed; on success the resulting parser
+    /// is registered by its language name and by each of its (lowercased)
+    /// extensions, which are also added to the loader's bloom filter. A map
+    /// whose DSL fails to parse is silently skipped (reference-implementation
+    /// behavior).
+    #[must_use]
+    pub fn with_map(mut self, uast_maps: HashMap<String, Map>) -> Self {
         for (k, v) in uast_maps {
             self.custom_maps.insert(k, v);
         }
@@ -51,7 +53,7 @@ impl Parser {
         self
     }
 
-    /// Loads parsers from the custom maps (Go `loadCustomParsers`).
+    /// Loads parsers from the custom maps.
     fn load_custom_parsers(&mut self) {
         let mp = MappingParser::new();
         for uast_map in self.custom_maps.values() {
@@ -69,14 +71,14 @@ impl Parser {
                     });
                     self.loader.register(parser);
                 }
-                // Go: `if loadErr != nil { continue }`.
+                // A custom map that fails to parse is skipped silently.
                 Err(_) => continue,
             }
         }
     }
 
-    /// Returns whether `filename` is supported by any registered parser (Go
-    /// `IsSupported`).
+    /// Returns whether `filename` is supported by any registered parser.
+    #[must_use]
     pub fn is_supported(&self, filename: &str) -> bool {
         let ext = get_file_extension(filename).to_lowercase();
         if ext.is_empty() {
@@ -86,7 +88,8 @@ impl Parser {
     }
 
     /// Returns the language name for `filename`, or an empty string if
-    /// unsupported (Go `GetLanguage`).
+    /// unsupported.
+    #[must_use]
     pub fn get_language(&self, filename: &str) -> String {
         let ext = get_file_extension(filename).to_lowercase();
         if ext.is_empty() {
@@ -98,9 +101,10 @@ impl Parser {
         }
     }
 
-    /// Parses `content` for `filename`, returning its UAST root (Go `Parse`).
+    /// Parses `content` for `filename`, returning its UAST root.
     ///
-    /// Errors:
+    /// # Errors
+    ///
     /// * [`ParseError::NoFileExtension`] when `filename` has no extension;
     /// * [`ParseError::NoParser`] when no parser is registered for the
     ///   (lowercased) extension.
@@ -120,12 +124,11 @@ impl Parser {
         lang_parser.parse(filename, content)
     }
 
-    /// Returns all embedded UAST mappings keyed by language (Go
-    /// `GetEmbeddedMappings`).
+    /// Returns all embedded UAST mappings keyed by language.
     ///
-    /// Each mapping's DSL is parsed for its extensions; a mapping whose DSL fails
-    /// to parse is omitted (mirroring Go's `return nil` inside the walk, which
-    /// skips that entry).
+    /// Each mapping's DSL is parsed for its extensions; a mapping whose DSL
+    /// fails to parse is omitted.
+    #[must_use]
     pub fn get_embedded_mappings(&self) -> HashMap<String, Map> {
         let mp = MappingParser::new();
         let mut mappings = HashMap::new();
@@ -146,8 +149,9 @@ impl Parser {
         mappings
     }
 
-    /// Returns a lightweight listing of embedded mappings (Go
-    /// `GetEmbeddedMappingsList`): each language maps to `{ "size": <bytes> }`.
+    /// Returns a lightweight listing of embedded mappings: each language maps
+    /// to its `.uastmap` content size in bytes.
+    #[must_use]
     pub fn get_embedded_mappings_list(&self) -> HashMap<String, MappingInfo> {
         let mut mappings = HashMap::new();
         for (&language, &content) in cf_uast_uastmaps::embedded_mappings() {
@@ -156,10 +160,12 @@ impl Parser {
         mappings
     }
 
-    /// Returns a specific embedded mapping by language name (Go `GetMapping`).
+    /// Returns a specific embedded mapping by language name.
     ///
-    /// Returns [`ParseError::MappingNotFound`] if the language is not embedded,
-    /// or [`ParseError::Other`] if its DSL fails to parse.
+    /// # Errors
+    ///
+    /// Returns [`ParseError::MappingNotFound`] if the language is not
+    /// embedded, or [`ParseError::Other`] if its DSL fails to parse.
     pub fn get_mapping(&self, language: &str) -> Result<Map, ParseError> {
         let content = cf_uast_uastmaps::get(language).ok_or_else(|| ParseError::MappingNotFound {
             language: language.to_string(),
@@ -178,12 +184,12 @@ impl Parser {
 
 impl Default for Parser {
     fn default() -> Self {
-        Parser::new()
+        Self::new()
     }
 }
 
 /// Lightweight per-mapping info returned by
-/// [`Parser::get_embedded_mappings_list`] (Go's `map[string]any{"size": ...}`).
+/// [`Parser::get_embedded_mappings_list`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MappingInfo {
     /// The size in bytes of the `.uastmap` content.

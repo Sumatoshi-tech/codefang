@@ -1,5 +1,4 @@
-//! `history/shotness` plot sections — port of Go
-//! `internal/analyzers/shotness/store_reader.go` + `plot.go`
+//! `history/shotness` plot sections.
 //! (`GenerateStoreSections` over the `node_data` store kind, which is exactly
 //! the run report's key-sorted `(NodeSummary, Counter)` pairs).
 
@@ -16,7 +15,7 @@ use cf_shotness::NodeSummary;
 
 use crate::handlers::go_sort;
 
-/// shotness plot.go constants.
+/// Reference shotness plot-section constants.
 const TOP_N_NODES: usize = 20;
 const MAX_FILES: usize = 30;
 const ROTATE_DEGREES: f64 = 60.0;
@@ -29,7 +28,7 @@ const BORDER_WIDTH_1: f64 = 1.0;
 const BORDER_WIDTH_2: f64 = 2.0;
 const MIN_HEAT_MAP_NODES: usize = 2;
 
-/// Go `GenerateStoreSections`: zero nodes yield zero sections.
+/// The reference `GenerateStoreSections`: zero nodes yield zero sections.
 pub fn sections(nodes: &[NodeSummary], counters: &[HashMap<usize, i64>]) -> Vec<Section> {
     if nodes.is_empty() {
         return Vec::new();
@@ -45,7 +44,7 @@ pub fn sections(nodes: &[NodeSummary], counters: &[HashMap<usize, i64>]) -> Vec<
     ]
 }
 
-/// Go `treeMapSection`.
+/// The reference `treeMapSection`.
 fn tree_map_section(
     nodes: &[NodeSummary],
     counters: &[HashMap<usize, i64>],
@@ -69,7 +68,7 @@ fn tree_map_section(
     }
 }
 
-/// Go `heatMapSection`.
+/// The reference `heatMapSection`.
 fn heat_map_section(
     nodes: &[NodeSummary],
     counters: &[HashMap<usize, i64>],
@@ -94,7 +93,7 @@ fn heat_map_section(
     }
 }
 
-/// Go `barChartSection`.
+/// The reference `barChartSection`.
 fn bar_chart_section(
     nodes: &[NodeSummary],
     counters: &[HashMap<usize, i64>],
@@ -119,7 +118,7 @@ fn bar_chart_section(
     }
 }
 
-/// Go `filepath.Base`.
+/// The reference `filepath.Base`.
 fn go_filepath_base(path: &str) -> &str {
     if path.is_empty() {
         return ".";
@@ -134,15 +133,15 @@ fn go_filepath_base(path: &str) -> &str {
     }
 }
 
-/// Go `createTreeMap` (+ `buildFileHierarchy` / `buildRootNodes`).
+/// The reference `createTreeMap` (+ `buildFileHierarchy` / `buildRootNodes`).
 fn create_tree_map(
     nodes: &[NodeSummary],
     counters: &[HashMap<usize, i64>],
     co: &ChartOpts,
 ) -> Chart {
-    // buildFileHierarchy: per-file child nodes + totals. Go iterates the maps
+    // buildFileHierarchy: per-file child nodes + totals. the reference implementation iterates the maps
     // randomly when building rootNodes; file-name-ascending is the
-    // deterministic stand-in (ties at equal Value are Go-variant).
+    // deterministic stand-in (ties at equal Value are reference-variant).
     let mut file_map: std::collections::BTreeMap<&str, Vec<TreeMapNode>> =
         std::collections::BTreeMap::new();
     let mut file_totals: std::collections::BTreeMap<&str, i64> = std::collections::BTreeMap::new();
@@ -178,7 +177,7 @@ fn create_tree_map(
     series.animation = Some(true);
     series.roam = Some(true);
     series.leaf_depth = TREE_MAP_LEAF_DEPTH;
-    // NOTE: Go's WithTreeMapOpts drops both `Label` and `ColorMappingBy` from
+    // NOTE: the reference implementation's WithTreeMapOpts drops both `Label` and `ColorMappingBy` from
     // opts.TreeMapChart — only Animation/LeafDepth/Roam/Levels/UpperLabel and
     // the four offsets reach the series.
     series.levels = vec![
@@ -218,14 +217,14 @@ fn create_tree_map(
     tm
 }
 
-/// One active node (Go `activeNode`).
+/// One active node.
 struct ActiveNode {
     idx: usize,
     name: String,
     count: i64,
 }
 
-/// Go `createHeatMap` (+ `getActiveNodes` / `buildHeatMapData`); `None` below
+/// The reference `createHeatMap` (+ `getActiveNodes` / `buildHeatMapData`); `None` below
 /// two active nodes.
 fn create_heat_map(
     nodes: &[NodeSummary],
@@ -284,7 +283,7 @@ fn create_heat_map(
     Some(build_heat_map_chart(&names, max_val, data, co, HEAT_MAP_HEIGHT, true))
 }
 
-/// The shared heatmap frame (Go `createHeatMap` global options — also the
+/// The shared heatmap frame (the reference `createHeatMap` global options — also the
 /// shape couples' heatmap uses).
 fn build_heat_map_chart(
     names: &[String],
@@ -362,14 +361,14 @@ fn build_heat_map_chart(
     hm
 }
 
-/// One scored node (Go `nodeScore`).
+/// One scored node.
 struct NodeScore {
     name: String,
     self_count: i64,
     coupled: i64,
 }
 
-/// Go `createBarChart` (+ `computeScores` / `buildBarData`).
+/// The reference `createBarChart` (+ `computeScores` / `buildBarData`).
 fn create_bar_chart(
     nodes: &[NodeSummary],
     counters: &[HashMap<usize, i64>],
@@ -381,7 +380,7 @@ fn create_bar_chart(
         .enumerate()
         .map(|(idx, counter)| {
             let mut coupled: i64 = 0;
-            // Go ranges the counter map randomly; addition is
+            // The reference implementation ranges the counter map randomly; addition is
             // order-independent.
             for (other, val) in counter {
                 if *other != idx && *val > 0 {

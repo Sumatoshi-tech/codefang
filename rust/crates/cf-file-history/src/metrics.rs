@@ -1,9 +1,7 @@
 //! File history metric computation.
 //!
-//! Ported from `internal/analyzers/file_history/metrics.go`.
-//!
-//! Given the raw per-file history (commit-hash lists and per-author line stats),
-//! this module derives:
+//! Given the raw per-file history (commit-hash lists and per-author line
+//! stats), this module derives:
 //!
 //! * [`FileChurnData`] — per-file churn, sorted by churn score descending;
 //! * [`FileContributorData`] — per-file contributor breakdown;
@@ -12,9 +10,9 @@
 //! * [`AggregateData`] — repository-wide summary statistics;
 //! * [`CompositionData`] / [`CompositionTimeSeriesEntry`] — file category mix.
 //!
-//! Sort orders and arithmetic match the Go implementation exactly so the
-//! derived numeric values are byte-identical after rendering through
-//! [`crate::report`].
+//! Sort orders and arithmetic are part of the report contract (pinned by the
+//! differential gate) so the derived numeric values are byte-identical after
+//! rendering through [`crate::report`].
 
 use std::collections::BTreeMap;
 
@@ -23,9 +21,9 @@ use cf_metrics::{risk_priority, RiskLevel};
 use crate::classify::ALL_CATEGORIES;
 use crate::tc::{CategoryCounts, LineStats};
 
-/// Churn score divisor for normalization (`churnScoreDivisor`).
+/// Churn score divisor for normalization.
 pub const CHURN_SCORE_DIVISOR: f64 = 100.0;
-/// Percentage multiplier (`percentMultiplier`).
+/// Percentage multiplier.
 pub const PERCENT_MULTIPLIER: f64 = 100.0;
 
 /// Hotspot risk threshold (commits) for critical risk.
@@ -35,12 +33,12 @@ pub const HOTSPOT_THRESHOLD_HIGH: i64 = 30;
 /// Hotspot risk threshold (commits) for medium risk.
 pub const HOTSPOT_THRESHOLD_MEDIUM: i64 = 15;
 
-/// The change history for a single file.
+/// The change history for a single file: a map from developer id to line
+/// stats, plus the list of commit hashes that touched the file.
 ///
-/// Mirrors `FileHistory` in `history.go`: a map from developer id to line
-/// stats, plus the list of commit hashes that touched the file. Only the
-/// **length** of `hashes` (commit count) feeds the metrics, so the
-/// (Go-nondeterministic) hash order does not affect any derived numbers.
+/// Only the **length** of `hashes` (commit count) feeds the metrics, so the
+/// hash order (nondeterministic in the reference implementation) does not
+/// affect any derived numbers.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FileHistory {
     /// Developer id -> aggregated line stats for this file.
@@ -49,14 +47,14 @@ pub struct FileHistory {
     pub hashes: Vec<String>,
 }
 
-/// Parsed input for metric computation (Go `ReportData`).
+/// Parsed input for metric computation.
 #[derive(Debug, Clone, Default)]
 pub struct ReportData {
     /// File path -> history.
     pub files: BTreeMap<String, FileHistory>,
 }
 
-/// Churn statistics for a single file (`FileChurnData`).
+/// Churn statistics for a single file.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FileChurnData {
     /// File path.
@@ -75,7 +73,7 @@ pub struct FileChurnData {
     pub churn_score: f64,
 }
 
-/// Line stats for a single contributor to a file (`ContributorEntry`).
+/// Line stats for a single contributor to a file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContributorEntry {
     /// Developer id.
@@ -88,7 +86,7 @@ pub struct ContributorEntry {
     pub changed: i64,
 }
 
-/// Contributor breakdown for a file (`FileContributorData`).
+/// Contributor breakdown for a file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileContributorData {
     /// File path.
@@ -101,7 +99,7 @@ pub struct FileContributorData {
     pub top_contributor_lines: i64,
 }
 
-/// A high-churn file flagged as a hotspot (`HotspotData`).
+/// A high-churn file flagged as a hotspot.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HotspotData {
     /// File path.
@@ -110,11 +108,11 @@ pub struct HotspotData {
     pub commit_count: i64,
     /// Composite churn score.
     pub churn_score: f64,
-    /// Risk level string (`critical`/`high`/`medium`).
+    /// Risk level string (`CRITICAL`/`HIGH`/`MEDIUM`).
     pub risk_level: String,
 }
 
-/// Repository-wide summary statistics (`AggregateData`).
+/// Repository-wide summary statistics.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct AggregateData {
     /// Total number of files.
@@ -131,7 +129,7 @@ pub struct AggregateData {
     pub high_churn_files: i64,
 }
 
-/// Aggregate file composition breakdown (`CompositionData`).
+/// Aggregate file composition breakdown.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CompositionData {
     /// Category name -> count (only non-zero categories present).
@@ -140,7 +138,7 @@ pub struct CompositionData {
     pub percentages: BTreeMap<String, f64>,
 }
 
-/// File composition for a single tick (`CompositionTimeSeriesEntry`).
+/// File composition for a single tick.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CompositionTimeSeriesEntry {
     /// Tick index.
@@ -153,7 +151,7 @@ pub struct CompositionTimeSeriesEntry {
     pub breakdown: BTreeMap<String, i64>,
 }
 
-/// All computed metric results (`ComputedMetrics`).
+/// All computed metric results.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ComputedMetrics {
     /// Per-file churn, sorted by churn score descending.
@@ -171,14 +169,14 @@ pub struct ComputedMetrics {
 }
 
 impl ComputedMetrics {
-    /// Returns the analyzer identifier (`AnalyzerName`).
+    /// Returns the analyzer identifier.
     #[must_use]
     pub fn analyzer_name(&self) -> &'static str {
         crate::ANALYZER_NAME
     }
 }
 
-/// Configurable hotspot thresholds (`MetricOptions`).
+/// Configurable hotspot thresholds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MetricOptions {
     /// Critical commit threshold.
@@ -190,7 +188,6 @@ pub struct MetricOptions {
 }
 
 impl Default for MetricOptions {
-    /// Package-level defaults (`DefaultMetricOptions`).
     fn default() -> Self {
         Self {
             hotspot_threshold_critical: HOTSPOT_THRESHOLD_CRITICAL,
@@ -200,7 +197,7 @@ impl Default for MetricOptions {
     }
 }
 
-/// Computes all metrics with default options (`ComputeAllMetrics`).
+/// Computes all metrics with default options.
 #[must_use]
 pub fn compute_all_metrics(input: &ReportData) -> ComputedMetrics {
     let empty: BTreeMap<i64, CategoryCounts> = BTreeMap::new();
@@ -211,10 +208,10 @@ pub fn compute_all_metrics(input: &ReportData) -> ComputedMetrics {
 pub type TickBounds = BTreeMap<i64, (String, String)>;
 
 /// Computes all metrics with configurable thresholds and optional composition
-/// inputs (`ComputeAllMetricsWithOptions`).
+/// inputs.
 ///
 /// `tick_composition` and `tick_bounds` correspond to the `tick_composition`
-/// and `tick_bounds` report entries in Go; pass an empty map / `None` when not
+/// and `tick_bounds` report entries; pass an empty map / `None` when not
 /// available.
 #[must_use]
 pub fn compute_all_metrics_with_options(
@@ -234,8 +231,7 @@ pub fn compute_all_metrics_with_options(
     }
 }
 
-/// Computes per-file churn data, sorted by churn score descending
-/// (`computeFileChurn`).
+/// Computes per-file churn data, sorted by churn score descending.
 #[must_use]
 pub fn compute_file_churn(input: &ReportData) -> Vec<FileChurnData> {
     let mut result: Vec<FileChurnData> = input
@@ -262,7 +258,7 @@ pub fn compute_file_churn(input: &ReportData) -> Vec<FileChurnData> {
     result
 }
 
-/// Computes per-file contributor breakdowns (`computeFileContributors`).
+/// Computes per-file contributor breakdowns.
 #[must_use]
 pub fn compute_file_contributors(input: &ReportData) -> Vec<FileContributorData> {
     input
@@ -301,8 +297,7 @@ pub fn compute_file_contributors(input: &ReportData) -> Vec<FileContributorData>
         .collect()
 }
 
-/// Computes hotspot files, sorted by risk then commit count
-/// (`computeHotspotsWithOptions`).
+/// Computes hotspot files, sorted by risk then commit count.
 #[must_use]
 pub fn compute_hotspots_with_options(input: &ReportData, opts: MetricOptions) -> Vec<HotspotData> {
     let critical = opts.hotspot_threshold_critical;
@@ -316,7 +311,7 @@ pub fn compute_hotspots_with_options(input: &ReportData, opts: MetricOptions) ->
         let (total_added, total_removed, total_changed) = sum_line_stats(fh);
         let churn_score = churn_score(commit_count, total_added, total_removed, total_changed);
 
-        // Go stores `string(metrics.RiskCritical)` etc. — the uppercase token.
+        // Risk levels are the uppercase report tokens (CRITICAL/HIGH/MEDIUM).
         let risk_level = if commit_count >= critical {
             RiskLevel::critical()
         } else if commit_count >= high {
@@ -335,22 +330,21 @@ pub fn compute_hotspots_with_options(input: &ReportData, opts: MetricOptions) ->
         });
     }
 
-    // Sort by risk (critical first) then by commit count descending. Risk
-    // priority comes from cf_metrics::risk_priority (Go metrics.RiskPriority).
+    // Sort by risk (critical first) then by commit count descending.
     result.sort_by(|a, b| {
-        if a.risk_level != b.risk_level {
+        if a.risk_level == b.risk_level {
+            b.commit_count.cmp(&a.commit_count)
+        } else {
             let ip = risk_priority(&RiskLevel::from(a.risk_level.as_str()));
             let jp = risk_priority(&RiskLevel::from(b.risk_level.as_str()));
             ip.cmp(&jp)
-        } else {
-            b.commit_count.cmp(&a.commit_count)
         }
     });
 
     result
 }
 
-/// Computes aggregate statistics (`computeAggregateWithOptions`).
+/// Computes aggregate statistics.
 #[must_use]
 pub fn compute_aggregate_with_options(input: &ReportData, opts: MetricOptions) -> AggregateData {
     let total_files = input.files.len() as i64;
@@ -381,16 +375,13 @@ pub fn compute_aggregate_with_options(input: &ReportData, opts: MetricOptions) -
     agg.high_churn_files = high_churn_count;
     agg.avg_commits_per_file = total_commits as f64 / total_files as f64;
 
-    let mut total_contributor_count = 0i64;
-    for fh in input.files.values() {
-        total_contributor_count += fh.people.len() as i64;
-    }
+    let total_contributor_count: i64 = input.files.values().map(|fh| fh.people.len() as i64).sum();
     agg.avg_contributors_per_file = total_contributor_count as f64 / total_files as f64;
 
     agg
 }
 
-/// Computes the aggregate and per-tick composition (`computeComposition`).
+/// Computes the aggregate and per-tick composition.
 #[must_use]
 pub fn compute_composition(
     tick_comp: &BTreeMap<i64, CategoryCounts>,
@@ -402,7 +393,7 @@ pub fn compute_composition(
         return (comp, Vec::new());
     }
 
-    // BTreeMap iterates ticks in ascending order, matching Go's `sort.Ints`.
+    // BTreeMap iterates ticks in ascending order (report contract).
     let mut ts: Vec<CompositionTimeSeriesEntry> = Vec::with_capacity(tick_comp.len());
     let mut total = CategoryCounts::default();
 
@@ -419,8 +410,8 @@ pub fn compute_composition(
 
         let mut entry = CompositionTimeSeriesEntry { tick: t, breakdown, ..Default::default() };
         if let Some(bounds) = tick_bounds.and_then(|tb| tb.get(&t)) {
-            entry.start_time = bounds.0.clone();
-            entry.end_time = bounds.1.clone();
+            entry.start_time.clone_from(&bounds.0);
+            entry.end_time.clone_from(&bounds.1);
         }
         ts.push(entry);
     }
@@ -442,25 +433,20 @@ pub fn compute_composition(
 
 // --- helpers ---
 
+/// Sums per-author line stats for a file: `(added, removed, changed)`.
 fn sum_line_stats(fh: &FileHistory) -> (i64, i64, i64) {
-    let mut added = 0;
-    let mut removed = 0;
-    let mut changed = 0;
-    for stats in fh.people.values() {
-        added += stats.added;
-        removed += stats.removed;
-        changed += stats.changed;
-    }
-    (added, removed, changed)
+    fh.people.values().fold((0, 0, 0), |(a, r, c), stats| {
+        (a + stats.added, r + stats.removed, c + stats.changed)
+    })
 }
 
 fn churn_score(commit_count: i64, added: i64, removed: i64, changed: i64) -> f64 {
     commit_count as f64 + (added + removed + changed) as f64 / CHURN_SCORE_DIVISOR
 }
 
-/// Sorts churn data by churn score descending, matching Go `sort.Slice` (which
-/// is not stable; ties keep an unspecified order, but Go uses the same
-/// comparator so the numeric values are identical).
+/// Sorts churn data by churn score descending. Ties keep an unspecified order
+/// (the report contract uses the same comparator, so the numeric values are
+/// identical).
 fn sort_by_churn_desc(v: &mut [FileChurnData]) {
     v.sort_by(|a, b| {
         b.churn_score
@@ -482,7 +468,7 @@ mod tests {
     const DELTA: f64 = 0.01;
 
     fn hashes(count: usize) -> Vec<String> {
-        // Mirrors testHashes: distinct entries; only the length matters.
+        // Distinct entries; only the length matters.
         (0..count).map(|i| format!("h{i}")).collect()
     }
 
@@ -510,7 +496,6 @@ mod tests {
 
     #[test]
     fn file_churn_single_file() {
-        // TestFileChurnMetric_SingleFile.
         let input = report(&[(
             FILE1,
             FileHistory {
@@ -534,7 +519,6 @@ mod tests {
 
     #[test]
     fn file_churn_sorted_by_score() {
-        // TestFileChurnMetric_SortedByChurnScore.
         let input = report(&[
             (FILE1, FileHistory { people: people(&[(DEV1, LineStats { added: 10, ..Default::default() })]), hashes: hashes(5) }),
             (FILE2, FileHistory { people: people(&[(DEV1, LineStats { added: 1000, ..Default::default() })]), hashes: hashes(20) }),
@@ -549,7 +533,6 @@ mod tests {
 
     #[test]
     fn contributors_single_file() {
-        // TestFileContributorMetric_SingleFile.
         let input = report(&[(
             FILE1,
             FileHistory {
@@ -569,7 +552,6 @@ mod tests {
 
     #[test]
     fn contributors_none() {
-        // TestFileContributorMetric_NoContributors.
         let input = report(&[(FILE1, FileHistory { people: BTreeMap::new(), hashes: hashes(5) })]);
         let result = compute_file_contributors(&input);
         assert_eq!(result.len(), 1);
@@ -591,7 +573,6 @@ mod tests {
 
     #[test]
     fn hotspots_risk_levels() {
-        // TestHotspotMetric_RiskLevels.
         let cases = [
             (55, "CRITICAL"),
             (50, "CRITICAL"),
@@ -611,7 +592,6 @@ mod tests {
 
     #[test]
     fn hotspots_sorted_by_risk_then_count() {
-        // TestHotspotMetric_SortedByRiskThenCommitCount.
         let input = report(&[
             (FILE1, FileHistory { people: people(&[(DEV1, LineStats::default())]), hashes: hashes(20) }),
             (FILE2, FileHistory { people: people(&[(DEV1, LineStats::default())]), hashes: hashes(55) }),
@@ -633,7 +613,6 @@ mod tests {
 
     #[test]
     fn aggregate_with_data() {
-        // TestFileHistoryAggregateMetric_WithData.
         let input = report(&[
             (FILE1, FileHistory { people: people(&[(DEV1, LineStats::default()), (DEV2, LineStats::default())]), hashes: hashes(20) }),
             (FILE2, FileHistory { people: people(&[(DEV1, LineStats::default()), (DEV3, LineStats::default())]), hashes: hashes(10) }),
@@ -664,7 +643,6 @@ mod tests {
 
     #[test]
     fn compute_all_full() {
-        // TestComputeAllMetrics_Full.
         let input = report(&[
             (FILE1, FileHistory {
                 people: people(&[

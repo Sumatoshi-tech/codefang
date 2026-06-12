@@ -1,7 +1,7 @@
-//! Tree and tree-entry access, ported from `pkg/gitlib/tree.go`.
+//! Tree and tree-entry access.
 //!
-//! [`Tree`] borrows a libgit2 [`git2::Tree`] (freed on [`Drop`], replacing Go's
-//! `Free()`); [`TreeEntry`] borrows a single entry.
+//! [`Tree`] borrows a libgit2 [`git2::Tree`] (freed on [`Drop`]); [`TreeEntry`]
+//! borrows a single entry.
 
 use crate::error::{GitError, Result};
 use crate::file::FileIter;
@@ -10,8 +10,8 @@ use crate::Repository;
 
 /// A libgit2 tree.
 ///
-/// Mirrors Go's `gitlib.Tree`. Holds a reference to its owning [`Repository`] so
-/// it can look up sub-objects, and is freed on [`Drop`].
+/// Holds a reference to its owning [`Repository`] so it can look up
+/// sub-objects, and is freed on [`Drop`].
 pub struct Tree<'repo> {
     tree: git2::Tree<'repo>,
     repo: &'repo Repository,
@@ -23,20 +23,19 @@ impl<'repo> Tree<'repo> {
         Tree { tree, repo }
     }
 
-    /// Returns the tree hash (Go `Tree.Hash`).
+    /// Returns the tree hash.
     #[must_use]
     pub fn hash(&self) -> Hash {
         Hash::from_oid(&self.tree.id())
     }
 
-    /// Returns the number of entries (Go `Tree.EntryCount`).
+    /// Returns the number of entries.
     #[must_use]
     pub fn entry_count(&self) -> u64 {
         self.tree.len() as u64
     }
 
-    /// Returns the entry at `index`, or `None` if out of bounds
-    /// (Go `Tree.EntryByIndex`).
+    /// Returns the entry at `index`, or `None` if out of bounds.
     #[must_use]
     pub fn entry_by_index(&self, index: u64) -> Option<TreeEntry<'_>> {
         self.tree
@@ -44,7 +43,7 @@ impl<'repo> Tree<'repo> {
             .map(|entry| TreeEntry { entry })
     }
 
-    /// Returns the entry at `path` (Go `Tree.EntryByPath`).
+    /// Returns the entry at `path`.
     ///
     /// # Errors
     ///
@@ -57,10 +56,9 @@ impl<'repo> Tree<'repo> {
         Ok(TreeEntry { entry })
     }
 
-    /// Returns an iterator over all blob files in the tree (Go `Tree.Files`).
+    /// Returns an iterator over all blob files in the tree.
     ///
-    /// On error the Go code returns an empty iterator; this method preserves
-    /// that by collecting an empty list when the walk fails.
+    /// A failed walk yields an empty iterator rather than an error.
     #[must_use]
     pub fn files(&self) -> FileIter<'repo> {
         match crate::changes::tree_files(self.repo, self) {
@@ -69,14 +67,14 @@ impl<'repo> Tree<'repo> {
         }
     }
 
-    /// Returns the underlying libgit2 tree (Go `Tree.Native`).
+    /// Returns the underlying libgit2 tree.
     #[must_use]
     pub fn native(&self) -> &git2::Tree<'repo> {
         &self.tree
     }
 }
 
-/// A single tree entry, ported from Go `gitlib.TreeEntry`.
+/// A single tree entry.
 ///
 /// `git2::TreeEntry<'static>` is the owned form (from `get_path`); `'tree`-bound
 /// entries come from `get`.
@@ -84,38 +82,37 @@ pub struct TreeEntry<'a> {
     entry: git2::TreeEntry<'a>,
 }
 
-impl<'a> TreeEntry<'a> {
-    /// Returns the entry name (Go `TreeEntry.Name`).
+impl TreeEntry<'_> {
+    /// Returns the entry name.
     #[must_use]
     pub fn name(&self) -> &str {
         self.entry.name().unwrap_or_default()
     }
 
-    /// Returns the entry object hash (Go `TreeEntry.Hash`).
+    /// Returns the entry object hash.
     #[must_use]
     pub fn hash(&self) -> Hash {
         Hash::from_oid(&self.entry.id())
     }
 
-    /// Returns the entry object type (Go `TreeEntry.Type`).
+    /// Returns the entry object type.
     #[must_use]
     pub fn object_type(&self) -> Option<git2::ObjectType> {
         self.entry.kind()
     }
 
-    /// Reports whether the entry is a blob (Go `TreeEntry.IsBlob`).
+    /// Reports whether the entry is a blob.
     #[must_use]
     pub fn is_blob(&self) -> bool {
         self.entry.kind() == Some(git2::ObjectType::Blob)
     }
 }
 
-/// Walks a tree recursively, invoking `cb(path, entry)` for every entry
-/// (Go `walkTree` + `processTreeEntry`).
+/// Walks a tree recursively, invoking `cb(path, entry)` for every entry.
 ///
-/// Mirrors the Go traversal exactly: descends only into `ObjectTree` entries,
-/// silently skips sub-trees that fail to look up (Go returns `nil` for them),
-/// and joins path segments with `/`.
+/// Descends only into tree entries, silently skips sub-trees that fail to look
+/// up, and joins path segments with `/` (reference-implementation traversal
+/// order: the resulting file order feeds analyzer output).
 ///
 /// # Errors
 ///
@@ -163,7 +160,7 @@ where
         return Ok(());
     }
 
-    // Skip sub-trees we cannot look up (Go: `return nil`).
+    // Skip sub-trees we cannot look up.
     let Ok(subtree) = repo.lookup_tree(entry.hash()) else {
         return Ok(());
     };

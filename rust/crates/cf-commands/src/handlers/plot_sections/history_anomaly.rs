@@ -1,5 +1,4 @@
-//! `history/anomaly` plot sections — port of Go
-//! `internal/analyzers/anomaly/store_reader.go` + `plot.go`
+//! `history/anomaly` plot sections.
 //! (`GenerateStoreSections` → `buildStoreSections` over the `time_series`,
 //! `anomaly_record`, `aggregate` and — after the plot pipeline's
 //! `EnrichAndRewrite` — `external_summary` store kinds).
@@ -14,13 +13,13 @@ use cf_plotpage::{get_chart_palette, ChartOpts, Hint, Section, Theme};
 
 use crate::handlers::plot_sections::history_shared::{format_float, GridStats};
 
-/// anomaly plot.go constants.
+/// Reference anomaly plot-section constants.
 const LINE_WIDTH: f64 = 2.0;
 const ANOMALY_RATE_WARNING_THRESHOLD: f64 = 10.0;
 const ANOMALY_RATE_ERROR_THRESHOLD: f64 = 25.0;
 const MAX_STATS_COLUMNS: usize = 4;
 
-/// Go `GenerateStoreSections` → `buildStoreSections`: an empty time series
+/// The reference `GenerateStoreSections` → `buildStoreSections`: an empty time series
 /// yields zero sections. `external_summaries` carries the cross-analyzer
 /// enrichment products (empty on a single-analyzer run).
 pub fn sections(
@@ -111,7 +110,7 @@ pub fn sections(
     sections
 }
 
-/// Go `createChurnChart`.
+/// The reference `createChurnChart`.
 fn create_churn_chart(
     labels: &[String],
     churn_data: Vec<GoValue>,
@@ -142,7 +141,7 @@ fn create_churn_chart(
     });
 
     let s = line.add_series("Anomalies", GoValue::Array(anomaly_data));
-    // Go: WithLineChartOpts(opts.LineChart{Step: ""}) — Step is an interface{}
+    // Reference: WithLineChartOpts(opts.LineChart{Step: ""}) — Step is an interface{}
     // holding the EMPTY string, which is non-nil and therefore EMITTED.
     s.step = Some(GoValue::Str(String::new()));
     s.item_style = Some(ItemStyle {
@@ -159,7 +158,7 @@ fn create_churn_chart(
     line
 }
 
-/// Go `buildStatsSectionFromAggregate`.
+/// The reference `buildStatsSectionFromAggregate`.
 fn build_stats_section(metrics: &ComputedMetrics) -> Section {
     let agg = &metrics.aggregate;
     let anomaly_rate_str = format!("{}%", format_float(agg.anomaly_rate, 1));
@@ -194,7 +193,7 @@ fn build_stats_section(metrics: &ComputedMetrics) -> Section {
     }
 }
 
-/// Go `buildExternalAnomalySection`: `None` when there are no external
+/// The reference `buildExternalAnomalySection`: `None` when there are no external
 /// summaries (single-analyzer runs).
 fn build_external_anomaly_section(summaries: &[ExternalSummary]) -> Option<Section> {
     if summaries.is_empty() {

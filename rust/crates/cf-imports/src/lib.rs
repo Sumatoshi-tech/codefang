@@ -1,7 +1,6 @@
 //! Import/dependency analysis.
 //!
-//! Rust port of the Go package `internal/analyzers/imports`. It provides two
-//! related analyzers:
+//! Two related analyzers:
 //!
 //! * [`analyzer::Analyzer`] — **static** analysis that produces the `imports`
 //!   report key (the deduplicated import identifiers in a parsed file/tree) plus
@@ -16,22 +15,21 @@
 //! [`aggregator`] (cross-file static aggregation), [`store`] (history persistence
 //! records), and [`report_section`] (terminal section data).
 //!
-//! # Status, shims, and serialization
+//! # Compatibility and serialization
 //!
-//! Per DESIGN §2, every MACHINE-format report (json, yaml, ndjson, timeseries,
-//! compact, bin) must be byte-identical to the Go output, produced by the
-//! go-compat encoders `cf-gojson` / `cf-goyaml` (the "shared go-compat
-//! serialization crate") and the CFB1 `bin` envelope from `cf-reportutil` —
-//! never raw serde. The canonical [`node::Node`] model belongs to `cf-uast-node`
-//! and the framework `Analyzer` trait / `analyze.Report` type to
-//! `cf-framework` / `cf-analyze`.
+//! Every machine-format report (json, yaml, ndjson, timeseries, compact, bin)
+//! is a frozen output contract, pinned byte-for-byte against the reference
+//! implementation by the differential gate in `rust/tests/compat`. All such
+//! output routes through the report-format encoders `cf-gojson` / `cf-goyaml`
+//! and the CFB1 `bin` envelope from `cf-reportutil` — never raw serde. The
+//! canonical [`node::Node`] model belongs to `cf-uast-node` and the framework
+//! `Analyzer` trait / report type to `cf-framework` / `cf-analyze`.
 //!
 //! To remain self-contained and verifiable, this crate carries minimal local
 //! shims — [`node`] (the UAST node subset the analyzer reads) and [`report`]
-//! (the [`report::ReportValue`] = `map[string]any` model plus a deterministic
-//! go-compat compact-JSON / CFB1 encoder). They are marked for replacement; see
-//! the port todos. All analyzer logic is a faithful port and depends only on the
-//! documented shim contracts.
+//! (the dynamic [`report::ReportValue`] model plus a deterministic compact-JSON
+//! / CFB1 encoder). The analyzer logic depends only on the documented shim
+//! contracts.
 
 pub mod aggregator;
 pub mod analyzer;

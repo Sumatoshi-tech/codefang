@@ -1,11 +1,10 @@
 //! Centralized history-phase output for the streaming/derived formats —
 //! `text`, `ndjson`, `timeseries` (and `timeseries+ndjson`) — the Rust port of
-//! Go `analyze.OutputHistoryResults` + `analyze.StreamingSink` +
-//! `analyze.BuildMergedTimeSeriesDirect` (internal/analyzers/analyze/
-//! output.go, streaming_sink.go, timeseries.go).
+//! the reference `analyze.OutputHistoryResults` + `analyze.StreamingSink` +
+//! `analyze.BuildMergedTimeSeriesDirect` trio.
 //!
 //! Unlike json/yaml/bin (per-analyzer encodings dispatched through the
-//! registry), Go routes these three formats through ONE history-phase output
+//! registry), the reference implementation routes these three formats through ONE history-phase output
 //! function over the whole selected leaf set:
 //!
 //! - `text`: `PrintHeader` once, then per leaf `"<Name>:\n"` +
@@ -30,24 +29,24 @@ use cf_gojson::GoValue;
 use crate::pipeline::RunContext;
 
 /// A history-phase failure that occurs AFTER bytes were already streamed to
-/// stdout (Go writes the text header/section names before the per-leaf
+/// stdout (the reference implementation writes the text header/section names before the per-leaf
 /// `Serialize` call can fail). The caller must emit `partial` to stdout, the
 /// `Error: <message>` line to stderr, and exit 1 — exactly cobra's error path.
 pub struct PartialFailure {
-    /// Bytes Go would have already written to stdout before the error.
+    /// Bytes the reference implementation would have already written to stdout before the error.
     pub partial: Vec<u8>,
     /// The error text after the `Error: ` prefix.
     pub message: String,
 }
 
 /// Result of a centralized history-format run: full stdout bytes on success,
-/// [`PartialFailure`] when Go errors mid-stream. `None` means this module has
+/// [`PartialFailure`] when the reference implementation errors mid-stream. `None` means this module has
 /// no implementation for the selection yet — the caller falls through to the
 /// per-id pipeline (and its dispatch-blocked diagnostic), preserving the
 /// previous behavior for unported combinations.
 pub type HistoryFormatResult = Option<Result<Vec<u8>, PartialFailure>>;
 
-/// Go `HistoryAnalyzer.Name()` for each leaf id (the text/yaml section header
+/// The reference `HistoryAnalyzer.Name()` for each leaf id (the text/yaml section header
 /// and the error-message subject). Most leaves default to the descriptor id;
 /// shotness/couples/file-history/imports override it.
 #[must_use]
@@ -67,18 +66,18 @@ pub fn leaf_name(id: &str) -> Option<&'static str> {
     })
 }
 
-/// Appends Go `analyze.PrintHeader` (`codefang (v2):` / version / hash).
+/// Appends the reference `analyze.PrintHeader` (`codefang (v2):` / version / hash).
 fn print_header(out: &mut Vec<u8>) {
     out.extend_from_slice(b"codefang (v2):\n");
     out.extend_from_slice(format!("  version: {}\n", cf_version::DEFAULT_BINARY).as_bytes());
     out.extend_from_slice(format!("  hash: {}\n", cf_version::BINARY_GIT_HASH).as_bytes());
 }
 
-/// Whether the leaf's report is non-nil for this run — Go only prints the
+/// Whether the leaf's report is non-nil for this run — the reference implementation only prints the
 /// `"<Name>:\n"` section (and only then can fail serialization) when
 /// `results[leaf] != nil`, which requires actually running the analysis.
 /// Reuses the same walk the json/yaml formats use, so the text path performs
-/// the identical work Go does before erroring.
+/// the identical work the reference implementation does before erroring.
 fn leaf_report_exists(id: &str, ctx: &RunContext) -> bool {
     let sub = ctx.matches;
     match id {
@@ -90,9 +89,9 @@ fn leaf_report_exists(id: &str, ctx: &RunContext) -> bool {
     }
 }
 
-/// The text serializer for the leaves wired with Go's `SerializeTextFn` hook
+/// The text serializer for the leaves wired with the reference implementation's `SerializeTextFn` hook
 /// (the [`super::history_text`] renderers). `None` for the four leaves with no
-/// Go hook, making [`history_text`] take the unsupported-format error path.
+/// reference hook, making [`history_text`] take the unsupported-format error path.
 fn leaf_text(id: &str, ctx: &RunContext) -> Option<Vec<u8>> {
     let sub = ctx.matches;
     match id {
@@ -106,7 +105,7 @@ fn leaf_text(id: &str, ctx: &RunContext) -> Option<Vec<u8>> {
     }
 }
 
-/// Whether Go wires a `SerializeTextFn` for this leaf (text is a supported
+/// Whether the reference implementation wires a `SerializeTextFn` for this leaf (text is a supported
 /// format). The other four history leaves fall through `writeMetricsToFormat`
 /// to `unsupported format: text`.
 fn leaf_supports_text(id: &str) -> bool {
@@ -121,10 +120,10 @@ fn leaf_supports_text(id: &str) -> bool {
     )
 }
 
-/// The centralized `--format text` history path (Go `OutputHistoryResults`
+/// The centralized `--format text` history path (the reference `OutputHistoryResults`
 /// with `format == "text"`): header once, then per leaf the section name and
 /// the leaf's text serialization. A leaf without a text hook aborts the run
-/// with Go's exact `serialization error` message AFTER the header + its
+/// with the reference implementation's exact `serialization error` message AFTER the header + its
 /// section name were written.
 #[must_use]
 pub fn history_text(ctx: &RunContext, ids: &[String]) -> HistoryFormatResult {
@@ -133,7 +132,7 @@ pub fn history_text(ctx: &RunContext, ids: &[String]) -> HistoryFormatResult {
     for id in ids {
         leaf_name(id)?;
         if leaf_supports_text(id) {
-            // Supported-by-Go leaf whose Rust text renderer is not ported yet:
+            // Reference-supported leaf whose Rust text renderer is not ported yet:
             // fall through (dispatch-blocked) rather than mis-serialize.
             leaf_text(id, ctx)?;
         }
@@ -149,7 +148,7 @@ pub fn history_text(ctx: &RunContext, ids: &[String]) -> HistoryFormatResult {
             out.extend_from_slice(format!("{name}:\n").as_bytes());
             out.extend_from_slice(&body);
         } else {
-            // Go runs the full analysis; only a non-nil report prints the
+            // The reference implementation runs the full analysis; only a non-nil report prints the
             // section name and reaches the failing Serialize call.
             if !leaf_report_exists(id, ctx) {
                 return Some(Err(PartialFailure {
@@ -173,12 +172,12 @@ pub fn history_text(ctx: &RunContext, ids: &[String]) -> HistoryFormatResult {
 // ---------------------------------------------------------------------------
 
 /// One leaf's contribution to the merged timeseries: its `Flag()` plus the
-/// per-commit summary values (Go `ExtractCommitTimeSeries`, keyed by hash) and
+/// per-commit summary values (the reference `ExtractCommitTimeSeries`, keyed by hash) and
 /// the ordering data its report carries (`commits_by_tick` + `commit_meta`).
 pub struct TimeSeriesContribution {
-    /// Go `Flag()` — the analyzer key inside each merged commit object.
+    /// The reference `Flag()` — the analyzer key inside each merged commit object.
     pub flag: &'static str,
-    /// Per-commit summary values keyed by full hex hash (Go provider data).
+    /// Per-commit summary values keyed by full hex hash (reference: provider data).
     pub per_commit: Vec<(String, GoValue)>,
     /// Ordered commit metadata derived from the report's `commits_by_tick` +
     /// `commit_meta`: `(hash, tick, rfc3339_timestamp, author)` in tick order.
@@ -187,13 +186,13 @@ pub struct TimeSeriesContribution {
 }
 
 /// Per-leaf timeseries data source. `None` body when the leaf is not ported
-/// yet. A leaf that has NO provider in Go (typos) returns a contribution with
+/// yet. A leaf that has NO provider in the reference implementation (typos) returns a contribution with
 /// empty `per_commit`, mirroring `collectProviderData` skipping it.
 fn leaf_timeseries(id: &str, ctx: &RunContext) -> Option<TimeSeriesContribution> {
     let sub = ctx.matches;
     match id {
         // typos: no CommitTimeSeriesProvider and no commits_by_tick — the
-        // merged document is structurally empty, but Go still runs the walk.
+        // merged document is structurally empty, but the reference implementation still runs the walk.
         "history/typos" => {
             super::history::typos_report_data(sub)?;
             Some(TimeSeriesContribution {
@@ -216,10 +215,10 @@ fn leaf_timeseries(id: &str, ctx: &RunContext) -> Option<TimeSeriesContribution>
 }
 
 /// The centralized `--format timeseries` history path: collect provider data
-/// from every leaf (flag-sorted, Go `collectProviderData`), order commits by
+/// from every leaf (flag-sorted, the reference `collectProviderData`), order commits by
 /// the first report carrying `commits_by_tick`, and emit the merged
 /// `codefang.timeseries.v1` document (2-space-indented JSON + trailing
-/// newline, Go `WriteMergedTimeSeries`). With `ndjson_lines` (the
+/// newline, the reference `WriteMergedTimeSeries`). With `ndjson_lines` (the
 /// `timeseries+ndjson` composition) each merged commit object is emitted as
 /// one compact line instead.
 #[must_use]
@@ -228,7 +227,7 @@ pub fn history_timeseries(ctx: &RunContext, ids: &[String], ndjson_lines: bool) 
     for id in ids {
         contribs.push(leaf_timeseries(id, ctx)?);
     }
-    // Go sorts leaves by Flag() before collecting provider data.
+    // The reference implementation sorts leaves by Flag() before collecting provider data.
     contribs.sort_by(|a, b| a.flag.cmp(b.flag));
 
     // Ordering comes from the FIRST leaf (selection order) whose report has
@@ -246,7 +245,7 @@ pub fn history_timeseries(ctx: &RunContext, ids: &[String], ndjson_lines: bool) 
     Some(Ok(bytes))
 }
 
-/// Builds the merged-timeseries bytes (Go `BuildMergedTimeSeriesDirect` +
+/// Builds the merged-timeseries bytes (the reference `BuildMergedTimeSeriesDirect` +
 /// `WriteMergedTimeSeries`/`WriteTimeSeriesNDJSON`).
 fn render_merged_timeseries(
     active: &[&TimeSeriesContribution],
@@ -255,7 +254,7 @@ fn render_merged_timeseries(
 ) -> Vec<u8> {
     use cf_gojson::{GoMap, MapOrigin};
 
-    // The set of hashes any analyzer contributed (Go commitSet).
+    // The set of hashes any analyzer contributed.
     let mut in_set = std::collections::HashSet::new();
     for c in active {
         for (h, _) in &c.per_commit {
@@ -269,7 +268,7 @@ fn render_merged_timeseries(
         if !in_set.contains(hash.as_str()) {
             continue;
         }
-        // Go marshals MergedCommitData through a map[string]any — keys are
+        // The reference implementation marshals MergedCommitData through a map[string]any — keys are
         // SORTED by encoding/json (author, hash, <flags...>, tick, timestamp
         // interleave alphabetically).
         let mut m = GoMap::new(MapOrigin::Map);
@@ -285,7 +284,7 @@ fn render_merged_timeseries(
         commits.push(GoValue::Map(m));
     }
 
-    // Top level is a STRUCT (field order fixed by the Go json tags).
+    // Top level is a STRUCT (field order fixed by the reference json tags).
     let mut root = GoMap::new(MapOrigin::Struct);
     root.push("version", GoValue::Str("codefang.timeseries.v1".to_string()));
     root.push("tick_size_hours", GoValue::Int(24));
@@ -295,7 +294,7 @@ fn render_merged_timeseries(
     );
 
     if ndjson_lines {
-        // One compact line per merged commit object (Go WriteTimeSeriesNDJSON).
+        // One compact line per merged commit object.
         let mut out = Vec::new();
         for c in commits {
             out.extend_from_slice(&cf_gojson::marshal(&c));
@@ -306,7 +305,7 @@ fn render_merged_timeseries(
 
     root.push("commits", GoValue::Array(commits));
     let mut out = cf_gojson::Encoder::indented("  ").encode_to_vec(&GoValue::Map(root));
-    // Go json.Encoder.Encode appends a newline after the document.
+    // The reference `json.Encoder.Encode` appends a newline after the document.
     out.push(b'\n');
     out
 }
@@ -315,10 +314,10 @@ fn render_merged_timeseries(
 // ndjson
 // ---------------------------------------------------------------------------
 
-/// One per-commit TC record (Go `analyze.TC` after runner stamping): the
+/// One per-commit TC record (the reference `analyze.TC` after runner stamping): the
 /// commit identity plus the analyzer-specific `data` payload.
 pub struct NdjsonRecord {
-    /// The commit's consume position in the walk (0-based). For leaves Go
+    /// The commit's consume position in the walk (0-based). For leaves the reference implementation
     /// forks across workers this drives the drain order; sequential leaves
     /// emit in walk order regardless.
     pub pos: usize,
@@ -333,11 +332,11 @@ pub struct NdjsonRecord {
     /// Commit author timezone offset, minutes.
     pub tz_offset_min: i32,
     /// The analyzer-specific payload (`data`); records with no payload are
-    /// never constructed (Go skips nil-Data TCs).
+    /// never constructed (the reference implementation skips nil-Data TCs).
     pub data: GoValue,
 }
 
-/// Whether Go forks this leaf across `LeafWorkers` (declared `Sequential:
+/// Whether the reference implementation forks this leaf across `LeafWorkers` (declared `Sequential:
 /// false` and `analyze.Parallelizable`). Forked leaves' TCs reach the NDJSON
 /// sink drained worker-by-worker: consume position `p` goes to worker `p % W`
 /// (`W` = [`super::leaf_worker_count`]), so the emitted line order is the
@@ -365,7 +364,7 @@ fn leaf_ndjson(id: &str, ctx: &RunContext) -> Option<Vec<NdjsonRecord>> {
     }
 }
 
-/// Go `Flag()` per leaf id (the `"analyzer"` field of each ndjson line and the
+/// The reference `Flag()` per leaf id (the `"analyzer"` field of each ndjson line and the
 /// analyzer key in the merged timeseries).
 #[must_use]
 pub fn leaf_flag(id: &str) -> Option<&'static str> {
@@ -384,7 +383,7 @@ pub fn leaf_flag(id: &str) -> Option<&'static str> {
     })
 }
 
-/// The centralized `--format ndjson` history path (Go `StreamingSink`): one
+/// The centralized `--format ndjson` history path: one
 /// compact JSON line per non-nil TC, fields `hash`/`tick`/`author_id`/
 /// `timestamp`/`analyzer`/`data` in struct order, RFC3339 timestamp.
 #[must_use]

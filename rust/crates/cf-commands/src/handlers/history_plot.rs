@@ -1,8 +1,8 @@
-//! `--format plot` history-phase orchestration — the Rust analogue of Go's
-//! plot pipeline (`run.go executePlotPipeline` → `FinalizeToStore` →
-//! `enrichAnomalyFromStore` → `renderFromStore` = `render.go runRender`).
+//! `--format plot` history-phase orchestration — the Rust analogue of the reference implementation's
+//! plot pipeline (the reference `executePlotPipeline` → `FinalizeToStore` →
+//! `enrichAnomalyFromStore` → `renderFromStore` = the reference `runRender`).
 //!
-//! Flow (per Go `runRender` over the temp `FileReportStore`):
+//! Flow (per the reference `runRender` over the temp `FileReportStore`):
 //!
 //! 1. every selected history leaf writes its structured store kinds — here
 //!    each leaf's section data is computed directly from the analyzer crates'
@@ -17,16 +17,16 @@
 //!    `{"analyzer_ids": [...], "pages": [...]}`, two-space-indented
 //!    `encoding/json` with the trailing newline, 0o640, atomic temp+rename.
 //!    In a MIXED static+history run this overwrites the static phase's
-//!    `report.json` (Go's history phase runs second), and `rebuildPlotIndex`
+//!    `report.json` (the reference implementation's history phase runs second), and `rebuildPlotIndex`
 //!    then rescans the directory for the unified, title-sorted index.
 //!
 //! # Ordering
 //!
-//! Go's `analyzer_ids` order is the store-manifest write order — the pipeline
-//! leaf order, which is MAP-RANDOM in Go (verified: three star runs produced
+//! The reference implementation's `analyzer_ids` order is the store-manifest write order — the pipeline
+//! leaf order, which is MAP-RANDOM in the reference implementation (verified: three star runs produced
 //! three different orders). The deterministic Rust stand-in is the separate-
 //! phase emit order ([`crate::handlers::HISTORY_PHASE_EMIT_ORDER`]); the
-//! oracle measures Go's variance and compares those files structurally.
+//! oracle measures the reference implementation's variance and compares those files structurally.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -44,10 +44,10 @@ use crate::handlers::plot_sections::{
 use crate::handlers::{burndown_ndjson, couples_run, history, shotness_run};
 use crate::pipeline::RunContext;
 
-/// Project title shown on every plot page (Go `renderProjectTitle`).
+/// Project title shown on every plot page.
 const PLOT_PAGE_TITLE: &str = "Codefang";
 
-/// report.json file mode (Go `renderReportJSONPerm`).
+/// report.json file mode.
 #[cfg(unix)]
 const REPORT_JSON_MODE: u32 = 0o640;
 
@@ -61,7 +61,7 @@ pub struct HistoryPlotAnalyzer {
     /// Store id / page name (the analyzer `Flag()`, e.g. `devs`,
     /// `imports-per-dev`).
     pub flag: &'static str,
-    /// Builds the page sections; `None` mirrors a Go section-renderer error
+    /// Builds the page sections; `None` mirrors a reference section-renderer error
     /// (analyzer skipped from the page set but kept in `analyzer_ids`).
     pub sections: fn(&RunContext, &[&'static str]) -> Option<Vec<Section>>,
 }
@@ -104,9 +104,9 @@ fn anomaly_sections(ctx: &RunContext, selected: &[&'static str]) -> Option<Vec<S
         history::anomaly_run_metrics(ctx.matches)?
     };
 
-    // Go `enrichAnomalyFromStore` → `runStoreEnrichment`: cross-analyzer
+    // The reference `enrichAnomalyFromStore` → `runStoreEnrichment`: cross-analyzer
     // anomalies over the OTHER selected analyzers' store time series. Only
-    // quality and sentiment register store extractors (run.go:228).
+    // quality and sentiment register store extractors.
     let mut extracted: BTreeMap<String, ExtractedSeries> = BTreeMap::new();
     if selected.contains(&"quality") {
         if let Some(qm) = history::quality_metrics(ctx.matches) {
@@ -176,7 +176,7 @@ fn burndown_sections(ctx: &RunContext, _selected: &[&'static str]) -> Option<Vec
     }
 
     let agg = burndown_ndjson::burndown_run_aggregate(ctx.matches)?;
-    // Go `buildChartData`: clamp negative dense values to zero.
+    // The reference `buildChartData`: clamp negative dense values to zero.
     let mut dense = agg.global_dense.clone();
     for row in &mut dense {
         for v in row.iter_mut() {
@@ -203,7 +203,7 @@ fn devs_sections(ctx: &RunContext, _selected: &[&'static str]) -> Option<Vec<Sec
     // WITH first-parent (forced whenever burndown is co-selected, e.g. the `*`
     // selection), TreeDiff diffs HEAD against `parent(0)` and the full
     // walk-path math applies — `devs_run_metrics`' walk already handles the
-    // single-HEAD window (verified against the live Go plot: head+first-parent
+    // single-HEAD window (verified against the live reference plot: head+first-parent
     // carries the HEAD diff's languages and DMP line stats; head alone is
     // empty).
     let metrics = if ctx.head() && !crate::handlers::effective_first_parent(ctx.matches) {
@@ -220,7 +220,7 @@ fn file_history_sections(ctx: &RunContext, _selected: &[&'static str]) -> Option
 }
 
 /// The plot-capable history analyzers in the separate-phase emit order
-/// (Go `pl.Leaves` order is map-random; see the module docs).
+/// (the reference `pl.Leaves` order is map-random; see the module docs).
 pub const HISTORY_PLOT_ANALYZERS: &[HistoryPlotAnalyzer] = &[
     HistoryPlotAnalyzer {
         id: "history/quality",
@@ -277,7 +277,7 @@ pub const HISTORY_PLOT_ANALYZERS: &[HistoryPlotAnalyzer] = &[
 /// Runs the history plot phase for the selected registry ids and writes the
 /// page set + `report.json` into `output_dir`. When `mixed` (the static plot
 /// phase already wrote into the same directory), the final index is rebuilt
-/// from the directory scan (Go `rebuildPlotIndex`), title-sorted across both
+/// from the directory scan, title-sorted across both
 /// phases. Returns `None` when any selected id has no plot entry (caller falls
 /// through to the dispatch-blocked diagnostic), `Some(0)` on success,
 /// `Some(1)` on an I/O failure.
@@ -289,7 +289,7 @@ pub fn run_history_plot(
     mixed: bool,
 ) -> Option<i32> {
     // Resolve the selection against the registry, keeping the canonical emit
-    // order (Go's leaf order is map-random; the oracle measures the variance).
+    // order (the reference implementation's leaf order is map-random; the oracle measures the variance).
     let selected: Vec<&HistoryPlotAnalyzer> = HISTORY_PLOT_ANALYZERS
         .iter()
         .filter(|entry| history_ids.iter().any(|id| id == entry.id))
@@ -308,7 +308,7 @@ pub fn run_history_plot(
     }
 }
 
-/// Renders pages + index + report.json (Go `runRender` [+ `rebuildPlotIndex`
+/// Renders pages + index + report.json (the reference `runRender` [+ `rebuildPlotIndex`
 /// for mixed runs]).
 fn render_history_plot(
     ctx: &RunContext,
@@ -327,7 +327,7 @@ fn render_history_plot(
 
     let mut pages: Vec<PageMeta> = Vec::new();
     for entry in selected {
-        // Go `renderOneAnalyzer`: a section-build error skips the page (the
+        // The reference `renderOneAnalyzer`: a section-build error skips the page (the
         // analyzer stays in analyzer_ids); empty sections still render a page.
         let Some(sections) = (entry.sections)(ctx, selected_flags) else {
             continue;
@@ -344,7 +344,7 @@ fn render_history_plot(
     write_render_report_json(output_dir, selected_flags, &pages)?;
 
     if mixed {
-        // Go `rebuildPlotIndex`: rescan the output dir and regenerate the
+        // The reference `rebuildPlotIndex`: rescan the output dir and regenerate the
         // unified title-sorted index across both phases.
         renderer.rebuild_index()?;
     }
@@ -352,7 +352,7 @@ fn render_history_plot(
     Ok(())
 }
 
-/// Go `os.MkdirAll(outputDir, 0o750)` (render.go `renderDirPerm`).
+/// The reference `os.MkdirAll(outputDir, 0o750)` (reference `renderDirPerm`).
 fn create_output_dir(output_dir: &str) -> io::Result<()> {
     let existed = Path::new(output_dir).is_dir();
     fs::create_dir_all(output_dir)?;
@@ -366,9 +366,9 @@ fn create_output_dir(output_dir: &str) -> io::Result<()> {
     Ok(())
 }
 
-/// Go `writeRenderReportJSON` (render.go): `{"analyzer_ids": [...], "pages":
+/// The reference `writeRenderReportJSON`: `{"analyzer_ids": [...], "pages":
 /// [{"ID", "Title", "Description"}...]}` — two-space indent, trailing newline,
-/// atomic 0o640 write. `PageMeta` has no json tags, so the Go field names are
+/// atomic 0o640 write. `PageMeta` has no json tags, so the reference field names are
 /// capitalized.
 fn write_render_report_json(
     output_dir: &str,

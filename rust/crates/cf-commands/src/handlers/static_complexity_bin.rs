@@ -2,8 +2,8 @@
 //! analyzer.
 //!
 //! Reproduces the `codefang run --analyzers static/complexity --format bin`
-//! capture (`static/static_complexity.bin`). The Go static pipeline
-//! (`run.go` → `StaticService.AnalyzeFolder` → UAST phase → per-file
+//! capture (`static/static_complexity.bin`). The reference static pipeline
+//! (reference flow: `StaticService.AnalyzeFolder` → UAST phase → per-file
 //! `parser.Parse` → `complexity.Analyzer.Analyze` → `StampSourceFile` /
 //! `StampLanguage` → `complexity.Aggregator` → `ParseReportData` →
 //! `ComputeAllMetrics` → `complexity.FormatReportBinary` =
@@ -17,10 +17,10 @@
 //!     `source_file` / `directory` and detected `language`;
 //!  3. concatenate the per-file function lists in walk order (the detailed
 //!     collector's single-worker append order) — the exact input permutation
-//!     Go's `sort.Slice` (pdqsort) operates on;
+//!     the reference implementation's `sort.Slice` (pdqsort) operates on;
 //!  4. [`cf_complexity::report::computed_metrics`] builds the identical
 //!     `ComputedMetrics` value the YAML/JSON-sections siblings derive, applying
-//!     Go's pdqsort for the two sorted collections;
+//!     the reference implementation's pdqsort for the two sorted collections;
 //!  5. the compact cf-gojson payload is wrapped in the CFB1 envelope
 //!     (cf-reportutil: `CFB1` magic + LE u32 length + compact payload), exactly
 //!     as `FormatReportBinary` does.
@@ -128,7 +128,7 @@ fn walk(dir: &Path, parser: &Parser, opts: &PathPolicyOptions, out: &mut Vec<std
         return;
     };
     let mut entries: Vec<_> = read.filter_map(Result::ok).collect();
-    entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
         let path = entry.path();
@@ -159,16 +159,14 @@ fn relative_parts(path: &Path, root: &Path) -> (String, String) {
     let rel = path.strip_prefix(root).unwrap_or(path);
     let source_file = rel.to_string_lossy().to_string();
     let directory = rel
-        .parent()
-        .map(|p| {
+        .parent().map_or_else(|| ".".to_string(), |p| {
             let s = p.to_string_lossy();
             if s.is_empty() {
                 ".".to_string()
             } else {
                 s.to_string()
             }
-        })
-        .unwrap_or_else(|| ".".to_string());
+        });
     (source_file, directory)
 }
 

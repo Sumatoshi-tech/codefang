@@ -1,25 +1,24 @@
-//! `static/clones` plot sections — port of Go
-//! `internal/analyzers/clones/plot.go`.
+//! `static/clones` plot sections.
 //!
 //! Consumes the AGGREGATED RAW clones report (the `analyze.Report` value
 //! `clones_raw_report_value` builds): one pie chart over the STORED clone
-//! pairs' type distribution. The Go renderer never errors, so `sections`
+//! pairs' type distribution. The reference renderer never errors, so `sections`
 //! always returns `Some`.
 
 use cf_gojson::GoValue;
 use cf_plotpage::echarts::{Chart, ChartKind, Label, PieData};
 use cf_plotpage::{Hint, Section};
 
-/// Plot display constants (plot.go:14).
+/// Plot display constants.
 const PLOT_CHART_HEIGHT: &str = "400px";
 const PLOT_PIE_RADIUS: &str = "60%";
 
-/// Distribution labels (report_section.go:18).
+/// Distribution labels.
 const DIST_LABEL_TYPE1: &str = "Type-1 (Exact)";
 const DIST_LABEL_TYPE2: &str = "Type-2 (Renamed)";
 const DIST_LABEL_TYPE3: &str = "Type-3 (Near-miss)";
 
-/// The registered section renderer for `static/clones` — Go
+/// The registered section renderer for `static/clones` — the reference implementation
 /// `clones.RegisterPlotSections` → `(&Analyzer{}).generatePlotSections`.
 pub fn sections(report: &GoValue) -> Option<Vec<Section>> {
     Some(vec![Section::new(
@@ -38,7 +37,7 @@ pub fn sections(report: &GoValue) -> Option<Vec<Section>> {
     )])
 }
 
-/// Go `extractClonePairs` + `categorizeClonePairs` over the report's stored
+/// The reference `extractClonePairs` + `categorizeClonePairs` over the report's stored
 /// `clone_pairs` (the ≤1000 detail list, not the exact total distribution).
 fn categorize_clone_pairs(report: &GoValue) -> (i64, i64, i64) {
     let (mut t1, mut t2, mut t3) = (0i64, 0i64, 0i64);
@@ -60,7 +59,7 @@ fn categorize_clone_pairs(report: &GoValue) -> (i64, i64, i64) {
     (t1, t2, t3)
 }
 
-/// Go `generateCloneTypePieChart` (plot.go:50): a default-theme (`white`) pie —
+/// The reference `generateCloneTypePieChart`: a default-theme (`white`) pie —
 /// the only init option is the 400px height — with the plain `{b}: {c}` label.
 fn clone_type_pie(report: &GoValue) -> Chart {
     let (t1, t2, t3) = categorize_clone_pairs(report);

@@ -1,10 +1,9 @@
-//! `static/imports` plot sections — port of Go
-//! `internal/analyzers/imports/static_plot.go` (+ the shared bar helpers in
-//! `imports/plot.go`).
+//! `static/imports` plot sections  (+ the shared bar helpers in
+//! the reference imports plot renderer).
 //!
 //! Consumes the AGGREGATED RAW imports report (the `analyze.Report` value
 //! `imports_raw_report_value` builds): the top-imports usage bar, the import
-//! categories pie, and the dependency-risk table. The Go renderer never
+//! categories pie, and the dependency-risk table. The reference renderer never
 //! errors, so `sections` always returns `Some`.
 
 use cf_gojson::GoValue;
@@ -14,7 +13,7 @@ use cf_plotpage::echarts::{
 };
 use cf_plotpage::{get_chart_palette, ChartOpts, Hint, Section, Theme};
 
-/// static_plot.go / plot.go constants.
+/// Reference plot-section constants.
 const IMPORTS_PIE_RADIUS: &str = "60%";
 const IMPORTS_CATEGORY_HEIGHT: &str = "420px";
 const TOP_IMPORTS_LIMIT: usize = 20;
@@ -22,11 +21,11 @@ const X_AXIS_ROTATE: f64 = 60.0;
 const EMPTY_CHART_HEIGHT: &str = "400px";
 const MAX_DEPENDENCY_RISK_ROWS: usize = 30;
 
-/// The registered section renderer for `static/imports` — Go
+/// The registered section renderer for `static/imports` — the reference implementation
 /// `imports.RegisterPlotSections` → `(&Analyzer{}).generateStaticSections`.
 pub fn sections(report: &GoValue) -> Option<Vec<Section>> {
     // ComputeAllMetrics over the raw report (errors fall back to the zero
-    // value in Go; the Rust computation is infallible).
+    // value in the reference implementation; the Rust computation is infallible).
     let report_value = imports_report_value(report);
     let metrics = cf_imports::compute_all_metrics(&report_value)
         .unwrap_or_else(|_| cf_imports::ComputedMetrics::default());
@@ -97,9 +96,9 @@ fn imports_report_value(report: &GoValue) -> cf_imports::ReportValue {
     rv
 }
 
-/// Go `reportutil.GetStringIntMap(report, KeyImportCounts)`: the per-import
+/// The reference `reportutil.GetStringIntMap(report, KeyImportCounts)`: the per-import
 /// occurrence counts. The raw report stores them byte-sorted by key, which is
-/// the deterministic stand-in for Go's random map order (the harness measures
+/// the deterministic stand-in for the reference implementation's random map order (the harness measures
 /// the variance).
 fn import_counts(report: &GoValue) -> Vec<(String, i64)> {
     let mut counts: Vec<(String, i64)> = Vec::new();
@@ -113,7 +112,7 @@ fn import_counts(report: &GoValue) -> Vec<(String, i64)> {
     counts
 }
 
-/// Go `buildStaticImportsBarChart` + `topImports` + `createImportsBarChart`.
+/// The reference `buildStaticImportsBarChart` + `topImports` + `createImportsBarChart`.
 fn static_imports_bar_chart(report: &GoValue, metrics: &cf_imports::ComputedMetrics) -> Chart {
     let mut counts = import_counts(report);
     if counts.is_empty() {
@@ -138,8 +137,8 @@ fn static_imports_bar_chart(report: &GoValue, metrics: &cf_imports::ComputedMetr
         return empty_imports_chart();
     }
 
-    // topImports: count descending, top 20. Go iterates a map randomly and
-    // sorts unstably, so the equal-count order is Go-nondeterministic; the
+    // topImports: count descending, top 20. the reference implementation iterates a map randomly and
+    // sorts unstably, so the equal-count order is nondeterministic in the reference binary; the
     // key-ascending input + stable sort is the deterministic stand-in.
     counts.sort_by(|a, b| b.1.cmp(&a.1));
     counts.truncate(TOP_IMPORTS_LIMIT);
@@ -195,7 +194,7 @@ fn static_imports_bar_chart(report: &GoValue, metrics: &cf_imports::ComputedMetr
     bar
 }
 
-/// Go `buildImportCategoriesPie` (static_plot.go:116).
+/// The reference `buildImportCategoriesPie`.
 fn import_categories_pie(metrics: &cf_imports::ComputedMetrics) -> Chart {
     if metrics.categories.is_empty() {
         return empty_import_categories_pie();
@@ -243,7 +242,7 @@ fn import_categories_pie(metrics: &cf_imports::ComputedMetrics) -> Chart {
     pie
 }
 
-/// Go `buildDependencyRiskTableWithLimit` (static_plot.go:177).
+/// The reference `buildDependencyRiskTableWithLimit`.
 fn dependency_risk_table(metrics: &cf_imports::ComputedMetrics, row_limit: usize) -> Table {
     let mut table = Table::new(vec![
         "Import".to_string(),
@@ -261,7 +260,7 @@ fn dependency_risk_table(metrics: &cf_imports::ComputedMetrics, row_limit: usize
     }
 
     // sort.Slice by (risk desc, path asc) — the keys fully order the unique
-    // paths, so a stable sort yields the Go result.
+    // paths, so a stable sort yields the reference result.
     let mut deps = metrics.dependencies.clone();
     deps.sort_by(|a, b| {
         if a.risk_level != b.risk_level {
@@ -290,7 +289,7 @@ fn dependency_risk_table(metrics: &cf_imports::ComputedMetrics, row_limit: usize
     table
 }
 
-/// Go `createEmptyImportsChart` (plot.go:102).
+/// The reference `createEmptyImportsChart`.
 fn empty_imports_chart() -> Chart {
     let co = ChartOpts::default_dark();
     let mut bar = Chart::new(ChartKind::Bar);
@@ -300,7 +299,7 @@ fn empty_imports_chart() -> Chart {
     bar
 }
 
-/// Go `createEmptyImportCategoriesPie` (static_plot.go:163).
+/// The reference `createEmptyImportCategoriesPie`.
 fn empty_import_categories_pie() -> Chart {
     let co = ChartOpts::default_dark();
     let mut pie = Chart::new(ChartKind::Pie);

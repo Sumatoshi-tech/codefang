@@ -1,18 +1,16 @@
 //! File classification categories.
 //!
-//! Ported from Go `internal/analyzers/file_history/classify.go` (the `Category`
-//! constants and `AllCategories`). The Rust `cf-file-history` crate is still a
-//! scaffold, so the minimal surface that `cf-composition` depends on is
-//! reproduced here verbatim (DESIGN rule 5 — define the minimal interface for a
-//! not-yet-ported transitive dependency). When `cf-file-history` is fully ported
-//! these should move there and be re-exported.
+//! The `Category` constants and canonical ordering shared by composition and
+//! file-history analysis. This crate hosts the minimal surface it depends on;
+//! when the file-history crate is fully built out, these can move there and be
+//! re-exported.
 
 use std::collections::HashMap;
 
 /// A file classification type.
 ///
 /// The string value of each variant is the exact wire string used in reports
-/// (e.g. `"source"`, `"vendor"`), matching the Go `Category string` constants.
+/// (e.g. `"source"`, `"vendor"`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Category {
     /// Source code files.
@@ -34,8 +32,7 @@ pub enum Category {
 }
 
 impl Category {
-    /// Returns the wire string for this category, identical to Go's
-    /// `string(Category)`.
+    /// Returns the wire string for this category.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -54,9 +51,8 @@ impl Category {
     ///
     /// Returns `None` for any string that is not a known category.
     #[must_use]
-    // Mirrors Go's `string -> Category` lookup, which is fallible-by-`Option`
-    // (not `Result`), so the inherent method intentionally does not implement
-    // `std::str::FromStr`.
+    // The lookup is fallible-by-`Option` (not `Result`), so the inherent
+    // method intentionally does not implement `std::str::FromStr`.
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(value: &str) -> Option<Category> {
         match value {
@@ -73,9 +69,7 @@ impl Category {
     }
 }
 
-/// The canonical order for display and charting.
-///
-/// Mirrors Go `AllCategories` exactly (`classify.go`):
+/// The canonical category order for display and charting:
 /// source, documentation, configuration, vendor, generated, dotfile, image,
 /// binary. This ordering is load-bearing — it governs the order of distribution
 /// items and issues in the report section, and the iteration order in
@@ -94,8 +88,8 @@ pub const ALL_CATEGORIES: [Category; 8] = [
 /// Tracks counts per file category.
 ///
 /// Unknown category strings (those not in [`ALL_CATEGORIES`]) are still counted
-/// under their raw string key so the "skips invalid category" behaviour
-/// matches: the count is recorded but never surfaces in
+/// under their raw string key so the "skips invalid category" behaviour holds:
+/// the count is recorded but never surfaces in
 /// [`crate::aggregator::Aggregator::get_result`] because the result only
 /// iterates the known categories.
 #[derive(Debug, Default, Clone)]

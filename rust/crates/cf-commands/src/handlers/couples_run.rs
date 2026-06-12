@@ -1,17 +1,17 @@
 //! Real `history/couples` over the general history pipeline.
 //!
-//! Port of the Go streaming couples pipeline (run.go initHistoryPipeline /
+//! Port of the reference streaming couples pipeline (the reference `initHistoryPipeline` /
 //! initHeadOnly → Runner → couples `HistoryAnalyzer.Consume` (`processChange`,
 //! seen-files Bloom merge dedup, oversized-changeset skip) → `Aggregator.Add`
 //! → `ticksToReport` (`buildReport`: collect current files from the last
 //! commit's tree, reduce to current files, byte-sorted file index,
 //! per-file newline counts, people/files matrices) → `ComputeAllMetrics`).
 //!
-//! The tree diff base is always `parent(0)` (first parent), exactly as the Go
+//! The tree diff base is always `parent(0)` (first parent), exactly as the reference implementation
 //! `TreeDiffAnalyzer` (`ensurePreviousTree` → `Parent(0)`); merge handling is
 //! controlled by the `IsMerge` flag (`NumParents() > 1 && !--first-parent`).
 //!
-//! Output bytes route through `cf-gojson` (Go `encoding/json` parity); never
+//! Output bytes route through `cf-gojson` (the reference `encoding/json` parity); never
 //! `serde_json`.
 
 use cf_analyzers_plumbing::identity_detector::IdentityDetector;
@@ -22,24 +22,20 @@ use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
 use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 use std::collections::{BTreeMap, HashSet};
 
-/// Expected unique file count for the seen-files Bloom filter
-/// (Go: `seenFilesBloomExpected`).
+/// Expected unique file count for the seen-files Bloom filter.
 const SEEN_FILES_BLOOM_EXPECTED: u64 = 100_000;
-/// Target false-positive rate for the seen-files Bloom filter
-/// (Go: `seenFilesBloomFP`).
+/// Target false-positive rate for the seen-files Bloom filter.
 const SEEN_FILES_BLOOM_FP: f64 = 0.01;
-/// Maximum coupling-context size (Go: `CouplesMaximumMeaningfulContextSize`).
+/// Maximum coupling-context size.
 const MAX_MEANINGFUL_CONTEXT: usize = cf_couples::COUPLES_MAXIMUM_MEANINGFUL_CONTEXT_SIZE;
-/// 32 KB read buffer for newline counting (Go: `readBufferSize`).
-
-/// `identity.AuthorMissing = (1 << 18) - 1`.
+/// Sentinel author id for unidentified authors: `(1 << 18) - 1`.
 const AUTHOR_MISSING: i64 = (1 << 18) - 1;
 
-/// `gitlib.Hash{}.String()` — the zero hash Go stamps on TCs whose Consume
+/// `gitlib.Hash{}.String()` — the zero hash the reference implementation stamps on TCs whose Consume
 /// early-returned without setting `CommitHash` (oversized couples changesets).
 const ZERO_HASH_HEX: &str = "0000000000000000000000000000000000000000";
 
-/// Builds the `history/couples` report value (Go `ComputedMetrics`, the single
+/// Builds the `history/couples` report value (the reference `ComputedMetrics`, the single
 /// value behind `ToJSON`/`ToYAML`) for either the HEAD commit (`--head`) or the
 /// oldest `--limit` commits (streaming Reverse walk). Returns `None` if the
 /// repository cannot be opened/walked. The caller serializes this one value
@@ -51,15 +47,15 @@ pub fn couples_run_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
 
 /// The TYPED `ComputedMetrics` behind [`couples_run_value`] (same walk, same
 /// `compute_all_metrics` product) — the text serializer reads struct fields
-/// directly (Go couples/text.go `generateText` calls `ComputeAllMetrics` on
+/// directly (the reference implementation `generateText` calls `ComputeAllMetrics` on
 /// the report), so it must see the identical metrics the json/yaml bytes
 /// encode.
 pub fn couples_run_metrics(sub: &clap::ArgMatches) -> Option<cf_couples::ComputedMetrics> {
     couples_run(sub).map(|r| r.metrics)
 }
 
-/// One walked commit's couples products (Go `couples.Consume` TC + runner
-/// stamps). `data` is `None` for a dedup-skipped merge (Go returns an EMPTY
+/// One walked commit's couples products (the reference `couples.Consume` TC + runner
+/// stamps). `data` is `None` for a dedup-skipped merge (the reference implementation returns an EMPTY
 /// `CommitData` with a zero commit hash, which the aggregator ignores).
 pub(crate) struct CouplesCommit {
     /// Full hex hash.
@@ -85,7 +81,7 @@ pub(crate) struct CouplesRun {
     pub metrics: cf_couples::ComputedMetrics,
     /// Per-commit TC products, walk order.
     pub commits: Vec<CouplesCommit>,
-    /// Bounded store-path file-coupling records (Go `writeFileCoupling`:
+    /// Bounded store-path file-coupling records (the reference `writeFileCoupling`:
     /// `computeSparseCoupling` over the reduced sparse map, min edge weight 2,
     /// co-change-descending, top 100) — the `file_coupling` store kind the plot
     /// sections consume.
@@ -93,14 +89,14 @@ pub(crate) struct CouplesRun {
 }
 
 /// The data the `history/couples` plot sections consume — the Rust analogue of
-/// the analyzer's structured store kinds (Go `WriteToStoreFromAggregator`).
+/// the analyzer's structured store kinds.
 pub struct CouplesPlotData {
     /// `file_coupling` records (bounded sparse pairs, co-change-descending).
     pub file_coupling: Vec<cf_couples::FileCouplingData>,
     /// `dev_matrix` names after `FilterTopDevs` — EMPTY on every `run`
     /// pipeline: the aggregator's `reversedNames` is populated only from a
     /// preloaded people dict, which run streaming never configures, so the
-    /// dev-coupling heatmap section is always skipped (matches the live Go
+    /// dev-coupling heatmap section is always skipped (matches the live reference
     /// pages).
     pub dev_names: Vec<String>,
     /// `ownership` records, `filesSequence` order (identical inputs to the
@@ -127,14 +123,14 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
     let first_parent = crate::handlers::effective_first_parent(sub);
 
     // Commit window: HEAD-only loads the single HEAD commit; streaming selects
-    // the `limit` NEWEST commits (Go `gitlib.loadHistoryCommits`: newest-first
+    // the `limit` NEWEST commits (the reference `gitlib.loadHistoryCommits`: newest-first
     // walk, CollectN, then slices.Reverse to oldest-first) — NOT the `limit`
     // oldest. With `limit <= 0` this is the full oldest-first history.
     let hashes: Vec<cf_gitlib::Hash> = if head_only {
         vec![repo.head().ok()?]
     } else {
         let v = crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?;
-        // Go consume order at `--workers 1`: the streaming pipeline (commit
+        // reference consume order at `--workers 1`: the streaming pipeline (commit
         // streamer + blob/diff/uast prefetch) preserves input order end-to-end,
         // so the couples leaf consumes commits in the oldest-first revwalk order
         // they are fed (see `crate::handlers::pipeline_consume_order` for the
@@ -154,7 +150,7 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
     // snapshot. So author resolution is global oldest-first, NOT per-worker.
     let mut identity = IdentityDetector::new();
 
-    // Go runs the couples leaf through `processCommitsHybrid` (runner.go): with a
+    // The reference implementation runs the couples leaf through `processCommitsHybrid`: with a
     // single non-SequentialOnly leaf and CoreCount(8) < len(Analyzers)(9), the
     // leaf is FORKED across `LeafWorkers` workers, each with an INDEPENDENT
     // seen-files Bloom and merge-dedup tracker (couples `Fork`: fresh
@@ -196,7 +192,7 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
     // merge-dedup tracker, the loose-identity consume order (oldest-first), and the
     // additive aggregator all run sequentially in the exact same order — only now
     // reading `prepared[pos]` instead of recomputing the diff inline. The Bloom
-    // partition width (`num_workers`) is the modeled Go leaf-worker count and is
+    // partition width (`num_workers`) is the modeled reference leaf-worker count and is
     // INDEPENDENT of the parallel-compute worker count; neither is changed here.
     struct CouplesPrepared {
         num_parents: usize,
@@ -260,7 +256,7 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
 
     for (pos, hash) in hashes.iter().enumerate() {
         let prep = &prepared[pos];
-        // Worker that consumes this commit in Go's hybrid leaf dispatch.
+        // Worker that consumes this commit in the reference implementation's hybrid leaf dispatch.
         let worker = pos % num_workers;
 
         // Runner tick stamping (TicksSinceStart over the committer time).
@@ -271,12 +267,12 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
         previous_tick = tick;
 
         // Merge dedup: a merge commit (NumParents > 1) seen twice by the SAME
-        // worker contributes an empty CommitData (Go: SeenOrAdd → return empty).
+        // worker contributes an empty CommitData (reference: SeenOrAdd → return empty).
         // With unique hashes in a single window this never triggers, but mirror
-        // Go faithfully — and the tracker is per-worker (Fork/Merge above).
+        // reference faithfully — and the tracker is per-worker (Fork/Merge above).
         let is_multi_parent = prep.num_parents > 1;
         if is_multi_parent && !seen_merges[worker].insert(*hash) {
-            // Already seen: empty CommitData with a ZERO commit hash in Go —
+            // Already seen: empty CommitData with a ZERO commit hash in the reference implementation —
             // the aggregator ignores it; record no per-commit entry.
             commits.push(CouplesCommit {
                 hash: hash.to_string(),
@@ -289,7 +285,7 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
             continue;
         }
 
-        // IsMerge (Go runner.buildAnalyzeContext): NumParents > 1, unless
+        // IsMerge: NumParents > 1, unless
         // --first-parent forces single-parent semantics.
         let merge_mode = is_multi_parent && !first_parent;
 
@@ -303,7 +299,7 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
             email: prep.sig_email.clone(),
             when_unix: prep.sig_when,
         });
-        // Go: author = Identity.AuthorID; if AuthorMissing → PeopleNumber.
+        // Reference: author = Identity.AuthorID; if AuthorMissing → PeopleNumber.
         // With loose detection author_id is always a real id, never AuthorMissing.
         let author = if author_id == AUTHOR_MISSING { 0 } else { author_id as usize };
 
@@ -311,11 +307,11 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
         // parallel pre-pass; the reduce only reads it.
         let changes = &prep.changes;
 
-        // Build this commit's CommitData (Go: Consume).
+        // Build this commit's CommitData.
         let mut data = CommitData { commit_counted: true, ..CommitData::default() };
 
         // Oversized changeset: skip coupling/ownership extraction, but the commit
-        // is still counted (CommitCounted = true) — Go returns `&data` early
+        // is still counted (CommitCounted = true) — the reference implementation returns `&data` early
         // WITHOUT setting TC.CommitHash, so the streamed ndjson line carries the
         // ZERO hash and the aggregator's `!tc.CommitHash.IsZero()` guard drops
         // the commit from commit_stats/commits_by_tick (no timeseries entry).
@@ -337,7 +333,7 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
         });
     }
 
-    // buildReport (Go: ticksToReport → buildReport → collectCurrentFiles).
+    // buildReport (reference: ticksToReport → buildReport → collectCurrentFiles).
     //
     // The two code paths behave differently because of libgit2 object lifetimes:
     //
@@ -364,14 +360,14 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
 
     let mut report_data = agg.build_report(current_files.as_ref(), &files_lines);
 
-    // Reversed people dict from loose identity detection (Go:
+    // Reversed people dict from loose identity detection (reference:
     // GetReversedPeopleDict()). FinalizeDict builds the reverse entries from the
     // incrementally-collected names/emails (the streaming pipeline finalizes the
     // loose dict before report rendering).
     identity.finalize_dict();
     report_data.reversed_people_dict = identity.reversed_people_dict.clone();
 
-    // Store-path file coupling (Go store_writer.go `writeFileCoupling`):
+    // Store-path file coupling (the reference implementation `writeFileCoupling`):
     // sparse pairs over the SAME reduce the report uses (the live binary's
     // plot pipeline observably takes `collectUnfiltered` — couples' lastCommit
     // object is freed by store-finalize time, so the filtered prune/cap path
@@ -398,7 +394,7 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
 }
 
 /// Per-commit couples NDJSON records (forked leaf): every non-dedup-skipped
-/// commit emits a line; `data` is Go's `*CommitData` struct — `CouplingFiles`
+/// commit emits a line; `data` is the reference implementation's `*CommitData` struct — `CouplingFiles`
 /// (initialized slice), `AuthorFiles` (map, key-sorted), `Renames` (initialized
 /// slice of `{FromName, ToName}`), `CommitCounted` bool.
 pub fn couples_ndjson_records(
@@ -417,7 +413,7 @@ pub fn couples_ndjson_records(
         );
         let mut authors = GoMap::new_map();
         for (f, n) in &cd.author_files {
-            authors.insert(f.clone(), GoValue::Int(i64::from(*n)));
+            authors.insert(f.clone(), GoValue::Int(*n));
         }
         data.insert("AuthorFiles".to_string(), GoValue::Map(authors));
         data.insert(
@@ -448,7 +444,7 @@ pub fn couples_ndjson_records(
     Some(records)
 }
 
-/// The couples contribution to the merged `--format timeseries` document (Go
+/// The couples contribution to the merged `--format timeseries` document (reference:
 /// `couples.ExtractCommitTimeSeries` over `report["commit_stats"]`): per
 /// commit `{"files_touched": len(CouplingFiles), "author_id": id}`. The couples
 /// aggregator is NOT tick-bucketed — its single TICK carries tick index 0, so
@@ -487,10 +483,10 @@ pub fn couples_timeseries_contribution(
 }
 
 /// Collects the current-file set and per-file newline counts from the live
-/// commit at `last_commit_hash` (Go: `collectCurrentFiles` +
+/// commit at `last_commit_hash` (reference: `collectCurrentFiles` +
 /// `computeFilesLinesFromCommit`, used on the `--head` path where the commit
 /// object is still live). Returns `(None, empty)` if the tree cannot be read,
-/// matching Go's fallback (all raw files, zero lines).
+/// matching the reference implementation's fallback (all raw files, zero lines).
 fn collect_current_and_lines(
     repo: &cf_gitlib::Repository,
     last_commit_hash: Option<cf_gitlib::Hash>,
@@ -509,7 +505,7 @@ fn collect_current_and_lines(
     let mut lines: BTreeMap<String, i32> = BTreeMap::new();
     let mut iter = tree.files();
     while let Some(f) = iter.next_file() {
-        // newline count of the blob (Go: countFileLinesAt over the file blob).
+        // newline count of the blob (reference: countFileLinesAt over the file blob).
         let n = match f.contents() {
             Ok(data) => data.iter().filter(|&&b| b == b'\n').count() as i32,
             Err(_) => 0,
@@ -520,7 +516,7 @@ fn collect_current_and_lines(
     (Some(set), lines)
 }
 
-/// Per-commit change processing (Go: `HistoryAnalyzer.processChange`).
+/// Per-commit change processing.
 fn process_change(
     change: &cf_gitlib::changes::Change,
     merge_mode: bool,
@@ -553,14 +549,14 @@ fn process_change(
             data.coupling_files.push(name.clone());
         }
         seen_files.add(name.as_bytes());
-        // Go: if author != AuthorMissing { AuthorFiles[name] = 1 }.
+        // Reference: if author != AuthorMissing { AuthorFiles[name] = 1 }.
         if author != AUTHOR_MISSING_IDX {
             data.author_files.insert(name, 1);
         }
         return;
     }
 
-    // Merge mode (Go: HistoryAnalyzer.processChange). Only add the file to the
+    // Merge mode. Only add the file to the
     // coupling context if it was NOT seen on the first-parent line already
     // (`!seenFiles.Test(name)`): a file changed on a merged-in branch must not
     // be double-counted against files it already coupled with on mainline.
@@ -573,7 +569,7 @@ fn process_change(
     }
 }
 
-/// `identity.AuthorMissing` as a `usize` index (Go uses it both as the sentinel
+/// `identity.AuthorMissing` as a `usize` index (the reference implementation uses it both as the sentinel
 /// id and, when present, as the `PeopleNumber` slot). Under loose detection the
 /// resolved author is never this sentinel.
 const AUTHOR_MISSING_IDX: usize = (1 << 18) - 1;

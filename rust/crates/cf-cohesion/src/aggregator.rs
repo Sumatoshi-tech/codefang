@@ -1,39 +1,30 @@
-//! Result aggregation — port of `internal/analyzers/cohesion/aggregator.go`.
+//! Result aggregation.
 //!
 //! When cohesion runs over many files (and when it feeds the quality analyzer /
-//! timeseries), per-file reports are merged into one. The Go code delegates the
-//! heavy lifting to `common.Aggregator` (numeric mean over `lcom`/`cohesion_score`/
-//! `function_cohesion`, sum over `total_functions`, concatenation + de-dup of the
-//! `functions` table keyed by `("_source_file", "name")`, and a recomputed message),
-//! while retaining per-file reports via `PerFileRetainer`.
-//!
-//! Until the shared `cf-analyzers-common::Aggregator` is available this module
-//! reproduces the merge semantics directly. The aggregation keys and the message
-//! labeler are byte-faithful to the Go config; the per-file retention hook is a seam
-//! (see crate todos).
+//! timeseries), per-file reports are merged into one: numeric mean over
+//! `lcom`/`cohesion_score`/`function_cohesion`, sum over `total_functions`,
+//! concatenation + de-dup of the `functions` table keyed by
+//! `("_source_file", "name")`, and a recomputed message. The aggregation keys
+//! and the message labeler are part of the report contract.
 
 use crate::report_value::{Report, ReportValue};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// `scoreThresholdHigh` (aggregator.go).
 const SCORE_THRESHOLD_HIGH: f64 = 0.7;
-/// `scoreThresholdMedium`.
 const SCORE_THRESHOLD_MEDIUM: f64 = 0.4;
-/// `scoreThresholdLow`.
 const SCORE_THRESHOLD_LOW: f64 = 0.3;
 
-/// Numeric keys averaged across reports (Go `getNumericKeys`).
+/// Numeric keys averaged across reports.
 pub const NUMERIC_KEYS: [&str; 3] = ["lcom", "cohesion_score", "function_cohesion"];
-/// Count keys summed across reports (Go `getCountKeys`).
+/// Count keys summed across reports.
 pub const COUNT_KEYS: [&str; 1] = ["total_functions"];
-/// The collection key holding the per-function table (Go `"functions"`).
+/// The collection key holding the per-function table.
 pub const COLLECTION_KEY: &str = "functions";
-/// The composite identity used to de-duplicate function rows (Go
-/// `[]string{"_source_file", "name"}`).
+/// The composite identity used to de-duplicate function rows.
 pub const DEDUP_KEYS: [&str; 2] = ["_source_file", "name"];
 
-/// Overall-cohesion message keyed by the aggregated score (Go `getCohesionMessage`
-/// in aggregator.go — distinct wording from the per-analyzer message).
+/// Overall-cohesion message keyed by the aggregated score (distinct wording
+/// from the per-analyzer message; both are part of the report contract).
 #[must_use]
 pub fn get_cohesion_message(score: f64) -> &'static str {
     if score >= SCORE_THRESHOLD_HIGH {
@@ -47,7 +38,7 @@ pub fn get_cohesion_message(score: f64) -> &'static str {
     }
 }
 
-/// The empty aggregated result (Go `createEmptyResult`).
+/// The empty aggregated result.
 #[must_use]
 pub fn create_empty_result() -> Report {
     let mut r = Report::new();
@@ -62,10 +53,9 @@ pub fn create_empty_result() -> Report {
     r
 }
 
-/// Aggregates multiple per-file cohesion reports into one (Go
-/// `(*Aggregator).Aggregate` + `common.Aggregator`).
+/// Aggregates multiple per-file cohesion reports into one.
 ///
-/// Semantics reproduced:
+/// Semantics:
 /// * `total_functions` = sum across reports.
 /// * `lcom`, `cohesion_score`, `function_cohesion` = arithmetic mean across reports
 ///   that carry the key.
@@ -140,11 +130,11 @@ pub fn aggregate(reports: &[Report]) -> Report {
         "function_cohesion".into(),
         ReportValue::Float(mean("function_cohesion")),
     );
-    // Go `SpillableDataCollector.GetSortedData` sorts the de-duplicated rows by
-    // the *last* identifier key ("name") via `sort.Slice` (unstable pdqsort)
-    // before they enter the report. Replicating both the key and Go's exact tie
-    // permutation here is what makes the downstream value-sort in `report_section`
-    // (also an unstable pdqsort) emit the same byte order as Go.
+    // The report contract sorts the de-duplicated rows by the *last* identifier
+    // key ("name") with the pinned unstable sort (pdqsort) before they enter
+    // the report. Replicating both the key and the exact tie permutation here
+    // is what makes the downstream value-sort in `report_section` (also the
+    // pinned pdqsort) emit the same byte order as the reference.
     cf_gosort::go_sort_slice(&mut functions, |a, b| {
         let na = a
             .get(DEDUP_KEYS[1])

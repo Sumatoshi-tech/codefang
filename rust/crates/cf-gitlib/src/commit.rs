@@ -1,13 +1,12 @@
-//! Commit access and commit iteration, ported from `pkg/gitlib/commit.go`.
+//! Commit access and commit iteration.
 //!
-//! [`Commit`] borrows a libgit2 [`git2::Commit`] (freed on [`Drop`], replacing
-//! Go's `Free()`). It also supports a *test double* mode (Go's `testHash` field)
-//! where the commit has no backing libgit2 object; in that mode hash returns the
-//! injected value and the structural accessors return zero / errors, matching Go.
+//! [`Commit`] borrows a libgit2 [`git2::Commit`] (freed on [`Drop`]). It also
+//! supports a *test double* mode where the commit has no backing libgit2
+//! object; in that mode hash returns the injected value and the structural
+//! accessors return zero / errors.
 //!
-//! [`CommitIter`] wraps a libgit2 revwalk, looking up full commit objects lazily
-//! and honoring an optional `since` author-time filter — the exact behavior of
-//! Go's `gitlib.CommitIter`.
+//! [`CommitIter`] wraps a libgit2 revwalk, looking up full commit objects
+//! lazily and honoring an optional `since` author-time filter.
 
 use cf_alg::{IteratorError, PullIterator};
 use cf_safeconv::{must_int_to_uint, must_uint_to_int};
@@ -19,14 +18,12 @@ use crate::signature::Signature;
 use crate::tree::Tree;
 use crate::Repository;
 
-/// A libgit2 commit (Go `gitlib.Commit`).
+/// A libgit2 commit.
 ///
 /// Either backed by a real [`git2::Commit`] or a *test double* carrying only a
-/// hash (Go's `testHash`). The structural accessors degrade gracefully on the
-/// test-double path, exactly as the Go methods do when the internal commit is
-/// `nil`.
+/// hash. The structural accessors degrade gracefully on the test-double path.
 pub struct Commit<'repo> {
-    commit: Option<git2::Commit<'repo>>,
+    inner: Option<git2::Commit<'repo>>,
     repo: Option<&'repo Repository>,
     test_hash: Option<Hash>,
 }
@@ -35,89 +32,89 @@ impl<'repo> Commit<'repo> {
     /// Wraps a real libgit2 commit.
     pub(crate) fn new(commit: git2::Commit<'repo>, repo: &'repo Repository) -> Self {
         Commit {
-            commit: Some(commit),
+            inner: Some(commit),
             repo: Some(repo),
             test_hash: None,
         }
     }
 
-    /// Creates a test-double commit carrying only a hash (Go `NewCommitForTest`).
+    /// Creates a test-double commit carrying only a hash.
     #[must_use]
     pub fn for_test(h: Hash) -> Self {
         Commit {
-            commit: None,
+            inner: None,
             repo: None,
             test_hash: Some(h),
         }
     }
 
-    /// Returns the commit hash (Go `Commit.Hash`).
+    /// Returns the commit hash.
     ///
     /// For a test double, returns the injected hash; for a real commit, the
     /// object id; the zero hash otherwise.
     #[must_use]
     pub fn hash(&self) -> Hash {
-        match &self.commit {
+        match &self.inner {
             Some(c) => Hash::from_oid(&c.id()),
             None => self.test_hash.unwrap_or_else(Hash::zero),
         }
     }
 
-    /// Returns the commit author (Go `Commit.Author`).
+    /// Returns the commit author.
     ///
     /// Zero signature for a test double.
     #[must_use]
     pub fn author(&self) -> Signature {
-        match &self.commit {
+        match &self.inner {
             Some(c) => Signature::from_git2(&c.author()),
             None => Signature::default(),
         }
     }
 
-    /// Returns the commit committer (Go `Commit.Committer`).
+    /// Returns the commit committer.
     ///
     /// Zero signature for a test double.
     #[must_use]
     pub fn committer(&self) -> Signature {
-        match &self.commit {
+        match &self.inner {
             Some(c) => Signature::from_git2(&c.committer()),
             None => Signature::default(),
         }
     }
 
-    /// Returns the commit message (Go `Commit.Message`).
+    /// Returns the commit message.
     ///
     /// Empty for a test double.
     #[must_use]
     pub fn message(&self) -> String {
-        match &self.commit {
+        match &self.inner {
             Some(c) => c.message().unwrap_or_default().to_string(),
             None => String::new(),
         }
     }
 
-    /// Returns the number of parents (Go `Commit.NumParents`).
+    /// Returns the number of parents.
     ///
     /// Zero for a test double.
     #[must_use]
     pub fn num_parents(&self) -> usize {
-        match &self.commit {
+        match &self.inner {
             Some(c) => must_uint_to_int(c.parent_count()) as usize,
             None => 0,
         }
     }
 
-    /// Returns the nth parent commit (Go `Commit.Parent`).
+    /// Returns the nth parent commit.
     ///
     /// # Errors
     ///
     /// Returns [`GitError::ParentNotFound`] for a test double or an out-of-range
     /// index.
     pub fn parent(&self, n: usize) -> Result<Commit<'repo>> {
-        let (Some(c), Some(repo)) = (&self.commit, self.repo) else {
+        let (Some(c), Some(repo)) = (&self.inner, self.repo) else {
             return Err(GitError::ParentNotFound);
         };
-        // Go converts via MustIntToUint then asks git2go.Parent(n).
+        // Overflow-checked index conversion before asking libgit2.
         let idx = must_int_to_uint(n as isize);
         match c.parent(idx) {
             Ok(parent) => Ok(Commit::new(parent, repo)),
@@ -125,52 +122,53 @@ impl<'repo> Commit<'repo> {
         }
     }
 
-    /// Returns the hash of the nth parent (Go `Commit.ParentHash`).
+    /// Returns the hash of the nth parent.
     ///
     /// Zero hash for a test double.
     #[must_use]
     pub fn parent_hash(&self, n: usize) -> Hash {
-        match &self.commit {
+        match &self.inner {
             Some(c) => {
                 let idx = must_int_to_uint(n as isize);
-                c.parent_id(idx).map(|oid| Hash::from_oid(&oid)).unwrap_or_else(|_| Hash::zero())
+                c.parent_id(idx)
+                    .map_or_else(|_| Hash::zero(), |oid| Hash::from_oid(&oid))
             }
             None => Hash::zero(),
         }
     }
 
-    /// Returns the hash of the commit's tree (Go `Commit.TreeHash`).
+    /// Returns the hash of the commit's tree.
     ///
     /// Zero hash for a test double.
     #[must_use]
     pub fn tree_hash(&self) -> Hash {
-        match &self.commit {
+        match &self.inner {
             Some(c) => Hash::from_oid(&c.tree_id()),
             None => Hash::zero(),
         }
     }
 
-    /// Returns the commit's tree (Go `Commit.Tree`).
+    /// Returns the commit's tree.
     ///
     /// # Errors
     ///
     /// Returns [`GitError::TestCommitNoTree`] for a test double, or
     /// [`GitError::CommitTree`] if the tree cannot be loaded.
     pub fn tree(&self) -> Result<Tree<'repo>> {
-        let (Some(c), Some(repo)) = (&self.commit, self.repo) else {
+        let (Some(c), Some(repo)) = (&self.inner, self.repo) else {
             return Err(GitError::TestCommitNoTree);
         };
         let tree = c.tree().map_err(GitError::CommitTree)?;
         Ok(Tree::new(tree, repo))
     }
 
-    /// Returns an iterator over all files in the commit's tree (Go `Commit.Files`).
+    /// Returns an iterator over all files in the commit's tree.
     ///
     /// # Errors
     ///
     /// Propagates tree / walk errors.
     pub fn files(&self) -> Result<FileIter<'repo>> {
-        let (Some(_), Some(repo)) = (&self.commit, self.repo) else {
+        let (Some(_), Some(repo)) = (&self.inner, self.repo) else {
             return Err(GitError::MockNotImplemented);
         };
         let tree = self.tree()?;
@@ -178,13 +176,13 @@ impl<'repo> Commit<'repo> {
         Ok(FileIter::new(files))
     }
 
-    /// Returns a specific file from the commit's tree (Go `Commit.File`).
+    /// Returns a specific file from the commit's tree.
     ///
     /// # Errors
     ///
     /// Returns tree / entry errors when the path is not present.
     pub fn file(&self, path: &str) -> Result<File<'repo>> {
-        let (Some(_), Some(repo)) = (&self.commit, self.repo) else {
+        let (Some(_), Some(repo)) = (&self.inner, self.repo) else {
             return Err(GitError::MockNotImplemented);
         };
         let tree = self.tree()?;
@@ -192,20 +190,20 @@ impl<'repo> Commit<'repo> {
         Ok(File::new(path.to_string(), entry.hash(), 0, repo))
     }
 
-    /// Returns the underlying libgit2 commit (Go `Commit.Native`), if real.
+    /// Returns the underlying libgit2 commit, if real.
     #[must_use]
     pub fn native(&self) -> Option<&git2::Commit<'repo>> {
-        self.commit.as_ref()
+        self.inner.as_ref()
     }
 }
 
-/// An iterator over commits from a revwalk (Go `gitlib.CommitIter`).
+/// An iterator over commits from a revwalk.
 ///
-/// Looks up full commit objects lazily and honors an optional `since` author-time
-/// filter: when set, iteration stops at the first commit older than `since`
-/// (matching Go's `commit.Author().When.Before(*since)` short-circuit).
+/// Looks up full commit objects lazily and honors an optional `since`
+/// author-time filter: when set, iteration stops at the first commit whose
+/// author time is strictly before `since`.
 ///
-/// Implements [`cf_alg::PullIterator`] (Go's `alg.Iterator[*Commit]`).
+/// Implements [`cf_alg::PullIterator`].
 pub struct CommitIter<'repo> {
     walk: Option<git2::Revwalk<'repo>>,
     repo: &'repo Repository,
@@ -226,21 +224,17 @@ impl<'repo> CommitIter<'repo> {
         }
     }
 
-    /// Returns the next commit, or `None` at end of iteration
-    /// (Go `CommitIter.Next` returning `nil, io.EOF`).
+    /// Returns the next commit, or `None` at end of iteration.
     ///
-    /// Frees the walk once exhausted or filtered out (mirroring Go).
+    /// Frees the walk once exhausted or filtered out.
     #[must_use]
     pub fn next_commit(&mut self) -> Option<Commit<'repo>> {
         let walk = self.walk.as_mut()?;
 
         loop {
-            let oid = match walk.next() {
-                Some(Ok(oid)) => oid,
-                _ => {
-                    self.walk = None;
-                    return None;
-                }
+            let Some(Ok(oid)) = walk.next() else {
+                self.walk = None;
+                return None;
             };
 
             let Ok(commit) = self.repo.native().find_commit(oid) else {
@@ -258,7 +252,7 @@ impl<'repo> CommitIter<'repo> {
         }
     }
 
-    /// Calls `cb` for each commit (Go `CommitIter.ForEach`).
+    /// Calls `cb` for each commit.
     ///
     /// # Errors
     ///
@@ -273,12 +267,12 @@ impl<'repo> CommitIter<'repo> {
         Ok(())
     }
 
-    /// Advances the iterator by `n` commits (Go `CommitIter.Skip`).
+    /// Advances the iterator by `n` commits.
     ///
     /// # Errors
     ///
-    /// Never returns an error in practice (EOF is a clean stop); the `Result` is
-    /// kept to mirror Go's signature.
+    /// Never returns an error in practice (EOF is a clean stop); the `Result`
+    /// is kept for signature stability.
     pub fn skip(&mut self, n: usize) -> Result<()> {
         for _ in 0..n {
             if !self.skip1() {
@@ -288,7 +282,7 @@ impl<'repo> CommitIter<'repo> {
         Ok(())
     }
 
-    /// Advances by one commit without materializing a `Commit` (Go `skip1`).
+    /// Advances by one commit without materializing a `Commit`.
     ///
     /// Returns `true` if a commit was consumed, `false` at EOF / since-cutoff.
     fn skip1(&mut self) -> bool {
@@ -296,16 +290,13 @@ impl<'repo> CommitIter<'repo> {
             return false;
         };
 
-        let oid = match walk.next() {
-            Some(Ok(oid)) => oid,
-            _ => {
-                self.walk = None;
-                return false;
-            }
+        let Some(Ok(oid)) = walk.next() else {
+            self.walk = None;
+            return false;
         };
 
         if let Some(since) = self.since {
-            // Look up the commit to inspect its author time (Go does the same).
+            // Look up the commit to inspect its author time.
             let Ok(commit) = self.repo.native().find_commit(oid) else {
                 return false;
             };
@@ -318,7 +309,7 @@ impl<'repo> CommitIter<'repo> {
         true
     }
 
-    /// Releases the walk (Go `CommitIter.Close`); idempotent.
+    /// Releases the walk; idempotent.
     pub fn close(&mut self) {
         self.walk = None;
     }
@@ -334,10 +325,10 @@ impl<'repo> PullIterator<Commit<'repo>> for CommitIter<'repo> {
     }
 }
 
-/// Reports whether `a` is strictly before `b` (Go `time.Time.Before`).
+/// Reports whether `a` is strictly before `b`.
 ///
 /// Compares the absolute instant (seconds since epoch), independent of UTC
-/// offset, matching Go's `time.Time` comparison semantics.
+/// offset.
 fn time_before(a: git2::Time, b: git2::Time) -> bool {
     a.seconds() < b.seconds()
 }
@@ -346,7 +337,7 @@ fn time_before(a: git2::Time, b: git2::Time) -> bool {
 mod tests {
     use super::*;
 
-    // Ported from gitlib_test.go::TestTestCommit* and the for-test constructors:
+    // Mirrors reference test TestTestCommit.* and the for-test constructors:
     // a test-double commit yields its injected hash, zero signatures, no parents.
     #[test]
     fn test_double_commit() {

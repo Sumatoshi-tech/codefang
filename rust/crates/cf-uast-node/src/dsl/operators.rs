@@ -1,13 +1,11 @@
-//! DSL operators: builtin functions and value comparison. Ported from
-//! `operators.go`.
+//! DSL operators: builtin functions and value comparison.
 
 use crate::comparison::sort_nodes;
 use crate::node::Node;
 use crate::types::{DslLiteral, DslNode};
 
 /// Applies a map operation: runs `f` on each node singly and concatenates.
-/// Mirrors `applyMapOperation`.
-pub(crate) fn apply_map(nodes: &[Node], f: &dyn Fn(&[Node]) -> Vec<Node>) -> Vec<Node> {
+pub fn apply_map(nodes: &[Node], f: &dyn Fn(&[Node]) -> Vec<Node>) -> Vec<Node> {
     let mut result = Vec::with_capacity(nodes.len());
     for n in nodes {
         result.extend(f(std::slice::from_ref(n)));
@@ -15,20 +13,19 @@ pub(crate) fn apply_map(nodes: &[Node], f: &dyn Fn(&[Node]) -> Vec<Node>) -> Vec
     result
 }
 
-/// Applies a filter operation. Mirrors `applyFilterOperation`.
-pub(crate) fn apply_filter(nodes: &[Node], predicate: &dyn Fn(&Node) -> bool) -> Vec<Node> {
+/// Applies a filter operation.
+pub fn apply_filter(nodes: &[Node], predicate: &dyn Fn(&Node) -> bool) -> Vec<Node> {
     nodes.iter().filter(|n| predicate(n)).cloned().collect()
 }
 
-/// Applies a reduce operation (just runs `f` over the whole slice). Mirrors
-/// `applyReduceOperation`.
-pub(crate) fn apply_reduce(nodes: &[Node], f: &dyn Fn(&[Node]) -> Vec<Node>) -> Vec<Node> {
+/// Applies a reduce operation (just runs `f` over the whole slice).
+pub fn apply_reduce(nodes: &[Node], f: &dyn Fn(&[Node]) -> Vec<Node>) -> Vec<Node> {
     f(nodes)
 }
 
-/// Extracts a string value from a node by field name. Mirrors
-/// `extractStringValue`: `type`/`token`/`id` are built-ins, else a prop lookup.
-pub(crate) fn extract_string_value(n: &Node, field: &str) -> String {
+/// Extracts a string value from a node by field name: `type`/`token`/`id` are
+/// built-ins, else a prop lookup.
+pub fn extract_string_value(n: &Node, field: &str) -> String {
     match field {
         "type" => n.node_type.clone(),
         "token" => n.token.clone(),
@@ -37,8 +34,8 @@ pub(crate) fn extract_string_value(n: &Node, field: &str) -> String {
     }
 }
 
-/// Compares two strings with the given operator. Mirrors `compareValues`.
-pub(crate) fn compare_values(left: &str, right: &str, op: &str) -> bool {
+/// Compares two strings with the given operator (lexicographic ordering).
+pub fn compare_values(left: &str, right: &str, op: &str) -> bool {
     match op {
         "==" => left == right,
         "!=" => left != right,
@@ -50,8 +47,8 @@ pub(crate) fn compare_values(left: &str, right: &str, op: &str) -> bool {
     }
 }
 
-/// Sorts nodes by a field. Mirrors `sortByField`.
-pub(crate) fn sort_by_field(nodes: &[Node], field: &str, ascending: bool) -> Vec<Node> {
+/// Sorts nodes by a field.
+pub fn sort_by_field(nodes: &[Node], field: &str, ascending: bool) -> Vec<Node> {
     let mut sorted = nodes.to_vec();
     sorted.sort_by(|a, b| {
         let l = extract_string_value(a, field);
@@ -65,9 +62,9 @@ pub(crate) fn sort_by_field(nodes: &[Node], field: &str, ascending: bool) -> Vec
     sorted
 }
 
-/// Applies a builtin function by name. Mirrors `applyBuiltinFunction`. Unknown
-/// names pass the input through unchanged (Go's `default: return nodes`).
-pub(crate) fn apply_builtin(name: &str, nodes: &[Node], args: &[DslNode]) -> Vec<Node> {
+/// Applies a builtin function by name. Unknown names pass the input through
+/// unchanged.
+pub fn apply_builtin(name: &str, nodes: &[Node], args: &[DslNode]) -> Vec<Node> {
     match name {
         "contains" => apply_contains(nodes, args),
         "startsWith" => apply_starts_with(nodes, args),
@@ -84,8 +81,7 @@ pub(crate) fn apply_builtin(name: &str, nodes: &[Node], args: &[DslNode]) -> Vec
 /// Extracts the string value of the first literal argument, if any.
 fn first_literal_arg(args: &[DslNode]) -> Option<String> {
     args.iter().find_map(|a| match a {
-        DslNode::Literal(DslLiteral::Str(s)) => Some(s.clone()),
-        DslNode::Literal(DslLiteral::Number(s)) => Some(s.clone()),
+        DslNode::Literal(DslLiteral::Str(s) | DslLiteral::Number(s)) => Some(s.clone()),
         DslNode::Literal(DslLiteral::Bool(b)) => Some(b.to_string()),
         _ => None,
     })

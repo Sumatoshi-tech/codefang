@@ -1,16 +1,12 @@
 //! Static mapping-DSL completion items, UAST field items, and hover docs.
 //!
-//! Port of the package-level `var` block in Go `pkg/uast/lsp/server.go`:
-//! `mappingDSLKeywords`, `uastFields`, `hoverDocs`, and the `completionItem`
-//! constructor. The label/detail/doc strings are reproduced byte-for-byte so the
-//! LSP responses match the Go server.
+//! The label/detail/doc strings are frozen so the LSP responses stay stable
+//! for editor clients.
 
 use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind};
 
-/// Builds a [`CompletionItem`] with a label, kind, and detail.
-///
-/// Equivalent to Go `completionItem(label, kind, detail)`: sets `Label`, and the
-/// optional `Kind`/`Detail` fields, leaving everything else at its default.
+/// Builds a [`CompletionItem`] with a label, kind, and detail, leaving
+/// everything else at its default.
 #[must_use]
 pub fn completion_item(label: &str, kind: CompletionItemKind, detail: &str) -> CompletionItem {
     CompletionItem {
@@ -21,9 +17,8 @@ pub fn completion_item(label: &str, kind: CompletionItemKind, detail: &str) -> C
     }
 }
 
-/// Mapping-DSL keyword completion items.
-///
-/// Mirrors Go `mappingDSLKeywords` (same order, labels, kinds, and details).
+/// Mapping-DSL keyword completion items (order, labels, kinds, and details
+/// are frozen).
 #[must_use]
 pub fn mapping_dsl_keywords() -> Vec<CompletionItem> {
     vec![
@@ -33,9 +28,8 @@ pub fn mapping_dsl_keywords() -> Vec<CompletionItem> {
     ]
 }
 
-/// UAST field completion items.
-///
-/// Mirrors Go `uastFields` (same order, labels, kinds, and details).
+/// UAST field completion items (order, labels, kinds, and details are
+/// frozen).
 #[must_use]
 pub fn uast_fields() -> Vec<CompletionItem> {
     vec![
@@ -51,8 +45,8 @@ pub fn uast_fields() -> Vec<CompletionItem> {
     ]
 }
 
-/// All completion items offered by `textDocument/completion`: keywords followed
-/// by UAST fields, exactly as Go's `completion` handler concatenates them.
+/// All completion items offered by `textDocument/completion`: keywords
+/// followed by UAST fields, in that order.
 #[must_use]
 pub fn all_completions() -> Vec<CompletionItem> {
     let mut items = mapping_dsl_keywords();
@@ -62,8 +56,7 @@ pub fn all_completions() -> Vec<CompletionItem> {
 
 /// Returns the hover documentation for a DSL keyword/field, if any.
 ///
-/// Mirrors a lookup into Go's `hoverDocs` map. The match arms reproduce the map
-/// keys and Markdown values byte-for-byte.
+/// The keys and Markdown values are frozen strings.
 #[must_use]
 pub fn hover_doc(word: &str) -> Option<&'static str> {
     match word {
@@ -82,9 +75,7 @@ pub fn hover_doc(word: &str) -> Option<&'static str> {
 }
 
 /// The complete set of hover-doc keys, for parity assertions and discovery.
-///
-/// Order matches the literal listing in Go's `hoverDocs` map declaration; the Go
-/// map itself is unordered, so callers must not depend on this order for output.
+/// Callers must not depend on this order for output.
 pub const HOVER_DOC_KEYS: [&str; 8] =
     ["<-", "=>", "uast", "type", "token", "roles", "props", "children"];
 
@@ -92,7 +83,6 @@ pub const HOVER_DOC_KEYS: [&str; 8] =
 mod tests {
     use super::*;
 
-    /// Ported from Go `TestCompletionItem`.
     #[test]
     fn test_completion_item() {
         let item = completion_item("test", CompletionItemKind::KEYWORD, "Test detail");
@@ -109,7 +99,6 @@ mod tests {
         );
     }
 
-    /// Ported from Go `TestMappingDSLKeywords`.
     #[test]
     fn test_mapping_dsl_keywords() {
         let keywords = mapping_dsl_keywords();
@@ -123,7 +112,6 @@ mod tests {
         }
     }
 
-    /// Ported from Go `TestUastFields`.
     #[test]
     fn test_uast_fields() {
         let fields = uast_fields();
@@ -137,7 +125,6 @@ mod tests {
         }
     }
 
-    /// Ported from Go `TestHoverDocs`.
     #[test]
     fn test_hover_docs() {
         // Every documented key resolves and is non-empty.
@@ -146,11 +133,11 @@ mod tests {
             assert!(doc.is_some(), "Expected hover doc for {key:?} not found");
             assert!(!doc.unwrap().is_empty(), "Hover doc for {key:?} is empty");
         }
-        // Unknown words resolve to None (Go: comma-ok false).
+        // Unknown words resolve to None.
         assert!(hover_doc("unknown").is_none());
     }
 
-    /// `all_completions` is keywords followed by fields, matching the Go handler.
+    /// `all_completions` is keywords followed by fields, in that order.
     #[test]
     fn test_all_completions_order() {
         let got: Vec<String> = all_completions().into_iter().map(|i| i.label).collect();

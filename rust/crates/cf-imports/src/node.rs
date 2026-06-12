@@ -1,43 +1,38 @@
 //! Minimal UAST node model (local shim).
 //!
-//! Mirrors the subset of `pkg/uast/pkg/node.Node` that the Go
-//! `internal/analyzers/imports` package reads: `Type`, `Token`, `Roles`,
-//! `Children`. Once the real `cf-uast-node` crate is ported, delete this module
-//! and use `cf_uast_node::Node` (full `ToMap`/JSON parity); the import analyzer
-//! only touches the fields modelled here.
+//! The subset of the canonical UAST node that the import analyzer reads:
+//! `type_`, `token`, `roles`, `children`. The full model (with map/JSON
+//! conversion) lives in `cf-uast-node`; the analyzer only touches the fields
+//! modelled here, so the crate stays self-contained.
 //!
-//! The Go type tags used by the analyzer are reproduced as associated
-//! constants on [`uast`] and [`role`] so the ported traversal reads exactly
-//! like the Go code (`n.Type == node.UASTImport`, `n.HasAnyRole(node.RoleImport)`,
-//! `child.Type == node.UASTLiteral`, `child.Type == node.UASTIdentifier`).
+//! The node-type and role tags used by the analyzer are defined as constants on
+//! [`uast`] and [`role`] so the traversal reads declaratively
+//! (`n.type_ == uast::IMPORT`, `n.has_any_role(role::IMPORT)`).
 
-/// A semantic role tag attached to a node (Go `node.Role`, a string type).
+/// A semantic role tag attached to a node.
 pub type Role = String;
 
 /// Canonical UAST node-type strings used by the imports analyzer.
-///
-/// These match the Go `node` package constants (`UASTImport`, `UASTLiteral`,
-/// `UASTIdentifier`).
 pub mod uast {
-    /// `node.UASTImport` — an import statement node.
+    /// An import statement node.
     pub const IMPORT: &str = "Import";
-    /// `node.UASTLiteral` — a literal (e.g. a quoted import path).
+    /// A literal (e.g. a quoted import path).
     pub const LITERAL: &str = "Literal";
-    /// `node.UASTIdentifier` — an identifier (e.g. a module name).
+    /// An identifier (e.g. a module name).
     pub const IDENTIFIER: &str = "Identifier";
 }
 
 /// Canonical UAST role strings used by the imports analyzer.
 pub mod role {
-    /// `node.RoleImport` — marks a node as participating in an import.
+    /// Marks a node as participating in an import.
     pub const IMPORT: &str = "Import";
 }
 
-/// A node in the Universal Abstract Syntax Tree.
+/// A node in the Universal Abstract Syntax Tree (restricted to the fields the
+/// imports analyzer uses).
 ///
-/// Field-for-field mirror (restricted to the fields the imports analyzer uses)
-/// of the Go `node.Node`. `children` holds owned child nodes; the Go code uses
-/// `[]*node.Node`, but ownership is irrelevant to the read-only traversal.
+/// `children` holds owned child nodes; ownership is irrelevant to the
+/// read-only traversal.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Node {
     /// The node type (e.g. [`uast::IMPORT`]).
@@ -52,6 +47,7 @@ pub struct Node {
 
 impl Node {
     /// Creates a node with the given type and no other attributes.
+    #[must_use]
     pub fn new(type_: impl Into<String>) -> Self {
         Node {
             type_: type_.into(),
@@ -60,12 +56,14 @@ impl Node {
     }
 
     /// Builder: set the token text.
+    #[must_use]
     pub fn with_token(mut self, token: impl Into<String>) -> Self {
         self.token = token.into();
         self
     }
 
     /// Builder: set the roles.
+    #[must_use]
     pub fn with_roles<I, S>(mut self, roles: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -76,6 +74,7 @@ impl Node {
     }
 
     /// Builder: append children.
+    #[must_use]
     pub fn with_children<I>(mut self, children: I) -> Self
     where
         I: IntoIterator<Item = Node>,
@@ -84,17 +83,16 @@ impl Node {
         self
     }
 
-    /// Reports whether this node carries any of the given role.
+    /// Reports whether this node carries the given role.
     ///
-    /// Mirrors Go `(*Node).HasAnyRole`. Here it takes a single role because the
-    /// analyzer only ever queries [`role::IMPORT`].
+    /// Takes a single role because the analyzer only ever queries
+    /// [`role::IMPORT`].
+    #[must_use]
     pub fn has_any_role(&self, role: &str) -> bool {
         self.roles.iter().any(|r| r == role)
     }
 
     /// Visits this node and all descendants in pre-order (node before children).
-    ///
-    /// Mirrors Go `(*Node).VisitPreOrder`.
     pub fn visit_pre_order<F: FnMut(&Node)>(&self, f: &mut F) {
         f(self);
         for child in &self.children {

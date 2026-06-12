@@ -1,9 +1,9 @@
 //! Self-contained Levenshtein edit distance over Unicode scalar values.
 //!
-//! Mirrors `cf_alg_levenshtein::Context::distance` (Go `pkg/alg/levenshtein`),
-//! which measures distance in **rune** edits (insert/delete/substitute), each
-//! cost 1. The Go typos analyzer reuses a `levenshtein.Context` for amortized
-//! allocation; this [`Context`] keeps the same reusable-row design.
+//! Mirrors `cf_alg_levenshtein::Context::distance`, which measures distance in
+//! **scalar-value** edits (insert/delete/substitute), each cost 1. The typo
+//! detector reuses a [`Context`] for amortized allocation (reusable-row
+//! design).
 //!
 //! Replacing this module with a dependency on `cf-alg-levenshtein` is
 //! mechanical (the `Context::distance(&str, &str) -> usize` signature matches).
@@ -16,14 +16,15 @@ pub struct Context {
 
 impl Context {
     /// Creates a new, empty context.
+    #[must_use]
     pub fn new() -> Self {
-        Context::default()
+        Self::default()
     }
 
-    /// Computes the Levenshtein distance between `a` and `b` over runes.
+    /// Computes the Levenshtein distance between `a` and `b`.
     ///
     /// Standard two-row dynamic-programming Levenshtein, operating on Unicode
-    /// scalar values (Rust `char`) to match Go's rune semantics.
+    /// scalar values (`char`), not bytes.
     pub fn distance(&mut self, a: &str, b: &str) -> usize {
         let ra: Vec<char> = a.chars().collect();
         let rb: Vec<char> = b.chars().collect();

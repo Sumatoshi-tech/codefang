@@ -1,15 +1,15 @@
 //! Import metrics computation.
 //!
-//! Port of `internal/analyzers/imports/metrics.go`. Given a parsed report
-//! ([`ReportData`]), it computes a categorized import list, a category
-//! distribution, dependency-risk findings, and aggregate statistics
+//! Given a parsed report ([`ReportData`]), computes a categorized import list,
+//! a category distribution, dependency-risk findings, and aggregate statistics
 //! ([`ComputedMetrics`]) — the structure the static analyzer marshals in the
 //! json/yaml/bin formats.
 //!
 //! The classification helpers ([`categorize_import`], [`is_external_import`],
 //! [`is_standard_library`]) are data-parity-critical: they decide which/what
-//! values appear in machine output, so the stdlib table and prefix rules are
-//! reproduced verbatim from the Go source.
+//! values appear in machine output (pinned by the differential gate in
+//! `rust/tests/compat`), so the stdlib table and prefix rules are frozen
+//! reference data.
 
 use crate::report::ReportValue;
 
@@ -19,8 +19,6 @@ const DEEPLY_NESTED_THRESHOLD: usize = 3;
 const LONG_PATH_THRESHOLD: usize = 5;
 
 /// Parsed input data for metrics computation.
-///
-/// Mirrors Go `ReportData`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ReportData {
     /// The import identifiers found in the report.
@@ -32,19 +30,19 @@ pub struct ReportData {
 impl ReportData {
     /// Extracts [`ReportData`] from an analyzer report.
     ///
-    /// Mirrors Go `ParseReportData`. The `imports` key is read as a string list
-    /// when present; otherwise (the binary-encode -> JSON-decode round trip
-    /// renames it to `import_list` with `{"path": ...}` objects) paths are pulled
-    /// from the `path` field of each `import_list` entry. `count` accepts an int
-    /// or a float (the latter from JSON decode).
+    /// The `imports` key is read as a string list when present; otherwise (the
+    /// binary-encode -> JSON-decode round trip renames it to `import_list` with
+    /// `{"path": ...}` objects) paths are pulled from the `path` field of each
+    /// `import_list` entry. `count` accepts an int or a float (the latter from
+    /// JSON decode).
     ///
     /// # Errors
-    /// Never fails; the `Result` matches the Go signature for call-site parity.
+    /// Never fails; the `Result` keeps call-site parity with the analyzer
+    /// interface.
     pub fn parse(report: &ReportValue) -> Result<ReportData, std::convert::Infallible> {
         let mut data = ReportData::default();
-        let map = match report.as_map() {
-            Some(m) => m,
-            None => return Ok(data),
+        let Some(map) = report.as_map() else {
+            return Ok(data);
         };
 
         match map.get("imports") {
@@ -74,13 +72,11 @@ impl ReportData {
     }
 }
 
-/// Extracts string paths from a JSON-decoded `import_list`.
-///
-/// Mirrors Go `extractImportPaths`: the list is `[]any` of `{"path": ...}`.
+/// Extracts string paths from a JSON-decoded `import_list` (a list of
+/// `{"path": ...}` objects).
 fn extract_import_paths(items: &ReportValue) -> Vec<String> {
-    let list = match items {
-        ReportValue::List(l) => l,
-        _ => return Vec::new(),
+    let ReportValue::List(list) = items else {
+        return Vec::new();
     };
     let mut paths = Vec::with_capacity(list.len());
     for item in list {
@@ -93,7 +89,7 @@ fn extract_import_paths(items: &ReportValue) -> Vec<String> {
     paths
 }
 
-/// Information about a single import. Mirrors Go `ImportData`.
+/// Information about a single import.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportData {
     /// The import path.
@@ -104,7 +100,7 @@ pub struct ImportData {
     pub is_external: bool,
 }
 
-/// Import count for a single category. Mirrors Go `ImportCategoryData`.
+/// Import count for a single category.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportCategoryData {
     /// The category name.
@@ -113,7 +109,7 @@ pub struct ImportCategoryData {
     pub count: i64,
 }
 
-/// A potential dependency issue. Mirrors Go `ImportDependencyData`.
+/// A potential dependency issue.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportDependencyData {
     /// The offending import path.
@@ -124,7 +120,7 @@ pub struct ImportDependencyData {
     pub reason: String,
 }
 
-/// Aggregate summary statistics. Mirrors Go `AggregateData`.
+/// Aggregate summary statistics.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct AggregateData {
     /// Total number of imports.
@@ -139,7 +135,7 @@ pub struct AggregateData {
     pub external_ratio: f64,
 }
 
-/// All computed metric results. Mirrors Go `ComputedMetrics`.
+/// All computed metric results.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ComputedMetrics {
     /// Categorized import list (`import_list`).
@@ -153,16 +149,15 @@ pub struct ComputedMetrics {
 }
 
 impl ComputedMetrics {
-    /// Converts the metrics to a [`ReportValue`] for JSON/YAML/bin marshaling.
+    /// Converts the metrics to a [`ReportValue`] tree.
     ///
-    /// Field/key names match the Go `json:`/`yaml:` struct tags exactly so the
-    /// go-compat encoders reproduce the original bytes. The top-level wrapper is
-    /// a struct-origin object: in Go its key order is field declaration order
-    /// (`import_list, categories, dependencies, aggregate`). The local
-    /// [`ReportValue::Map`] byte-sorts keys, which is correct for `map`-origin
-    /// objects but NOT for struct-origin wrappers — wiring the real cf-gojson
-    /// dual-mode `GoMap` (declaration-order for structs) is required for true
-    /// byte-identity here. See crate todos.
+    /// Key names match the report contract exactly. Note that the top-level
+    /// report object serializes with **declaration-order** keys (`import_list`,
+    /// `categories`, `dependencies`, `aggregate`), which a byte-sorted
+    /// [`ReportValue::Map`] cannot express — the authoritative encoder path is
+    /// [`Self::to_go_value`]; this conversion remains as the legacy local-shim
+    /// view.
+    #[must_use]
     pub fn to_report_value(&self) -> ReportValue {
         let mut root = ReportValue::map();
 
@@ -227,26 +222,27 @@ impl ComputedMetrics {
         root
     }
 
-    /// Converts the metrics to a [`cf_gojson::GoValue`] for byte-identical Go
-    /// `encoding/json` output (DESIGN §2/§3). This is the authoritative encoder
-    /// path; [`Self::to_report_value`] is the legacy local shim.
+    /// Converts the metrics to a [`cf_gojson::GoValue`] for byte-exact machine
+    /// JSON output. This is the authoritative encoder path;
+    /// [`Self::to_report_value`] is the legacy local shim.
     ///
-    /// Byte-parity details reproduced from Go `*ComputedMetrics`:
+    /// Byte-parity details of the report contract (pinned by the differential
+    /// gate in `rust/tests/compat`):
     ///
-    /// * The top-level object is **struct-origin** ([`MapOrigin::Struct`]), so
-    ///   keys are emitted in Go field-declaration order — `import_list`,
-    ///   `categories`, `dependencies`, `aggregate` — **not** byte-sorted.
-    /// * `import_list` and `categories` come from `make([]T, 0, n)` in Go (never
-    ///   nil), so they always serialize as `[]` when empty.
-    /// * `dependencies` comes from a Go `var result []ImportDependencyData` (nil
-    ///   until the first `append`), so when no risky imports exist it is a **nil
-    ///   slice** and Go marshals it as `null`, not `[]`. This is the first-byte
-    ///   distinction in the `run/history_imports.json` golden
+    /// * The top-level object is **struct-origin**, so keys are emitted in
+    ///   declaration order — `import_list`, `categories`, `dependencies`,
+    ///   `aggregate` — **not** byte-sorted.
+    /// * `import_list` and `categories` are always present slices, so they
+    ///   serialize as `[]` when empty.
+    /// * `dependencies` is a nil-when-empty slice in the report contract: when
+    ///   no risky imports exist it serializes as **`null`**, not `[]`. This is
+    ///   the first-byte distinction in the `run/history_imports.json` golden
     ///   (`"dependencies":null`).
-    /// * `aggregate` is itself a struct: declaration order `total_imports`,
-    ///   `external_imports`, `internal_imports`, `unique_packages`,
-    ///   `external_ratio`; `external_ratio` is a `float64` routed through
-    ///   cf-gojson's Go-`'g'` formatter (`0` for the empty report).
+    /// * `aggregate` is itself struct-origin: declaration order
+    ///   `total_imports`, `external_imports`, `internal_imports`,
+    ///   `unique_packages`, `external_ratio`; `external_ratio` is a float routed
+    ///   through cf-gojson's shortest-round-trip formatter (`0` for the empty
+    ///   report).
     #[must_use]
     pub fn to_go_value(&self) -> cf_gojson::GoValue {
         use cf_gojson::{GoMap, GoValue};
@@ -274,8 +270,9 @@ impl ComputedMetrics {
             })
             .collect();
 
-        // Go nil-slice -> `null`. The Dependency metric only ever `append`s to a
-        // `var result []…` (nil) slice, so an empty result is nil, not `[]`.
+        // Nil-when-empty slice -> `null` (report-format contract): the
+        // dependency metric only ever appends to an initially-nil slice, so an
+        // empty result serializes as null, not [].
         let dependencies = if self.dependencies.is_empty() {
             GoValue::Null
         } else {
@@ -308,17 +305,17 @@ impl ComputedMetrics {
         GoValue::Map(root)
     }
 
-    /// Converts the metrics to a [`cf_gojson::GoValue`] for byte-identical Go
-    /// `gopkg.in/yaml.v3` output (the `--format yaml` static path:
-    /// `imports.Analyzer.FormatReportYAML` = `yaml.Marshal(*ComputedMetrics)`).
+    /// Converts the metrics to a [`cf_gojson::GoValue`] for byte-exact machine
+    /// YAML output (the `--format yaml` static path).
     ///
-    /// This is identical to [`Self::to_go_value`] (struct field-declaration key
-    /// order — `import_list`, `categories`, `dependencies`, `aggregate`) with one
-    /// encoder-specific difference: yaml.v3 marshals a **nil slice** as an empty
-    /// sequence `[]`, not `null`. So when no risky imports exist, `dependencies`
-    /// is `[]` here (vs `null` in the json encoder). This matches the
-    /// `static/static_imports.yaml` golden (`dependencies: []`). `external_ratio`
-    /// is a `float64` routed through cf-goyaml's go-`'g'` float formatter.
+    /// Identical to [`Self::to_go_value`] (struct field-declaration key order —
+    /// `import_list`, `categories`, `dependencies`, `aggregate`) with one
+    /// encoder-specific difference in the report contract: the YAML encoding of
+    /// a nil-when-empty slice is an empty sequence `[]`, not `null`. So when no
+    /// risky imports exist, `dependencies` is `[]` here (vs `null` in the json
+    /// encoder), matching the `static/static_imports.yaml` golden
+    /// (`dependencies: []`). `external_ratio` routes through cf-goyaml's float
+    /// formatter.
     #[must_use]
     pub fn to_go_value_yaml(&self) -> cf_gojson::GoValue {
         use cf_gojson::GoValue;
@@ -327,7 +324,7 @@ impl ComputedMetrics {
             GoValue::Map(m) => m,
             other => return other,
         };
-        // yaml.v3: nil slice -> `[]` (json -> `null`). Replace a `null`
+        // YAML contract: nil slice -> `[]` (json -> `null`). Replace a `null`
         // `dependencies` with an empty array.
         if matches!(root.get("dependencies"), Some(GoValue::Null)) {
             root.insert("dependencies", GoValue::Array(Vec::new()));
@@ -338,10 +335,9 @@ impl ComputedMetrics {
 
 /// Runs all metrics over a report and returns the combined result.
 ///
-/// Mirrors Go `ComputeAllMetrics`.
-///
 /// # Errors
-/// Never fails; the `Result` matches the Go signature.
+/// Never fails; the `Result` keeps call-site parity with the analyzer
+/// interface.
 pub fn compute_all_metrics(
     report: &ReportValue,
 ) -> Result<ComputedMetrics, std::convert::Infallible> {
@@ -355,8 +351,7 @@ pub fn compute_all_metrics(
 }
 
 /// Computes the categorized import list, sorted by category then path.
-///
-/// Mirrors Go `ImportListMetric.Compute`.
+#[must_use]
 pub fn compute_import_list(input: &ReportData) -> Vec<ImportData> {
     let mut result: Vec<ImportData> = input
         .imports
@@ -368,13 +363,13 @@ pub fn compute_import_list(input: &ReportData) -> Vec<ImportData> {
         })
         .collect();
 
-    // Sort by category then path (Go sort.Slice is not stable, but the keys are
-    // fully ordering here, so a stable sort yields the same result).
+    // The (category, path) key is a total order, so stable vs unstable sorting
+    // cannot diverge here.
     result.sort_by(|a, b| {
-        if a.category != b.category {
-            a.category.cmp(&b.category)
-        } else {
+        if a.category == b.category {
             a.path.cmp(&b.path)
+        } else {
+            a.category.cmp(&b.category)
         }
     });
     result
@@ -382,10 +377,10 @@ pub fn compute_import_list(input: &ReportData) -> Vec<ImportData> {
 
 /// Computes the category distribution, sorted by count descending.
 ///
-/// Mirrors Go `ImportCategoryMetric.Compute`. Go iterates a `map[string]int`
-/// (nondeterministic order) then sorts by count descending with an unstable
-/// sort; for ties the Go order is not defined. This port sorts by count
-/// descending and, to be deterministic, breaks ties by category name.
+/// The reference implementation leaves equal-count tie order unspecified
+/// (unstable sort over nondeterministic map iteration); this implementation
+/// breaks ties by category name for determinism.
+#[must_use]
 pub fn compute_categories(input: &ReportData) -> Vec<ImportCategoryData> {
     use std::collections::BTreeMap;
     let mut categories: BTreeMap<String, i64> = BTreeMap::new();
@@ -402,9 +397,10 @@ pub fn compute_categories(input: &ReportData) -> Vec<ImportCategoryData> {
 
 /// Identifies potential dependency issues, in input order.
 ///
-/// Mirrors Go `ImportDependencyMetric.Compute`. When both conditions hold, the
-/// long-path branch runs second and overwrites the risk/reason, exactly as in
-/// the Go code (sequential `if`s, not `else if`).
+/// When both conditions hold, the long-path branch runs second and overwrites
+/// the risk/reason — sequential `if`s, not `else if` (pinned classification
+/// behavior).
+#[must_use]
 pub fn compute_dependencies(input: &ReportData) -> Vec<ImportDependencyData> {
     let mut result = Vec::new();
     for imp in &input.imports {
@@ -434,8 +430,7 @@ pub fn compute_dependencies(input: &ReportData) -> Vec<ImportDependencyData> {
 }
 
 /// Computes aggregate statistics.
-///
-/// Mirrors Go `AggregateMetric.Compute`.
+#[must_use]
 pub fn compute_aggregate(input: &ReportData) -> AggregateData {
     use std::collections::BTreeSet;
     let mut agg = AggregateData {
@@ -458,33 +453,26 @@ pub fn compute_aggregate(input: &ReportData) -> AggregateData {
     agg
 }
 
-/// Counts non-overlapping occurrences of `sub` in `s` (Go `strings.Count`).
+/// Counts non-overlapping occurrences of `sub` in `s`.
 fn count_occurrences(s: &str, sub: &str) -> usize {
     if sub.is_empty() {
-        // Go strings.Count(s, "") == utf8.RuneCount(s)+1; not used here.
+        // Degenerate case kept for contract completeness: rune count + 1.
         return s.chars().count() + 1;
     }
     s.matches(sub).count()
 }
 
-/// Returns the base package: the substring before the first `/` (Go
-/// `strings.Split(imp, "/")[0]`).
+/// Returns the base package: the substring before the first `/`.
 fn base_package(imp: &str) -> &str {
-    match imp.split_once('/') {
-        Some((head, _)) => head,
-        None => imp,
-    }
+    imp.split_once('/').map_or(imp, |(head, _)| head)
 }
 
 /// Categorizes an import as `relative`, `stdlib`, or `external`.
-///
-/// Mirrors Go `categorizeImport`.
+#[must_use]
 pub fn categorize_import(imp: &str) -> String {
     if imp.starts_with('.') || imp.starts_with('/') {
         return "relative".to_string();
     }
-    // Both remaining branches (with-slash and without-slash) reduce to: stdlib
-    // if recognised, else external — exactly as the Go switch does.
     if is_standard_library(imp) {
         "stdlib".to_string()
     } else {
@@ -493,8 +481,7 @@ pub fn categorize_import(imp: &str) -> String {
 }
 
 /// Reports whether an import is external (not relative, not stdlib).
-///
-/// Mirrors Go `isExternalImport`.
+#[must_use]
 pub fn is_external_import(imp: &str) -> bool {
     if imp.starts_with('.') || imp.starts_with('/') {
         return false;
@@ -504,9 +491,10 @@ pub fn is_external_import(imp: &str) -> bool {
 
 /// Reports whether an import's base package is a known standard-library package.
 ///
-/// Mirrors Go `isStandardLibrary`. The stdlib table is reproduced verbatim and
-/// in the same order as the Go source (data parity); `path` and `http` appear
-/// twice in Go, which is harmless for membership.
+/// The stdlib table is frozen reference data (it decides classification in
+/// machine output); `path` and `http` appear twice, which is harmless for
+/// membership.
+#[must_use]
 pub fn is_standard_library(imp: &str) -> bool {
     const STDLIBS: &[&str] = &[
         // Go.
@@ -524,8 +512,6 @@ pub fn is_standard_library(imp: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // --- ported from metrics_test.go ---
 
     const TEST_IMPORT_STDLIB: &str = "fmt";
     const TEST_IMPORT_EXTERNAL: &str = "github.com/user/repo";
@@ -556,15 +542,16 @@ mod tests {
     }
 
     /// Byte-for-byte parity of the empty-imports report against the binding
-    /// golden `rust/tests/golden/run/history_imports.json` (history/imports json,
-    /// 10 commits with no extracted imports). Locks: declaration field order
-    /// (not byte-sorted), `import_list`/`categories` => `[]`, `dependencies` =>
-    /// `null` (Go nil slice), `external_ratio` => `0`, and NO trailing newline
-    /// (compact `json.Marshal`).
+    /// golden `rust/tests/golden/run/history_imports.json` (history/imports
+    /// json, 10 commits with no extracted imports). Locks: declaration field
+    /// order (not byte-sorted), `import_list`/`categories` => `[]`,
+    /// `dependencies` => `null` (nil slice), `external_ratio` => `0`, and NO
+    /// trailing newline (compact encoding).
     #[test]
     fn empty_report_matches_history_imports_golden() {
-        // ticksToReport always emits a non-empty report (imports/author_index/
-        // tick_size keys), so ComputeAllMetrics runs even when no imports exist.
+        // The tick-to-report path always emits a non-empty report
+        // (imports/author_index/tick_size keys), so metrics computation runs
+        // even when no imports exist.
         let report = ReportValue::map();
         let metrics = compute_all_metrics(&report).unwrap();
         let bytes = cf_gojson::marshal(&metrics.to_go_value());

@@ -11,7 +11,7 @@
 //!   and multiplied by the system page size, exactly like the Go implementation
 //!   (`rss * int64(os.Getpagesize())`).
 //! - On every other platform, and on any error (file missing, unreadable, or
-//!   unparsable), the function returns `0` — mirroring Go's "returns 0 if the
+//!   unparsable), the function returns `0` — the reference contract ("returns 0 if the
 //!   information is unavailable" / "returns 0 on non-Linux platforms" contract.
 //!
 //! The Go function never returns an error; failures collapse to `0`. The Rust
@@ -26,7 +26,7 @@
 
 /// Path to the per-process statm file on Linux.
 ///
-/// Mirrors Go's `procStatmPath` constant in `pkg/meminfo/rss_linux.go`.
+/// The `/proc/self/statm` path the RSS reader consumes.
 #[cfg(target_os = "linux")]
 const PROC_STATM_PATH: &str = "/proc/self/statm";
 
@@ -96,7 +96,7 @@ pub fn read_rss_bytes() -> i64 {
 
 /// Returns the system memory page size in bytes.
 ///
-/// Equivalent to Go's `os.Getpagesize()`, which on Linux is backed by
+/// Equivalent to `os.Getpagesize()` in the reference runtime, which on Linux is backed by
 /// `sysconf(_SC_PAGESIZE)`. A non-positive or failed lookup falls back to the
 /// conventional 4096-byte page so that RSS still scales sensibly.
 #[cfg(target_os = "linux")]
@@ -114,7 +114,7 @@ fn page_size() -> i64 {
 mod tests {
     use super::*;
 
-    /// Ported from Go's `TestReadRSSBytes_ReturnsNonNegative`: the result must
+    /// Mirrors reference test `TestReadRSSBytes_ReturnsNonNegative`: the result must
     /// always be non-negative on every platform.
     #[test]
     fn read_rss_bytes_returns_non_negative() {
@@ -122,7 +122,7 @@ mod tests {
         assert!(rss >= 0, "RSS should be non-negative, got {rss}");
     }
 
-    /// Ported from Go's `TestReadRSSBytes_NonZeroOnLinux`: on Linux the live
+    /// Mirrors reference test `TestReadRSSBytes_NonZeroOnLinux`: on Linux the live
     /// process always has a positive resident set. On other platforms the Go
     /// test skips; here the function is compiled out and trivially returns 0,
     /// so this assertion is Linux-only.

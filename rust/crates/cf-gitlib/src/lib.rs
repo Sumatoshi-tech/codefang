@@ -1,16 +1,18 @@
-//! `cf-gitlib` — git2-backed repository/commit/diff/blob layer, ported from
-//! Go `pkg/gitlib`.
+//! `cf-gitlib` — git2-backed repository/commit/diff/blob access layer.
 //!
-//! Wires the per-module ports (repository, revwalk, commit, tree, blob, diff,
-//! changes, hash, signature, file, helpers, worker, batch) into one crate and
-//! re-exports the handful of types the rest of the workspace refers to as
+//! Wires the per-concern modules (repository, revwalk, commit, tree, blob,
+//! diff, changes, hash, signature, file, helpers, worker, batch) into one crate
+//! and re-exports the handful of types the rest of the workspace refers to as
 //! `cf_gitlib::Repository` / `Commit` / `Blob` / `Signature` / `GitError`.
-#![allow(dead_code)]
+//!
+//! Repository handles are per-thread (`!Send`/`!Sync`) and rely on RAII `Drop`
+//! to free libgit2 objects. Everything that surfaces into machine reports
+//! (hash rendering, diff line counts, tree-change streams) reproduces the
+//! reference implementation exactly; output bytes are pinned against the
+//! reference binary by `rust/tests/compat`.
 
 pub mod batch;
-pub mod batch_config;
 pub mod blob;
-pub mod cached_blob;
 pub mod changes;
 pub mod commit;
 pub mod diff;

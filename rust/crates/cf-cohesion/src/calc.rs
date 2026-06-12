@@ -1,30 +1,27 @@
-//! Cohesion calculations — direct port of `internal/analyzers/cohesion/calculations.go`.
+//! Cohesion calculations.
 //!
-//! Computes the three module scalars and the per-function cohesion via Bloom-filter
-//! membership of shared variables. The behavior is reproduced exactly, including the
-//! Bloom-filter sizing constants and the "only variables appearing in more than one
-//! function are shared" rule.
+//! Computes the three module scalars and the per-function cohesion via
+//! Bloom-filter membership of shared variables. The Bloom-filter sizing
+//! constants and the "only variables appearing in more than one function are
+//! shared" rule are part of the report contract.
 
 use crate::analyzer::Function;
-// Go-bit-identical Bloom filter (FNV-128a hash kernel, same optimalM/K + double
-// hashing as `pkg/alg/bloom`). The crate's own `bloom.rs` is NOT hash-compatible
-// with Go, so the cohesion math MUST use the shared sketch crate or the per-
-// function shared-variable false positives — and thus the cohesion scores — drift.
+// The shared sketch crate's Bloom filter (FNV-128a hash kernel, pinned
+// sizing + double hashing). The cohesion math MUST use this exact filter:
+// a different hash family changes the per-function shared-variable false
+// positives — and thus the cohesion scores in machine output.
 use cf_alg_bloom::Filter;
 use std::collections::HashMap;
 
-/// 1% false-positive rate for per-function and global Bloom filters
-/// (Go `bloomFPRate`).
+/// 1% false-positive rate for per-function and global Bloom filters.
 pub const BLOOM_FP_RATE: f64 = 0.01;
-/// Minimum expected elements for a per-function filter (Go `bloomMinElements`).
+/// Minimum expected elements for a per-function filter.
 pub const BLOOM_MIN_ELEMENTS: u64 = 16;
-/// Minimum expected elements for the global shared-variable filter
-/// (Go `bloomGlobalMinElems`).
+/// Minimum expected elements for the global shared-variable filter.
 pub const BLOOM_GLOBAL_MIN_ELEMS: u64 = 64;
 
-/// Clamps `v` to the inclusive range `[lo, hi]` (Go `stats.Clamp`).
-///
-/// Matches Go semantics: returns `lo` if `v < lo`, `hi` if `v > hi`, else `v`.
+/// Clamps `v` to the inclusive range `[lo, hi]`: returns `lo` if `v < lo`,
+/// `hi` if `v > hi`, else `v`.
 #[must_use]
 pub fn clamp(v: f64, lo: f64, hi: f64) -> f64 {
     if v < lo {
@@ -36,8 +33,7 @@ pub fn clamp(v: f64, lo: f64, hi: f64) -> f64 {
     }
 }
 
-/// Returns the distinct entries of `items`, preserving **first-seen order**
-/// (Go `mapx.Unique`, which is order-preserving).
+/// Returns the distinct entries of `items`, preserving **first-seen order**.
 #[must_use]
 pub fn unique(items: &[String]) -> Vec<String> {
     let mut seen = std::collections::HashSet::with_capacity(items.len());
@@ -50,8 +46,7 @@ pub fn unique(items: &[String]) -> Vec<String> {
     out
 }
 
-/// LCOM and cohesion calculations live on the analyzer in Go; the methods are free
-/// functions here since they carry no analyzer state.
+/// LCOM and cohesion calculations. Stateless methods on the analyzer.
 impl crate::analyzer::Analyzer {
     /// Calculates LCOM-HS (Henderson-Sellers): `LCOM = 1 - sum(mA) / (m * a)`.
     ///
@@ -60,7 +55,7 @@ impl crate::analyzer::Analyzer {
     /// * `mA` = for each variable, the count of functions that reference it
     ///
     /// Range `[0, 1]`; 0 = perfect cohesion, 1 = none. Returns `0.0` for `<= 1`
-    /// function or when there are no variables. Port of `calculateLCOM`.
+    /// function or when there are no variables.
     #[must_use]
     pub fn calculate_lcom(&self, functions: &[Function]) -> f64 {
         if functions.len() <= 1 {
@@ -77,7 +72,7 @@ impl crate::analyzer::Analyzer {
     }
 
     /// Converts LCOM-HS to a cohesion score (higher is better): `1 - lcom`.
-    /// Returns `1.0` for `<= 1` function. Port of `calculateCohesionScore`.
+    /// Returns `1.0` for `<= 1` function.
     #[must_use]
     pub fn calculate_cohesion_score(&self, lcom: f64, function_count: usize) -> f64 {
         if function_count <= 1 {
@@ -86,8 +81,7 @@ impl crate::analyzer::Analyzer {
         clamp(1.0 - lcom, 0.0, 1.0)
     }
 
-    /// Average per-function cohesion. Returns `1.0` for an empty slice. Port of
-    /// `calculateFunctionCohesion`.
+    /// Average per-function cohesion. Returns `1.0` for an empty slice.
     #[must_use]
     pub fn calculate_function_cohesion(&self, functions: &[Function]) -> f64 {
         if functions.is_empty() {
@@ -102,7 +96,6 @@ impl crate::analyzer::Analyzer {
     /// A variable is "shared" iff it tests positive against `global_filter` (which
     /// contains every variable used by more than one function). Functions with no
     /// variables score `1.0`; if `global_filter` is `None` the score is `0.0`.
-    /// Port of `calculateFunctionLevelCohesion`.
     #[must_use]
     pub fn calculate_function_level_cohesion(
         &self,
@@ -124,9 +117,9 @@ impl crate::analyzer::Analyzer {
     }
 }
 
-/// Gathers all distinct variable names across all functions (Go
-/// `collectUniqueVariables`). Order is unspecified (Go iterates a map); only the
-/// *count* feeds the LCOM formula, so order does not affect the scalar.
+/// Gathers all distinct variable names across all functions. Order is
+/// unspecified; only the *count* feeds the LCOM formula, so order does not
+/// affect the scalar.
 #[must_use]
 pub fn collect_unique_variables(functions: &[Function]) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
@@ -139,12 +132,11 @@ pub fn collect_unique_variables(functions: &[Function]) -> Vec<String> {
 }
 
 /// Counts function-variable access pairs: for each variable, how many functions
-/// reference it. Uses one Bloom filter per function for O(1) membership tests,
-/// exactly as Go's `countVariableAccesses`.
+/// reference it. Uses one Bloom filter per function for O(1) membership tests.
 ///
-/// The return is `f64` because it feeds the LCOM division directly (Go also
-/// accumulates into a `float64`). Bloom false positives are part of the defined
-/// behavior and are reproduced via the shared sketch crate.
+/// The return is `f64` because it feeds the LCOM division directly. Bloom false
+/// positives are part of the defined behavior and are reproduced via the shared
+/// sketch crate.
 #[must_use]
 pub fn count_variable_accesses(all_vars: &[String], functions: &[Function]) -> f64 {
     let filters = build_per_function_bloom_filters(functions);
@@ -160,9 +152,9 @@ pub fn count_variable_accesses(all_vars: &[String], functions: &[Function]) -> f
     sum
 }
 
-/// Builds a Bloom filter for each function's variable set (Go
-/// `buildPerFunctionBloomFilters`). A `None` entry corresponds to Go's `nil`
-/// filter when `NewWithEstimates` returns an error.
+/// Builds a Bloom filter for each function's variable set. A `None` entry
+/// stands in for a filter whose construction failed (invalid parameters); such
+/// entries are skipped by the membership loop.
 #[must_use]
 pub fn build_per_function_bloom_filters(functions: &[Function]) -> Vec<Option<Filter>> {
     functions
@@ -182,11 +174,11 @@ pub fn build_per_function_bloom_filters(functions: &[Function]) -> Vec<Option<Fi
         .collect()
 }
 
-/// Builds the global shared-variable Bloom filter (Go `buildGlobalVariableFilter`).
+/// Builds the global shared-variable Bloom filter.
 ///
-/// Only variables appearing in **more than one** function are added. Returns `None`
-/// when there are no variables, or no variable is shared, or the filter cannot be
-/// constructed — matching every `return nil` branch in the Go code.
+/// Only variables appearing in **more than one** function are added. Returns
+/// `None` when there are no variables, or no variable is shared, or the filter
+/// cannot be constructed.
 #[must_use]
 pub fn build_global_variable_filter(functions: &[Function]) -> Option<Filter> {
     // Count occurrences across functions.

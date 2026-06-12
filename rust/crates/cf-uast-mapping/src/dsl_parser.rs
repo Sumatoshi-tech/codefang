@@ -1,15 +1,9 @@
 //! UAST mapping DSL parser.
 //!
-//! Port of Go `pkg/uast/pkg/mapping/dsl_parser.go` together with the PEG grammar
-//! in `mapping.peg`. The Go implementation parses the DSL with a generated
-//! `peg`/`pigeon` parser (`mapping.peg.go`, ~42 KB of generated tables) and then
-//! walks the resulting parse tree to build [`Rule`]s and a [`LanguageInfo`].
-//!
-//! Per the rewrite design (DESIGN.md §5, rule 6 — "port the generator, not the
-//! generated artifact"), the 42 KB generated parser is **not** hand-translated.
-//! Instead the PEG grammar itself is reimplemented here as a small
-//! recursive-descent parser that produces byte-identical [`Rule`]/[`LanguageInfo`]
-//! results. The grammar productions below map 1:1 onto `mapping.peg`:
+//! A small recursive-descent parser for the mapping PEG grammar, producing
+//! [`Rule`]s and a [`LanguageInfo`]. Its output is a frozen contract: the
+//! static mapping tables are equality-gated against it (see
+//! [`crate::static_model`]). The key grammar productions:
 //!
 //! ```text
 //! Start          <- Spacing LanguageDeclaration? Spacing RuleList Spacing !.
@@ -20,90 +14,85 @@
 //! UASTSpec       <- 'uast(' Spacing UASTFields Spacing ')'
 //! ```
 //!
-//! The captured pattern text and the per-field value handling reproduce Go's
-//! `extractText`, `extractUASTSpec`/`applyUASTField`, condition splitting, and
-//! string unquoting (`strconv.Unquote`).
+//! Rules capture the raw pattern text; per-field value handling covers
+//! identifier/capture passthrough, condition splitting, and quoted-string
+//! unescaping ([`go_unquote`]).
 
 use std::collections::BTreeMap;
-use std::fmt;
 
 use crate::mapping_types::{Condition, Rule, UastSpec};
 
 /// Minimum number of whitespace-split fields required when parsing an "extends"
-/// declaration (`# Extends base_rule ...`). Mirrors Go `minExtendsFields`.
+/// declaration (`# Extends base_rule ...`).
 const MIN_EXTENDS_FIELDS: usize = 3;
 
-/// Language declaration information from a mapping file (Go `LanguageInfo`).
+/// Language declaration information from a mapping file.
 ///
-/// The Go struct carries `json:"name"`, `json:"extensions"`, `json:"files"`
-/// tags. This crate does not emit machine-format report bytes, so no serde
-/// derive is attached here; downstream crates that serialize a `LanguageInfo`
-/// must route through `cf-gojson` to preserve byte-identity (DESIGN.md §2).
+/// This crate does not emit machine-format report bytes, so no serde derive is
+/// attached here; downstream crates that serialize a `LanguageInfo` must route
+/// through `cf-gojson` to preserve byte-identity (DESIGN.md §2). The JSON keys
+/// are `name`, `extensions`, and `files`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LanguageInfo {
-    /// Language name (`json:"name"`).
+    /// Language name (JSON key `name`).
     pub name: String,
-    /// File extensions (`json:"extensions"`).
+    /// File extensions (JSON key `extensions`).
     pub extensions: Vec<String>,
-    /// File globs/names (`json:"files"`).
+    /// File globs/names (JSON key `files`).
     pub files: Vec<String>,
 }
 
 /// Errors produced while parsing the mapping DSL.
 ///
-/// Variants mirror the Go sentinel errors so callers can distinguish failure
-/// modes identically.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The error strings are part of the CLI compatibility contract.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ParseError {
-    /// No language declaration found (`errNoLangDeclaration`).
+    /// No language declaration found.
+    #[error("no language declaration found")]
     NoLangDeclaration,
-    /// Invalid language declaration format (`errInvalidLangFormat`).
+    /// Invalid language declaration format.
+    #[error("invalid language declaration format")]
     InvalidLangFormat,
-    /// No mapping rules found in DSL (`errNoRules`).
+    /// No mapping rules found in DSL.
+    #[error("no mapping rules found in DSL")]
     NoRules,
-    /// The PEG parser failed to consume the whole input (`mapping DSL parse error`).
+    /// The PEG parser failed to consume the whole input.
+    #[error("mapping DSL parse error")]
     ParseFailed,
 }
 
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ParseError::NoLangDeclaration => f.write_str("no language declaration found"),
-            ParseError::InvalidLangFormat => f.write_str("invalid language declaration format"),
-            ParseError::NoRules => f.write_str("no mapping rules found in DSL"),
-            ParseError::ParseFailed => f.write_str("mapping DSL parse error"),
-        }
-    }
-}
-
-impl std::error::Error for ParseError {}
-
-/// Parses the mapping DSL and returns validated mapping rules (Go `Parser`).
+/// Parses the mapping DSL and returns validated mapping rules.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Parser;
 
 impl Parser {
     /// Creates a new parser.
-    pub fn new() -> Self {
-        Parser
+    #[must_use]
+    pub const fn new() -> Self {
+        Self
     }
 
     /// Parses the mapping DSL input and returns mapping rules plus the language
-    /// declaration. Mirrors Go `(*Parser).ParseMapping`.
+    /// declaration.
     ///
     /// Line endings are normalized (`\r\n` and `\r` → `\n`) before parsing, then
-    /// rules are extracted and the language declaration is read. Both must
-    /// succeed: an input with no rules yields [`ParseError::NoRules`] and an
-    /// input with no language declaration yields [`ParseError::NoLangDeclaration`].
+    /// rules are extracted and the language declaration is read.
+    ///
+    /// # Errors
+    ///
+    /// Both extractions must succeed: an input that fails the grammar yields
+    /// [`ParseError::ParseFailed`], one with no rules yields
+    /// [`ParseError::NoRules`], and one with no language declaration yields
+    /// [`ParseError::NoLangDeclaration`] (checked in that order).
     pub fn parse_mapping(
         &self,
         input: &str,
     ) -> Result<(Vec<Rule>, LanguageInfo), ParseError> {
         let input = input.replace("\r\n", "\n").replace('\r', "\n");
 
-        // Reproduce Go's parse-then-walk pipeline: first parse, then build rules,
-        // then extract the language declaration. The error precedence matches
-        // Go: parse error → NoRules → NoLangDeclaration.
+        // Parse-then-walk pipeline: first parse, then build rules, then extract
+        // the language declaration. The error precedence is frozen:
+        // parse error → NoRules → NoLangDeclaration.
         let chars: Vec<char> = input.chars().collect();
         let mut p = PegParser::new(&chars);
         let doc = p.parse_start().ok_or(ParseError::ParseFailed)?;
@@ -126,7 +115,7 @@ struct Document {
 }
 
 /// Captured spans for a language declaration. `begin`/`end` are char indices
-/// into the source so `slice(begin, end)` reproduces Go's `extractText`.
+/// into the source; `slice(begin, end)` recovers the raw text.
 struct LangDecl {
     begin: usize,
     end: usize,
@@ -136,7 +125,7 @@ struct LangDecl {
 struct RuleNode {
     name: (usize, usize),
     pattern: (usize, usize),
-    /// UAST field entries: (name_span, value_node).
+    /// UAST field entries: (`name_span`, `value_node`).
     fields: Vec<(Span, FieldValue)>,
     /// Conditions from a trailing `when ...` clause.
     when_conditions: Vec<Span>,
@@ -166,7 +155,7 @@ struct PegParser<'a> {
 }
 
 impl<'a> PegParser<'a> {
-    fn new(src: &'a [char]) -> Self {
+    const fn new(src: &'a [char]) -> Self {
         PegParser { src, pos: 0 }
     }
 
@@ -174,7 +163,7 @@ impl<'a> PegParser<'a> {
         self.src.get(self.pos).copied()
     }
 
-    fn at_end(&self) -> bool {
+    const fn at_end(&self) -> bool {
         self.pos >= self.src.len()
     }
 
@@ -189,11 +178,10 @@ impl<'a> PegParser<'a> {
         }
     }
 
-    /// Skips spacing and line comments (`// ...`). The PEG `Comment` rule is
-    /// "not used" by the grammar's `Spacing`, but the DSL test corpus contains a
-    /// leading `// comment` line. In the Go parser comments are tolerated by the
-    /// `RuleList`/`Spacing` machinery effectively skipping them; we skip them
-    /// here so `TestParseCommentsIgnored` does not crash and parsing proceeds.
+    /// Skips spacing and line comments (`// ...`). The PEG grammar's `Spacing`
+    /// does not formally include comments, but the DSL corpus contains leading
+    /// `// comment` lines; tolerating them here matches the reference parser's
+    /// observable behavior.
     fn ws(&mut self) {
         loop {
             let before = self.pos;
@@ -297,8 +285,8 @@ impl<'a> PegParser<'a> {
     ///   Spacing (ExtensionsSection FilesSection? / FilesSection ExtensionsSection?
     ///   / ExtensionsSection / FilesSection) Spacing ']'`.
     ///
-    /// The Go code only needs the full span of the declaration (it re-parses the
-    /// text in `extractLanguageDeclaration`), so this method validates the shape
+    /// Only the full span of the declaration is needed (the text is re-parsed
+    /// by [`parse_language_declaration`]), so this method validates the shape
     /// loosely — it consumes from `[` to the matching `]` on the same logical
     /// declaration — and returns the captured span. A missing/invalid
     /// declaration leaves the position unchanged (the production is optional).
@@ -348,12 +336,11 @@ impl<'a> PegParser<'a> {
         loop {
             let save = self.pos;
             self.ws();
-            match self.rule() {
-                Some(r) => rules.push(r),
-                None => {
-                    self.pos = save;
-                    break;
-                }
+            if let Some(r) = self.rule() {
+                rules.push(r);
+            } else {
+                self.pos = save;
+                break;
             }
         }
         Some(rules)
@@ -364,22 +351,16 @@ impl<'a> PegParser<'a> {
     ///   (Spacing ConditionList)?`.
     fn rule(&mut self) -> Option<RuleNode> {
         let save = self.pos;
-        let name = match self.identifier() {
-            Some(s) => s,
-            None => return None,
-        };
+        let name = self.identifier()?;
         self.ws();
         if !self.literal("<-") {
             self.pos = save;
             return None;
         }
         self.ws();
-        let pattern = match self.pattern() {
-            Some(s) => s,
-            None => {
-                self.pos = save;
-                return None;
-            }
+        let Some(pattern) = self.pattern() else {
+            self.pos = save;
+            return None;
         };
         self.ws();
         if !self.literal("=>") {
@@ -387,12 +368,9 @@ impl<'a> PegParser<'a> {
             return None;
         }
         self.ws();
-        let fields = match self.uast_spec() {
-            Some(f) => f,
-            None => {
-                self.pos = save;
-                return None;
-            }
+        let Some(fields) = self.uast_spec() else {
+            self.pos = save;
+            return None;
         };
 
         let mut when_conditions = Vec::new();
@@ -434,9 +412,9 @@ impl<'a> PegParser<'a> {
         })
     }
 
-    /// `Pattern <- '(' Spacing NodeType PatternElements Spacing ')'`. Returns the
-    /// full span of the pattern, including both parentheses, reproducing Go's
-    /// `extractText(patternNode)`.
+    /// `Pattern <- '(' Spacing NodeType PatternElements Spacing ')'`. Returns
+    /// the full span of the pattern, including both parentheses (rules store
+    /// the raw pattern text).
     fn pattern(&mut self) -> Option<Span> {
         let start = self.pos;
         if self.peek() != Some('(') {
@@ -549,12 +527,11 @@ impl<'a> PegParser<'a> {
         }
         self.ws();
         let mut fields = Vec::new();
-        match self.uast_field() {
-            Some(f) => fields.push(f),
-            None => {
-                self.pos = save;
-                return None;
-            }
+        if let Some(f) = self.uast_field() {
+            fields.push(f);
+        } else {
+            self.pos = save;
+            return None;
         }
         loop {
             let s = self.pos;
@@ -565,12 +542,11 @@ impl<'a> PegParser<'a> {
             }
             self.pos += 1;
             self.ws();
-            match self.uast_field() {
-                Some(f) => fields.push(f),
-                None => {
-                    self.pos = s;
-                    break;
-                }
+            if let Some(f) = self.uast_field() {
+                fields.push(f);
+            } else {
+                self.pos = s;
+                break;
             }
         }
         self.ws();
@@ -586,22 +562,18 @@ impl<'a> PegParser<'a> {
     /// `UASTFieldName <- Identifier`.
     fn uast_field(&mut self) -> Option<(Span, FieldValue)> {
         let save = self.pos;
-        let name = match self.identifier() {
-            Some(s) => s,
-            None => return None,
-        };
+        let name = self.identifier()?;
         if self.peek() != Some(':') {
             self.pos = save;
             return None;
         }
         self.pos += 1;
         self.ws();
-        match self.uast_field_value() {
-            Some(v) => Some((name, v)),
-            None => {
-                self.pos = save;
-                None
-            }
+        if let Some(v) = self.uast_field_value() {
+            Some((name, v))
+        } else {
+            self.pos = save;
+            None
         }
     }
 
@@ -613,8 +585,8 @@ impl<'a> PegParser<'a> {
         // MultipleStrings (String (',' Spacing String)*) — requires >= 2 strings
         // to differ observably from a single String, but the PEG alternative is
         // ordered, so try the multi form first and accept it whenever a String
-        // matches. We then decide which variant to emit based on count, matching
-        // how the Go AST distinguishes MultipleStrings vs String nodes.
+        // matches. Which variant to emit is then decided by count, preserving
+        // the MultipleStrings vs String distinction in the AST.
         let save = self.pos;
         if let Some(first) = self.string_lit() {
             let mut strings = vec![first];
@@ -626,12 +598,11 @@ impl<'a> PegParser<'a> {
                 }
                 self.pos += 1;
                 self.ws();
-                match self.string_lit() {
-                    Some(sp) => strings.push(sp),
-                    None => {
-                        self.pos = s;
-                        break;
-                    }
+                if let Some(sp) = self.string_lit() {
+                    strings.push(sp);
+                } else {
+                    self.pos = s;
+                    break;
                 }
             }
             if strings.len() > 1 {
@@ -656,12 +627,11 @@ impl<'a> PegParser<'a> {
                 }
                 self.pos += 1;
                 self.ws();
-                match self.capture() {
-                    Some(c) => caps.push(c),
-                    None => {
-                        self.pos = s;
-                        break;
-                    }
+                if let Some(c) = self.capture() {
+                    caps.push(c);
+                } else {
+                    self.pos = s;
+                    break;
                 }
             }
             if caps.len() > 1 {
@@ -684,12 +654,11 @@ impl<'a> PegParser<'a> {
         }
         self.ws();
         let mut conds = Vec::new();
-        match self.condition() {
-            Some(s) => conds.push(s),
-            None => {
-                self.pos = save;
-                return None;
-            }
+        if let Some(s) = self.condition() {
+            conds.push(s);
+        } else {
+            self.pos = save;
+            return None;
         }
         loop {
             let s = self.pos;
@@ -699,12 +668,11 @@ impl<'a> PegParser<'a> {
                 break;
             }
             self.ws();
-            match self.condition() {
-                Some(sp) => conds.push(sp),
-                None => {
-                    self.pos = s;
-                    break;
-                }
+            if let Some(sp) = self.condition() {
+                conds.push(sp);
+            } else {
+                self.pos = s;
+                break;
             }
         }
         Some(conds)
@@ -714,9 +682,7 @@ impl<'a> PegParser<'a> {
     /// full span (e.g. `type == "typed"`).
     fn condition(&mut self) -> Option<Span> {
         let start = self.pos;
-        if self.identifier().is_none() {
-            return None;
-        }
+        self.identifier()?;
         self.ws();
         if !(self.literal("==") || self.literal("!=")) {
             self.pos = start;
@@ -758,16 +724,16 @@ impl<'a> PegParser<'a> {
 }
 
 // ---------------------------------------------------------------------------
-// AST → Rule / LanguageInfo extraction (ports of the Go walk functions)
+// AST → Rule / LanguageInfo extraction
 // ---------------------------------------------------------------------------
 
 fn slice(src: &[char], span: Span) -> String {
     src[span.0..span.1].iter().collect()
 }
 
-/// Builds `[]Rule` from the parsed document. Mirrors Go `buildRulesFromAST` +
-/// `extractRule`: rules with an empty name, pattern, or UAST type are dropped,
-/// and an empty result is [`ParseError::NoRules`].
+/// Builds the rule list from the parsed document: rules with an empty name,
+/// pattern, or UAST type are dropped, and an empty result is
+/// [`ParseError::NoRules`].
 fn build_rules(doc: &Document, src: &[char]) -> Result<Vec<Rule>, ParseError> {
     let mut rules = Vec::new();
     for node in &doc.rules {
@@ -781,8 +747,8 @@ fn build_rules(doc: &Document, src: &[char]) -> Result<Vec<Rule>, ParseError> {
     Ok(rules)
 }
 
-/// Port of Go `extractRule`. Returns `None` for a "broken" rule (empty name,
-/// pattern, or UAST type), matching the Go `errInvalidRule` drop.
+/// Extracts one rule. Returns `None` for a "broken" rule (empty name, pattern,
+/// or UAST type), which the caller silently drops.
 fn extract_rule(node: &RuleNode, src: &[char]) -> Option<Rule> {
     let mut rule = Rule {
         name: slice(src, node.name),
@@ -800,10 +766,10 @@ fn extract_rule(node: &RuleNode, src: &[char]) -> Option<Rule> {
         })
         .collect();
 
-    let (extends, inheritance_conditions) = match &node.inheritance {
-        Some(span) => extract_inheritance_and_conditions(&slice(src, *span)),
-        None => (String::new(), Vec::new()),
-    };
+    let (extends, inheritance_conditions) = node.inheritance.as_ref().map_or_else(
+        || (String::new(), Vec::new()),
+        |span| extract_inheritance_and_conditions(&slice(src, *span)),
+    );
 
     conditions.extend(inheritance_conditions);
     rule.conditions = conditions;
@@ -816,7 +782,7 @@ fn extract_rule(node: &RuleNode, src: &[char]) -> Option<Rule> {
     Some(rule)
 }
 
-/// Port of Go `extractUASTSpec` + `applyUASTField`.
+/// Folds the parsed UAST fields into a [`UastSpec`].
 fn extract_uast_spec(fields: &[(Span, FieldValue)], src: &[char]) -> UastSpec {
     let mut spec = UastSpec::default();
     for (name_span, value) in fields {
@@ -827,8 +793,8 @@ fn extract_uast_spec(fields: &[(Span, FieldValue)], src: &[char]) -> UastSpec {
     spec
 }
 
-/// Port of Go `extractFieldValues`: identifiers/captures pass through verbatim;
-/// strings are unquoted via [`go_unquote`] (Go `strconv.Unquote`).
+/// Extracts a field's value list: identifiers/captures pass through verbatim;
+/// strings are unquoted via [`go_unquote`].
 fn field_values(value: &FieldValue, src: &[char]) -> Vec<String> {
     match value {
         FieldValue::Identifier(span) | FieldValue::Capture(span) => vec![slice(src, *span)],
@@ -849,7 +815,8 @@ fn field_values(value: &FieldValue, src: &[char]) -> Vec<String> {
     }
 }
 
-/// Port of Go `applyUASTField`: routes a field name/value(s) into the spec.
+/// Routes a field name/value(s) into the spec: `type`/`token` take the first
+/// value, `roles`/`children` append, anything else becomes a prop.
 fn apply_uast_field(spec: &mut UastSpec, fname: &str, fvals: Vec<String>) {
     match fname {
         "type" => {
@@ -873,7 +840,7 @@ fn apply_uast_field(spec: &mut UastSpec, fname: &str, fvals: Vec<String>) {
     }
 }
 
-/// Port of Go `extractInheritanceAndConditions`. Parses
+/// Parses an inheritance comment:
 /// `# Extends base_rule [when field == "val" and other != "bad"]`.
 fn extract_inheritance_and_conditions(text: &str) -> (String, Vec<Condition>) {
     let trimmed = text.trim();
@@ -889,7 +856,7 @@ fn extract_inheritance_and_conditions(text: &str) -> (String, Vec<Condition>) {
         String::new()
     };
 
-    // strings.Cut(text, "when ") — split on the first occurrence.
+    // Split on the first occurrence of "when ".
     let cond_expr = match text.find("when ") {
         Some(idx) => &text[idx + "when ".len()..],
         None => return (base, Vec::new()),
@@ -912,14 +879,15 @@ fn extract_inheritance_and_conditions(text: &str) -> (String, Vec<Condition>) {
     (base, conds)
 }
 
-/// Port of Go `extractLanguageDeclarationFromAST` + `extractLanguageDeclaration`.
+/// Recovers the [`LanguageInfo`] from the captured declaration span.
 fn extract_language(doc: &Document, src: &[char]) -> Result<LanguageInfo, ParseError> {
     let decl = doc.language.as_ref().ok_or(ParseError::NoLangDeclaration)?;
     let text = slice(src, (decl.begin, decl.end));
     parse_language_declaration(&text)
 }
 
-/// Port of Go `extractLanguageDeclaration` text-scanning logic.
+/// Text-scanning extraction of the language declaration's name, extensions,
+/// and files lists.
 fn parse_language_declaration(text: &str) -> Result<LanguageInfo, ParseError> {
     let lang_marker = "language \"";
     let lang_start = text.find(lang_marker).ok_or(ParseError::InvalidLangFormat)?;
@@ -960,8 +928,8 @@ fn parse_language_declaration(text: &str) -> Result<LanguageInfo, ParseError> {
     })
 }
 
-/// Port of Go `parseQuotedList`: a comma-separated list of single/double quoted
-/// strings; whitespace is trimmed, surrounding `[]` and trailing commas removed.
+/// Parses a comma-separated list of single/double quoted strings; whitespace is
+/// trimmed, surrounding `[]` and trailing commas removed.
 fn parse_quoted_list(text: &str) -> Vec<String> {
     let mut text = text.trim();
     text = text.trim_matches(|c| c == '[' || c == ']');
@@ -1000,16 +968,15 @@ fn parse_quoted_list(text: &str) -> Vec<String> {
     items
 }
 
-/// Minimal reimplementation of Go `strconv.Unquote` for the double-quoted
-/// strings produced by the DSL grammar.
+/// Unescapes a double-quoted DSL string literal (reference-implementation
+/// unquoting semantics, pinned by the static-table equality gate).
 ///
 /// The DSL `String` rule is `'"' (!'"' .)* '"'`, so the input is always a
-/// double-quoted literal with no embedded unescaped quote. Go's `strconv.Unquote`
-/// interprets backslash escapes (`\n`, `\t`, `\"`, `\\`, `\uXXXX`, etc.). The DSL
-/// values in practice contain only plain text and the occasional escape, so this
-/// handles the common escapes and falls back to returning `Err` (so the caller
-/// keeps the raw, quote-stripped text — matching Go, where an unquote error
-/// leaves the original value untouched).
+/// double-quoted literal with no embedded unescaped quote. Backslash escapes
+/// (`\n`, `\t`, `\"`, `\\`, `\uXXXX`, etc.) are interpreted. The DSL values in
+/// practice contain only plain text and the occasional escape, so this handles
+/// the common escapes and falls back to returning `Err` — in which case the
+/// caller keeps the raw value untouched.
 fn go_unquote(s: &str) -> Result<String, ()> {
     let bytes: Vec<char> = s.chars().collect();
     if bytes.len() < 2 || bytes[0] != '"' || bytes[bytes.len() - 1] != '"' {
@@ -1050,9 +1017,9 @@ fn go_unquote(s: &str) -> Result<String, ()> {
                     out.push(char::from_u32(cp).ok_or(())?);
                     i += 4;
                 }
-                other => {
-                    // Unknown escape: Go's Unquote would error; fall back.
-                    let _ = other;
+                _other => {
+                    // Unknown escape: error so the caller falls back to the
+                    // raw text.
                     return Err(());
                 }
             }
@@ -1072,11 +1039,9 @@ mod tests {
         Parser::new().parse_mapping(input)
     }
 
-    /// Wraps rule-only DSL in a `[language ...]` header before parsing, mirroring
-    /// the Go test oracle (`dsl_parser_test.go`), whose every input begins with
-    /// `[language "go", extensions: ".go"]`. The Go `ParseMapping` requires a
-    /// language declaration (returns `errNoLangDeclaration` otherwise), so the
-    /// helper supplies one exactly as the Go tests do.
+    /// Wraps rule-only DSL in a `[language ...]` header before parsing.
+    /// `parse_mapping` requires a language declaration (it returns
+    /// `NoLangDeclaration` otherwise), so the helper supplies one.
     fn parse_rules(input: &str) -> Vec<Rule> {
         let wrapped = if input.trim_start().starts_with('[') {
             input.to_string()

@@ -1,32 +1,30 @@
-//! Per-leaf `--format text` bodies for the six history leaves Go wires with a
+//! Per-leaf `--format text` bodies for the six history leaves the reference implementation wires with a
 //! `SerializeTextFn` hook — sentiment, shotness, burndown, couples, devs,
-//! file-history. Ports `internal/analyzers/sentiment/terminal.go` (reached via
-//! `analyzer.go` `generateText`), `shotness/text.go`, `burndown/text.go`,
-//! `couples/text.go`, `devs/text.go`, and `file_history/text.go`, drawing on
-//! the shared [`cf_terminal`] helpers (`internal/analyzers/common/terminal`).
+//! file-history. Reproduces each leaf's reference text renderer, drawing on
+//! the shared [`cf_terminal`] helpers.
 //!
-//! Each function returns ONLY the bytes the leaf's Go `Serialize(result,
+//! Each function returns ONLY the bytes the leaf's reference `Serialize(result,
 //! "text", w)` call writes; the `codefang (v2):` header and the `"<Name>:\n"`
 //! section line are emitted by [`super::history_formats::history_text`].
 //!
 //! # Width / color / padding semantics
 //!
-//! * Colors are unconditional: Go never checks isatty — `terminal.NewConfig`
+//! * Colors are unconditional: the reference implementation never checks isatty — `terminal.NewConfig`
 //!   only honors the `NO_COLOR` env var — so the bytes contain ANSI escapes
 //!   even when piped. Width comes from `COLUMNS` (default 80). Both are read
 //!   through [`cf_terminal::Config::new`].
 //! * `terminal.PadRight` / `TruncateWithEllipsis` / `DrawHeader` measure
-//!   string length in BYTES (Go `len()`), while Go `fmt` width specifiers
+//!   string length in BYTES, while the reference `fmt` width specifiers
 //!   (`%-*s`, `%6s`, …) pad to a minimum number of RUNES
 //!   (`utf8.RuneCountInString`) — e.g. `"máximo cuadros"` (15 bytes, 14 runes)
 //!   gets 4 padding spaces under `%-18s` but only 3 under `PadRight(_, 18)`.
-//!   Rust `format!` width counts `char`s, which equals Go's rune count, so
+//!   Rust `format!` width counts `char`s, which equals the reference implementation's rune count, so
 //!   `fmt`-style padding maps to `format!("{:<w$}")` and the byte-length
 //!   helpers stay in [`cf_terminal`].
-//! * Go float verbs (`%.1f`, `%5.1f`, `%3.0f`, `%.2f`) and Rust `{:.1}` /
+//! * reference float verbs (`%.1f`, `%5.1f`, `%3.0f`, `%.2f`) and Rust `{:.1}` /
 //!   `{:5.1}` / `{:3.0}` / `{:.2}` both emit the correctly-rounded fixed
 //!   decimal of the binary value with ties-to-even — identical bytes.
-//!   Go `float32` operands are widened exactly (`f64::from`).
+//!   The reference `float32` operands are widened exactly (`f64::from`).
 
 use std::fmt::Write as _;
 
@@ -39,7 +37,7 @@ use cf_terminal::{
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-/// Go `formatUint` (devs/text.go:186, burndown/text.go:216): groups of three
+/// The reference `formatUint`: groups of three
 /// digits joined by `,` via tail recursion (`formatUint(n/1000) + "," + %03d`).
 fn format_uint_thousands(n: u64) -> String {
     if n < 1000 {
@@ -48,7 +46,7 @@ fn format_uint_thousands(n: u64) -> String {
     format!("{},{:03}", format_uint_thousands(n / 1000), n % 1000)
 }
 
-/// Go `formatInt` / `formatInt64` (devs/text.go:178, burndown/text.go:208):
+/// The reference `formatInt` / `formatInt64`:
 /// thousands separators, `-` prefix for negatives.
 fn format_int_thousands(n: i64) -> String {
     if n < 0 {
@@ -57,7 +55,7 @@ fn format_int_thousands(n: i64) -> String {
     format_uint_thousands(n as u64)
 }
 
-/// Go `filepath.Base` for the slash-separated repo paths shotness emits:
+/// The reference `filepath.Base` for the slash-separated repo paths shotness emits:
 /// empty → `"."`, trailing slashes stripped, all-slash → `"/"`, else the last
 /// path element.
 fn go_filepath_base(path: &str) -> &str {
@@ -75,28 +73,28 @@ fn go_filepath_base(path: &str) -> &str {
 }
 
 // ---------------------------------------------------------------------------
-// sentiment (internal/analyzers/sentiment/terminal.go)
+// sentiment
 // ---------------------------------------------------------------------------
 
-/// `SentimentPositiveThreshold` (sentiment/metrics.go:204).
+/// `SentimentPositiveThreshold`.
 const SENTIMENT_POSITIVE_THRESHOLD: f64 = 0.6;
-/// `SentimentNegativeThreshold` (sentiment/metrics.go:205).
+/// `SentimentNegativeThreshold`.
 const SENTIMENT_NEGATIVE_THRESHOLD: f64 = 0.4;
-/// `termWidth` (terminal.go:33) — sentiment renders at a FIXED width of 60,
+/// `termWidth` — sentiment renders at a FIXED width of 60,
 /// ignoring `Config.Width`.
 const SENTIMENT_TERM_WIDTH: i64 = 60;
-/// `terminalBarWidth` (terminal.go:13).
+/// `terminalBarWidth`.
 const SENTIMENT_BAR_WIDTH: i64 = 20;
-/// `terminalLabelWidth + labelPaddingExtra` (terminal.go:14,34).
+/// `terminalLabelWidth + labelPaddingExtra`.
 const SENTIMENT_DIST_LABEL_WIDTH: i64 = 18 + 4;
-/// `maxRiskPeriodsToShow` (terminal.go:32).
+/// `maxRiskPeriodsToShow`.
 const SENTIMENT_MAX_RISK: usize = 5;
-/// `sparklineLabelGap` (terminal.go:35).
+/// `sparklineLabelGap`.
 const SENTIMENT_SPARK_GAP: usize = 14;
-/// `sparklineChars` (terminal.go:16).
+/// `sparklineChars`.
 const SPARKLINE_CHARS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 
-/// `sentimentColor` (terminal.go:221).
+/// `sentimentColor`.
 fn sentiment_color(score: f64) -> Color {
     if score >= SENTIMENT_POSITIVE_THRESHOLD {
         Color::Green
@@ -107,7 +105,7 @@ fn sentiment_color(score: f64) -> Color {
     }
 }
 
-/// `sentimentLabel` (terminal.go:232).
+/// `sentimentLabel`.
 fn sentiment_label(score: f64) -> &'static str {
     if score >= SENTIMENT_POSITIVE_THRESHOLD {
         "😊"
@@ -118,8 +116,8 @@ fn sentiment_label(score: f64) -> &'static str {
     }
 }
 
-/// The `history/sentiment` text body — Go `generateText` (sentiment/
-/// analyzer.go:163) → `RenderTerminal` (terminal.go:39).
+/// The `history/sentiment` text body — the reference `generateText` (sentiment/
+/// reference dispatch) → `RenderTerminal`.
 #[must_use]
 pub fn sentiment_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let metrics = super::history::sentiment_metrics(sub)?;
@@ -129,7 +127,7 @@ pub fn sentiment_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     s.push_str(&draw_header("SENTIMENT ANALYSIS", "💬", SENTIMENT_TERM_WIDTH));
     s.push_str("\n\n");
 
-    // renderSummarySection (terminal.go:56). The Blue colorize wraps the
+    // renderSummarySection. The Blue colorize wraps the
     // trailing newline, so the reset lands at the start of the next line.
     s.push_str(&cfg.colorize("  Summary\n", Color::Blue));
     s.push_str(&draw_separator(SENTIMENT_TERM_WIDTH));
@@ -146,7 +144,7 @@ pub fn sentiment_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let _ = writeln!(s, "  Total Commits:     {}", metrics.aggregate.total_commits);
     s.push('\n');
 
-    // renderDistributionSection (terminal.go:75).
+    // renderDistributionSection.
     if metrics.aggregate.total_ticks != 0 {
         s.push_str(&cfg.colorize("  Distribution\n", Color::Blue));
         s.push_str(&draw_separator(SENTIMENT_TERM_WIDTH));
@@ -172,7 +170,7 @@ pub fn sentiment_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         s.push('\n');
     }
 
-    // renderTrendSection (terminal.go:106).
+    // renderTrendSection.
     if !metrics.trend.trend_direction.is_empty() {
         s.push_str(&cfg.colorize("  Trend\n", Color::Blue));
         s.push_str(&draw_separator(SENTIMENT_TERM_WIDTH));
@@ -201,12 +199,12 @@ pub fn sentiment_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         s.push('\n');
     }
 
-    // renderSparklineSection (terminal.go:142).
+    // renderSparklineSection.
     if !metrics.time_series.is_empty() {
         s.push_str(&cfg.colorize("  Sentiment Timeline\n", Color::Blue));
         s.push_str(&draw_separator(SENTIMENT_TERM_WIDTH));
         s.push('\n');
-        // buildSparkline (terminal.go:202): idx = max(int(min(score*8, 7)), 0).
+        // buildSparkline: idx = max(int(min(score*8, 7)), 0).
         let mut sparkline = String::new();
         for ts in &metrics.time_series {
             let score = f64::from(ts.sentiment);
@@ -227,7 +225,7 @@ pub fn sentiment_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         s.push('\n');
     }
 
-    // renderRiskSection (terminal.go:162). The colorize wraps the newline, so
+    // renderRiskSection. The colorize wraps the newline, so
     // each reset code starts the FOLLOWING line.
     if !metrics.low_sentiment_periods.is_empty() {
         s.push_str(&cfg.colorize("  Risk Periods\n", Color::Blue));
@@ -262,10 +260,10 @@ pub fn sentiment_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 }
 
 // ---------------------------------------------------------------------------
-// shotness (internal/analyzers/shotness/text.go)
+// shotness
 // ---------------------------------------------------------------------------
 
-/// `formatNodeLabel` (shotness/text.go:177): `"name (base(file))"`.
+/// `formatNodeLabel`: `"name (base(file))"`.
 fn shotness_node_label(name: &str, file: &str) -> String {
     if file.is_empty() {
         return name.to_string();
@@ -273,7 +271,7 @@ fn shotness_node_label(name: &str, file: &str) -> String {
     format!("{} ({})", name, go_filepath_base(file))
 }
 
-/// `riskLevelColor` (shotness/text.go:191).
+/// `riskLevelColor`.
 fn shotness_risk_color(level: &str) -> Color {
     match level {
         "HIGH" => Color::Red,
@@ -282,7 +280,7 @@ fn shotness_risk_color(level: &str) -> Color {
     }
 }
 
-/// The `history/shotness` text body — Go `generateText` (shotness/text.go:26).
+/// The `history/shotness` text body — the reference `generateText`.
 #[must_use]
 pub fn shotness_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     const BAR_WIDTH: i64 = 20; // textBarWidth
@@ -300,7 +298,7 @@ pub fn shotness_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     s.push_str(&draw_header("Shotness Analysis", &format!("{} nodes", agg.total_nodes), w));
     s.push_str("\n\n");
 
-    // writeSummarySection (text.go:64).
+    // writeSummarySection.
     let _ = writeln!(s, "  {}", cfg.colorize("Summary", Color::Blue));
     let _ = writeln!(s, "  {}", draw_separator(w - 4));
     let _ = writeln!(s, "  {:<SUMMARY_LABEL_WIDTH$} {}", "Total Nodes", agg.total_nodes);
@@ -326,7 +324,7 @@ pub fn shotness_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         cfg.colorize(&agg.hot_nodes.to_string(), hot_color)
     );
 
-    // writeHottestFunctions (text.go:88).
+    // writeHottestFunctions.
     if !metrics.node_hotness.is_empty() {
         s.push('\n');
         let _ = writeln!(s, "  {}", cfg.colorize("Hottest Functions", Color::Blue));
@@ -336,7 +334,7 @@ pub fn shotness_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
             let label =
                 truncate_with_ellipsis(&shotness_node_label(&n.name, &n.file), LABEL_WIDTH);
             let bar = draw_progress_bar(n.hotness_score, BAR_WIDTH);
-            // hotnessColor (text.go:186): inverted score.
+            // hotnessColor: inverted score.
             let score_color = color_for_score(1.0 - n.hotness_score);
             let _ = writeln!(
                 s,
@@ -360,7 +358,7 @@ pub fn shotness_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         }
     }
 
-    // writeRiskNodes (text.go:118).
+    // writeRiskNodes.
     if !metrics.hotspot_nodes.is_empty() {
         s.push('\n');
         let _ = writeln!(s, "  {}", cfg.colorize("Risk Assessment", Color::Blue));
@@ -390,7 +388,7 @@ pub fn shotness_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         }
     }
 
-    // writeStrongestCouplings (text.go:143).
+    // writeStrongestCouplings.
     if !metrics.node_coupling.is_empty() {
         s.push('\n');
         let _ = writeln!(s, "  {}", cfg.colorize("Strongest Couplings", Color::Blue));
@@ -399,7 +397,7 @@ pub fn shotness_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         for c in &metrics.node_coupling[..shown] {
             let left = truncate_with_ellipsis(&c.node1_name, HALF_LABEL);
             let right = truncate_with_ellipsis(&c.node2_name, HALF_LABEL);
-            // couplingStrengthColor (text.go:202): inverted strength.
+            // couplingStrengthColor: inverted strength.
             let strength_color = color_for_score(1.0 - c.strength);
             let _ = writeln!(
                 s,
@@ -429,16 +427,16 @@ pub fn shotness_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 }
 
 // ---------------------------------------------------------------------------
-// burndown (internal/analyzers/burndown/text.go)
+// burndown
 // ---------------------------------------------------------------------------
 
-/// One display band of `buildAgeBands` (burndown/text.go:108).
+/// One display band of `buildAgeBands`.
 struct AgeBand {
     label: &'static str,
     lines: i64,
 }
 
-/// `buildAgeBands` (burndown/text.go:114): groups dense history bands (band
+/// `buildAgeBands`: groups dense history bands (band
 /// `i` ≈ age `i+1` months) into at most five labeled age buckets, dropping
 /// empty ones.
 fn build_age_bands(breakdown: &[i64], num_bands: i64) -> Vec<AgeBand> {
@@ -476,7 +474,7 @@ fn build_age_bands(breakdown: &[i64], num_bands: i64) -> Vec<AgeBand> {
         .collect()
 }
 
-/// The `history/burndown` text body — Go `generateText` (burndown/text.go:26).
+/// The `history/burndown` text body — the reference `generateText`.
 #[must_use]
 pub fn burndown_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     const BAR_WIDTH: i64 = 20; // textBarWidth
@@ -490,8 +488,8 @@ pub fn burndown_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let mut s = String::new();
 
     let agg = &metrics.aggregate;
-    // extractProjectName (burndown/plot.go:184): the run path's ticksToReport
-    // (aggregator.go:477) never sets report["ProjectName"], so the title always
+    // extractProjectName: the run path's ticksToReport
+    // never sets report["ProjectName"], so the title always
     // falls back to "project".
     s.push_str(&draw_header(
         "Burndown: project",
@@ -500,7 +498,7 @@ pub fn burndown_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     ));
     s.push_str("\n\n");
 
-    // writeSummary (text.go:66).
+    // writeSummary.
     let _ = writeln!(s, "  {}", cfg.colorize("Summary", Color::Blue));
     let _ = writeln!(s, "  {}", draw_separator(w - 4));
     let survival_pct = agg.overall_survival_rate;
@@ -521,7 +519,7 @@ pub fn burndown_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         cfg.colorize(&format!("{:.1}%", survival_pct * 100.0), survival_color)
     );
 
-    // writeAgeDistribution (text.go:82): the section title prints before the
+    // writeAgeDistribution: the section title prints before the
     // empty-sample early return.
     if !metrics.global_survival.is_empty() {
         s.push('\n');
@@ -540,9 +538,9 @@ pub fn burndown_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         }
     }
 
-    // writeTopDevelopers (text.go:163). The run path never carries people
+    // writeTopDevelopers. The run path never carries people
     // histories (peopleNumber == 0 in ticksToReport), so developer_survival is
-    // empty and the section is skipped; the port still mirrors the Go logic
+    // empty and the section is skipped; the port still mirrors the reference logic
     // over the report's GoValue rows for fidelity.
     let dev_rows: Vec<(i64, String, i64, f64)> = metrics
         .developer_survival
@@ -579,7 +577,7 @@ pub fn burndown_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         s.push('\n');
         let _ = writeln!(s, "  {}", cfg.colorize("Top Developers (by surviving lines)", Color::Blue));
         let _ = writeln!(s, "  {}", draw_separator(w - 4));
-        // Go sorts a copy with sort.Slice (unstable pdqsort) by CurrentLines
+        // The reference implementation sorts a copy with sort.Slice (unstable pdqsort) by CurrentLines
         // descending; replicate the exact permutation for ties.
         let mut devs = dev_rows;
         super::go_sort::slice(&mut devs, |a, b| a.2 > b.2);
@@ -612,10 +610,10 @@ pub fn burndown_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 }
 
 // ---------------------------------------------------------------------------
-// couples (internal/analyzers/couples/text.go)
+// couples
 // ---------------------------------------------------------------------------
 
-/// `colorForStrength` (couples/text.go:172).
+/// `colorForStrength`.
 fn couples_strength_color(strength: f64) -> Color {
     if strength >= 0.7 {
         Color::Red
@@ -626,12 +624,12 @@ fn couples_strength_color(strength: f64) -> Color {
     }
 }
 
-/// `formatPct` (couples/text.go:191): `%.0f%%` of `v * 100`.
+/// `formatPct`: `%.0f%%` of `v * 100`.
 fn couples_format_pct(v: f64) -> String {
     format!("{:.0}%", v * 100.0)
 }
 
-/// `writeCoupleRows` (couples/text.go:113): one titled section of coupling
+/// `writeCoupleRows`: one titled section of coupling
 /// pairs `(left, right, count, strength)`.
 fn couples_write_rows(
     s: &mut String,
@@ -667,7 +665,7 @@ fn couples_write_rows(
     }
 }
 
-/// The `history/couples` text body — Go `generateText` (couples/text.go:26).
+/// The `history/couples` text body — the reference `generateText`.
 #[must_use]
 pub fn couples_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     const MAX_ROWS: usize = 7; // textMaxFileCouples / textMaxDevCouples / textMaxOwnership
@@ -682,7 +680,7 @@ pub fn couples_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     s.push_str(&draw_header("Couples", &format!("{} files", agg.total_files), w));
     s.push_str("\n\n");
 
-    // writeCouplesSummary (text.go:70).
+    // writeCouplesSummary.
     let _ = writeln!(s, "  {}", cfg.colorize("Summary", Color::Blue));
     let _ = writeln!(s, "  {}", draw_separator(w - 4));
     let _ = writeln!(
@@ -702,7 +700,7 @@ pub fn couples_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         couples_format_pct(agg.avg_coupling_strength)
     );
 
-    // writeFileCouples (text.go:93).
+    // writeFileCouples.
     if !metrics.file_coupling.is_empty() {
         s.push('\n');
         let rows: Vec<(String, String, i64, f64)> = metrics
@@ -713,7 +711,7 @@ pub fn couples_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         couples_write_rows(&mut s, cfg, "Top File Couples", &rows, MAX_ROWS);
     }
 
-    // writeDevCouples (text.go:104).
+    // writeDevCouples.
     if !metrics.developer_coupling.is_empty() {
         s.push('\n');
         let rows: Vec<(String, String, i64, f64)> = metrics
@@ -724,12 +722,12 @@ pub fn couples_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         couples_write_rows(&mut s, cfg, "Top Developer Couples", &rows, MAX_ROWS);
     }
 
-    // writeOwnershipRisk (text.go:141).
+    // writeOwnershipRisk.
     if !metrics.file_ownership.is_empty() {
         s.push('\n');
         let _ = writeln!(s, "  {}", cfg.colorize("File Ownership Risk", Color::Blue));
         let _ = writeln!(s, "  {}", draw_separator(w - 4));
-        // SortOwnershipByRisk (couples/metrics.go:474): sort.Slice (unstable
+        // SortOwnershipByRisk: sort.Slice (unstable
         // pdqsort) on a copy by contributors ascending — go_sort replicates the
         // tie permutation.
         let mut sorted = metrics.file_ownership.clone();
@@ -762,10 +760,10 @@ pub fn couples_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 }
 
 // ---------------------------------------------------------------------------
-// devs (internal/analyzers/devs/text.go)
+// devs
 // ---------------------------------------------------------------------------
 
-/// `findPrimaryLanguage` (devs/dashboard_workload.go:109): the language with
+/// `findPrimaryLanguage`: the language with
 /// the most added lines, `"Other"` when none (or when the winner is unnamed).
 fn devs_primary_language(dev: &cf_devs::DeveloperData) -> &str {
     let mut primary = "Other";
@@ -779,7 +777,7 @@ fn devs_primary_language(dev: &cf_devs::DeveloperData) -> &str {
     primary
 }
 
-/// `riskToColor` (devs/text.go:163): CRITICAL/HIGH → red, MEDIUM → yellow,
+/// `riskToColor`: CRITICAL/HIGH → red, MEDIUM → yellow,
 /// else green (pkg/metrics RiskLevel strings).
 fn devs_risk_color(level: &str) -> Color {
     match level {
@@ -789,7 +787,7 @@ fn devs_risk_color(level: &str) -> Color {
     }
 }
 
-/// The `history/devs` text body — Go `generateText` (devs/text.go:22).
+/// The `history/devs` text body — the reference `generateText`.
 #[must_use]
 pub fn devs_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     const MAX_CONTRIBUTORS: usize = 7; // textMaxContributors
@@ -809,7 +807,7 @@ pub fn devs_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     ));
     s.push_str("\n\n");
 
-    // writeSummarySection (text.go:66).
+    // writeSummarySection.
     let _ = writeln!(s, "  {}", cfg.colorize("Summary", Color::Blue));
     let _ = writeln!(s, "  {}", draw_separator(w - 4));
     let _ = writeln!(s, "  {:<22} {}", "Total Commits", format_int_thousands(agg.total_commits));
@@ -828,7 +826,7 @@ pub fn devs_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     );
     let _ = writeln!(s, "  {:<22} {}", "Languages", format_int_thousands(agg.total_languages));
 
-    // writeContributors (text.go:80). The empty Colorize calls still emit the
+    // writeContributors. The empty Colorize calls still emit the
     // color-code + reset pairs around the +/- counters.
     if !metrics.developers.is_empty() {
         s.push('\n');
@@ -866,7 +864,7 @@ pub fn devs_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         }
     }
 
-    // writeBusFactorRisk (text.go:114).
+    // writeBusFactorRisk.
     if !metrics.busfactor.is_empty() {
         s.push('\n');
         let _ = writeln!(s, "  {}", cfg.colorize("Bus Factor Risk", Color::Blue));
@@ -896,7 +894,7 @@ pub fn devs_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         }
     }
 
-    // writeChurnSummary (text.go:140).
+    // writeChurnSummary.
     if !metrics.churn.is_empty() {
         s.push('\n');
         let _ = writeln!(s, "  {}", cfg.colorize("Churn Summary", Color::Blue));
@@ -918,18 +916,18 @@ pub fn devs_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 }
 
 // ---------------------------------------------------------------------------
-// file-history (internal/analyzers/file_history/text.go)
+// file-history
 // ---------------------------------------------------------------------------
 
-/// `buildBar` (file_history/text.go:96): `int(pct/100*30)` clamped to
+/// `buildBar`: `int(pct/100*30)` clamped to
 /// `[0, 30]` pipes.
 fn file_history_build_bar(pct: f64, max_width: i64) -> String {
     let filled = ((pct / 100.0 * max_width as f64) as i64).clamp(0, max_width);
     "|".repeat(filled as usize)
 }
 
-/// The `history/file-history` text body — Go `generateText`
-/// (file_history/text.go:21).
+/// The `history/file-history` text body — the reference `generateText`
+///.
 #[must_use]
 pub fn file_history_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     const MAX_FILES: usize = 10; // textMaxFiles
@@ -945,7 +943,7 @@ pub fn file_history_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     s.push_str(&draw_header("File History", &format!("{} files", agg.total_files), w));
     s.push_str("\n\n");
 
-    // writeFileSummary (text.go:59).
+    // writeFileSummary.
     let _ = writeln!(s, "  {}", cfg.colorize("Summary", Color::Blue));
     let _ = writeln!(s, "  {}", draw_separator(w - 4));
     let _ = writeln!(s, "  {:<26} {}", "Total Files", agg.total_files);
@@ -954,7 +952,7 @@ pub fn file_history_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let _ = writeln!(s, "  {:<26} {:.1}", "Avg Commits/File", agg.avg_commits_per_file);
     let _ = writeln!(s, "  {:<26} {}", "High Churn Files", agg.high_churn_files);
 
-    // writeComposition (text.go:72), iterating AllCategories in canonical order.
+    // writeComposition, iterating AllCategories in canonical order.
     if !metrics.composition.breakdown.is_empty() {
         s.push('\n');
         let _ = writeln!(s, "  {}", cfg.colorize("File Composition", Color::Blue));
@@ -977,7 +975,7 @@ pub fn file_history_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         }
     }
 
-    // writeTopFiles (text.go:99).
+    // writeTopFiles.
     if !metrics.file_churn.is_empty() {
         s.push('\n');
         let _ = writeln!(s, "  {}", cfg.colorize("Most Modified Files", Color::Blue));

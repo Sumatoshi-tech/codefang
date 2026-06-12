@@ -6,11 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "Language Server Protocol (LSP) server for the UAST mapping DSL (port of Go pkg/uast/lsp)."
+description = "Language Server Protocol (LSP) server for the UAST mapping DSL."
 
 [dependencies]
-# tower-lsp is the Rust replacement for the Go glsp/tliron LSP stack (DESIGN §3:
-# "LSP server (tower-lsp implied) -> tower-lsp"). It pulls in lsp-types for the
+# tower-lsp is the LSP stack (DESIGN §3). It pulls in lsp-types for the
 # protocol-3-16 wire structs and a tower-based JSON-RPC service.
 tower-lsp = { version = "0.20", default-features = false, features = ["runtime-tokio"] }
 # Async runtime for the stdio server loop. tower-lsp::Server::new requires an

@@ -1,28 +1,26 @@
-//! `cf-composition` — Raw-file composition analyzer (port of Go
-//! `internal/analyzers/composition`).
+//! `cf-composition` — Raw-file composition analyzer (`static/composition`).
 //!
 //! Classifies files into `source` / `vendor` / `generated` / `documentation` /
 //! `configuration` / `binary` / `image` / `dotfile` using enry-style heuristics,
 //! then aggregates per-category counts and percentages into the
 //! `static/composition` report.
 //!
-//! # Byte-identity
+//! # Compatibility
 //!
-//! All machine-format report serialization routes through `cf-gojson` (Go
-//! `encoding/json`-compatible), never `serde_json` — see [`analyzer`]. The
+//! All machine-format report serialization routes through `cf-gojson` (the
+//! report-format JSON encoder), never `serde_json` — see [`analyzer`]. The
 //! aggregated report is a *map-origin* [`cf_gojson::GoMap`], so its keys are
-//! byte-sorted at encode time exactly as Go encodes a `map[string]any`.
+//! byte-sorted at encode time per the report contract for dynamic maps. Output
+//! bytes are pinned against the reference binary by `rust/tests/compat`.
 //!
-//! # Module layout (mirrors the Go files)
+//! # Module layout
 //!
-//! * [`category`] — `Category`, `ALL_CATEGORIES`, `CategoryCounts`
-//!   (ported from `file_history/category.go`; `cf-file-history` is still a
-//!   scaffold, so the minimal surface lives here per DESIGN rule 5).
-//! * [`classifier`] — `Classifier` + the enry predicate subset
-//!   (`file_history/classifier.go`).
-//! * [`aggregator`] — `Aggregator` (`composition/aggregator.go`).
-//! * [`report_section`] — `ReportSection` (`composition/report_section.go`).
-//! * [`analyzer`] — `Analyzer` (`composition/analyzer.go`).
+//! * [`category`] — `Category`, `ALL_CATEGORIES`, `CategoryCounts` (the minimal
+//!   file-classification surface shared with file-history analysis).
+//! * [`classifier`] — `Classifier` + the enry predicate subset.
+//! * [`aggregator`] — `Aggregator` (per-file results -> aggregate report).
+//! * [`report_section`] — `ReportSection` (terminal section data).
+//! * [`analyzer`] — `Analyzer` (identity + format entry points).
 
 #![forbid(unsafe_code)]
 
@@ -49,7 +47,7 @@ mod tests {
     };
     use std::collections::HashMap;
 
-    // ---- Analyzer identity (ported from analyzer_test.go) ----
+    // ---- Analyzer identity ----
 
     #[test]
     fn analyzer_name() {
@@ -81,7 +79,7 @@ mod tests {
         assert!(Analyzer::new().configure(&HashMap::new()).is_ok());
     }
 
-    // ---- Classification (ported from analyzer_test.go) ----
+    // ---- Classification ----
 
     fn classify(path: &str, content: &[u8]) -> Category {
         Classifier::new().classify(path, content)
@@ -143,7 +141,7 @@ mod tests {
         assert_eq!(bytes, br#"{"category":"source"}"#);
     }
 
-    // ---- Aggregator (ported from analyzer_test.go) ----
+    // ---- Aggregator ----
 
     fn single(category: &str) -> HashMap<String, HashMap<String, cf_gojson::GoValue>> {
         let mut report = HashMap::new();
@@ -242,7 +240,7 @@ mod tests {
         assert_eq!(result.breakdown.get(Category::Source.as_str()), Some(&0));
     }
 
-    // ---- Report section (ported from report_section_test.go) ----
+    // ---- Report section ----
 
     fn test_report() -> CompositionReport {
         let mut breakdown = HashMap::new();
@@ -369,7 +367,7 @@ mod tests {
             .is_empty());
     }
 
-    // ---- Format paths (ported from analyzer_test.go) ----
+    // ---- Format paths ----
 
     fn category_report(category: &str) -> cf_gojson::GoMap {
         let mut m = cf_gojson::GoMap::new(cf_gojson::MapOrigin::Map);

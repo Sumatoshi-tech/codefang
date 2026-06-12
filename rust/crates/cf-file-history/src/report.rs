@@ -1,20 +1,19 @@
-//! Go `encoding/json`-compatible rendering of the file-history metrics.
+//! Report-format rendering of the file-history metrics.
 //!
-//! Per `specs/rust-rewrite/DESIGN.md` section 2, all machine-format report bytes
-//! are produced through [`cf_gojson`] (never raw serde) so they are
-//! byte-identical with the Go implementation.
+//! All machine-format report bytes are produced through [`cf_gojson`] (never
+//! raw serde); the bytes are pinned against the reference binary by
+//! `rust/tests/compat`.
 //!
-//! The wrapper structs ([`ComputedMetrics`] and its fields) are emitted in Go
-//! struct **declaration order** (a struct-origin [`cf_gojson::GoMap`]), honoring
-//! the JSON field names from the Go `json:"..."` tags. The composition
-//! `breakdown` / `percentages` maps and the per-tick composition `breakdown` are
-//! emitted as map-origin `GoMap`s (byte-sorted keys), matching Go's
-//! `map[string]X` encoding. Empty `start_time` / `end_time` are omitted
-//! (`omitempty`).
+//! The wrapper structs ([`ComputedMetrics`] and its fields) are emitted in
+//! **declaration order** (a struct-origin [`cf_gojson::GoMap`]). The
+//! composition `breakdown` / `percentages` maps and the per-tick composition
+//! `breakdown` are emitted as map-origin `GoMap`s (byte-sorted keys), per the
+//! report-format contract for string-keyed maps. Empty `start_time` /
+//! `end_time` are omitted (`omitempty`).
 //!
-//! The compact form here ([`to_compact_json`]) is the `bin`/ndjson payload shape
-//! (no indent, HTML-escape on, no trailing newline). The indented `json`
-//! run/render form (`SetIndent("", "  ")`) is produced by the cross-format
+//! The compact form here ([`to_compact_json`]) is the `bin`/ndjson payload
+//! shape (no indent, HTML-escape on, no trailing newline). The indented `json`
+//! run/render form (two-space indent) is produced by the cross-format
 //! conversion hub (`cf-analyze`) over the same [`GoValue`] tree returned by
 //! [`computed_metrics_to_go`].
 
@@ -25,11 +24,10 @@ use crate::metrics::{
     FileChurnData, FileContributorData, HotspotData,
 };
 
-/// Converts [`ComputedMetrics`] into a [`GoValue`] mirroring the Go JSON shape.
+/// Converts [`ComputedMetrics`] into its report-shape [`GoValue`].
 ///
-/// Field order matches the `ComputedMetrics` struct declaration in `metrics.go`:
-/// `file_churn`, `file_contributors`, `hotspots`, `aggregate`, `composition`,
-/// `composition_ts`.
+/// Field order: `file_churn`, `file_contributors`, `hotspots`, `aggregate`,
+/// `composition`, `composition_ts`.
 #[must_use]
 pub fn computed_metrics_to_go(m: &ComputedMetrics) -> GoValue {
     let mut obj = GoMap::new_struct();
@@ -109,7 +107,7 @@ fn aggregate_to_go(a: &AggregateData) -> GoValue {
 
 fn composition_to_go(c: &CompositionData) -> GoValue {
     let mut o = GoMap::new_struct();
-    // breakdown / percentages are Go map[string]X -> map-origin (byte-sorted).
+    // breakdown / percentages are map-origin (byte-sorted keys).
     let mut breakdown = GoMap::new_map();
     for (k, v) in &c.breakdown {
         breakdown.push(k.clone(), GoValue::Int(*v));
@@ -141,15 +139,16 @@ fn composition_ts_to_go(e: &CompositionTimeSeriesEntry) -> GoValue {
     GoValue::Object(o)
 }
 
-/// Renders [`ComputedMetrics`] to compact Go-JSON bytes (the `bin` / ndjson
-/// payload form: no indent, HTML-escape on, no trailing newline).
+/// Renders [`ComputedMetrics`] to compact report-format JSON bytes (the
+/// `bin` / ndjson payload form: no indent, HTML-escape on, no trailing
+/// newline).
 #[must_use]
 pub fn to_compact_json(m: &ComputedMetrics) -> Vec<u8> {
     marshal(&computed_metrics_to_go(m))
 }
 
-/// Renders [`ComputedMetrics`] to a compact Go-JSON string (convenience over
-/// [`to_compact_json`], using the [`Encoder`] builder).
+/// Renders [`ComputedMetrics`] to a compact report-format JSON string
+/// (convenience over [`to_compact_json`], using the [`Encoder`] builder).
 #[must_use]
 pub fn to_compact_json_string(m: &ComputedMetrics) -> String {
     Encoder::marshal().encode_to_string(&computed_metrics_to_go(m))
@@ -161,8 +160,8 @@ mod tests {
 
     #[test]
     fn empty_metrics_compact_json_field_order() {
-        // Field declaration order must be preserved in compact output, and empty
-        // slices render as [] (Go behavior), empty maps as {}.
+        // Field declaration order must be preserved in compact output, and
+        // empty slices render as [] (report contract), empty maps as {}.
         let m = ComputedMetrics::default();
         let s = to_compact_json_string(&m);
         assert_eq!(
@@ -176,7 +175,7 @@ mod tests {
 
     #[test]
     fn aggregate_integer_floats_render_without_decimal() {
-        // Go's json renders float64(15.0) as "15" (no decimal point).
+        // The report contract renders 15.0 as "15" (no decimal point).
         let m = ComputedMetrics {
             aggregate: AggregateData {
                 total_files: 2,

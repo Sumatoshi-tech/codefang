@@ -1,54 +1,51 @@
 //! Terminal report section for static import analysis.
 //!
-//! Port of `internal/analyzers/imports/report_section.go`. The [`ReportSection`]
-//! is an info-only section (no score): it surfaces a status message, two key
-//! metrics (unique imports, total files), and a list of import "issues" ordered
-//! by usage count when `import_counts` is present, else alphabetically.
+//! The [`ReportSection`] is an info-only section (no score): it surfaces a
+//! status message, two key metrics (unique imports, total files), and a list of
+//! import "issues" ordered by usage count when `import_counts` is present, else
+//! alphabetically.
 //!
-//! The Go section implements the framework `analyze.ReportSection` interface and
-//! renders through `renderer.SectionRenderer` (terminal output, which DESIGN §2.7
-//! marks non-binding/cosmetic). This module ports the data the section exposes;
-//! the actual terminal rendering belongs to the not-yet-ported renderer crate.
+//! This module owns the data the section exposes; the actual terminal rendering
+//! (non-binding, cosmetic output) belongs to the renderer layer.
 
 use crate::report::ReportValue;
 
-/// Section title. Mirrors Go `SectionTitle`.
+/// Section title.
 pub const SECTION_TITLE: &str = "IMPORTS";
-/// Label for the unique-imports metric. Mirrors Go `MetricUniqueImports`.
+/// Label for the unique-imports metric.
 pub const METRIC_UNIQUE_IMPORTS: &str = "Unique Imports";
-/// Label for the total-files metric. Mirrors Go `MetricTotalFiles`.
+/// Label for the total-files metric.
 pub const METRIC_TOTAL_FILES: &str = "Total Files";
 
-/// Report key for the imports list. Mirrors Go `KeyImports`.
+/// Report key for the imports list.
 pub const KEY_IMPORTS: &str = "imports";
-/// Report key for the import count. Mirrors Go `KeyCount`.
+/// Report key for the import count.
 pub const KEY_COUNT: &str = "count";
-/// Report key for the total file count. Mirrors Go `KeyTotalFiles`.
+/// Report key for the total file count.
 pub const KEY_TOTAL_FILES: &str = "total_files";
-/// Report key for the per-import counts map. Mirrors Go `KeyImportCounts`.
+/// Report key for the per-import counts map.
 pub const KEY_IMPORT_COUNTS: &str = "import_counts";
-/// Report key for the per-file source path. Mirrors Go `analyze.SourceFileKey`.
+/// Report key for the per-file source path.
 pub const SOURCE_FILE_KEY: &str = "_source_file";
 
-/// Fallback message when no import data is available. Mirrors Go
-/// `DefaultStatusMessage`.
+/// Fallback message when no import data is available.
 pub const DEFAULT_STATUS_MESSAGE: &str = "No import data available";
 const STATUS_MESSAGE_PREFIX: &str = "Found ";
 const STATUS_MESSAGE_SUFFIX: &str = " unique imports";
 
-/// Severity label for info issues. Mirrors Go `analyze.SeverityInfo`.
+/// Severity label for info issues.
 pub const SEVERITY_INFO: &str = "info";
 
-/// A key metric label/value pair. Mirrors Go `analyze.Metric`.
+/// A key metric label/value pair.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Metric {
     /// Metric label.
     pub label: String,
-    /// Metric value (already formatted as a string, like the Go section).
+    /// Metric value (already formatted as a string).
     pub value: String,
 }
 
-/// A reported import "issue" (info item). Mirrors Go `analyze.Issue`.
+/// A reported import "issue" (info item).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Issue {
     /// The import name.
@@ -62,8 +59,6 @@ pub struct Issue {
 }
 
 /// Info-only report section for import analysis.
-///
-/// Mirrors Go `ReportSection`.
 #[derive(Debug, Clone)]
 pub struct ReportSection {
     report: ReportValue,
@@ -72,8 +67,7 @@ pub struct ReportSection {
 
 impl ReportSection {
     /// Builds a section from a report (a `None`/empty report is treated as `{}`).
-    ///
-    /// Mirrors Go `NewReportSection`.
+    #[must_use]
     pub fn new(report: Option<ReportValue>) -> Self {
         let report = report.unwrap_or_else(ReportValue::map);
         let count = get_int(&report, KEY_COUNT);
@@ -84,19 +78,20 @@ impl ReportSection {
         }
     }
 
-    /// Returns the section title. Mirrors Go `(*ReportSection).SectionTitle`.
+    /// Returns the section title.
+    #[must_use]
     pub fn section_title(&self) -> &'static str {
         SECTION_TITLE
     }
 
-    /// Returns the status message. Mirrors Go `StatusMessage`.
+    /// Returns the status message.
+    #[must_use]
     pub fn status_message(&self) -> &str {
         &self.status_message
     }
 
     /// Returns the key metrics (unique imports, total files).
-    ///
-    /// Mirrors Go `(*ReportSection).KeyMetrics`.
+    #[must_use]
     pub fn key_metrics(&self) -> Vec<Metric> {
         vec![
             Metric {
@@ -111,21 +106,19 @@ impl ReportSection {
     }
 
     /// Returns the top `n` most-used imports as info issues.
-    ///
-    /// Mirrors Go `(*ReportSection).TopIssues`.
+    #[must_use]
     pub fn top_issues(&self, n: usize) -> Vec<Issue> {
         self.import_issues(n)
     }
 
     /// Returns all imports as info issues.
-    ///
-    /// Mirrors Go `(*ReportSection).AllIssues`.
+    #[must_use]
     pub fn all_issues(&self) -> Vec<Issue> {
         self.import_issues(0)
     }
 
     /// Builds import issues sorted by frequency (or name), limited to `limit`
-    /// (0 = all). Mirrors Go `(*ReportSection).importIssues`.
+    /// (0 = all).
     fn import_issues(&self, limit: usize) -> Vec<Issue> {
         let location = get_string(&self.report, SOURCE_FILE_KEY);
 
@@ -142,10 +135,8 @@ impl ReportSection {
     }
 }
 
-/// Builds issues from an `import_counts` map, sorted by count descending.
-///
-/// Mirrors Go `buildIssuesFromCounts`. Go's `mapx.SortAndLimit` sorts by count
-/// desc; ties are resolved here by name ascending for determinism.
+/// Builds issues from an `import_counts` map, sorted by count descending; ties
+/// are resolved by name ascending for determinism.
 fn build_issues_from_counts(
     counts: &std::collections::BTreeMap<String, i64>,
     limit: usize,
@@ -168,8 +159,6 @@ fn build_issues_from_counts(
 }
 
 /// Builds issues from a simple imports list, sorted alphabetically.
-///
-/// Mirrors Go `buildIssuesFromList`.
 fn build_issues_from_list(imports: &[String], limit: usize, location: &str) -> Vec<Issue> {
     let mut sorted: Vec<String> = imports.to_vec();
     sorted.sort();
@@ -187,8 +176,7 @@ fn build_issues_from_list(imports: &[String], limit: usize, location: &str) -> V
         .collect()
 }
 
-/// Builds the status message from the import count. Mirrors Go
-/// `buildStatusMessage`.
+/// Builds the status message from the import count.
 fn build_status_message(count: i64) -> String {
     if count == 0 {
         return DEFAULT_STATUS_MESSAGE.to_string();
@@ -196,7 +184,7 @@ fn build_status_message(count: i64) -> String {
     format!("{STATUS_MESSAGE_PREFIX}{count}{STATUS_MESSAGE_SUFFIX}")
 }
 
-// --- small reportutil-style accessors (Go internal/.../reportutil) ---
+// --- small typed accessors over the dynamic report ---
 
 fn get_int(report: &ReportValue, key: &str) -> i64 {
     match report.as_map().and_then(|m| m.get(key)) {
@@ -247,8 +235,6 @@ fn get_string_int_map(report: &ReportValue, key: &str) -> std::collections::BTre
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // --- ported from report_section_test.go ---
 
     fn test_imports_report() -> ReportValue {
         let mut r = ReportValue::map();

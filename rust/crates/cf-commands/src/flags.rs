@@ -1,20 +1,20 @@
-//! The `run` and `render` clap command trees — Rust port of the flag wiring in
-//! Go `cmd/codefang/commands/run.go` and `render.go`.
+//! The `run` and `render` clap command trees, reproducing the reference
+//! binary's flag wiring.
 //!
 //! Built with clap's **builder API** (not derive) so every flag's long name,
 //! short, default, and help string matches cobra byte-for-byte (DESIGN §4).
 //!
 //! # `run` flags
 //!
-//! [`build_run_command`] registers the ~45 literal flags from `run.go`
-//! (lines 268-320 + `registerPersistenceFlags` + `registerExclusionFlags`),
+//! [`build_run_command`] registers the reference `run` command's ~45 literal
+//! flags (the main flag block + `registerPersistenceFlags` + `registerExclusionFlags`),
 //! then the deprecated hidden flags ([`mark_deprecated_exclusion_flags`]), then
 //! the dynamic per-analyzer flags ([`register_analyzer_flags`]). The help
-//! strings are copied verbatim from the Go source.
+//! strings are copied verbatim from the reference source.
 //!
 //! # Tri-state `--checkpoint` / `--resume`
 //!
-//! Both default `true`, but Go reads them via `Flags().Changed(name)` so a
+//! Both default `true`, but the reference implementation reads them via `Flags().Changed(name)` so a
 //! config-file default only applies when the CLI flag was *not* supplied
 //! (`parseBoolFlag`). clap models this with [`clap::ArgAction::SetTrue`]/`SetFalse`
 //! is not enough for tri-state; instead these two flags take an explicit
@@ -24,7 +24,7 @@
 //!
 //! # Dynamic per-analyzer flags
 //!
-//! [`register_analyzer_flags`] mirrors Go `registerAnalyzerFlags` /
+//! [`register_analyzer_flags`] mirrors the reference `registerAnalyzerFlags` /
 //! `registerConfigFlag`: it walks the supplied
 //! [`crate::registry::ConfigOptionProvider`]s, dedupes by flag name, and adds one
 //! clap flag per [`cf_pipeline::ConfigurationOption`] keyed by its
@@ -36,7 +36,7 @@ use clap::{Arg, ArgAction, Command};
 use crate::formats::{FORMAT_JSON, INPUT_FORMAT_AUTO};
 use crate::registry::ConfigOptionProvider;
 
-/// Render-command constants, mirroring the Go `render.go` consts.
+/// Render-command constants, mirroring the reference implementation consts.
 mod render_consts {
     /// `render <store-dir>` — the cobra `Use` string.
     pub const USE: &str = "render";
@@ -52,9 +52,9 @@ mod render_consts {
 
 /// Build the `run [path]` [`clap::Command`] with every literal flag, the
 /// deprecated hidden flags, and the dynamic per-analyzer flags from
-/// `providers`. Mirrors Go `newRunCommandWithAllDeps`.
+/// `providers`. Mirrors the reference `newRunCommandWithAllDeps`.
 ///
-/// `providers` supplies the analyzer configuration options (Go's
+/// `providers` supplies the analyzer configuration options (the reference implementation's
 /// `buildPipeline(nil)` Core + Leaves). In the default (non-`runtime`) build the
 /// caller passes [`default_analyzer_options`]; in the `runtime` build it passes
 /// the real analyzer providers.
@@ -87,8 +87,8 @@ pub fn build_run_command() -> Command {
     build_run_command_with(&[provider])
 }
 
-/// Adds the ~45 literal `run` flags in Go declaration order, with verbatim help
-/// strings and defaults (`run.go` lines 268-320, plus `registerPersistenceFlags`
+/// Adds the ~45 literal `run` flags in the reference implementation declaration order, with verbatim help
+/// strings and defaults (the reference `run` flag block, plus `registerPersistenceFlags`
 /// and `registerExclusionFlags`).
 #[allow(clippy::too_many_lines)]
 fn add_literal_run_flags(cmd: Command) -> Command {
@@ -175,7 +175,7 @@ legitimate large commits (Pods updates, generated code dumps)."))
 }
 
 /// Marks the two legacy exclusion flags as deprecated and hidden, with the exact
-/// Go deprecation messages (Go `markDeprecatedExclusionFlags`). clap has no
+/// reference deprecation messages. clap has no
 /// first-class "deprecated" attribute, so we register them hidden and surface
 /// the message through [`deprecated_flag_message`] for the caller to emit when
 /// the flag is used (mirroring cobra's deprecation warning behavior).
@@ -193,7 +193,7 @@ pub fn mark_deprecated_exclusion_flags(cmd: Command) -> Command {
 
 /// Returns the exact cobra deprecation message for a deprecated flag, or `None`
 /// if the flag is not deprecated. Messages copied verbatim from
-/// `markDeprecatedExclusionFlags` (`run.go`).
+/// `markDeprecatedExclusionFlags`.
 #[must_use]
 pub fn deprecated_flag_message(flag: &str) -> Option<&'static str> {
     match flag {
@@ -210,9 +210,9 @@ for back-compat but will be removed in the next minor release.",
 }
 
 /// Registers one clap flag per configuration option exposed by `providers`,
-/// deduplicating by flag name. Mirrors Go `registerAnalyzerFlags` +
+/// deduplicating by flag name. Mirrors the reference `registerAnalyzerFlags` +
 /// `registerConfigFlag`: options whose declared kind does not match their
-/// default value's type are skipped (Go's failed type assertion path).
+/// default value's type are skipped (the reference implementation's failed type assertion path).
 #[must_use]
 pub fn register_analyzer_flags(mut cmd: Command, providers: &[&dyn ConfigOptionProvider]) -> Command {
     let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
@@ -232,7 +232,7 @@ pub fn register_analyzer_flags(mut cmd: Command, providers: &[&dyn ConfigOptionP
 }
 
 /// Builds the clap [`Arg`] for a single configuration option, or `None` when the
-/// option's declared kind and default-value type disagree (Go's
+/// option's declared kind and default-value type disagree (the reference implementation's
 /// `registerConfigFlag` skips via a failed `Default.(T)` assertion).
 fn config_flag_arg(opt: &ConfigurationOption) -> Option<Arg> {
     // The workspace pins clap with `default-features = false` and no `string`
@@ -285,7 +285,7 @@ fn config_flag_arg(opt: &ConfigurationOption) -> Option<Arg> {
             .action(ArgAction::Set)
             .default_value(string_to_static_leak(&format_go_float_default(*v)))
             .value_parser(clap::value_parser!(f64)),
-        // Kind/default-type mismatch -> skipped (Go failed type assertion).
+        // Kind/default-type mismatch -> skipped (reference: failed type assertion).
         _ => return None,
     };
     Some(arg)
@@ -305,9 +305,9 @@ fn format_go_float_default(v: f64) -> String {
     }
 }
 
-/// `runtime.NumCPU()` analogue — the per-machine goroutine-count default the Go
+/// `runtime.NumCPU()` analogue — the per-machine goroutine-count default the reference implementation
 /// analyzers derive their `*-goroutines` defaults from (`runtime.NumCPU()` and
-/// `max(NumCPU()/4, 1)`). The live Go binary bakes the host CPU count into its
+/// `max(NumCPU()/4, 1)`). The live reference binary bakes the host CPU count into its
 /// `--help` defaults, so the Rust surface must compute the same number for the
 /// cli-surface comparison (and for runtime parity) to match.
 fn num_cpu() -> i64 {
@@ -316,15 +316,15 @@ fn num_cpu() -> i64 {
         .unwrap_or(1) as i64
 }
 
-/// The default analyzer configuration options: the FULL Go analyzer option set
+/// The default analyzer configuration options: the FULL reference analyzer option set
 /// produced by `registerAnalyzerFlags` walking `buildPipeline(nil)` Core +
 /// Leaves (every analyzer's `ListConfigurationOptions`). Each entry mirrors the
-/// Go `ConfigurationOption` (Name / Flag / Type / Default / Description) so the
+/// the reference `ConfigurationOption` (Name / Flag / Type / Default / Description) so the
 /// dynamic clap registration in [`register_analyzer_flags`] reproduces cobra's
 /// flag surface byte-for-byte, and every value lands in the parsed matches that
 /// `cf_commands::run` threads into the handlers via [`crate::pipeline::RunContext`].
 ///
-/// The `*-goroutines` defaults are derived from [`num_cpu`] exactly as Go derives
+/// The `*-goroutines` defaults are derived from [`num_cpu`] exactly as the reference implementation derives
 /// them from `runtime.NumCPU()`.
 #[must_use]
 #[allow(clippy::too_many_lines)]
@@ -543,7 +543,7 @@ pub fn default_analyzer_options() -> Vec<ConfigurationOption> {
     ]
 }
 
-/// Build the `render <store-dir>` [`clap::Command`]. Mirrors Go
+/// Build the `render <store-dir>` [`clap::Command`]. mirrors the reference implementation
 /// `buildRenderCommand`: `Args = ExactArgs(1)` and the `--output`/`-o` flag.
 #[must_use]
 pub fn build_render_command() -> Command {
@@ -570,7 +570,7 @@ pub fn build_render_command() -> Command {
 /// (`bash`, `fish`, `powershell`, `zsh`), mirroring the command cobra
 /// auto-registers (`rootCmd.AddCommand`'s implicit completion command). The help
 /// strings are copied verbatim from cobra's generated completion command so the
-/// cli-surface comparison matches the live Go binary.
+/// cli-surface comparison matches the live reference binary.
 #[must_use]
 pub fn build_completion_command() -> Command {
     Command::new("completion")
@@ -583,7 +583,7 @@ See each sub-command's help for details on how to use the generated script.",
         // cobra's auto-registered completion command, run with NO shell argument,
         // prints its long help and exits 0; `arg_required_else_help` would make
         // clap exit 1, so we let the bare invocation flow to the handler, which
-        // prints help and returns 0 (matching Go).
+        // prints help and returns 0 (matching the reference implementation).
         .subcommand(
             Command::new("bash")
                 .about("Generate the autocompletion script for bash")
@@ -787,9 +787,9 @@ mod tests {
         assert_eq!(
             m.value_source("checkpoint"),
             Some(clap::parser::ValueSource::CommandLine),
-            "explicit --checkpoint should report CommandLine (Go Changed==true)"
+            "explicit --checkpoint should report CommandLine (reference: Changed==true)"
         );
-        // Not supplied -> DefaultValue (Go Changed==false -> parseBoolFlag nil).
+        // Not supplied -> DefaultValue (reference: Changed==false -> parseBoolFlag nil).
         let m2 = run().try_get_matches_from(["run"]).unwrap();
         assert_eq!(
             m2.value_source("checkpoint"),
@@ -798,7 +798,7 @@ mod tests {
     }
 
     // --- TestRunCommandConfig_AnalyzerFlags (burndown --granularity registered) ---
-    // Go renamed --burndown-granularity to --granularity (the cobra flag is
+    // the reference implementation renamed --burndown-granularity to --granularity (the cobra flag is
     // "granularity"); the dynamic registration must expose that name.
     #[test]
     fn run_registers_dynamic_burndown_flag() {
@@ -806,14 +806,14 @@ mod tests {
             .try_get_matches_from(["run", "--granularity", "60"])
             .unwrap();
         assert_eq!(*m.get_one::<i64>("granularity").unwrap(), 60);
-        // The old name must be gone (Go dropped it).
+        // The old name must be gone (reference: dropped it).
         assert!(
             run().try_get_matches_from(["run", "--burndown-granularity", "60"]).is_err(),
             "--burndown-granularity must no longer exist (renamed to --granularity)"
         );
     }
 
-    // The new analyzer flags are registered with Go-exact names/defaults.
+    // The new analyzer flags are registered with reference-exact names/defaults.
     #[test]
     fn run_registers_new_analyzer_flags() {
         let m = run().try_get_matches_from(["run"]).unwrap();
@@ -832,7 +832,7 @@ mod tests {
     }
 
     // --checkpoint=false still parses (the analyzer matrix passes it) and reports
-    // a CommandLine source (Go Changed==true) — surface is value-less.
+    // a CommandLine source (reference: Changed==true) — surface is value-less.
     #[test]
     fn checkpoint_value_form_still_parses() {
         let m = run().try_get_matches_from(["run", "--checkpoint=false"]).unwrap();
@@ -916,7 +916,7 @@ for back-compat but will be removed in the next minor release."
         }];
         let b = vec![ConfigurationOption {
             name: "Other".into(),
-            flag: "g".into(), // duplicate flag -> ignored (Go registeredFlags set)
+            flag: "g".into(), // duplicate flag -> ignored (reference: registeredFlags set)
             description: "second".into(),
             option_type: ConfigurationOptionType::Int,
             default: DefaultValue::Int(2),

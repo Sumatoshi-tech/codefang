@@ -1,10 +1,9 @@
-//! `static/halstead` plot sections — port of Go
-//! `internal/analyzers/halstead/plot.go`.
+//! `static/halstead` plot sections.
 //!
 //! Consumes the AGGREGATED RAW halstead report (the `analyze.Report` value
 //! `halstead_raw_report_value` builds): the top-effort bar, the
 //! volume-vs-difficulty risk scatter, and the volume-distribution pie. Returns
-//! `None` when the report lacks the functions table (Go
+//! `None` when the report lacks the functions table (reference:
 //! `ErrInvalidFunctionsData` — the empty-result report).
 
 use cf_gojson::{GoMap, GoValue};
@@ -16,7 +15,7 @@ use cf_plotpage::{build_pie_chart, get_chart_palette, ChartOpts, Hint, Section, 
 
 use crate::handlers::go_sort;
 
-/// plot.go constants (plot.go:15).
+/// Reference plot-section constants.
 const TOP_FUNCTIONS_LIMIT: usize = 12;
 const X_AXIS_ROTATE: f64 = 45.0;
 const EMPTY_CHART_HEIGHT: &str = "400px";
@@ -32,7 +31,7 @@ const EFFORT_MEDIUM: f64 = 10000.0;
 const DIFFICULTY_MEDIUM: f64 = 15.0;
 const DIFFICULTY_HIGH: f64 = 30.0;
 
-/// Go `analyze.ReportFunctionListWithFallback(report, "functions",
+/// The reference `analyze.ReportFunctionListWithFallback(report, "functions",
 /// "function_halstead")`.
 fn report_function_list(report: &GoValue) -> Option<Vec<&GoMap>> {
     let top = report.as_map()?;
@@ -46,7 +45,7 @@ fn report_function_list(report: &GoValue) -> Option<Vec<&GoMap>> {
     Some(arr.iter().filter_map(GoValue::as_map).collect())
 }
 
-/// Go `getEffortValue` / `getVolumeValue` / … : `fn[key].(float64)`, else 0.
+/// The reference `getEffortValue` / `getVolumeValue` / … : `fn[key].(float64)`, else 0.
 fn float_value(f: &GoMap, key: &str) -> f64 {
     match f.get(key) {
         Some(GoValue::Float(v)) => *v,
@@ -54,7 +53,7 @@ fn float_value(f: &GoMap, key: &str) -> f64 {
     }
 }
 
-/// Go function name lookup: `name` string, else `"unknown"`.
+/// Reference function name lookup: `name` string, else `"unknown"`.
 fn function_name(f: &GoMap) -> &str {
     match f.get("name") {
         Some(GoValue::Str(name)) => name,
@@ -62,7 +61,7 @@ fn function_name(f: &GoMap) -> &str {
     }
 }
 
-/// Go `getEffortColor` (plot.go:184).
+/// The reference `getEffortColor`.
 fn effort_color(effort: f64) -> &'static str {
     if effort <= EFFORT_LOW {
         "#91cc75"
@@ -73,7 +72,7 @@ fn effort_color(effort: f64) -> &'static str {
     }
 }
 
-/// The registered section renderer for `static/halstead` — Go
+/// The registered section renderer for `static/halstead` — the reference implementation
 /// `halstead.RegisterPlotSections` → `(&Analyzer{}).generateSections`.
 pub fn sections(report: &GoValue) -> Option<Vec<Section>> {
     let effort_chart = effort_bar_chart(report)?;
@@ -123,7 +122,7 @@ pub fn sections(report: &GoValue) -> Option<Vec<Section>> {
     ])
 }
 
-/// Go `generateEffortBarChart` + `createEffortBarChart` (plot.go:113).
+/// The reference `generateEffortBarChart` + `createEffortBarChart`.
 fn effort_bar_chart(report: &GoValue) -> Option<Chart> {
     let functions = report_function_list(report)?;
     if functions.is_empty() {
@@ -188,7 +187,7 @@ fn effort_bar_chart(report: &GoValue) -> Option<Chart> {
     Some(bar)
 }
 
-/// Scatter risk zones (plot.go `classifyScatterRisk`).
+/// Scatter risk zones (reference `classifyScatterRisk`).
 fn classify_scatter_risk(volume: f64, difficulty: f64, bugs: f64) -> u8 {
     if volume >= VOLUME_HIGH || difficulty >= DIFFICULTY_HIGH || bugs >= 1.0 {
         2 // riskHigh
@@ -199,8 +198,8 @@ fn classify_scatter_risk(volume: f64, difficulty: f64, bugs: f64) -> u8 {
     }
 }
 
-/// Go `generateVolumeVsDifficultyChart` + `createVolumeVsDifficultyChart`
-/// (plot.go:232).
+/// The reference `generateVolumeVsDifficultyChart` + `createVolumeVsDifficultyChart`
+///.
 fn volume_vs_difficulty_chart(report: &GoValue) -> Option<Chart> {
     let functions = report_function_list(report)?;
     if functions.is_empty() {
@@ -295,7 +294,7 @@ fn volume_vs_difficulty_chart(report: &GoValue) -> Option<Chart> {
     Some(scatter)
 }
 
-/// Go `generateVolumePieChart` + `createVolumeDistributionPie` (plot.go:339).
+/// The reference `generateVolumePieChart` + `createVolumeDistributionPie`.
 fn volume_pie_chart(report: &GoValue) -> Chart {
     let Some(functions) = report_function_list(report) else {
         return empty_halstead_pie();
@@ -338,7 +337,7 @@ fn volume_pie_chart(report: &GoValue) -> Chart {
     build_pie_chart(None, "Volume", pie_data, PIE_RADIUS)
 }
 
-/// Go `createEmptyHalsteadChart` (plot.go:389).
+/// The reference `createEmptyHalsteadChart`.
 fn empty_halstead_chart() -> Chart {
     let co = ChartOpts::default_dark();
     let mut bar = Chart::new(ChartKind::Bar);
@@ -348,7 +347,7 @@ fn empty_halstead_chart() -> Chart {
     bar
 }
 
-/// Go `createEmptyHalsteadScatter` (plot.go:401).
+/// The reference `createEmptyHalsteadScatter`.
 fn empty_halstead_scatter() -> Chart {
     let co = ChartOpts::default_dark();
     let mut scatter = Chart::new(ChartKind::Scatter);
@@ -358,7 +357,7 @@ fn empty_halstead_scatter() -> Chart {
     scatter
 }
 
-/// Go `createEmptyHalsteadPie` (plot.go:413).
+/// The reference `createEmptyHalsteadPie`.
 fn empty_halstead_pie() -> Chart {
     let co = ChartOpts::default_dark();
     let mut pie = Chart::new(ChartKind::Pie);

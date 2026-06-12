@@ -1,5 +1,4 @@
-//! `history/devs` plot sections — port of Go
-//! `internal/analyzers/devs/store_reader.go` + the `dashboard*.go` tab
+//! `history/devs` plot sections + the dashboard tab
 //! builders (`GenerateStoreSections` over the developer/language/bus-factor/
 //! activity/churn/aggregate store kinds — the run's `ComputedMetrics`).
 
@@ -21,7 +20,7 @@ use cf_plotpage::{
 use crate::handlers::go_sort;
 use crate::handlers::plot_sections::history_shared::{format_number, format_signed_number};
 
-/// devs plot.go / dashboard.go constants.
+/// Reference devs plot/dashboard constants.
 const MAX_DEVS: usize = 20;
 const TOP_DEVS_FOR_RADAR: usize = 5;
 const TOP_DEVS_FOR_TREEMAP: usize = 30;
@@ -42,7 +41,7 @@ const GAP_WIDTH: f64 = 2.0;
 const STATS_GRID_COLS: usize = 4;
 const LANG_OTHER: &str = "Other";
 
-/// A sequence of renderables interleaved with raw HTML (the Go tab contents
+/// A sequence of renderables interleaved with raw HTML (the reference tab contents
 /// write components and literal `<div class="mt-6">` wrappers to one writer).
 struct Composite(Vec<Box<dyn Renderable>>);
 
@@ -63,7 +62,7 @@ impl Renderable for Raw {
     }
 }
 
-/// Go `GenerateStoreSections`: no developers AND no activity yield zero
+/// The reference `GenerateStoreSections`: no developers AND no activity yield zero
 /// sections; otherwise one "Developer Analytics" section holding the
 /// six-tab dashboard.
 pub fn sections(metrics: &ComputedMetrics) -> Vec<Section> {
@@ -123,7 +122,7 @@ pub fn sections(metrics: &ComputedMetrics) -> Vec<Section> {
 }
 
 // ---------------------------------------------------------------------------
-// Overview tab (dashboard_overview.go).
+// Overview tab.
 // ---------------------------------------------------------------------------
 
 fn create_overview_tab(metrics: &ComputedMetrics) -> Box<dyn Renderable> {
@@ -184,7 +183,7 @@ fn create_overview_tab(metrics: &ComputedMetrics) -> Box<dyn Renderable> {
 }
 
 // ---------------------------------------------------------------------------
-// Activity tab (dashboard_activity.go).
+// Activity tab.
 // ---------------------------------------------------------------------------
 
 fn create_activity_tab(metrics: &ComputedMetrics) -> Box<dyn Renderable> {
@@ -252,7 +251,7 @@ fn create_activity_tab(metrics: &ComputedMetrics) -> Box<dyn Renderable> {
 }
 
 // ---------------------------------------------------------------------------
-// Workload tab (dashboard_workload.go).
+// Workload tab.
 // ---------------------------------------------------------------------------
 
 fn find_primary_language(dev: &DeveloperData) -> &str {
@@ -272,9 +271,9 @@ fn create_workload_tab(metrics: &ComputedMetrics) -> Box<dyn Renderable> {
         return Box::new(Text::new("No workload data available"));
     }
 
-    // buildTreemapNodes. Go iterates the langDevs map randomly before the
+    // buildTreemapNodes. the reference implementation iterates the langDevs map randomly before the
     // value-descending sorts; language-name-ascending is the deterministic
-    // stand-in (ties at equal Value are Go-variant).
+    // stand-in (ties at equal Value are reference-variant).
     let mut lang_devs: std::collections::BTreeMap<&str, Vec<TreeMapNode>> =
         std::collections::BTreeMap::new();
     let mut lang_totals: std::collections::BTreeMap<&str, i64> = std::collections::BTreeMap::new();
@@ -314,7 +313,7 @@ fn create_workload_tab(metrics: &ComputedMetrics) -> Box<dyn Renderable> {
     series.animation = Some(true);
     series.roam = Some(true);
     series.leaf_depth = TREEMAP_LEAF_DEPTH;
-    // Go's WithTreeMapOpts drops `Label` and `ColorMappingBy`.
+    // The reference implementation's WithTreeMapOpts drops `Label` and `ColorMappingBy`.
     series.levels = vec![
         TreeMapLevel {
             upper_label: Some(UpperLabel {
@@ -353,7 +352,7 @@ fn create_workload_tab(metrics: &ComputedMetrics) -> Box<dyn Renderable> {
 }
 
 // ---------------------------------------------------------------------------
-// Languages tab (dashboard_languages.go).
+// Languages tab.
 // ---------------------------------------------------------------------------
 
 fn create_languages_tab(metrics: &ComputedMetrics, top_langs: &[String]) -> Box<dyn Renderable> {
@@ -444,7 +443,7 @@ fn create_languages_tab(metrics: &ComputedMetrics, top_langs: &[String]) -> Box<
 }
 
 // ---------------------------------------------------------------------------
-// Bus factor tab (dashboard_busfactor.go).
+// Bus factor tab.
 // ---------------------------------------------------------------------------
 
 fn risk_badge_html(level: &str) -> String {
@@ -547,7 +546,7 @@ fn create_busfactor_tab(metrics: &ComputedMetrics) -> Box<dyn Renderable> {
 }
 
 // ---------------------------------------------------------------------------
-// Churn tab (dashboard_churn.go).
+// Churn tab.
 // ---------------------------------------------------------------------------
 
 fn create_churn_tab(metrics: &ComputedMetrics) -> Box<dyn Renderable> {
