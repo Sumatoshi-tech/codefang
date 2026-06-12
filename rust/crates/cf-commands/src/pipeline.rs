@@ -264,26 +264,36 @@ pub fn run_pipeline(
     let mut outputs = Vec::with_capacity(ids.len());
 
     // Static phase: parse the folder once (each handler walks the same root);
-    // dispatch each static analyzer by id.
-    for id in &static_ids {
-        let entry = registry
-            .lookup(id)
-            .ok_or_else(|| PipelineError::UnknownAnalyzer((*id).clone()))?;
-        let bytes = (entry.run)(ctx, &static_format)
-            .ok_or_else(|| PipelineError::AnalyzerFailed((*id).clone()))?;
+    // dispatch each static analyzer by id. The per-analyzer reports are
+    // independent (every id was validated against the registry above), so they
+    // are COMPUTED concurrently and emitted in the selection order; the first
+    // failed analyzer in that order surfaces its error exactly as the
+    // sequential dispatch did.
+    let static_reports: Vec<Option<Vec<u8>>> = crate::handlers::run_concurrent(
+        static_ids.len(),
+        crate::handlers::ANALYZER_CONCURRENCY,
+        |i| registry.lookup(static_ids[i]).and_then(|entry| (entry.run)(ctx, &static_format)),
+    );
+    for (id, bytes) in static_ids.iter().zip(static_reports) {
+        let bytes = bytes.ok_or_else(|| PipelineError::AnalyzerFailed((*id).clone()))?;
         outputs.push(PhaseOutput { id: (*id).clone(), bytes });
     }
 
     // History phase: one revwalk feeds each history analyzer (reference:
     // runHistoryPhase). The `--ndjson` modifier turns `timeseries` into
     // `timeseries+ndjson` exactly as the reference `applyNDJSONModifier` does.
+    // The shared UAST walk for the co-selected heavy analyzers is pre-computed
+    // as one task, then the per-analyzer reports are computed concurrently and
+    // emitted in the selection order.
     let history_format = apply_ndjson_modifier(&history_format, ctx.ndjson());
-    for id in &history_ids {
-        let entry = registry
-            .lookup(id)
-            .ok_or_else(|| PipelineError::UnknownAnalyzer((*id).clone()))?;
-        let bytes = (entry.run)(ctx, &history_format)
-            .ok_or_else(|| PipelineError::AnalyzerFailed((*id).clone()))?;
+    crate::handlers::uast_walk::prewarm(ctx.matches);
+    let history_reports: Vec<Option<Vec<u8>>> = crate::handlers::run_concurrent(
+        history_ids.len(),
+        crate::handlers::ANALYZER_CONCURRENCY,
+        |i| registry.lookup(history_ids[i]).and_then(|entry| (entry.run)(ctx, &history_format)),
+    );
+    for (id, bytes) in history_ids.iter().zip(history_reports) {
+        let bytes = bytes.ok_or_else(|| PipelineError::AnalyzerFailed((*id).clone()))?;
         outputs.push(PhaseOutput { id: (*id).clone(), bytes });
     }
 

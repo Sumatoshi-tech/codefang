@@ -35,9 +35,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use cf_analyzers_plumbing::identity_detector::IdentityDetector;
-use cf_gitlib::blob::CachedBlob;
-use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction, ChangeEntry};
-use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
+use cf_gitlib::changes::ChangeAction;
+use cf_pathpolicy::Options as PathPolicyOptions;
 use cf_shotness::aggregate::{
     accumulate_nodes, build_report_from_merged, compute_coupling_pairs, merge_nodes_into, TickNodes,
 };
@@ -47,10 +46,9 @@ use cf_uast_node::Node;
 use crate::handlers::{floor_tick_secs, run_repo_path};
 
 /// `UASTChangesAnalyzer` spill threshold: a commit with more than this many file
-/// changes streams zero UAST changes.
+/// changes streams zero UAST changes (the gated parses themselves, including
+/// the 256 KiB blob cap, live in [`crate::handlers::uast_walk::CommitParseCache`]).
 const SPILL_THRESHOLD: usize = 32;
-/// UAST blob size cap.
-const MAX_BLOB_SIZE: usize = 256 * 1024;
 /// Default DSL selecting structural nodes.
 const DSL_STRUCT: &str = r#"filter(.roles has "Function")"#;
 /// Default DSL extracting the node name (the reference `DefaultShotnessDSLName`,
@@ -106,6 +104,7 @@ pub fn shotness_run_report_data(sub: &clap::ArgMatches) -> Option<cf_shotness::R
 
 /// One walked commit's shotness products (the reference `shotness.Consume` TC + runner
 /// stamps). `touched` empty ⇔ nil-Data TC (skipped merge / spill / no nodes).
+#[derive(Clone)]
 pub(crate) struct ShotnessCommit {
     /// Full hex hash.
     pub hash: String,
@@ -125,6 +124,15 @@ pub(crate) struct ShotnessCommit {
 /// The shared `history/shotness` revwalk: one entry per walked commit, walk
 /// order. Every shotness format consumes THIS one walk.
 pub(crate) fn shotness_walk(sub: &clap::ArgMatches) -> Option<Vec<ShotnessCommit>> {
+    // Multi-analyzer runs route through the ONE shared UAST walk (same code,
+    // one tree diff + one parse per blob per commit across the co-selected
+    // analyzers); single-analyzer runs keep this direct walk. Only the
+    // per-commit PARSES/extracts are shared — the cumulative state machine
+    // below ([`ShotnessReducer`]) runs sequentially in walk order either way.
+    if let Some(shared) = crate::handlers::uast_walk::shared_shotness_walk(sub) {
+        return shared;
+    }
+
     let path = run_repo_path(sub);
     let repo = cf_gitlib::Repository::open(&path).ok()?;
 
@@ -143,10 +151,8 @@ pub(crate) fn shotness_walk(sub: &clap::ArgMatches) -> Option<Vec<ShotnessCommit
     let opts = PathPolicyOptions::default();
     let mut identity = IdentityDetector::new();
 
-    // Cumulative analyzer state.
-    let mut state = ShotnessState::default();
-    // Merge dedup tracker (the reference `s.merges.SeenOrAdd` over NumParents() > 1).
-    let mut seen_merges: BTreeSet<cf_gitlib::Hash> = BTreeSet::new();
+    // Cumulative analyzer state + merge dedup (sequential, walk order).
+    let mut reducer = ShotnessReducer::default();
 
     let mut tick0: Option<i64> = None;
     let mut previous_tick: i64 = 0;
@@ -180,62 +186,202 @@ pub(crate) fn shotness_walk(sub: &clap::ArgMatches) -> Option<Vec<ShotnessCommit
         };
 
         // shouldConsumeCommit: a merge commit is processed only the first time.
-        if commit.num_parents() > 1 && !seen_merges.insert(*hash) {
+        if !reducer.should_consume(*hash, commit.num_parents()) {
             commits.push(entry);
             continue;
         }
 
-        let new_tree = commit.tree().ok()?;
-        let changes = if commit.num_parents() > 0 {
-            let parent = commit.parent(0).ok()?;
-            let old_tree = parent.tree().ok()?;
-            tree_diff(&repo, Some(&old_tree), Some(&new_tree)).ok()?
-        } else {
-            initial_tree_changes(&repo, Some(&new_tree)).ok()?
-        };
-
-        // Spill rule: > 32 changes ⇒ the analyzer sees zero UAST changes.
-        if changes.len() > SPILL_THRESHOLD {
-            commits.push(entry);
-            continue;
-        }
-
-        // allNodes: node keys touched in THIS commit (deduped, the reference `allNodes`).
-        let mut all_nodes: BTreeSet<String> = BTreeSet::new();
-
-        for change in &changes {
-            match change.action {
-                ChangeAction::Delete => state.handle_deletion(&change.from.name),
-                ChangeAction::Insert => {
-                    if let Some(after) = parse_change_uast(&repo, &parser, &opts, &change.to) {
-                        state.handle_insertion(&change.to.name, &after, &mut all_nodes);
-                    }
-                }
-                ChangeAction::Modify => {
-                    let before = parse_change_uast(&repo, &parser, &opts, &change.from);
-                    let after = parse_change_uast(&repo, &parser, &opts, &change.to);
-                    state.handle_modification(
-                        &repo,
-                        change,
-                        before.as_ref(),
-                        after.as_ref(),
-                        &mut all_nodes,
-                    );
-                }
-            }
-        }
-
-        // buildCommitData: nil unless a known node was touched.
-        for key in &all_nodes {
-            if let Some(ns) = state.nodes.get(key) {
-                entry.touched.insert(key.clone(), ns.summary.clone());
-            }
-        }
+        // Tree diff against the first parent (root → full initial tree), then
+        // the SAME per-commit parse/extract/diff product the shared
+        // multi-analyzer walk computes, fed to the sequential state machine.
+        let changes = crate::handlers::history::commit_tree_changes(&repo, &commit)?;
+        let mut cache =
+            crate::handlers::uast_walk::CommitParseCache::new(&repo, &parser, &opts);
+        let products = shotness_commit_product(&changes, &mut cache);
+        entry.touched = reducer.consume(&products);
 
         commits.push(entry);
     }
 
     Some(commits)
+}
+
+/// One change's state-independent shotness inputs: the parsed/extracted node
+/// lists and the file diff — everything `Consume`'s `handle*` calls need that
+/// does NOT depend on the cumulative analyzer state. Computed per commit by
+/// [`shotness_commit_product`] (in the direct walk AND the shared
+/// multi-analyzer walk) and consumed sequentially by [`ShotnessReducer`].
+pub(crate) enum ShotnessChangeProduct {
+    /// A Delete change (`handleDeletion` input).
+    Delete {
+        /// The deleted file path.
+        from_name: String,
+    },
+    /// An Insert change whose After side parsed (`handleInsertion` input);
+    /// a failed parse emits no product, exactly as the direct walk skipped
+    /// the `handle_insertion` call.
+    Insert {
+        /// The inserted file path.
+        to_name: String,
+        /// The extracted structural nodes of the After tree.
+        nodes: Vec<ExtractedNode>,
+    },
+    /// A Modify change (`handleModification` input). The rename bookkeeping
+    /// applies unconditionally; `detail` is present only when BOTH sides
+    /// parsed AND the FileDiff survived its preconditions.
+    Modify {
+        /// The old file path.
+        from_name: String,
+        /// The new file path.
+        to_name: String,
+        /// The diff-driven touch inputs (absent ⇒ rename bookkeeping only).
+        detail: Option<ShotnessModifyDetail>,
+    },
+}
+
+/// The diff-driven inputs of one surviving Modify change.
+pub(crate) struct ShotnessModifyDetail {
+    nodes_before: Vec<ExtractedNode>,
+    winner_before: Option<String>,
+    nodes_after: Vec<ExtractedNode>,
+    winner_after: Option<String>,
+    diff: FileDiff,
+}
+
+/// Computes one commit's [`ShotnessChangeProduct`]s — the pure
+/// (state-independent) half of the reference `shotness.Consume`: gated UAST
+/// parses through the per-commit cache, node extraction, and the FileDiff.
+/// The spill rule (> 32 changes ⇒ zero UAST changes, NO products — not even
+/// deletions) matches the direct walk's pre-loop skip.
+pub(crate) fn shotness_commit_product(
+    changes: &[cf_gitlib::changes::Change],
+    cache: &mut crate::handlers::uast_walk::CommitParseCache<'_>,
+) -> Vec<ShotnessChangeProduct> {
+    use crate::handlers::uast_walk::ParseOutcome;
+
+    // Spill rule: > 32 changes ⇒ the analyzer sees zero UAST changes.
+    if changes.len() > SPILL_THRESHOLD {
+        return Vec::new();
+    }
+
+    let mut products: Vec<ShotnessChangeProduct> = Vec::with_capacity(changes.len());
+    for change in changes {
+        match change.action {
+            ChangeAction::Delete => products.push(ShotnessChangeProduct::Delete {
+                from_name: change.from.name.clone(),
+            }),
+            ChangeAction::Insert => {
+                if let ParseOutcome::Parsed(after) =
+                    &*cache.parse(&change.to.name, change.to.hash)
+                {
+                    let (nodes, _winner) = extract_nodes(after);
+                    products.push(ShotnessChangeProduct::Insert {
+                        to_name: change.to.name.clone(),
+                        nodes,
+                    });
+                }
+            }
+            ChangeAction::Modify => {
+                let before = cache.parse(&change.from.name, change.from.hash);
+                let after = cache.parse(&change.to.name, change.to.hash);
+                let detail = match (&*before, &*after) {
+                    (ParseOutcome::Parsed(before), ParseOutcome::Parsed(after)) => {
+                        file_diff(cache, change).map(|diff| {
+                            let (nodes_before, winner_before) = extract_nodes(before);
+                            let (nodes_after, winner_after) = extract_nodes(after);
+                            ShotnessModifyDetail {
+                                nodes_before,
+                                winner_before,
+                                nodes_after,
+                                winner_after,
+                                diff,
+                            }
+                        })
+                    }
+                    _ => None,
+                };
+                products.push(ShotnessChangeProduct::Modify {
+                    from_name: change.from.name.clone(),
+                    to_name: change.to.name.clone(),
+                    detail,
+                });
+            }
+        }
+    }
+    products
+}
+
+/// The sequential, cumulative half of the reference `shotness.Consume`: the
+/// state machine over commits in walk order. Both the direct walk and the
+/// shared multi-analyzer walk drive THIS reducer over identical per-commit
+/// products, so the cumulative node/file state — and therefore every report —
+/// is byte-identical between the two.
+#[derive(Default)]
+pub(crate) struct ShotnessReducer {
+    /// Cumulative analyzer state.
+    state: ShotnessState,
+    /// Merge dedup tracker (the reference `s.merges.SeenOrAdd` over
+    /// `NumParents() > 1`).
+    seen_merges: BTreeSet<cf_gitlib::Hash>,
+}
+
+impl ShotnessReducer {
+    /// shouldConsumeCommit: a merge commit is processed only the first time.
+    pub(crate) fn should_consume(&mut self, hash: cf_gitlib::Hash, num_parents: usize) -> bool {
+        !(num_parents > 1 && !self.seen_merges.insert(hash))
+    }
+
+    /// Applies one commit's products to the cumulative state and returns the
+    /// touched-node map (the reference `buildCommitData`: nil unless a known
+    /// node was touched).
+    pub(crate) fn consume(
+        &mut self,
+        products: &[ShotnessChangeProduct],
+    ) -> BTreeMap<String, NodeSummary> {
+        // allNodes: node keys touched in THIS commit (deduped, the reference `allNodes`).
+        let mut all_nodes: BTreeSet<String> = BTreeSet::new();
+
+        for product in products {
+            match product {
+                ShotnessChangeProduct::Delete { from_name } => {
+                    self.state.handle_deletion(from_name);
+                }
+                ShotnessChangeProduct::Insert { to_name, nodes } => {
+                    // Insertion has no diff, so every extracted node is touched
+                    // under its OWN name (the reference implementation iterates
+                    // `res` (name→node) directly).
+                    for n in nodes {
+                        self.state.add_node(&n.name, &n.type_, to_name, &mut all_nodes);
+                    }
+                }
+                ShotnessChangeProduct::Modify { from_name, to_name, detail } => {
+                    if from_name != to_name {
+                        self.state.apply_rename(from_name, to_name);
+                    }
+                    if let Some(d) = detail {
+                        self.state.apply_diff_edits(
+                            to_name,
+                            &d.nodes_before,
+                            d.winner_before.as_deref(),
+                            &d.nodes_after,
+                            d.winner_after.as_deref(),
+                            &d.diff,
+                            &mut all_nodes,
+                        );
+                    }
+                }
+            }
+        }
+
+        // buildCommitData: nil unless a known node was touched.
+        let mut touched: BTreeMap<String, NodeSummary> = BTreeMap::new();
+        for key in &all_nodes {
+            if let Some(ns) = self.state.nodes.get(key) {
+                touched.insert(key.clone(), ns.summary.clone());
+            }
+        }
+        touched
+    }
 }
 
 /// Per-commit shotness NDJSON records (forked leaf): only commits that touched
@@ -314,39 +460,10 @@ pub fn shotness_timeseries_contribution(
     })
 }
 
-/// Parses a change side's blob into a UAST root, applying the same filters as
-/// the reference implementation's `UASTPipeline.parseBlob`: path-policy exclusion, parser support,
-/// 256 KiB blob cap, content-aware generated detection.
-fn parse_change_uast(
-    repo: &cf_gitlib::Repository,
-    parser: &cf_uast::Parser,
-    opts: &PathPolicyOptions,
-    entry: &ChangeEntry,
-) -> Option<Node> {
-    let name = &entry.name;
-    if entry.hash.is_zero() {
-        return None;
-    }
-    if exclude(name, None, opts) {
-        return None;
-    }
-    if !parser.is_supported(name) {
-        return None;
-    }
-    let blob = CachedBlob::from_repo(repo, entry.hash).ok()?;
-    if blob.data.len() > MAX_BLOB_SIZE {
-        return None;
-    }
-    if exclude(name, Some(&blob.data), opts) {
-        return None;
-    }
-    parser.parse(name, &blob.data).ok()
-}
-
 /// One extracted structural node: its resolved name, type, and 1-based inclusive
 /// line span, used for registration and diff line→node mapping
 /// (the reference `extractNodes` / `genLine2Node` / `resolveEndLine`).
-struct ExtractedNode {
+pub(crate) struct ExtractedNode {
     name: String,
     type_: String,
     start_line: usize,
@@ -470,8 +587,12 @@ struct FileDiff {
 /// Computes the FileDiff for a Modify change, mirroring the reference implementation's `processChange`
 /// (skip same-hash / binary, line-diff via the diffmatchpatch port). Returns
 /// `None` when the change is not diffed (reference `FileDiff` only diffs Modify changes
-/// and skips binary blobs / missing blobs).
-fn file_diff(repo: &cf_gitlib::Repository, change: &cf_gitlib::changes::Change) -> Option<FileDiff> {
+/// and skips binary blobs / missing blobs). Blob reads go through the
+/// per-commit cache so the parse path and the diff path fetch each blob once.
+fn file_diff(
+    cache: &mut crate::handlers::uast_walk::CommitParseCache<'_>,
+    change: &cf_gitlib::changes::Change,
+) -> Option<FileDiff> {
     use cf_godiff::{line_diff, Op};
 
     if change.action != ChangeAction::Modify {
@@ -480,8 +601,8 @@ fn file_diff(repo: &cf_gitlib::Repository, change: &cf_gitlib::changes::Change) 
     if change.from.hash == change.to.hash || change.from.hash.is_zero() || change.to.hash.is_zero() {
         return None;
     }
-    let blob_from = CachedBlob::from_repo(repo, change.from.hash).ok()?;
-    let blob_to = CachedBlob::from_repo(repo, change.to.hash).ok()?;
+    let blob_from = cache.blob(change.from.hash)?;
+    let blob_to = cache.blob(change.to.hash)?;
     if is_binary(&blob_from.data) || is_binary(&blob_to.data) {
         return None;
     }
@@ -587,53 +708,6 @@ impl ShotnessState {
                 self.nodes.remove(&key);
             }
         }
-    }
-
-    /// Extracts nodes from a newly inserted file and registers them
-    ///. Insertion has no diff, so every extracted node is
-    /// touched under its OWN name (the reference implementation iterates `res` (name→node) directly).
-    fn handle_insertion(&mut self, to_name: &str, after: &Node, all_nodes: &mut BTreeSet<String>) {
-        let (nodes, _winner) = extract_nodes(after);
-        for n in &nodes {
-            self.add_node(&n.name, &n.type_, to_name, all_nodes);
-        }
-    }
-
-    /// Processes a file modification: rename bookkeeping then diff-driven
-    /// line→node touch recording.
-    fn handle_modification(
-        &mut self,
-        repo: &cf_gitlib::Repository,
-        change: &cf_gitlib::changes::Change,
-        before: Option<&Node>,
-        after: Option<&Node>,
-        all_nodes: &mut BTreeSet<String>,
-    ) {
-        let to_name = &change.to.name;
-
-        if change.from.name != *to_name {
-            self.apply_rename(&change.from.name, to_name);
-        }
-
-        let (Some(before), Some(after)) = (before, after) else {
-            return;
-        };
-        let Some(diff) = file_diff(repo, change) else {
-            return;
-        };
-
-        let (nodes_before, winner_before) = extract_nodes(before);
-        let (nodes_after, winner_after) = extract_nodes(after);
-
-        self.apply_diff_edits(
-            to_name,
-            &nodes_before,
-            winner_before.as_deref(),
-            &nodes_after,
-            winner_after.as_deref(),
-            &diff,
-            all_nodes,
-        );
     }
 
     /// Walks the diff edits and records touched nodes (the reference `applyDiffEdits` +

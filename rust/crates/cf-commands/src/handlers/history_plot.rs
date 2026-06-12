@@ -325,11 +325,23 @@ fn render_history_plot(
         theme: Theme::Dark,
     };
 
+    // Pre-compute the ONE shared UAST walk for the co-selected heavy history
+    // analyzers (imports/quality/sentiment/shotness/typos) — one task — then
+    // COMPUTE the per-analyzer sections concurrently (independent walks /
+    // memoized shared-walk reads) and render/write the pages in the existing
+    // deterministic emit order below.
+    crate::handlers::uast_walk::prewarm(ctx.matches);
+    let all_sections: Vec<Option<Vec<Section>>> = crate::handlers::run_concurrent(
+        selected.len(),
+        crate::handlers::ANALYZER_CONCURRENCY,
+        |i| (selected[i].sections)(ctx, selected_flags),
+    );
+
     let mut pages: Vec<PageMeta> = Vec::new();
-    for entry in selected {
+    for (entry, sections) in selected.iter().zip(all_sections) {
         // The reference `renderOneAnalyzer`: a section-build error skips the page (the
         // analyzer stays in analyzer_ids); empty sections still render a page.
-        let Some(sections) = (entry.sections)(ctx, selected_flags) else {
+        let Some(sections) = sections else {
             continue;
         };
         renderer.render_analyzer_page(entry.flag, entry.flag, sections)?;

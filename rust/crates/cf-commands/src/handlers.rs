@@ -36,8 +36,57 @@ pub mod static_complexity_yaml;
 pub mod static_halstead;
 pub mod static_imports;
 pub mod static_json;
+pub(crate) mod uast_walk;
 
 use crate::pipeline::{AnalyzerEntry, Mode, Registry, RunContext};
+
+/// Concurrency cap for independent per-analyzer tasks in the multi-analyzer
+/// dispatch paths (combined render, plot orchestrators, the per-id pipeline).
+/// Handlers are self-contained (own `Repository` handles, thread-local
+/// parsers); the shared-UAST walk is pre-computed and counts as one task.
+pub(crate) const ANALYZER_CONCURRENCY: usize = 4;
+
+/// Runs `f(0..n)` across at most `cap` worker threads and returns the results
+/// in index order, so the caller can WRITE its outputs in the existing
+/// deterministic order while the independent computations overlap. With one
+/// task (or `cap <= 1`) it degenerates to the sequential loop.
+pub(crate) fn run_concurrent<T: Send>(
+    n: usize,
+    cap: usize,
+    f: impl Fn(usize) -> T + Sync,
+) -> Vec<T> {
+    if n <= 1 || cap <= 1 {
+        return (0..n).map(f).collect();
+    }
+    let workers = cap.min(n);
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let slots: Vec<std::sync::Mutex<Option<T>>> = (0..n).map(|_| std::sync::Mutex::new(None)).collect();
+    {
+        let f = &f;
+        let next = &next;
+        let slots = &slots;
+        std::thread::scope(|s| {
+            for _ in 0..workers {
+                s.spawn(move || loop {
+                    let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    if i >= n {
+                        break;
+                    }
+                    let value = f(i);
+                    *slots[i].lock().expect("task slot poisoned") = Some(value);
+                });
+            }
+        });
+    }
+    slots
+        .into_iter()
+        .map(|slot| {
+            slot.into_inner()
+                .expect("task slot poisoned")
+                .expect("every task index was dispatched exactly once")
+        })
+        .collect()
+}
 
 // ---------------------------------------------------------------------------
 // Shared pipeline helpers (path resolution, tick floor, RFC3339 formatting).
@@ -701,6 +750,11 @@ pub fn render_combined(
     let mut ids: Vec<String> = Vec::new();
     let mut modes: Vec<cf_analyze::AnalyzerMode> = Vec::new();
 
+    // Pre-compute the ONE shared UAST walk for the co-selected heavy history
+    // analyzers (imports/quality/sentiment/shotness/typos) before fanning out,
+    // so it runs as a single task instead of N tasks blocking on its store.
+    uast_walk::prewarm(ctx.matches);
+
     // Static phase, then history phase — the reference `renderCombinedDirect` order. Each
     // handler is dispatched with the literal "bin" format; its CFB1 envelope is
     // appended to the combined buffer (reference: staticExec/historyExec into &raw).
@@ -709,19 +763,23 @@ pub fn render_combined(
     // alias to `binary`), so pass the normalized name here — passing the bare
     // `bin` alias would miss any handler that only accepts `binary` (e.g.
     // static/halstead), aborting the whole combined render.
-    for id in static_ids {
-        let entry = registry.lookup(id)?;
-        let env = (entry.run)(ctx, "binary")?;
-        raw.extend_from_slice(&env);
-        ids.push(id.clone());
-        modes.push(cf_analyze::AnalyzerMode::static_mode());
-    }
-    for id in history_ids {
-        let entry = registry.lookup(id)?;
-        let env = (entry.run)(ctx, "binary")?;
-        raw.extend_from_slice(&env);
-        ids.push(id.clone());
-        modes.push(cf_analyze::AnalyzerMode::history());
+    //
+    // The per-analyzer envelopes are independent (each handler owns its own
+    // repository handle and parsers), so they are COMPUTED concurrently and
+    // then appended in the same deterministic static-then-history order.
+    let all_ids: Vec<&String> = static_ids.iter().chain(history_ids.iter()).collect();
+    let envelopes: Vec<Option<Vec<u8>>> = run_concurrent(all_ids.len(), ANALYZER_CONCURRENCY, |i| {
+        let entry = registry.lookup(all_ids[i])?;
+        (entry.run)(ctx, "binary")
+    });
+    for (i, (id, env)) in all_ids.iter().zip(envelopes).enumerate() {
+        raw.extend_from_slice(&env?);
+        ids.push((*id).clone());
+        modes.push(if i < static_ids.len() {
+            cf_analyze::AnalyzerMode::static_mode()
+        } else {
+            cf_analyze::AnalyzerMode::history()
+        });
     }
 
     let mut model = cf_analyze::conversion::decode_combined_binary_reports(&raw, &ids, &modes).ok()?;

@@ -12,7 +12,11 @@ use crate::echarts::ChartIdGen;
 /// `ids` is the per-page deterministic chart-ID generator (the reference
 /// renderer assigns a random ID per chart at construction; this crate assigns
 /// sequential IDs at render so output is reproducible).
-pub trait Renderable {
+///
+/// `Send` is part of the contract: sections are built concurrently by the
+/// multi-analyzer plot orchestrator and handed to the rendering thread; every
+/// component is plain data, so the bound costs implementors nothing.
+pub trait Renderable: Send {
     /// Appends this component's HTML to `out`.
     fn render(&self, out: &mut String, ids: &mut ChartIdGen);
 }

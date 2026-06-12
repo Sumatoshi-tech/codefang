@@ -154,11 +154,18 @@ pub fn run_static_plot(ctx: &RunContext, static_ids: &[String], output_dir: &str
         return None;
     }
 
-    // Run the analyzers (reference: service.AnalyzeFolder over the shared folder walk).
+    // Run the analyzers (reference: service.AnalyzeFolder over the shared folder
+    // walk). The static analyzers are independent single-threaded folder walks,
+    // so COMPUTE their reports concurrently and keep the deterministic
+    // selection order for rendering/writing below.
+    let reports: Vec<Option<GoValue>> = crate::handlers::run_concurrent(
+        selected.len(),
+        crate::handlers::ANALYZER_CONCURRENCY,
+        |i| (selected[i].raw_report)(ctx),
+    );
     let mut results: Vec<(&'static str, GoValue)> = Vec::new();
-    for entry in &selected {
-        let report = (entry.raw_report)(ctx)?;
-        results.push((entry.name, report));
+    for (entry, report) in selected.iter().zip(reports) {
+        results.push((entry.name, report?));
     }
 
     match render_plot_output(&selected, &results, output_dir) {

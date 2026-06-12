@@ -833,6 +833,7 @@ pub fn quality_metrics(sub: &clap::ArgMatches) -> Option<cf_quality::ComputedMet
 
 /// One walked commit's quality products (the reference `quality.Consume` TC + runner
 /// stamps).
+#[derive(Clone)]
 pub(crate) struct QualityCommit {
     /// Full hex hash.
     pub hash: String,
@@ -853,13 +854,14 @@ pub(crate) struct QualityCommit {
 /// consumes THIS one walk.
 pub(crate) fn quality_walk(sub: &clap::ArgMatches) -> Option<Vec<QualityCommit>> {
     use cf_analyzers_plumbing::identity_detector::IdentityDetector;
-    use cf_gitlib::blob::CachedBlob;
-    use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
-    use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
-    use cf_quality::TickQuality;
+    use cf_pathpolicy::Options as PathPolicyOptions;
 
-    const SPILL_THRESHOLD: usize = 32;
-    const MAX_BLOB_SIZE: usize = 256 * 1024;
+    // Multi-analyzer runs route through the ONE shared UAST walk (same code,
+    // one tree diff + one parse per blob per commit across the co-selected
+    // analyzers); single-analyzer runs keep this direct walk.
+    if let Some(shared) = super::uast_walk::shared_quality_walk(sub) {
+        return shared;
+    }
 
     let path = run_repo_path(sub);
     let repo = cf_gitlib::Repository::open(&path).ok()?;
@@ -886,12 +888,12 @@ pub(crate) fn quality_walk(sub: &clap::ArgMatches) -> Option<Vec<QualityCommit>>
     // ---- parallel pure-compute stage -----------------------------------------
     // The expensive per-commit work — tree diff + per-file UAST parse + the four
     // component analyzers — is a PURE function of (repo, commit), so run it across
-    // all cores. The tree-sitter parser is NOT thread-safe, so each call creates
-    // its OWN `cf_uast::Parser` inside the closure (per thread/call). The result is
-    // a per-commit `TickQuality` carrying that commit's per-file samples (empty for
-    // a spilled/zero-file commit). The order-dependent reduce below (monotonic tick
-    // assignment, per-tick committer-time bounds, merge of each commit's samples
-    // into its tick) runs UNCHANGED and sequentially over these results.
+    // all cores. The result is a per-commit `TickQuality` carrying that commit's
+    // per-file samples (empty for a spilled/zero-file commit). The order-dependent
+    // reduce below (monotonic tick assignment, per-tick committer-time bounds,
+    // merge of each commit's samples into its tick) runs UNCHANGED and
+    // sequentially over these results. The per-commit body is the SAME
+    // `quality_commit_product` the shared multi-analyzer walk calls.
     let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
     let opts_ref = &opts;
     let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
@@ -899,64 +901,9 @@ pub(crate) fn quality_walk(sub: &clap::ArgMatches) -> Option<Vec<QualityCommit>>
       // parsers are not thread-safe, so never shared across threads).
       crate::handlers::history::with_uast_parser(|parser| {
         let commit = repo.lookup_commit(hash).ok()?;
-
-        // This commit's per-file quality samples (the reference implementation appends one sample per
-        // analyzed file into the tick; here we collect them per commit first).
-        let mut commit_q = TickQuality::default();
-
-        // Tree diff against the first parent (root → full initial tree).
-        let new_tree = commit.tree().ok()?;
-        let changes = if commit.num_parents() > 0 {
-            let parent = commit.parent(0).ok()?;
-            let old_tree = parent.tree().ok()?;
-            tree_diff(repo, Some(&old_tree), Some(&new_tree)).ok()?
-        } else {
-            initial_tree_changes(repo, Some(&new_tree)).ok()?
-        };
-
-        // Spill rule: > 32 changes ⇒ the quality analyzer sees zero UAST changes.
-        if changes.len() > SPILL_THRESHOLD {
-            return Some(commit_q);
-        }
-
-        for change in &changes {
-            // Quality analyzes the After version only (Insert / Modify).
-            if matches!(change.action, ChangeAction::Delete) || change.to.hash.is_zero() {
-                continue;
-            }
-            let name = &change.to.name;
-            // tree_diff filterChanges: pathpolicy.Exclude(name, nil) (path-only).
-            if exclude(name, None, opts_ref) {
-                continue;
-            }
-            // UAST parseBlob: language support is keyed on the file extension.
-            if !parser.is_supported(name) {
-                continue;
-            }
-            let Ok(blob) = CachedBlob::from_repo(repo, change.to.hash) else {
-                continue;
-            };
-            if blob.data.len() > MAX_BLOB_SIZE {
-                continue;
-            }
-            // Content-aware generated detection (IsExcludedWithContent).
-            if exclude(name, Some(&blob.data), opts_ref) {
-                continue;
-            }
-
-            // Parse the file to UAST and run the four component analyzers on the
-            // `change.After` root, exactly as the reference `quality.(*Analyzer).analyzeNode`
-            // (complexity -> halstead -> comments -> cohesion), recording the same
-            // scalar keys. One sample per analyzed file. When Rust lacks a wired
-            // grammar for a reference-supported file the parse fails; the file still
-            // counts as one analyzed file (reference: has a node there) but contributes a
-            // function-free sample, keeping `files_analyzed` byte-identical.
-            match parser.parse(name, &blob.data) {
-                Ok(root) => accumulate_quality_file(&root, &mut commit_q),
-                Err(_) => push_empty_quality_sample(&mut commit_q),
-            }
-        }
-        Some(commit_q)
+        let changes = commit_tree_changes(repo, &commit)?;
+        let mut cache = super::uast_walk::CommitParseCache::new(repo, parser, opts_ref);
+        Some(quality_commit_product(&changes, &mut cache))
       })
     })?;
 
@@ -990,6 +937,68 @@ pub(crate) fn quality_walk(sub: &clap::ArgMatches) -> Option<Vec<QualityCommit>>
         });
     }
     Some(commits)
+}
+
+/// Computes a commit's tree changes against its first parent (root commit →
+/// the full initial tree) — the ONE diff every history UAST walk starts from,
+/// shared by the direct walks and the multi-analyzer shared walk.
+pub(crate) fn commit_tree_changes(
+    repo: &cf_gitlib::Repository,
+    commit: &cf_gitlib::commit::Commit<'_>,
+) -> Option<cf_gitlib::changes::Changes> {
+    use cf_gitlib::changes::{initial_tree_changes, tree_diff};
+    let new_tree = commit.tree().ok()?;
+    if commit.num_parents() > 0 {
+        let parent = commit.parent(0).ok()?;
+        let old_tree = parent.tree().ok()?;
+        tree_diff(repo, Some(&old_tree), Some(&new_tree)).ok()
+    } else {
+        initial_tree_changes(repo, Some(&new_tree)).ok()
+    }
+}
+
+/// The `history/quality` per-commit product (the reference `quality.Consume`
+/// body): the per-file quality samples of this commit's surviving After trees.
+/// Called by BOTH the direct [`quality_walk`] and the shared multi-analyzer
+/// UAST walk, so the two are byte-identical by construction.
+///
+/// Gates: the spill rule (> 32 changes ⇒ zero UAST changes), the Delete /
+/// zero-hash skip, then the `UASTPipeline.parseBlob` gate chain inside the
+/// parse cache. A gates-passed file whose parse fails still counts as one
+/// analyzed file (a function-free sample), keeping `files_analyzed`
+/// byte-identical (reference: every parsed file has a node there).
+pub(crate) fn quality_commit_product(
+    changes: &[cf_gitlib::changes::Change],
+    cache: &mut super::uast_walk::CommitParseCache<'_>,
+) -> cf_quality::TickQuality {
+    use super::uast_walk::{ParseOutcome, SPILL_THRESHOLD};
+    use cf_gitlib::changes::ChangeAction;
+
+    // This commit's per-file quality samples (the reference implementation appends one sample per
+    // analyzed file into the tick; here we collect them per commit first).
+    let mut commit_q = cf_quality::TickQuality::default();
+
+    // Spill rule: > 32 changes ⇒ the quality analyzer sees zero UAST changes.
+    if changes.len() > SPILL_THRESHOLD {
+        return commit_q;
+    }
+
+    for change in changes {
+        // Quality analyzes the After version only (Insert / Modify).
+        if matches!(change.action, ChangeAction::Delete) || change.to.hash.is_zero() {
+            continue;
+        }
+        // Parse the file to UAST and run the four component analyzers on the
+        // `change.After` root, exactly as the reference `quality.(*Analyzer).analyzeNode`
+        // (complexity -> halstead -> comments -> cohesion), recording the same
+        // scalar keys. One sample per analyzed file.
+        match &*cache.parse(&change.to.name, change.to.hash) {
+            ParseOutcome::Parsed(root) => accumulate_quality_file(root, &mut commit_q),
+            ParseOutcome::Failed(_) => push_empty_quality_sample(&mut commit_q),
+            ParseOutcome::Skipped => {}
+        }
+    }
+    commit_q
 }
 
 /// Serializes one per-commit [`cf_quality::TickQuality`] as the reference implementation's `*TickQuality`
@@ -1282,6 +1291,7 @@ pub fn sentiment_metrics(sub: &clap::ArgMatches) -> Option<cf_sentiment::Compute
 
 /// One walked commit's sentiment products (the reference `sentiment.Consume` TC + runner
 /// stamps).
+#[derive(Clone)]
 pub(crate) struct SentimentCommit {
     /// Full hex hash.
     pub hash: String,
@@ -1303,14 +1313,14 @@ pub(crate) struct SentimentCommit {
 /// THIS one walk.
 pub(crate) fn sentiment_walk(sub: &clap::ArgMatches) -> Option<Vec<SentimentCommit>> {
     use cf_analyzers_plumbing::identity_detector::IdentityDetector;
-    use cf_gitlib::blob::CachedBlob;
-    use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
-    use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
-    use cf_sentiment::analyzer::{merge_comments, CommentNode, DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH};
-    use cf_uast_node::UAST_COMMENT;
+    use cf_pathpolicy::Options as PathPolicyOptions;
 
-    const SPILL_THRESHOLD: usize = 32;
-    const MAX_BLOB_SIZE: usize = 256 * 1024;
+    // Multi-analyzer runs route through the ONE shared UAST walk (same code,
+    // one tree diff + one parse per blob per commit across the co-selected
+    // analyzers); single-analyzer runs keep this direct walk.
+    if let Some(shared) = super::uast_walk::shared_sentiment_walk(sub) {
+        return shared;
+    }
 
     let path = run_repo_path(sub);
     let repo = cf_gitlib::Repository::open(&path).ok()?;
@@ -1336,13 +1346,13 @@ pub(crate) fn sentiment_walk(sub: &clap::ArgMatches) -> Option<Vec<SentimentComm
     // ---- parallel pure-compute stage -----------------------------------------
     // The expensive per-commit work — tree diff + per-file UAST parse + comment
     // extraction + per-commit merge_comments — is a PURE function of (repo,
-    // commit), so run it across all cores. The tree-sitter parser is NOT
-    // thread-safe, so each call creates its OWN `cf_uast::Parser` inside the
-    // closure (per thread/call). The result is `Some(merged)` for an analyzed
-    // commit (possibly empty) or `None` for a spilled (> 32 changes) commit, which
-    // records NO comments_by_commit entry — exactly the original `continue`. The
-    // order-dependent reduce below (monotonic tick assignment, commits_by_tick,
-    // per-tick committer-time bounds, comments_by_commit insert) runs UNCHANGED.
+    // commit), so run it across all cores. The result is `Some(merged)` for an
+    // analyzed commit (possibly empty) or `None` for a spilled (> 32 changes)
+    // commit, which records NO comments_by_commit entry — exactly the original
+    // `continue`. The order-dependent reduce below (monotonic tick assignment,
+    // commits_by_tick, per-tick committer-time bounds, comments_by_commit
+    // insert) runs UNCHANGED. The per-commit body is the SAME
+    // `sentiment_commit_product` the shared multi-analyzer walk calls.
     let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
     let opts_ref = &opts;
     let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
@@ -1350,69 +1360,9 @@ pub(crate) fn sentiment_walk(sub: &clap::ArgMatches) -> Option<Vec<SentimentComm
       // parsers are not thread-safe, so never shared across threads).
       crate::handlers::history::with_uast_parser(|parser| {
         let commit = repo.lookup_commit(hash).ok()?;
-
-        // Tree diff against the first parent (root → full initial tree).
-        let new_tree = commit.tree().ok()?;
-        let changes = if commit.num_parents() > 0 {
-            let parent = commit.parent(0).ok()?;
-            let old_tree = parent.tree().ok()?;
-            tree_diff(repo, Some(&old_tree), Some(&new_tree)).ok()?
-        } else {
-            initial_tree_changes(repo, Some(&new_tree)).ok()?
-        };
-
-        // Spill rule: > 32 changes ⇒ the analyzer sees zero UAST changes; the
-        // commit records NO comments_by_commit entry (inner `None`).
-        if changes.len() > SPILL_THRESHOLD {
-            return Some(None);
-        }
-
-        // Collect Comment nodes across this commit's surviving After trees, then
-        // merge+filter per commit (reference `Consume` aggregates every change's After
-        // comments before mergeComments).
-        let mut comment_nodes: Vec<CommentNode> = Vec::new();
-
-        for change in &changes {
-            // Sentiment analyzes the After version only (Insert / Modify).
-            if matches!(change.action, ChangeAction::Delete) || change.to.hash.is_zero() {
-                continue;
-            }
-            let name = &change.to.name;
-            if exclude(name, None, opts_ref) {
-                continue;
-            }
-            if !parser.is_supported(name) {
-                continue;
-            }
-            let Ok(blob) = CachedBlob::from_repo(repo, change.to.hash) else {
-                continue;
-            };
-            if blob.data.len() > MAX_BLOB_SIZE {
-                continue;
-            }
-            if exclude(name, Some(&blob.data), opts_ref) {
-                continue;
-            }
-            match parser.parse(name, &blob.data) {
-                Ok(root) => collect_comment_nodes(&root, UAST_COMMENT, &mut comment_nodes),
-                // The Rust UAST loader has only the reference grammar vendored; shell
-                // grammars are pending (see cf-uast languages.rs). For `.sh`
-                // files (the only non-Go source contributing comments in this
-                // capture's commit window) reproduce tree-sitter-bash's comment
-                // tokenization directly: every `#`-introduced line is one Comment
-                // node with `StartLine == EndLine == lineno` and token = the
-                // comment text from `#` to end-of-line (verified node-for-node
-                // against the reference pipeline for hack/config-go.sh and
-                // src/scripts/cloudcfg.sh). Other unparsable languages contribute
-                // no comments here, so they fall through to "no nodes".
-                Err(_) if is_shell_path(name) => {
-                    extract_shell_comment_nodes(&blob.data, &mut comment_nodes);
-                }
-                Err(_) => {}
-            }
-        }
-
-        Some(Some(merge_comments(&comment_nodes, DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH)))
+        let changes = commit_tree_changes(repo, &commit)?;
+        let mut cache = super::uast_walk::CommitParseCache::new(repo, parser, opts_ref);
+        Some(sentiment_commit_product(&changes, &mut cache))
       })
     })?;
 
@@ -1445,6 +1395,61 @@ pub(crate) fn sentiment_walk(sub: &clap::ArgMatches) -> Option<Vec<SentimentComm
         });
     }
     Some(commits)
+}
+
+/// The `history/sentiment` per-commit product (the reference
+/// `sentiment.Consume` body): the merged+filtered comment strings of this
+/// commit's surviving After trees, or `None` for a spilled commit (which
+/// records NO comments_by_commit entry). Called by BOTH the direct
+/// [`sentiment_walk`] and the shared multi-analyzer UAST walk.
+pub(crate) fn sentiment_commit_product(
+    changes: &[cf_gitlib::changes::Change],
+    cache: &mut super::uast_walk::CommitParseCache<'_>,
+) -> Option<Vec<String>> {
+    use super::uast_walk::{ParseOutcome, SPILL_THRESHOLD};
+    use cf_gitlib::changes::ChangeAction;
+    use cf_sentiment::analyzer::{merge_comments, CommentNode, DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH};
+    use cf_uast_node::UAST_COMMENT;
+
+    // Spill rule: > 32 changes ⇒ the analyzer sees zero UAST changes; the
+    // commit records NO comments_by_commit entry (`None`).
+    if changes.len() > SPILL_THRESHOLD {
+        return None;
+    }
+
+    // Collect Comment nodes across this commit's surviving After trees, then
+    // merge+filter per commit (reference `Consume` aggregates every change's After
+    // comments before mergeComments).
+    let mut comment_nodes: Vec<CommentNode> = Vec::new();
+
+    for change in changes {
+        // Sentiment analyzes the After version only (Insert / Modify).
+        if matches!(change.action, ChangeAction::Delete) || change.to.hash.is_zero() {
+            continue;
+        }
+        let name = &change.to.name;
+        match &*cache.parse(name, change.to.hash) {
+            ParseOutcome::Parsed(root) => {
+                collect_comment_nodes(root, UAST_COMMENT, &mut comment_nodes);
+            }
+            // The Rust UAST loader has only the reference grammar vendored; shell
+            // grammars are pending (see cf-uast languages.rs). For `.sh`
+            // files (the only non-Go source contributing comments in this
+            // capture's commit window) reproduce tree-sitter-bash's comment
+            // tokenization directly: every `#`-introduced line is one Comment
+            // node with `StartLine == EndLine == lineno` and token = the
+            // comment text from `#` to end-of-line (verified node-for-node
+            // against the reference pipeline for hack/config-go.sh and
+            // src/scripts/cloudcfg.sh). Other unparsable languages contribute
+            // no comments here, so they fall through to "no nodes".
+            ParseOutcome::Failed(blob) if is_shell_path(name) => {
+                extract_shell_comment_nodes(&blob.data, &mut comment_nodes);
+            }
+            ParseOutcome::Failed(_) | ParseOutcome::Skipped => {}
+        }
+    }
+
+    Some(merge_comments(&comment_nodes, DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH))
 }
 
 /// Per-commit sentiment NDJSON records (forked leaf): EVERY commit emits a
@@ -1709,6 +1714,7 @@ pub fn imports_run_usage_counts(sub: &clap::ArgMatches) -> Option<Vec<(String, i
 
 /// One walked commit's imports products (the reference `imports.Consume` inputs + the
 /// runner-stamped TC identity).
+#[derive(Clone)]
 pub(crate) struct ImportsCommit {
     /// Full hex hash.
     pub hash: String,
@@ -1731,13 +1737,14 @@ pub(crate) struct ImportsCommit {
 /// THIS one walk.
 pub(crate) fn imports_walk(sub: &clap::ArgMatches) -> Option<Vec<ImportsCommit>> {
     use cf_analyzers_plumbing::identity_detector::IdentityDetector;
-    use cf_gitlib::blob::CachedBlob;
-    use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
-    use cf_imports::history::ImportEntry;
-    use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
+    use cf_pathpolicy::Options as PathPolicyOptions;
 
-    const SPILL_THRESHOLD: usize = 32;
-    const MAX_BLOB_SIZE: usize = 256 * 1024;
+    // Multi-analyzer runs route through the ONE shared UAST walk (same code,
+    // one tree diff + one parse per blob per commit across the co-selected
+    // analyzers); single-analyzer runs keep this direct walk.
+    if let Some(shared) = super::uast_walk::shared_imports_walk(sub) {
+        return shared;
+    }
 
     let path = run_repo_path(sub);
     let repo = cf_gitlib::Repository::open(&path).ok()?;
@@ -1764,12 +1771,12 @@ pub(crate) fn imports_walk(sub: &clap::ArgMatches) -> Option<Vec<ImportsCommit>>
     // ---- parallel pure-compute stage -----------------------------------------
     // The expensive per-commit work — tree diff + per-change UAST parse + import
     // extraction + language detection — is a PURE function of (repo, commit), so
-    // run it across all cores. The tree-sitter parser is NOT thread-safe, so each
-    // call creates its OWN `cf_uast::Parser` inside the closure (per thread/call),
-    // never a shared one. The order-dependent reduce below (identity ids
+    // run it across all cores. The order-dependent reduce below (identity ids
     // oldest-first, tick assignment, the merge into `merged`) runs UNCHANGED and
     // sequentially over these per-commit `Vec<ImportEntry>` results; only
     // author_id and tick are order-assigned, so they are applied in the reduce.
+    // The per-commit body is the SAME `imports_commit_product` the shared
+    // multi-analyzer walk calls.
     let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
     let opts_ref = &opts;
     let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
@@ -1777,68 +1784,9 @@ pub(crate) fn imports_walk(sub: &clap::ArgMatches) -> Option<Vec<ImportsCommit>>
       // parsers are not thread-safe, so never shared across threads).
       crate::handlers::history::with_uast_parser(|parser| {
         let commit = repo.lookup_commit(hash).ok()?;
-
-        // Tree diff against the first parent (root → full initial tree).
-        let new_tree = commit.tree().ok()?;
-        let changes = if commit.num_parents() > 0 {
-            let parent = commit.parent(0).ok()?;
-            let old_tree = parent.tree().ok()?;
-            tree_diff(repo, Some(&old_tree), Some(&new_tree)).ok()?
-        } else {
-            initial_tree_changes(repo, Some(&new_tree)).ok()?
-        };
-
-        // Spill rule: > 32 changes ⇒ the analyzer sees zero UAST changes.
-        if changes.len() > SPILL_THRESHOLD {
-            return Some(Vec::new());
-        }
-
-        // Collect import entries across this commit's surviving After trees
-        // (imports.Consume aggregates every Insert/Modify change before the TC).
-        let mut entries: Vec<ImportEntry> = Vec::new();
-
-        for change in &changes {
-            // Imports analyzes the After version only (Insert / Modify).
-            if matches!(change.action, ChangeAction::Delete) || change.to.hash.is_zero() {
-                continue;
-            }
-            let name = &change.to.name;
-            if exclude(name, None, opts_ref) {
-                continue;
-            }
-            if !parser.is_supported(name) {
-                continue;
-            }
-            let Ok(blob) = CachedBlob::from_repo(repo, change.to.hash) else {
-                continue;
-            };
-            if blob.data.len() > MAX_BLOB_SIZE {
-                continue;
-            }
-            if exclude(name, Some(&blob.data), opts_ref) {
-                continue;
-            }
-            let Ok(root) = parser.parse(name, &blob.data) else {
-                continue;
-            };
-            // Faithful port of the reference `extractImportsFromUAST` over the real cf-uast
-            // parse output (the same function the static/imports path uses).
-            let imports = crate::handlers::static_imports::extract_imports_from_uast(&root);
-            if imports.is_empty() {
-                continue;
-            }
-            // The reference `imports.Consume`: `lang := h.UAST.GetLanguage(name)`, falling
-            // back to "uast" when empty. The streaming pipeline ALWAYS runs
-            // imports as a forked leaf (`Sequential: false` → hybrid path), and
-            // `Fork` clones get a bare `&plumbing.UASTChangesAnalyzer{}` whose
-            // `parser` is nil — so GetLanguage returns "" and EVERY entry's
-            // Lang is the "uast" fallback in the live binary.
-            let lang = "uast";
-            for imp in imports {
-                entries.push(ImportEntry { lang: lang.to_string(), import: imp });
-            }
-        }
-        Some(entries)
+        let changes = commit_tree_changes(repo, &commit)?;
+        let mut cache = super::uast_walk::CommitParseCache::new(repo, parser, opts_ref);
+        Some(imports_commit_product(&changes, &mut cache))
       })
     })?;
 
@@ -1872,6 +1820,55 @@ pub(crate) fn imports_walk(sub: &clap::ArgMatches) -> Option<Vec<ImportsCommit>>
         });
     }
     Some(commits)
+}
+
+/// The `history/imports` per-commit product (the reference `imports.Consume`
+/// body): the `(lang, import)` entries extracted from this commit's surviving
+/// After trees. Called by BOTH the direct [`imports_walk`] and the shared
+/// multi-analyzer UAST walk.
+pub(crate) fn imports_commit_product(
+    changes: &[cf_gitlib::changes::Change],
+    cache: &mut super::uast_walk::CommitParseCache<'_>,
+) -> Vec<cf_imports::history::ImportEntry> {
+    use super::uast_walk::{ParseOutcome, SPILL_THRESHOLD};
+    use cf_gitlib::changes::ChangeAction;
+    use cf_imports::history::ImportEntry;
+
+    // Spill rule: > 32 changes ⇒ the analyzer sees zero UAST changes.
+    if changes.len() > SPILL_THRESHOLD {
+        return Vec::new();
+    }
+
+    // Collect import entries across this commit's surviving After trees
+    // (imports.Consume aggregates every Insert/Modify change before the TC).
+    let mut entries: Vec<ImportEntry> = Vec::new();
+
+    for change in changes {
+        // Imports analyzes the After version only (Insert / Modify).
+        if matches!(change.action, ChangeAction::Delete) || change.to.hash.is_zero() {
+            continue;
+        }
+        let ParseOutcome::Parsed(root) = &*cache.parse(&change.to.name, change.to.hash) else {
+            continue;
+        };
+        // Faithful port of the reference `extractImportsFromUAST` over the real cf-uast
+        // parse output (the same function the static/imports path uses).
+        let imports = crate::handlers::static_imports::extract_imports_from_uast(root);
+        if imports.is_empty() {
+            continue;
+        }
+        // The reference `imports.Consume`: `lang := h.UAST.GetLanguage(name)`, falling
+        // back to "uast" when empty. The streaming pipeline ALWAYS runs
+        // imports as a forked leaf (`Sequential: false` → hybrid path), and
+        // `Fork` clones get a bare `&plumbing.UASTChangesAnalyzer{}` whose
+        // `parser` is nil — so GetLanguage returns "" and EVERY entry's
+        // Lang is the "uast" fallback in the live binary.
+        let lang = "uast";
+        for imp in imports {
+            entries.push(ImportEntry { lang: lang.to_string(), import: imp });
+        }
+    }
+    entries
 }
 
 /// Per-commit imports NDJSON records (forked leaf — the central path reorders
@@ -2951,6 +2948,7 @@ pub fn typos_report_data(sub: &clap::ArgMatches) -> Option<cf_typos::ReportData>
 /// One walked commit's typos products (the reference `typos.Consume` TC + runner stamps).
 /// One entry per walked commit, in walk order (commits with no typos have an
 /// empty `typos` — the reference implementation's nil-Data TC).
+#[derive(Clone)]
 pub(crate) struct TyposCommit {
     /// This commit's detected typos, in detection order.
     pub typos: Vec<cf_typos::Typo>,
@@ -2968,15 +2966,14 @@ pub(crate) struct TyposCommit {
 pub(crate) fn typos_walk(sub: &clap::ArgMatches) -> Option<Vec<TyposCommit>> {
     use cf_alg_levenshtein::Context as LevenshteinContext;
     use cf_analyzers_plumbing::identity_detector::IdentityDetector;
-    use cf_gitlib::blob::CachedBlob;
-    use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
-    use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
-    use cf_typos::{Hash as TypoHash, Typo};
-    use cf_uast_node::Node;
+    use cf_pathpolicy::Options as PathPolicyOptions;
 
-    const SPILL_THRESHOLD: usize = 32;
-    const MAX_BLOB_SIZE: usize = 256 * 1024;
-    const DEFAULT_MAX_DISTANCE: i64 = 4;
+    // Multi-analyzer runs route through the ONE shared UAST walk (same code,
+    // one tree diff + one parse per blob per commit across the co-selected
+    // analyzers); single-analyzer runs keep this direct walk.
+    if let Some(shared) = super::uast_walk::shared_typos_walk(sub) {
+        return shared;
+    }
 
     let path = run_repo_path(sub);
     let repo = cf_gitlib::Repository::open(&path).ok()?;
@@ -2984,15 +2981,7 @@ pub(crate) fn typos_walk(sub: &clap::ArgMatches) -> Option<Vec<TyposCommit>> {
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
     let first_parent = crate::handlers::effective_first_parent(sub);
 
-    // --typos-max-distance: 0/unset ⇒ default 4 (reference: Configure/Initialize).
-    let max_distance = {
-        let v = sub.try_get_one::<i64>("typos-max-distance").ok().flatten().copied().unwrap_or(0);
-        if v <= 0 {
-            DEFAULT_MAX_DISTANCE
-        } else {
-            v
-        }
-    };
+    let max_distance = typos_max_distance(sub);
 
     // Window: `--head` loads EXACTLY the single HEAD commit (the reference implementation,
     // ignoring `--limit`); otherwise the `limit` commits oldest-first (reference:
@@ -3014,24 +3003,6 @@ pub(crate) fn typos_walk(sub: &clap::ArgMatches) -> Option<Vec<TyposCommit>> {
     // One entry per walked commit, walk order. The report path flattens these
     // back to `(walk index, typo)` pairs and applies the worker-strided dedup.
     let mut commits: Vec<TyposCommit> = Vec::new();
-
-    // Parses a blob into a UAST root, mirroring UASTChangesAnalyzer.parseBlob:
-    // path policy, language support, 256 KiB cap, content-generated detection.
-    let parse_blob = |name: &str, data: &[u8]| -> Option<Node> {
-        if exclude(name, None, &opts) {
-            return None;
-        }
-        if !parser.is_supported(name) {
-            return None;
-        }
-        if data.len() > MAX_BLOB_SIZE {
-            return None;
-        }
-        if exclude(name, Some(data), &opts) {
-            return None;
-        }
-        parser.parse(name, data).ok()
-    };
 
     for hash in &hashes {
         let commit = repo.lookup_commit(*hash).ok()?;
@@ -3058,126 +3029,157 @@ pub(crate) fn typos_walk(sub: &clap::ArgMatches) -> Option<Vec<TyposCommit>> {
             offset_min: committer_when.offset_minutes(),
         };
 
-        // Tree diff against the first parent (root → full initial tree).
-        let new_tree = commit.tree().ok()?;
-        let changes = if commit.num_parents() > 0 {
-            let parent = commit.parent(0).ok()?;
-            let old_tree = parent.tree().ok()?;
-            tree_diff(&repo, Some(&old_tree), Some(&new_tree)).ok()?
-        } else {
-            initial_tree_changes(&repo, Some(&new_tree)).ok()?
-        };
-
-        // Spill rule: a commit with > 32 changes (`uastSpillThreshold`) has its
-        // UAST parsed via the disk-backed spill path (`parseCommitAndSpill`), and
-        // in the streaming run the typos leaf then sees ZERO UAST changes for that
-        // commit — so it produces no typos there. (Verified against the live reference
-        // binary: e.g. ioq3's 1409-change `5b755058` line-ending commit and
-        // kubernetes' 54-change `894a7e32` both yield 0 typos in the reference implementation, while every
-        // typo the reference implementation reports comes from a <=32-change commit.) This mirrors the
-        // identical `> SPILL_THRESHOLD` skip the quality/sentiment/shotness/
-        // comments analyzers already apply; without it Rust over-detects thousands
-        // of spurious typos on mass-rewrite commits.
-        if changes.len() > SPILL_THRESHOLD {
-            commits.push(entry);
-            continue;
-        }
-
-        // The commit hash threaded into each Typo (cf_typos uses its own Hash;
-        // both are 20-byte SHA-1 tuple structs ⇒ copy the raw bytes).
-        let commit_hash = TypoHash(hash.0);
-
-        for change in &changes {
-            // Typos only fires on Modify (needs both Before and After UAST).
-            if !matches!(change.action, ChangeAction::Modify) {
-                continue;
-            }
-
-            // FileDiff.processChange preconditions (Modify path).
-            if change.from.hash == change.to.hash {
-                continue;
-            }
-            let Ok(blob_before) = CachedBlob::from_repo(&repo, change.from.hash) else {
-                continue;
-            };
-            let Ok(blob_after) = CachedBlob::from_repo(&repo, change.to.hash) else {
-                continue;
-            };
-            if blob_before.is_binary() || blob_after.is_binary() {
-                continue;
-            }
-            if blob_before.data == blob_after.data {
-                // Identical content ⇒ FileDiff emits a single Equal diff ⇒ no
-                // candidates ⇒ no typos.
-                continue;
-            }
-
-            // Both UAST sides must parse (reference: Before != nil && After != nil).
-            let Some(before) = parse_blob(&change.from.name, &blob_before.data) else {
-                continue;
-            };
-            let Some(after) = parse_blob(&change.to.name, &blob_after.data) else {
-                continue;
-            };
-
-            // bytes.Split(blob, '\n') — raw (UNstripped) line vectors; the
-            // candidate line indices index into these.
-            let lines_before: Vec<&[u8]> = split_lines(&blob_before.data);
-            let lines_after: Vec<&[u8]> = split_lines(&blob_after.data);
-
-            // The runtime pipeline feeds typos the libgit2 line-diff op stream
-            // (reference → cf_batch_diff_blobs → git_diff_buffers),
-            // NOT diffmatchpatch — only falling back to dmp on a libgit2 error. The
-            // two group changed lines differently, so on mass-rewrite commits (e.g.
-            // ioq3's `5b755058` line-ending normalization) diffmatchpatch yields one
-            // big Delete+Insert block that pairs every line as a candidate, whereas
-            // libgit2's Myers diff keeps the genuinely-unchanged lines Equal — which
-            // is what makes the reference binary report a handful of typos there instead of thousands.
-            let old_lines = blob_before.count_lines().map_or(0, |n| n as i64);
-            let ops = cf_gitlib::diff::diff_blob_line_ops(
-                repo.native(),
-                change.from.hash,
-                change.to.hash,
-                old_lines,
-            )
-            .unwrap_or_default();
-
-            let cand = find_typo_candidates(
-                &ops,
-                &lines_before,
-                &lines_after,
-                max_distance,
-                &mut lctx,
-            );
-            if cand.candidates.is_empty() {
-                continue;
-            }
-
-            // Collect identifiers on the focused lines (0-based start line).
-            let removed = collect_identifiers_on_lines(&before, &cand.focused_before);
-            let added = collect_identifiers_on_lines(&after, &cand.focused_after);
-
-            for c in &cand.candidates {
-                let nb = removed.get(&c.before);
-                let na = added.get(&c.after);
-                if let (Some(nb), Some(na)) = (nb, na) {
-                    if nb.len() == 1 && na.len() == 1 {
-                        entry.typos.push(Typo {
-                            wrong: nb[0].clone(),
-                            correct: na[0].clone(),
-                            file: change.to.name.clone(),
-                            commit: commit_hash,
-                            line: c.after,
-                        });
-                    }
-                }
-            }
-        }
+        // Tree diff against the first parent (root → full initial tree), then
+        // the SAME per-commit product body the shared multi-analyzer walk calls.
+        let changes = commit_tree_changes(&repo, &commit)?;
+        let mut cache = super::uast_walk::CommitParseCache::new(&repo, &parser, &opts);
+        entry.typos =
+            typos_commit_product(&repo, *hash, &changes, max_distance, &mut lctx, &mut cache);
 
         commits.push(entry);
     }
 
     Some(commits)
+}
+
+/// The effective `--typos-max-distance`: 0/unset ⇒ default 4 (reference:
+/// Configure/Initialize).
+pub(crate) fn typos_max_distance(sub: &clap::ArgMatches) -> i64 {
+    const DEFAULT_MAX_DISTANCE: i64 = 4;
+    let v = sub.try_get_one::<i64>("typos-max-distance").ok().flatten().copied().unwrap_or(0);
+    if v <= 0 {
+        DEFAULT_MAX_DISTANCE
+    } else {
+        v
+    }
+}
+
+/// The `history/typos` per-commit product (the reference `typos.Consume` body
+/// over the FileDiff/UAST plumbing): the typos detected in this commit's
+/// Modify changes, in detection order. Called by BOTH the direct
+/// [`typos_walk`] and the shared multi-analyzer UAST walk.
+pub(crate) fn typos_commit_product(
+    repo: &cf_gitlib::Repository,
+    hash: cf_gitlib::Hash,
+    changes: &[cf_gitlib::changes::Change],
+    max_distance: i64,
+    lctx: &mut cf_alg_levenshtein::Context,
+    cache: &mut super::uast_walk::CommitParseCache<'_>,
+) -> Vec<cf_typos::Typo> {
+    use super::uast_walk::{ParseOutcome, SPILL_THRESHOLD};
+    use cf_gitlib::changes::ChangeAction;
+    use cf_typos::{Hash as TypoHash, Typo};
+
+    // Spill rule: a commit with > 32 changes (`uastSpillThreshold`) has its
+    // UAST parsed via the disk-backed spill path (`parseCommitAndSpill`), and
+    // in the streaming run the typos leaf then sees ZERO UAST changes for that
+    // commit — so it produces no typos there. (Verified against the live reference
+    // binary: e.g. ioq3's 1409-change `5b755058` line-ending commit and
+    // kubernetes' 54-change `894a7e32` both yield 0 typos in the reference implementation, while every
+    // typo the reference implementation reports comes from a <=32-change commit.) This mirrors the
+    // identical `> SPILL_THRESHOLD` skip the quality/sentiment/shotness/
+    // comments analyzers already apply; without it Rust over-detects thousands
+    // of spurious typos on mass-rewrite commits.
+    if changes.len() > SPILL_THRESHOLD {
+        return Vec::new();
+    }
+
+    // The commit hash threaded into each Typo (cf_typos uses its own Hash;
+    // both are 20-byte SHA-1 tuple structs ⇒ copy the raw bytes).
+    let commit_hash = TypoHash(hash.0);
+
+    let mut typos: Vec<Typo> = Vec::new();
+
+    for change in changes {
+        // Typos only fires on Modify (needs both Before and After UAST).
+        if !matches!(change.action, ChangeAction::Modify) {
+            continue;
+        }
+
+        // FileDiff.processChange preconditions (Modify path).
+        if change.from.hash == change.to.hash {
+            continue;
+        }
+        let Some(blob_before) = cache.blob(change.from.hash) else {
+            continue;
+        };
+        let Some(blob_after) = cache.blob(change.to.hash) else {
+            continue;
+        };
+        if blob_before.is_binary() || blob_after.is_binary() {
+            continue;
+        }
+        if blob_before.data == blob_after.data {
+            // Identical content ⇒ FileDiff emits a single Equal diff ⇒ no
+            // candidates ⇒ no typos.
+            continue;
+        }
+
+        // Both UAST sides must parse (reference: Before != nil && After != nil).
+        let before_outcome = cache.parse(&change.from.name, change.from.hash);
+        let ParseOutcome::Parsed(before) = &*before_outcome else {
+            continue;
+        };
+        let after_outcome = cache.parse(&change.to.name, change.to.hash);
+        let ParseOutcome::Parsed(after) = &*after_outcome else {
+            continue;
+        };
+
+        // bytes.Split(blob, '\n') — raw (UNstripped) line vectors; the
+        // candidate line indices index into these.
+        let lines_before: Vec<&[u8]> = split_lines(&blob_before.data);
+        let lines_after: Vec<&[u8]> = split_lines(&blob_after.data);
+
+        // The runtime pipeline feeds typos the libgit2 line-diff op stream
+        // (reference → cf_batch_diff_blobs → git_diff_buffers),
+        // NOT diffmatchpatch — only falling back to dmp on a libgit2 error. The
+        // two group changed lines differently, so on mass-rewrite commits (e.g.
+        // ioq3's `5b755058` line-ending normalization) diffmatchpatch yields one
+        // big Delete+Insert block that pairs every line as a candidate, whereas
+        // libgit2's Myers diff keeps the genuinely-unchanged lines Equal — which
+        // is what makes the reference binary report a handful of typos there instead of thousands.
+        let old_lines = blob_before.count_lines().map_or(0, |n| n as i64);
+        let ops = cf_gitlib::diff::diff_blob_line_ops(
+            repo.native(),
+            change.from.hash,
+            change.to.hash,
+            old_lines,
+        )
+        .unwrap_or_default();
+
+        let cand = find_typo_candidates(
+            &ops,
+            &lines_before,
+            &lines_after,
+            max_distance,
+            lctx,
+        );
+        if cand.candidates.is_empty() {
+            continue;
+        }
+
+        // Collect identifiers on the focused lines (0-based start line).
+        let removed = collect_identifiers_on_lines(before, &cand.focused_before);
+        let added = collect_identifiers_on_lines(after, &cand.focused_after);
+
+        for c in &cand.candidates {
+            let nb = removed.get(&c.before);
+            let na = added.get(&c.after);
+            if let (Some(nb), Some(na)) = (nb, na) {
+                if nb.len() == 1 && na.len() == 1 {
+                    typos.push(Typo {
+                        wrong: nb[0].clone(),
+                        correct: na[0].clone(),
+                        file: change.to.name.clone(),
+                        commit: commit_hash,
+                        line: c.after,
+                    });
+                }
+            }
+        }
+    }
+
+    typos
 }
 
 /// Per-commit typos NDJSON records (forked leaf): only commits with detected

@@ -128,7 +128,9 @@ fn leaf_supports_text(id: &str) -> bool {
 #[must_use]
 pub fn history_text(ctx: &RunContext, ids: &[String]) -> HistoryFormatResult {
     // Every selected leaf must be one this module can either render or
-    // faithfully fail; otherwise fall through to the per-id pipeline.
+    // faithfully fail; otherwise fall through to the per-id pipeline. (The
+    // co-selected heavy leaves share ONE memoized UAST walk: the first leaf's
+    // walk call computes it, the rest re-read it.)
     for id in ids {
         leaf_name(id)?;
         if leaf_supports_text(id) {
@@ -223,6 +225,8 @@ fn leaf_timeseries(id: &str, ctx: &RunContext) -> Option<TimeSeriesContribution>
 /// one compact line instead.
 #[must_use]
 pub fn history_timeseries(ctx: &RunContext, ids: &[String], ndjson_lines: bool) -> HistoryFormatResult {
+    // The co-selected heavy leaves share ONE memoized UAST walk: the first
+    // leaf's contribution computes it, the rest re-read it.
     let mut contribs = Vec::with_capacity(ids.len());
     for id in ids {
         contribs.push(leaf_timeseries(id, ctx)?);
@@ -390,6 +394,8 @@ pub fn leaf_flag(id: &str) -> Option<&'static str> {
 pub fn history_ndjson(ctx: &RunContext, ids: &[String]) -> HistoryFormatResult {
     use cf_gojson::{GoMap, MapOrigin};
 
+    // The co-selected heavy leaves share ONE memoized UAST walk: the first
+    // leaf's records compute it, the rest re-read it.
     let mut out = Vec::new();
     for id in ids {
         let flag = leaf_flag(id)?;
