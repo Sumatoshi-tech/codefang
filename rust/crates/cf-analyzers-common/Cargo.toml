@@ -8,9 +8,9 @@ repository.workspace = true
 publish.workspace = true
 
 # NOTE TO INTEGRATOR: this crate is part of the rust/ workspace (crates/* glob).
-# The former internal/analyzers/common stand-in modules were removed as dead
-# code: every Go consumer's behavior is ported inline in the linked analyzer
-# crates (cf-clones, cf-cohesion, cf-comments, cf-halstead, cf-typos and the
-# cf-commands handlers), and the shared models live in cf-analyze, cf-uast-node,
-# cf-streaming, cf-safeconv and cf-spillstore (DESIGN Rule 5).
+# The former stand-in modules were removed as dead code: their behavior lives
+# inline in the analyzer crates that need it (cf-clones, cf-cohesion,
+# cf-comments, cf-halstead, cf-typos and the cf-commands handlers), and the
+# shared models live in cf-analyze, cf-uast-node, cf-streaming, cf-safeconv and
+# cf-spillstore (DESIGN Rule 5).
 [dependencies]

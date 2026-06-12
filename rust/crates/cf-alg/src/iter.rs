@@ -1,48 +1,27 @@
-//! Pull-based iterator collection. Port of `pkg/alg/iter.go`.
+//! Pull-based iterator collection.
 
 use std::error::Error;
-use std::fmt;
 
 /// Error returned by a pull-based [`PullIterator`].
 ///
-/// The Go original signals end-of-stream with the sentinel `io.EOF` and uses
-/// `errors.Is(err, io.EOF)` to distinguish exhaustion from a genuine failure.
-/// Rust has no equivalent sentinel-as-value idiom, so the distinction is modeled
-/// explicitly: [`IteratorError::Eof`] means "exhausted" and
-/// [`IteratorError::Other`] carries a real error.
-#[derive(Debug)]
+/// Exhaustion and failure are distinct outcomes: [`IteratorError::Eof`] means
+/// "exhausted" and [`IteratorError::Other`] carries a real error.
+#[derive(Debug, thiserror::Error)]
 pub enum IteratorError {
-    /// The iterator is exhausted (the equivalent of Go's `io.EOF`).
+    /// The iterator is exhausted.
+    #[error("EOF")]
     Eof,
     /// A genuine, non-EOF error produced while pulling the next value.
-    Other(Box<dyn Error + Send + Sync>),
-}
-
-impl fmt::Display for IteratorError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            IteratorError::Eof => write!(f, "EOF"),
-            IteratorError::Other(e) => write!(f, "{e}"),
-        }
-    }
-}
-
-impl Error for IteratorError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            IteratorError::Eof => None,
-            IteratorError::Other(e) => Some(&**e),
-        }
-    }
+    #[error("{0}")]
+    Other(#[source] Box<dyn Error + Send + Sync>),
 }
 
 /// A pull-based sequence of `T` values.
 ///
-/// Port of the Go `alg.Iterator[T]` interface. [`next`](PullIterator::next)
-/// returns `Ok(value)` for each item and `Err(IteratorError::Eof)` when
-/// exhausted; [`close`](PullIterator::close) releases any resources held by the
-/// iterator. Named `PullIterator` to avoid colliding with the std
-/// [`Iterator`](core::iter::Iterator) trait.
+/// [`next`](PullIterator::next) returns `Ok(value)` for each item and
+/// `Err(IteratorError::Eof)` when exhausted; [`close`](PullIterator::close)
+/// releases any resources held by the iterator. Named `PullIterator` to avoid
+/// colliding with the std [`Iterator`](core::iter::Iterator) trait.
 pub trait PullIterator<T> {
     /// Returns the next value, or [`IteratorError::Eof`] when exhausted.
     ///
@@ -60,11 +39,7 @@ pub trait PullIterator<T> {
 ///
 /// A `limit` of `0` means unlimited — all items are collected. Returns an empty
 /// vector when the iterator is already exhausted. Non-EOF errors are returned
-/// immediately (the partially built vector is discarded, matching the Go
-/// original which returns a nil slice alongside the error).
-///
-/// This reproduces `alg.CollectN` exactly, including the "limit == 0 means
-/// unlimited" convention and the discard-on-error behavior.
+/// immediately and the partially built vector is discarded.
 ///
 /// # Errors
 ///
@@ -93,8 +68,7 @@ pub fn collect_n<T, I: PullIterator<T> + ?Sized>(
 mod tests {
     use super::*;
 
-    /// Test stub implementing [`PullIterator`] over a slice, mirroring the Go
-    /// `sliceIter[T]` test helper.
+    /// Test stub implementing [`PullIterator`] over a slice.
     struct SliceIter<T> {
         items: Vec<T>,
         pos: usize,
@@ -144,7 +118,6 @@ mod tests {
 
     #[test]
     fn empty_iterator() {
-        // Go: TestCollectN_EmptyIterator.
         let mut iter = SliceIter::<i32>::new(vec![]);
         let got = collect_n(&mut iter, 0).expect("no error");
         assert!(got.is_empty());
@@ -152,7 +125,6 @@ mod tests {
 
     #[test]
     fn collect_all() {
-        // Go: TestCollectN_CollectAll.
         let mut iter = SliceIter::new(vec![1, 2, 3, 4, 5]);
         let got = collect_n(&mut iter, 0).expect("no error");
         assert_eq!(got, vec![1, 2, 3, 4, 5]);
@@ -160,7 +132,6 @@ mod tests {
 
     #[test]
     fn with_limit() {
-        // Go: TestCollectN_WithLimit.
         let mut iter = SliceIter::new(vec![10, 20, 30, 40, 50]);
         let got = collect_n(&mut iter, 3).expect("no error");
         assert_eq!(got, vec![10, 20, 30]);
@@ -168,7 +139,6 @@ mod tests {
 
     #[test]
     fn limit_exceeds_items() {
-        // Go: TestCollectN_LimitExceedsItems.
         let mut iter = SliceIter::new(vec!["a", "b"]);
         let got = collect_n(&mut iter, 10).expect("no error");
         assert_eq!(got, vec!["a", "b"]);
@@ -176,7 +146,6 @@ mod tests {
 
     #[test]
     fn error_propagation() {
-        // Go: TestCollectN_ErrorPropagation.
         let mut iter = SliceIter::with_error(vec![1, 2], "iterator failed");
         let err = collect_n(&mut iter, 0).expect_err("expected error");
         assert!(is_failed(&err));
@@ -184,7 +153,6 @@ mod tests {
 
     #[test]
     fn error_after_partial_read() {
-        // Go: TestCollectN_ErrorAfterPartialRead.
         let mut iter = SliceIter::with_error(vec![1], "iterator failed");
         let err = collect_n(&mut iter, 0).expect_err("expected error");
         assert!(is_failed(&err));
@@ -192,7 +160,6 @@ mod tests {
 
     #[test]
     fn exhausted_iterator() {
-        // Go: TestCollectN_ExhaustedIterator.
         let mut iter = SliceIter::<i32>::new(vec![]);
 
         let got1 = collect_n(&mut iter, 0).expect("no error");
@@ -204,7 +171,6 @@ mod tests {
 
     #[test]
     fn limit_one() {
-        // Go: TestCollectN_LimitOne.
         let mut iter = SliceIter::new(vec![42, 99]);
         let got = collect_n(&mut iter, 1).expect("no error");
         assert_eq!(got, vec![42]);

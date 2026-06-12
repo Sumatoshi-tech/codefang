@@ -1,18 +1,19 @@
 //! Build-time generator for the enry vendor-pattern table.
 //!
-//! # Why a generator (porting rule 6 + data-parity rule 7)
+//! # Why a generator
 //!
 //! `cf-pathfilter` reproduces `github.com/src-d/enry/v2` `IsVendor`, whose
 //! decision changes *which* files are analysed and therefore which bytes appear
-//! in machine-format reports. The design (`specs/rust-rewrite/DESIGN.md` §2.6)
-//! mandates vendoring the **same** data tables enry uses, byte-for-byte, instead
-//! of hand-translating a generated artifact or swapping detectors.
+//! in machine-format reports (pinned by `rust/tests/compat`). The design
+//! (`specs/rust-rewrite/DESIGN.md` §2.6) mandates vendoring the **same** data
+//! tables enry uses, byte-for-byte, instead of hand-translating a generated
+//! artifact or swapping detectors.
 //!
 //! enry's vendor matchers live in its generated `data/vendor.go`
 //! (`var VendorMatchers = substring.Or(substring.Regexp(`...`), ...)`). This
 //! build script extracts the literal regular-expression source strings from that
 //! file (when the enry source is available) and emits them as a Rust slice into
-//! `$OUT_DIR/vendor_patterns.rs`, included by `lib.rs`. The Go regexp engine is
+//! `$OUT_DIR/vendor_patterns.rs`, included by `lib.rs`. enry's regexp engine is
 //! RE2-syntax, matched by the Rust [`regex`] crate, so the same source strings
 //! yield identical (unanchored) match behaviour.
 //!
@@ -21,7 +22,7 @@
 //! The path to enry's `data/vendor.go` is resolved, in order, from:
 //!   1. the `CF_ENRY_VENDOR_GO` environment variable (explicit override), then
 //!   2. `$GOMODCACHE/github.com/src-d/enry/v2@<ver>/data/vendor.go` for the
-//!      version pinned in the Go `go.mod` (`v2.1.0`).
+//!      pinned reference version (`v2.1.0`).
 //!
 //! If neither is found, the build script falls back to the checked-in
 //! [`crate::vendor_data::VENDOR_PATTERNS`] table (a transcription of enry
@@ -30,11 +31,13 @@
 //! asserts parity when the enry source is present.
 
 use std::env;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// enry version pinned by the Go module (`github.com/src-d/enry/v2 v2.1.0`).
+/// Pinned enry version (`github.com/src-d/enry/v2 v2.1.0`), matching the
+/// vendored data snapshot.
 const ENRY_VERSION: &str = "v2.1.0";
 
 fn main() {
@@ -92,7 +95,7 @@ fn go_env_gomodcache() -> Option<String> {
 
 /// Extract the raw-string arguments of every `substring.Regexp(`...`)` in the
 /// enry `vendor.go` source. enry's `VendorMatchers` is built as
-/// `substring.Or(substring.Regexp(`p1`), substring.Regexp(`p2`), …)`, using Go
+/// `substring.Or(substring.Regexp(`p1`), substring.Regexp(`p2`), …)`, using
 /// raw (backtick) string literals for the regex sources — which contain no
 /// escape processing, so each pattern is the exact byte sequence between the
 /// backticks.
@@ -133,16 +136,16 @@ fn emit_patterns(dest: &Path, patterns: &[String]) {
         // Emit as a Rust raw string with enough `#` hashes to be unambiguous.
         let hashes = pick_raw_hashes(p);
         let pad = "#".repeat(hashes);
-        body.push_str(&format!("    r{pad}\"{p}\"{pad},\n"));
+        let _ = writeln!(body, "    r{pad}\"{p}\"{pad},");
     }
     body.push_str("];\n");
     fs::write(dest, body).expect("write vendor_patterns.rs");
 }
 
 /// Choose a `#` count for a Rust raw string so the closing `"#...` delimiter
-/// cannot appear inside the pattern.
+/// cannot appear inside the pattern. Patterns without a `"` need no hashes.
 fn pick_raw_hashes(p: &str) -> usize {
-    let mut n = 1usize;
+    let mut n = 0usize;
     loop {
         let close = format!("\"{}", "#".repeat(n));
         if !p.contains(&close) {

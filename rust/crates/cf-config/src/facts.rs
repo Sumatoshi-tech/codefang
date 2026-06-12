@@ -1,8 +1,8 @@
 //! Merge configuration values into the analyzer facts map.
 //!
-//! Direct port of `internal/config/facts.go`. The fact-key strings and the
-//! apply rules (positive-only for numerics, non-empty for strings, always for
-//! bools) match the Go source so analyzer wiring is reproduced exactly.
+//! The fact-key strings and the apply rules (positive-only for numerics,
+//! non-empty for strings, always for bools) are frozen: analyzer wiring
+//! depends on them (compatibility contract).
 
 use crate::types::{
     AnomalyConfig, BurndownConfig, ClonesConfig, Config, CouplesConfig, DevsConfig,
@@ -12,14 +12,14 @@ use std::collections::HashMap;
 
 /// A fact value stored in the analyzer facts map.
 ///
-/// Mirrors the Go `map[string]any` value space used by `ApplyToFacts`. Numeric
-/// facts are stored as `Int` (for `int` config fields) or `Float` (for
-/// `float64` config fields), strings as `Str`, and booleans as `Bool`.
+/// Numeric facts are stored as `Int` (for integer config fields) or `Float`
+/// (for floating-point config fields), strings as `Str`, and booleans as
+/// `Bool`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FactValue {
-    /// Integer fact (Go `int`).
+    /// Integer fact.
     Int(i64),
-    /// Floating-point fact (Go `float64`).
+    /// Floating-point fact.
     Float(f64),
     /// String fact.
     Str(String),
@@ -30,7 +30,7 @@ pub enum FactValue {
 impl FactValue {
     /// Returns the integer value if this fact is an [`FactValue::Int`].
     #[must_use]
-    pub fn as_int(&self) -> Option<i64> {
+    pub const fn as_int(&self) -> Option<i64> {
         match self {
             Self::Int(v) => Some(*v),
             _ => None,
@@ -39,7 +39,7 @@ impl FactValue {
 
     /// Returns the float value if this fact is a [`FactValue::Float`].
     #[must_use]
-    pub fn as_float(&self) -> Option<f64> {
+    pub const fn as_float(&self) -> Option<f64> {
         match self {
             Self::Float(v) => Some(*v),
             _ => None,
@@ -57,7 +57,7 @@ impl FactValue {
 
     /// Returns the boolean value if this fact is a [`FactValue::Bool`].
     #[must_use]
-    pub fn as_bool(&self) -> Option<bool> {
+    pub const fn as_bool(&self) -> Option<bool> {
         match self {
             Self::Bool(v) => Some(*v),
             _ => None,
@@ -65,36 +65,33 @@ impl FactValue {
     }
 }
 
-/// The analyzer facts map (Go `map[string]any`).
+/// The analyzer facts map.
 pub type Facts = HashMap<String, FactValue>;
 
-/// Sets `facts[key] = value` when an `int` value is positive (`> 0`).
+/// Sets `facts[key] = value` when an integer value is positive (`> 0`).
 ///
-/// Zero values are skipped so the analyzer keeps its built-in default. Ports the
-/// `int` instantiation of the Go generic `applyPositive`.
+/// Zero values are skipped so the analyzer keeps its built-in default.
 fn apply_positive_int(facts: &mut Facts, key: &str, value: i64) {
     if value > 0 {
         facts.insert(key.to_owned(), FactValue::Int(value));
     }
 }
 
-/// Sets `facts[key] = value` when a `float64` value is positive (`> 0`).
-///
-/// Ports the `float64` instantiation of the Go generic `applyPositive`.
+/// Sets `facts[key] = value` when a float value is positive (`> 0`).
 fn apply_positive_float(facts: &mut Facts, key: &str, value: f64) {
     if value > 0.0 {
         facts.insert(key.to_owned(), FactValue::Float(value));
     }
 }
 
-/// Sets `facts[key] = value` when a string is non-empty (ports `applyNonEmpty`).
+/// Sets `facts[key] = value` when a string is non-empty.
 fn apply_non_empty(facts: &mut Facts, key: &str, value: &str) {
     if !value.is_empty() {
         facts.insert(key.to_owned(), FactValue::Str(value.to_owned()));
     }
 }
 
-/// Sets `facts[key] = value` unconditionally (ports `applyBool`).
+/// Sets `facts[key] = value` unconditionally.
 ///
 /// Boolean fields are always applied because `false` is a meaningful override.
 fn apply_bool(facts: &mut Facts, key: &str, value: bool) {
@@ -104,10 +101,9 @@ fn apply_bool(facts: &mut Facts, key: &str, value: bool) {
 impl Config {
     /// Merges config values into the analyzer `facts` map.
     ///
-    /// Ports `Config.ApplyToFacts`: only non-zero numeric/string config values
-    /// override existing facts (zero means "use analyzer default" and is
-    /// skipped); boolean fields are always applied because `false` is a
-    /// meaningful value.
+    /// Only non-zero numeric/string config values override existing facts
+    /// (zero means "use analyzer default" and is skipped); boolean fields are
+    /// always applied because `false` is a meaningful value.
     pub fn apply_to_facts(&self, facts: &mut Facts) {
         self.apply_burndown_facts(facts);
         self.apply_couples_facts(facts);

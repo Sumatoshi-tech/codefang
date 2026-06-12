@@ -1,29 +1,26 @@
-//! Terminal section rendering. Port of the Go `renderer/renderer.go`.
+//! Terminal section rendering.
 //!
 //! Renders an [`analyze::ReportSection`](crate::analyze::ReportSection) into
 //! human-readable terminal output (header box, summary line, key metrics,
 //! distribution bars, and issues). Terminal output is non-binding/cosmetic per
-//! DESIGN.md §2.7, but this port reproduces the Go layout faithfully so the
-//! ported tests are meaningful.
+//! DESIGN.md §2.7, but the layout reproduces the reference output faithfully
+//! so the tests stay meaningful.
 
 use crate::analyze::{self, ReportSection};
 use crate::terminal::{self, Color, Config};
 
-// --- Magic-number constants mirroring renderer.go ---
-
-const LINES_VALUE: usize = 3;
-const MAGIC2: usize = 2;
-const MAGIC2_1: usize = 2;
-const MAKE_ARG3: usize = 3;
+/// Capacity hint for the fixed header lines (blank + label + separator) that
+/// precede each sub-section's rows.
+const SECTION_HEADER_LINES: usize = 3;
 /// Multiplier applied to the indent width when computing separator widths.
 pub(crate) const SEPARATOR_WIDTH_VALUE: usize = 2;
 
-/// Compact-mode bar width. Mirrors Go's `CompactBarWidth`.
+/// Compact-mode bar width.
 pub const COMPACT_BAR_WIDTH: usize = 10;
-/// Compact-mode title width. Mirrors Go's `CompactTitleWidth`.
+/// Compact-mode title width.
 pub const COMPACT_TITLE_WIDTH: usize = 12;
 
-// --- Render layout constants (mirror renderer.go) ---
+// --- Render layout constants ---
 
 /// Indentation width used throughout terminal output.
 pub const INDENT_WIDTH: usize = 2;
@@ -54,8 +51,8 @@ pub const ISSUE_NAME_WIDTH: usize = 25;
 /// Width of the issue location column.
 pub const ISSUE_LOCATION_WIDTH: usize = 35;
 
-/// Maps an issue severity string to a terminal color. Port of
-/// `ColorForSeverity`.
+/// Maps an issue severity string to a terminal color.
+#[must_use]
 pub fn color_for_severity(severity: &str) -> Color {
     match severity {
         analyze::severity::GOOD => Color::Green,
@@ -65,8 +62,7 @@ pub fn color_for_severity(severity: &str) -> Color {
     }
 }
 
-/// Renders [`ReportSection`]s to formatted terminal output. Port of Go's
-/// `SectionRenderer`.
+/// Renders [`ReportSection`]s to formatted terminal output.
 #[derive(Debug, Clone, Copy)]
 pub struct SectionRenderer {
     pub(crate) config: Config,
@@ -74,17 +70,18 @@ pub struct SectionRenderer {
 }
 
 impl SectionRenderer {
-    /// Creates a renderer with the given configuration. Port of
-    /// `NewSectionRenderer`.
-    pub fn new(width: usize, verbose: bool, no_color: bool) -> Self {
-        SectionRenderer {
+    /// Creates a renderer with the given configuration.
+    #[must_use]
+    pub const fn new(width: usize, verbose: bool, no_color: bool) -> Self {
+        Self {
             config: Config { width, no_color },
             verbose,
         }
     }
 
-    /// Produces single-line compact output for narrow terminals. Port of
-    /// `(SectionRenderer).RenderCompact`. Format: "Title [bar] N/10  Message".
+    /// Produces single-line compact output for narrow terminals.
+    /// Format: "Title [bar] N/10  Message".
+    #[must_use]
     pub fn render_compact(&self, section: &dyn ReportSection) -> String {
         let title = terminal::pad_right(&section.section_title(), COMPACT_TITLE_WIDTH);
         let score_bar = terminal::format_score_bar(section.score(), COMPACT_BAR_WIDTH);
@@ -94,8 +91,8 @@ impl SectionRenderer {
         format!("{title} {score_bar}  {message}")
     }
 
-    /// Produces formatted output for a [`ReportSection`]. Port of
-    /// `(SectionRenderer).Render`.
+    /// Produces formatted output for a [`ReportSection`].
+    #[must_use]
     pub fn render(&self, section: &dyn ReportSection) -> String {
         let mut parts: Vec<String> = Vec::new();
 
@@ -140,8 +137,7 @@ impl SectionRenderer {
         parts.join("\n")
     }
 
-    /// Renders the key metrics section in a 2-column layout. Port of
-    /// `renderMetrics`.
+    /// Renders the key metrics section in a 2-column layout.
     fn render_metrics(&self, metrics: &[analyze::Metric], indent: &str) -> String {
         let mut lines: Vec<String> = Vec::new();
         lines.push(String::new());
@@ -172,14 +168,13 @@ impl SectionRenderer {
         lines.join("\n")
     }
 
-    /// Renders the distribution section with percent bars. Port of
-    /// `renderDistribution`.
+    /// Renders the distribution section with percent bars.
     fn render_distribution(&self, items: &[analyze::DistributionItem], indent: &str) -> String {
-        let mut lines: Vec<String> = Vec::with_capacity(LINES_VALUE + items.len());
+        let mut lines: Vec<String> = Vec::with_capacity(SECTION_HEADER_LINES + items.len());
         lines.push(String::new());
         let dist_header = self.config.colorize(DISTRIBUTION_LABEL, Color::Gray);
         lines.push(format!("{indent}{dist_header}"));
-        let separator_width = self.config.width.saturating_sub(INDENT_WIDTH * MAGIC2);
+        let separator_width = self.config.width.saturating_sub(INDENT_WIDTH * SEPARATOR_WIDTH_VALUE);
         lines.push(format!("{}{}", indent, terminal::draw_separator(separator_width)));
 
         for item in items {
@@ -196,13 +191,13 @@ impl SectionRenderer {
         lines.join("\n")
     }
 
-    /// Renders the issues section with the given label. Port of `renderIssues`.
+    /// Renders the issues section with the given label.
     fn render_issues(&self, issues: &[analyze::Issue], label: &str, indent: &str) -> String {
-        let mut lines: Vec<String> = Vec::with_capacity(MAKE_ARG3 + issues.len());
+        let mut lines: Vec<String> = Vec::with_capacity(SECTION_HEADER_LINES + issues.len());
         lines.push(String::new());
         let issues_header = self.config.colorize(label, Color::Gray);
         lines.push(format!("{indent}{issues_header}"));
-        let separator_width = self.config.width.saturating_sub(INDENT_WIDTH * MAGIC2_1);
+        let separator_width = self.config.width.saturating_sub(INDENT_WIDTH * SEPARATOR_WIDTH_VALUE);
         lines.push(format!("{}{}", indent, terminal::draw_separator(separator_width)));
 
         for issue in issues {
@@ -233,7 +228,7 @@ mod tests {
 
     impl Mock {
         fn new(title: &str, score: f64, msg: &str) -> Self {
-            Mock {
+            Self {
                 base: BaseReportSection {
                     title: title.into(),
                     message: msg.into(),
@@ -278,7 +273,7 @@ mod tests {
         Mock::new("COMPLEXITY", 0.8, "Good - reasonable complexity")
     }
 
-    /// Port of `TestNewSectionRenderer_*`.
+    /// Mirrors reference test `TestNewSectionRenderer_*`.
     #[test]
     fn new_section_renderer_fields() {
         let r = SectionRenderer::new(80, false, false);
@@ -290,7 +285,7 @@ mod tests {
         assert!(SectionRenderer::new(80, false, true).config.no_color);
     }
 
-    /// Port of `TestRenderCompact_*`.
+    /// Mirrors reference test `TestRenderCompact_*`.
     #[test]
     fn render_compact_contents() {
         let r = SectionRenderer::new(80, false, true);
@@ -301,7 +296,7 @@ mod tests {
         assert!(out.contains("Good - reasonable complexity"));
     }
 
-    /// Port of `TestRender_ContainsTitle/Score/Summary/HeaderBox`.
+    /// Mirrors reference test `TestRender_ContainsTitle/Score/Summary/HeaderBox`.
     #[test]
     fn render_basic_contents() {
         let r = SectionRenderer::new(80, false, true);
@@ -313,7 +308,7 @@ mod tests {
         assert!(out.contains('\u{2517}'));
     }
 
-    /// Port of `TestRender_ContainsMetricsSection/Values` + `_EmptyMetrics`.
+    /// Mirrors reference test `TestRender_ContainsMetricsSection/Values` + `_EmptyMetrics`.
     #[test]
     fn render_metrics_section() {
         let mut m = complexity_mock();
@@ -338,7 +333,7 @@ mod tests {
         assert!(!out_empty.contains("Key Metrics"));
     }
 
-    /// Port of `TestRender_ContainsDistributionSection/Bars` + `_Empty`.
+    /// Mirrors reference test `TestRender_ContainsDistributionSection/Bars` + `_Empty`.
     #[test]
     fn render_distribution_section() {
         let mut m = complexity_mock();
@@ -381,7 +376,7 @@ mod tests {
         m
     }
 
-    /// Port of `TestRender_NonVerboseShowsTopIssues`,
+    /// Mirrors reference test `TestRender_NonVerboseShowsTopIssues`,
     /// `_VerboseShowsAllIssues`, `_VerboseChangesLabel`, `_EmptyIssues`.
     #[test]
     fn render_issues_section() {
@@ -403,7 +398,7 @@ mod tests {
         assert!(!empty.contains("Top Issues"));
     }
 
-    /// Port of `TestColorForSeverity_*`.
+    /// Mirrors reference test `TestColorForSeverity_*`.
     #[test]
     fn color_for_severity_mapping() {
         assert_eq!(color_for_severity(severity::GOOD), Color::Green);
@@ -413,7 +408,7 @@ mod tests {
         assert_eq!(color_for_severity("unknown"), Color::Blue);
     }
 
-    /// Port of `TestRender_Color*` and `_MetricsHeaderMuted`.
+    /// Mirrors reference test `TestRender_Color*` and `_MetricsHeaderMuted`.
     #[test]
     fn render_colors() {
         // Color enabled => ANSI present; title blue; good score green.
@@ -442,7 +437,7 @@ mod tests {
         assert!(muted.contains("\u{001b}[90m"));
     }
 
-    /// Port of `TestRenderCompact_Color*`.
+    /// Mirrors reference test `TestRenderCompact_Color*`.
     #[test]
     fn render_compact_colors() {
         let colored = SectionRenderer::new(80, false, false).render_compact(&complexity_mock());

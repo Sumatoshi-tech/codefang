@@ -1,14 +1,21 @@
-//! `RunPc` — a producer-consumer micro-skeleton (`runpc.go`).
+//! `RunPc` — a producer-consumer micro-skeleton.
 
 use crate::context::Ctx;
 use crossbeam_channel::{Receiver, Sender};
 use std::thread;
 
-/// The minimum capacity for the internal jobs channel (matches Go's
-/// `minBuffer`).
+/// The minimum capacity for the internal jobs channel.
 const MIN_BUFFER: usize = 1;
 
-/// A producer-consumer micro-skeleton that owns the goroutine topology: channel
+/// The producer closure: reads the input and sends work items on the jobs
+/// sender.
+pub type ProduceFn<In, Job> = Box<dyn FnOnce(&Ctx, In, &Sender<Job>) + Send>;
+
+/// The consumer closure: reads work items from the jobs receiver and sends
+/// results on the out sender.
+pub type ConsumeFn<Out, Job> = Box<dyn FnOnce(&Ctx, &Receiver<Job>, &Sender<Out>) + Send>;
+
+/// A producer-consumer micro-skeleton that owns the thread topology: channel
 /// creation, thread spawning, and orderly shutdown.
 ///
 /// Type parameters:
@@ -17,24 +24,21 @@ const MIN_BUFFER: usize = 1;
 /// - `Out`: the output emitted by the consumer.
 /// - `Job`: the internal work item flowing from producer to consumer.
 ///
-/// The `produce` function reads from `in` and writes jobs to the jobs channel.
-/// The `consume` function reads jobs and writes results to the out channel.
-/// Neither function should close its output channel; [`RunPc::run`] handles that
-/// by dropping the corresponding [`Sender`] (the analogue of Go's
-/// `defer close(...)`).
-///
-/// Mirrors Go's `RunPC[In, Out, Job]` struct. Where Go passes `chan<- Job` /
-/// `<-chan Job` directly, the Rust closures receive crossbeam [`Sender`] /
-/// [`Receiver`] handles with identical blocking/close semantics.
+/// The `produce` function reads the input and writes jobs to the jobs
+/// channel. The `consume` function reads jobs and writes results to the out
+/// channel. Neither function should close its output channel; [`RunPc::run`]
+/// handles that by dropping the corresponding [`Sender`]. The closures
+/// receive crossbeam [`Sender`] / [`Receiver`] handles with blocking
+/// send/recv and close-on-drop semantics.
 pub struct RunPc<In, Out, Job> {
     /// Capacity of the internal jobs channel. Values below 1 are clamped to 1.
     pub buffer: usize,
 
     /// Reads the input and sends work items on the jobs sender.
-    pub produce: Box<dyn FnOnce(&Ctx, In, &Sender<Job>) + Send>,
+    pub produce: ProduceFn<In, Job>,
 
     /// Reads work items from the jobs receiver and sends results on `out`.
-    pub consume: Box<dyn FnOnce(&Ctx, &Receiver<Job>, &Sender<Out>) + Send>,
+    pub consume: ConsumeFn<Out, Job>,
 }
 
 impl<In, Out, Job> RunPc<In, Out, Job>
@@ -50,8 +54,8 @@ where
         P: FnOnce(&Ctx, In, &Sender<Job>) + Send + 'static,
         C: FnOnce(&Ctx, &Receiver<Job>, &Sender<Out>) + Send + 'static,
     {
-        // Clamp like Go's `max(r.Buffer, minBuffer)` but keep the raw value so
-        // construction matches the struct-literal style; clamping happens in run.
+        // Clamp here as well as in `run` so the stored field is already
+        // normalized for callers that construct via `new`.
         let buffer = if buffer < MIN_BUFFER as i64 {
             MIN_BUFFER
         } else {
@@ -68,15 +72,13 @@ where
     /// receiver. The jobs channel is closed after `produce` returns (its
     /// [`Sender`] is dropped). The output channel is closed after `consume`
     /// returns (its [`Sender`] is dropped).
-    ///
-    /// Mirrors Go's `(r RunPC).Run(ctx, in) <-chan Out`.
     #[must_use]
     pub fn run(self, ctx: &Ctx, input: In) -> Receiver<Out> {
         let buf = self.buffer.max(MIN_BUFFER);
 
         let (jobs_tx, jobs_rx): (Sender<Job>, Receiver<Job>) = crossbeam_channel::bounded(buf);
-        // Go's `out := make(chan Out)` is unbuffered; bounded(0) is the exact
-        // crossbeam analogue.
+        // The output channel is unbuffered (rendezvous), so consumers exert
+        // backpressure on the consumer thread.
         let (out_tx, out_rx): (Sender<Out>, Receiver<Out>) = crossbeam_channel::bounded(0);
 
         let produce = self.produce;
@@ -84,15 +86,13 @@ where
 
         let ctx_p = ctx.clone();
         thread::spawn(move || {
-            // jobs_tx dropped at scope exit → jobs channel closes
-            // (`defer close(jobs)`).
+            // jobs_tx dropped at scope exit → jobs channel closes.
             produce(&ctx_p, input, &jobs_tx);
         });
 
         let ctx_c = ctx.clone();
         thread::spawn(move || {
-            // out_tx dropped at scope exit → out channel closes
-            // (`defer close(out)`).
+            // out_tx dropped at scope exit → out channel closes.
             consume(&ctx_c, &jobs_rx, &out_tx);
         });
 

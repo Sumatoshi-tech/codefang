@@ -1,7 +1,6 @@
 //! Lightweight metrics primitives.
 //!
-//! Rust port of the Go package `pkg/metrics`. It provides interfaces for defining
-//! self-contained, reusable metrics.
+//! Provides interfaces for defining self-contained, reusable metrics.
 //!
 //! Each metric is a computation unit that:
 //!   - Declares its input requirements,
@@ -10,22 +9,23 @@
 //!
 //! This design allows metrics to be reused across analyzers and output formats.
 //!
-//! # Serialization parity
+//! # Serialization
 //!
 //! The data types in this crate ([`TimeSeriesPoint`], [`RiskResult`]) appear in
-//! MACHINE-format reports. Per the Rust-rewrite design (`specs/rust-rewrite/DESIGN.md`
-//! rule (1) / section 3), machine-format bytes (json, yaml, ndjson, timeseries,
-//! compact, bin) must be produced by the shared `cf-gojson` / `cf-goyaml`
-//! Go-compatibility crates, **not** by raw `serde_json` / `serde_yaml` defaults.
+//! MACHINE-format reports, whose bytes are a frozen contract (pinned against the
+//! reference implementation by `rust/tests/compat`). Machine-format bytes (json,
+//! yaml, ndjson, timeseries, compact, bin) must be produced by the shared
+//! `cf-gojson` / `cf-goyaml` report-format crates, **not** by raw `serde_json` /
+//! `serde_yaml` defaults.
 //!
 //! This crate therefore carries **no** serde dependency. Instead the report-bearing
 //! types implement [`GoSerialize`], lowering themselves into the shared
 //! [`cf_gojson::GoValue`] tree. Each is built as a **struct-origin** [`GoMap`]
-//! ([`MapOrigin::Struct`]), so its fields are emitted in **Go struct declaration
-//! order** — never byte-sorted — and `omitempty` fields are dropped (not `push`ed)
-//! when empty/zero, exactly as Go's `encoding/json` does. The resulting `GoValue`
-//! is then encoded by `cf_gojson::{marshal, marshal_indent, Encoder}` (and the
-//! `cf-goyaml` emitter) to obtain byte-identical output.
+//! ([`MapOrigin::Struct`]), so its fields are emitted in **declaration order** —
+//! never byte-sorted — and `omitempty` fields are dropped (not `push`ed) when
+//! empty/zero, per the report-format contract. The resulting `GoValue` is then
+//! encoded by `cf_gojson::{marshal, marshal_indent, Encoder}` (and the `cf-goyaml`
+//! emitter) to obtain byte-identical output.
 
 use std::any::Any;
 use std::collections::HashMap;
@@ -33,10 +33,10 @@ use std::fmt;
 
 pub use cf_gojson::{GoMap, GoValue, MapOrigin};
 
-/// Types that can lower themselves into a [`GoValue`] for Go-compatible encoding.
+/// Types that can lower themselves into a [`GoValue`] for report-format encoding.
 ///
 /// Implementors build a **struct-origin** [`GoMap`] ([`MapOrigin::Struct`]) and
-/// `push` fields in **Go declaration order**, honoring `omitempty` by skipping the
+/// `push` fields in **declaration order**, honoring `omitempty` by skipping the
 /// corresponding `push` when the value is empty/zero. The returned [`GoValue`] is
 /// then encoded by the shared `cf-gojson` marshallers (and `cf-goyaml`) to produce
 /// byte-identical machine output.
@@ -47,17 +47,15 @@ pub trait GoSerialize {
 
 /// The core trait that all metrics must implement.
 ///
-/// Each metric is a self-contained computation with metadata. This is the Rust
-/// port of the Go generic interface `Metric[In, Out any]`. The Go type parameters
-/// `In` and `Out` map to the associated types [`Metric::In`] and [`Metric::Out`].
+/// Each metric is a self-contained computation with metadata, generic over its
+/// input ([`Metric::In`]) and output ([`Metric::Out`]) types.
 pub trait Metric {
-    /// Input data type for [`Metric::compute`] (the Go `In` type parameter).
+    /// Input data type for [`Metric::compute`].
     type In;
-    /// Output value type returned by [`Metric::compute`] (the Go `Out` type
-    /// parameter).
+    /// Output value type returned by [`Metric::compute`].
     type Out;
 
-    /// Returns the machine-readable identifier (snake_case, unique).
+    /// Returns the machine-readable identifier (`snake_case`, unique).
     fn name(&self) -> &str;
 
     /// Returns a human-readable name for UI/reports.
@@ -79,19 +77,18 @@ pub trait Metric {
 
 /// A single data point in a time series.
 ///
-/// Port of Go `TimeSeriesPoint`. JSON shape: `{"tick": <int>, "value": <float>}`,
-/// in declaration order.
+/// JSON shape: `{"tick": <int>, "value": <float>}`, in declaration order.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TimeSeriesPoint {
-    /// The tick (discrete time index). Go field `Tick int` (`json:"tick"`).
+    /// The tick (discrete time index). Serialized as `"tick"`.
     pub tick: i64,
-    /// The value at this tick. Go field `Value float64` (`json:"value"`).
+    /// The value at this tick. Serialized as `"value"`.
     pub value: f64,
 }
 
 impl GoSerialize for TimeSeriesPoint {
     fn to_go_value(&self) -> GoValue {
-        // Struct-origin map: Go declaration order tick, value (never byte-sorted).
+        // Struct-origin map: declaration order tick, value (never byte-sorted).
         let mut m = GoMap::new_struct();
         m.push(TICK_FIELD, GoValue::Int(self.tick));
         m.push(VALUE_FIELD, GoValue::Float(self.value));
@@ -103,7 +100,7 @@ impl GoSerialize for TimeSeriesPoint {
 const TICK_FIELD: &str = "tick";
 /// JSON field name shared by [`TimeSeriesPoint::value`] and [`RiskResult::value`].
 const VALUE_FIELD: &str = "value";
-/// JSON field name for [`RiskResult::level`] (`json:"risk_level"`).
+/// JSON field name for [`RiskResult::level`].
 const RISK_LEVEL_FIELD: &str = "risk_level";
 /// JSON field name for [`RiskResult::threshold`].
 const THRESHOLD_FIELD: &str = "threshold";
@@ -112,31 +109,36 @@ const MESSAGE_FIELD: &str = "message";
 
 /// Severity level for a [`RiskResult`].
 ///
-/// Port of Go `RiskLevel` (`type RiskLevel string`). The wire representation is the
-/// uppercase string token (`"CRITICAL"`, `"HIGH"`, `"MEDIUM"`, `"LOW"`). Use the
-/// [`RISK_CRITICAL`] etc. constants or the convenience constructors.
+/// A thin newtype over the wire string. The wire representation is the uppercase
+/// token (`"CRITICAL"`, `"HIGH"`, `"MEDIUM"`, `"LOW"`). Use the [`RISK_CRITICAL`]
+/// etc. constants or the convenience constructors.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RiskLevel(pub String);
 
 impl RiskLevel {
     /// `RiskLevel("CRITICAL")`.
-    pub fn critical() -> RiskLevel {
-        RiskLevel(RISK_CRITICAL.to_string())
+    #[must_use]
+    pub fn critical() -> Self {
+        Self(RISK_CRITICAL.to_string())
     }
     /// `RiskLevel("HIGH")`.
-    pub fn high() -> RiskLevel {
-        RiskLevel(RISK_HIGH.to_string())
+    #[must_use]
+    pub fn high() -> Self {
+        Self(RISK_HIGH.to_string())
     }
     /// `RiskLevel("MEDIUM")`.
-    pub fn medium() -> RiskLevel {
-        RiskLevel(RISK_MEDIUM.to_string())
+    #[must_use]
+    pub fn medium() -> Self {
+        Self(RISK_MEDIUM.to_string())
     }
     /// `RiskLevel("LOW")`.
-    pub fn low() -> RiskLevel {
-        RiskLevel(RISK_LOW.to_string())
+    #[must_use]
+    pub fn low() -> Self {
+        Self(RISK_LOW.to_string())
     }
 
     /// Returns the underlying string token.
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -144,13 +146,13 @@ impl RiskLevel {
 
 impl From<&str> for RiskLevel {
     fn from(s: &str) -> Self {
-        RiskLevel(s.to_string())
+        Self(s.to_string())
     }
 }
 
 impl From<String> for RiskLevel {
     fn from(s: String) -> Self {
-        RiskLevel(s)
+        Self(s)
     }
 }
 
@@ -160,17 +162,16 @@ impl fmt::Display for RiskLevel {
     }
 }
 
-/// String token for the critical risk level (Go `RiskCritical`).
+/// String token for the critical risk level.
 pub const RISK_CRITICAL: &str = "CRITICAL";
-/// String token for the high risk level (Go `RiskHigh`).
+/// String token for the high risk level.
 pub const RISK_HIGH: &str = "HIGH";
-/// String token for the medium risk level (Go `RiskMedium`).
+/// String token for the medium risk level.
 pub const RISK_MEDIUM: &str = "MEDIUM";
-/// String token for the low risk level (Go `RiskLow`).
+/// String token for the low risk level.
 pub const RISK_LOW: &str = "LOW";
 
-// Risk priority values for sorting (lower = higher priority). Ported from the
-// unexported Go constants priorityCritical/priorityHigh/priorityMedium/priorityDefault.
+// Risk priority values for sorting (lower = higher priority).
 const PRIORITY_CRITICAL: i64 = 0;
 const PRIORITY_HIGH: i64 = 1;
 const PRIORITY_MEDIUM: i64 = 2;
@@ -181,48 +182,47 @@ const PRIORITY_DEFAULT: i64 = 3;
 /// Lower values indicate higher priority:
 /// `CRITICAL < HIGH < MEDIUM < LOW/unknown`.
 ///
-/// Port of Go `RiskPriority`. Unrecognized levels fold into the default priority
-/// `3`, matching the Go `switch` which maps both `RiskLow` and `default` to the
-/// same value.
+/// `LOW` and unrecognized levels both fold into the default priority `3`
+/// (reference-implementation behavior, pinned by the differential gate).
+#[must_use]
 pub fn risk_priority(level: &RiskLevel) -> i64 {
     match level.as_str() {
         RISK_CRITICAL => PRIORITY_CRITICAL,
         RISK_HIGH => PRIORITY_HIGH,
         RISK_MEDIUM => PRIORITY_MEDIUM,
-        RISK_LOW => PRIORITY_DEFAULT,
         _ => PRIORITY_DEFAULT,
     }
 }
 
 /// The output of a risk metric.
 ///
-/// Port of Go `RiskResult`. JSON field order (declaration order) is
-/// `value, risk_level, threshold, message`, with `threshold` (Go `omitempty` on a
-/// `float64`) and `message` (Go `omitempty` on a `string`) dropped when zero/empty.
+/// JSON field order (declaration order) is `value, risk_level, threshold, message`,
+/// with `threshold` (`omitempty` on a float) and `message` (`omitempty` on a
+/// string) dropped when zero/empty.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RiskResult {
-    /// The metric value (Go `Value any`, `json:"value"`). Modeled as a [`GoValue`]
-    /// so the `any`-typed field can carry ints, floats, strings, etc. with correct
-    /// downstream encoding.
+    /// The metric value (serialized as `"value"`). Modeled as a [`GoValue`] so
+    /// this dynamically-typed field can carry ints, floats, strings, etc. with
+    /// correct downstream encoding.
     pub value: GoValue,
 
-    /// The assessed risk level. Go `Level RiskLevel` (`json:"risk_level"`).
+    /// The assessed risk level (serialized as `"risk_level"`).
     pub level: RiskLevel,
 
-    /// The threshold that triggered this risk level. Go
-    /// `Threshold float64` (`json:"threshold,omitempty"`); omitted when `0.0`.
+    /// The threshold that triggered this risk level
+    /// (`"threshold"`, `omitempty`); omitted when `0.0`.
     pub threshold: f64,
 
-    /// A human-readable message. Go `Message string` (`json:"message,omitempty"`);
-    /// omitted when empty.
+    /// A human-readable message (`"message"`, `omitempty`); omitted when empty.
     pub message: String,
 }
 
 impl RiskResult {
     /// Creates a [`RiskResult`] with the given value and level, and no threshold
     /// or message.
-    pub fn new(value: GoValue, level: RiskLevel) -> RiskResult {
-        RiskResult {
+    #[must_use]
+    pub const fn new(value: GoValue, level: RiskLevel) -> Self {
+        Self {
             value,
             level,
             threshold: 0.0,
@@ -233,9 +233,9 @@ impl RiskResult {
 
 impl GoSerialize for RiskResult {
     fn to_go_value(&self) -> GoValue {
-        // Struct-origin map: Go declaration order value, risk_level,
+        // Struct-origin map: declaration order value, risk_level,
         // threshold (omitempty), message (omitempty). omitempty fields are simply
-        // not pushed when zero/empty, matching Go's encoding/json behavior.
+        // not pushed when zero/empty, per the report-format contract.
         let mut m = GoMap::new_struct();
         m.push(VALUE_FIELD, self.value.clone());
         m.push(RISK_LEVEL_FIELD, GoValue::Str(self.level.0.clone()));
@@ -252,37 +252,40 @@ impl GoSerialize for RiskResult {
 /// Common metadata for a metric.
 ///
 /// Embed this in metric implementations to satisfy the metadata methods of the
-/// [`Metric`] trait. Port of Go `MetricMeta` and its `Name`/`DisplayName`/
-/// `Description`/`Type` methods.
+/// [`Metric`] trait.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MetricMeta {
-    /// Machine-readable identifier. Go field `MetricName`.
+    /// Machine-readable identifier.
     pub metric_name: String,
-    /// Human-readable name. Go field `MetricDisplayName`.
+    /// Human-readable name.
     pub metric_display_name: String,
-    /// Detailed documentation. Go field `MetricDescription`.
+    /// Detailed documentation.
     pub metric_description: String,
-    /// Metric category. Go field `MetricType`.
+    /// Metric category.
     pub metric_type: String,
 }
 
 impl MetricMeta {
-    /// Returns the machine-readable identifier (Go `Name()`).
+    /// Returns the machine-readable identifier.
+    #[must_use]
     pub fn name(&self) -> &str {
         &self.metric_name
     }
 
-    /// Returns a human-readable name for UI/reports (Go `DisplayName()`).
+    /// Returns a human-readable name for UI/reports.
+    #[must_use]
     pub fn display_name(&self) -> &str {
         &self.metric_display_name
     }
 
-    /// Returns detailed documentation (Go `Description()`).
+    /// Returns detailed documentation.
+    #[must_use]
     pub fn description(&self) -> &str {
         &self.metric_description
     }
 
-    /// Returns the metric category (Go `Type()`).
+    /// Returns the metric category.
+    #[must_use]
     pub fn metric_type(&self) -> &str {
         &self.metric_type
     }
@@ -290,17 +293,16 @@ impl MetricMeta {
 
 /// A type-erased metric handle stored in a [`Registry`].
 ///
-/// The Go registry stores `map[string]any` (heterogeneous `Metric[any, any]`).
-/// Rust cannot store heterogeneous generic trait objects directly, so the registry
-/// stores boxed, type-erased values keyed by name. Retrieve the concrete type via
+/// The registry must hold metrics with heterogeneous `In`/`Out` types, and Rust
+/// cannot store heterogeneous generic trait objects directly, so it stores boxed,
+/// type-erased values keyed by name. Retrieve the concrete type via
 /// [`Any::downcast_ref`].
 pub type AnyMetric = Box<dyn Any + Send + Sync>;
 
 /// A collection of metrics that can be computed together.
 ///
-/// Port of Go `Registry`. Stores metrics keyed by name. As in Go, [`Registry::names`]
-/// returns names in unspecified order (Go iterates a map); callers that need a
-/// stable order must sort.
+/// Stores metrics keyed by name. [`Registry::names`] returns names in unspecified
+/// order (hash-map iteration); callers that need a stable order must sort.
 #[derive(Default)]
 pub struct Registry {
     metrics: HashMap<String, AnyMetric>,
@@ -308,20 +310,18 @@ pub struct Registry {
 
 impl Registry {
     /// Creates an empty metric registry.
-    ///
-    /// Port of Go `NewRegistry`.
-    pub fn new() -> Registry {
-        Registry {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
             metrics: HashMap::new(),
         }
     }
 
     /// Adds a metric to the registry under the given name.
     ///
-    /// This corresponds to the Go free function `Register[In, Out]`, which keys the
-    /// metric by `m.Name()`. The name is supplied explicitly here so the registry
-    /// can store fully type-erased values. As in Go (map assignment), registering a
-    /// metric under an existing name overwrites the previous entry.
+    /// By convention the key is the metric's `name()`. The name is supplied
+    /// explicitly so the registry can store fully type-erased values. Registering
+    /// a metric under an existing name overwrites the previous entry.
     pub fn register<M>(&mut self, name: impl Into<String>, metric: M)
     where
         M: Any + Send + Sync,
@@ -331,27 +331,31 @@ impl Registry {
 
     /// Retrieves a metric by name.
     ///
-    /// Returns the type-erased value if present, mirroring Go's `(any, bool)`
-    /// (here `Option`). The returned reference is `&dyn Any`; downcast it with
-    /// [`Any::downcast_ref`] to recover the concrete type.
+    /// Returns the type-erased value if present. The returned reference is
+    /// `&dyn Any`; downcast it with [`Any::downcast_ref`] to recover the concrete
+    /// type.
+    #[must_use]
     pub fn get(&self, name: &str) -> Option<&(dyn Any + Send + Sync)> {
         self.metrics.get(name).map(|b| b.as_ref())
     }
 
     /// Returns all registered metric names.
     ///
-    /// Order is unspecified (matches Go map iteration). Sort the result if a stable
+    /// Order is unspecified (hash-map iteration). Sort the result if a stable
     /// order is required.
+    #[must_use]
     pub fn names(&self) -> Vec<String> {
         self.metrics.keys().cloned().collect()
     }
 
     /// Returns the number of registered metrics.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.metrics.len()
     }
 
     /// Returns `true` if no metrics are registered.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.metrics.is_empty()
     }
@@ -361,7 +365,7 @@ impl Registry {
 mod tests {
     use super::*;
 
-    // Test constants mirroring the Go test file's constants.
+    // Test constants mirroring the reference implementation's test suite.
     const TEST_METRIC_NAME: &str = "test_metric";
     const TEST_METRIC_NAME_2: &str = "test_metric_2";
     const TEST_METRIC_DISPLAY_NAME: &str = "Test Metric";
@@ -370,16 +374,16 @@ mod tests {
     const TEST_INPUT_VALUE: i64 = 42;
     const TEST_OUTPUT_MULTIPLIER: i64 = 2;
 
-    // testMetric is a concrete implementation for testing the Metric trait,
-    // embedding MetricMeta (Go: struct testMetric { MetricMeta }).
+    // A concrete implementation for testing the Metric trait, embedding
+    // MetricMeta.
     struct TestMetric {
         meta: MetricMeta,
     }
 
     impl TestMetric {
-        // newTestMetric: standard metadata.
-        fn new() -> TestMetric {
-            TestMetric {
+        // Standard metadata.
+        fn new() -> Self {
+            Self {
                 meta: MetricMeta {
                     metric_name: TEST_METRIC_NAME.to_string(),
                     metric_display_name: TEST_METRIC_DISPLAY_NAME.to_string(),
@@ -412,7 +416,7 @@ mod tests {
         }
     }
 
-    // ---- MetricMeta (ported from TestMetricMeta_*) --------------------------
+    // ---- MetricMeta (mirrors reference tests TestMetricMeta_*) --------------
 
     #[test]
     fn metric_meta_name() {
@@ -450,11 +454,11 @@ mod tests {
         assert_eq!(meta.metric_type(), TEST_METRIC_TYPE);
     }
 
-    // ---- Registry (ported from TestNewRegistry / TestRegistry_*) -----------
+    // ---- Registry (mirrors reference tests TestNewRegistry / TestRegistry_*)
 
     #[test]
     fn new_registry() {
-        // Go asserts registry and registry.metrics are non-nil; the Rust analogue
+        // The reference test asserts the registry is non-nil; the Rust analogue
         // is an empty, usable registry.
         let registry = Registry::new();
         assert!(registry.is_empty());
@@ -517,7 +521,7 @@ mod tests {
 
     #[test]
     fn registry_register_overwrites_same_name() {
-        // Go map semantics: re-registering under the same name overwrites.
+        // Re-registering under the same name overwrites the previous entry.
         let mut registry = Registry::new();
         registry.register("dup", 1_i64);
         registry.register("dup", 2_i64);
@@ -526,7 +530,7 @@ mod tests {
         assert_eq!(v, Some(2));
     }
 
-    // ---- Metric.compute (ported from TestMetric_Compute) -------------------
+    // ---- Metric.compute (mirrors reference test TestMetric_Compute) ---------
 
     #[test]
     fn metric_compute() {
@@ -545,7 +549,7 @@ mod tests {
         assert_eq!(metric.metric_type(), TEST_METRIC_TYPE);
     }
 
-    // ---- RiskLevel constants (ported from TestRiskLevel_Constants) ---------
+    // ---- RiskLevel constants (mirrors reference test TestRiskLevel_Constants)
 
     #[test]
     fn risk_level_constants() {
@@ -564,7 +568,7 @@ mod tests {
         assert_eq!(RiskLevel::critical().to_string(), "CRITICAL");
     }
 
-    // ---- TimeSeriesPoint (ported from TestTimeSeriesPoint_Fields) ----------
+    // ---- TimeSeriesPoint (mirrors reference test TestTimeSeriesPoint_Fields)
 
     #[test]
     fn time_series_point_fields() {
@@ -594,12 +598,12 @@ mod tests {
         }
     }
 
-    // ---- RiskPriority (ported from TestRiskPriority_*) ----------------------
+    // ---- RiskPriority (mirrors reference tests TestRiskPriority_*) ----------
 
     #[test]
     fn risk_priority_all_levels() {
-        // Table-driven, mirroring the Go test: level, want_pri, want_less
-        // (must sort before). None want_less means "no next level".
+        // Table-driven: level, want_pri, want_less (must sort before).
+        // None want_less means "no next level".
         let cases: &[(RiskLevel, i64, Option<RiskLevel>)] = &[
             (RiskLevel::critical(), PRIORITY_CRITICAL, Some(RiskLevel::high())),
             (RiskLevel::high(), PRIORITY_HIGH, Some(RiskLevel::medium())),
@@ -623,7 +627,7 @@ mod tests {
         assert_eq!(risk_priority(&RiskLevel::from("")), PRIORITY_DEFAULT);
     }
 
-    // ---- RiskResult (ported from TestRiskResult_Fields) --------------------
+    // ---- RiskResult (mirrors reference test TestRiskResult_Fields) ----------
 
     #[test]
     fn risk_result_fields() {

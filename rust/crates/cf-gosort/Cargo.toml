@@ -11,3 +11,10 @@ publish.workspace = true
 
 [lints.clippy]
 pedantic = "warn"
+# The index arithmetic and xorshift state are part of the frozen sort algorithm
+# (the output permutation is a report-compatibility contract); the casts are
+# intentional and bounded by construction.
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_sign_loss = "allow"
+many_single_char_names = "allow"

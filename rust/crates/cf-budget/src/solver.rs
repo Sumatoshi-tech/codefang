@@ -1,10 +1,9 @@
 //! History-coordinator budget solver.
 //!
-//! Port of `internal/budget/solver.go`. Distributes a memory budget across
-//! workers, caches and buffers and derives a [`CoordinatorConfig`].
+//! Distributes a memory budget across workers, caches and buffers and derives
+//! a [`CoordinatorConfig`].
 
 use std::collections::HashMap;
-use std::fmt;
 use std::time::Duration;
 
 use crate::framework::CoordinatorConfig;
@@ -30,11 +29,12 @@ pub const BLOB_CACHE_RATIO: i64 = 80;
 /// The portion (percent) of cache allocation for the diff cache.
 pub const DIFF_CACHE_RATIO: i64 = 20;
 
-// --- Float64 weights derived from the integer percentage constants above ---
+// --- f64 weights derived from the integer percentage constants above ---
 //
-// These mirror Go's `float64(CONST) / percentDivisor` exactly: the literal
-// `100.0` divisor and identical IEEE-754 division give bit-identical weights,
-// so `(total as f64 * weight) as i64` matches `int64(float64(total) * weight)`.
+// The weights are computed by IEEE-754 division of the integer constants, and
+// allocations truncate `total as f64 * weight` toward zero. This arithmetic is
+// reference-implementation behavior: the derived knobs are bit-identical for a
+// given CPU count, so keep the divisions and casts exactly as written.
 
 /// Cache weight (`CACHE_ALLOCATION_PERCENT / 100`).
 pub const CACHE_WEIGHT: f64 = CACHE_ALLOCATION_PERCENT as f64 / PERCENT_DIVISOR as f64;
@@ -96,38 +96,27 @@ pub const MIN_LEAF_WORKERS: i64 = 4;
 
 /// Solver error.
 ///
-/// Mirrors the single sentinel `ErrBudgetTooSmall` from `solver.go`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The error text is part of the CLI surface; keep it byte-identical.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum SolveError {
     /// The budget is below the minimum required.
+    #[error("memory budget is too small")]
     BudgetTooSmall,
 }
-
-impl fmt::Display for SolveError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            // Exact wording matches Go's `errors.New("memory budget is too small")`.
-            SolveError::BudgetTooSmall => f.write_str("memory budget is too small"),
-        }
-    }
-}
-
-impl std::error::Error for SolveError {}
 
 /// Distributes `total` bytes across named buckets by weight.
 ///
 /// Weights must be in `[0, 1]` and should sum to `<= 1.0`. Returns a map from
-/// bucket name to allocated bytes (truncated toward zero, matching Go's
-/// `int64(float64(total) * weight)`).
-pub(crate) fn allocate_proportionally(
+/// bucket name to allocated bytes; each allocation is `total as f64 * weight`
+/// truncated toward zero (reference-implementation arithmetic — do not round).
+pub(crate) fn allocate_proportionally<'k>(
     total: i64,
-    weights: &HashMap<String, f64>,
-) -> HashMap<String, i64> {
-    let mut result = HashMap::with_capacity(weights.len());
-    for (name, &weight) in weights {
-        result.insert(name.clone(), (total as f64 * weight) as i64);
-    }
-    result
+    weights: &HashMap<&'k str, f64>,
+) -> HashMap<&'k str, i64> {
+    weights
+        .iter()
+        .map(|(&name, &weight)| (name, (total as f64 * weight) as i64))
+        .collect()
 }
 
 /// Calculates the optimal [`CoordinatorConfig`] for the given memory budget.
@@ -151,10 +140,10 @@ pub fn solve_for_budget(budget: i64) -> Result<CoordinatorConfig, SolveError> {
         return Err(SolveError::BudgetTooSmall);
     }
 
-    let weights: HashMap<String, f64> = [
-        (BUCKET_CACHE.to_string(), CACHE_WEIGHT),
-        (BUCKET_WORKER.to_string(), WORKER_WEIGHT),
-        (BUCKET_BUFFER.to_string(), BUFFER_WEIGHT),
+    let weights: HashMap<&str, f64> = [
+        (BUCKET_CACHE, CACHE_WEIGHT),
+        (BUCKET_WORKER, WORKER_WEIGHT),
+        (BUCKET_BUFFER, BUFFER_WEIGHT),
     ]
     .into_iter()
     .collect();
@@ -182,12 +171,10 @@ pub(crate) fn derive_knobs(
     let workers = MIN_WORKERS.max(max_workers.min(worker_alloc / worker_cost));
 
     // Split cache allocation into blob and diff sub-budgets.
-    let cache_weights: HashMap<String, f64> = [
-        (BUCKET_BLOB.to_string(), BLOB_WEIGHT),
-        (BUCKET_DIFF.to_string(), DIFF_WEIGHT),
-    ]
-    .into_iter()
-    .collect();
+    let cache_weights: HashMap<&str, f64> =
+        [(BUCKET_BLOB, BLOB_WEIGHT), (BUCKET_DIFF, DIFF_WEIGHT)]
+            .into_iter()
+            .collect();
     let cache_allocs = allocate_proportionally(cache_alloc, &cache_weights);
 
     // Blob cache: capped to avoid dominating the budget.
@@ -224,14 +211,13 @@ pub(crate) fn derive_knobs(
     }
 }
 
-/// The zero-valued `CoordinatorConfig`, mirroring Go's zero
-/// `framework.CoordinatorConfig{}`.
+/// The all-zero `CoordinatorConfig`.
 ///
-/// Go's `deriveKnobs` returns a *partial* struct literal, which leaves every
-/// unnamed field at its zero value. Rust's `CoordinatorConfig::default()` is
-/// `DefaultCoordinatorConfig` (NOT zero), so the remaining fields must be
-/// zero-filled explicitly to stay faithful to the Go solver's output.
-fn zero_coordinator_config() -> CoordinatorConfig {
+/// The solver's contract is that every knob it does not derive stays at its
+/// zero value (reference-implementation behavior). `CoordinatorConfig::default()`
+/// is the *default* configuration (NOT zero), so the remaining fields must be
+/// zero-filled explicitly here.
+const fn zero_coordinator_config() -> CoordinatorConfig {
     CoordinatorConfig {
         commit_batch_size: 0,
         workers: 0,
@@ -429,7 +415,7 @@ mod tests {
     #[test]
     fn allocate_proportionally_single_weight() {
         let total: i64 = 1000;
-        let weights: HashMap<String, f64> = [("a".to_string(), 0.6)].into_iter().collect();
+        let weights: HashMap<&str, f64> = [("a", 0.6)].into_iter().collect();
         let result = allocate_proportionally(total, &weights);
         assert_eq!(result["a"], 600);
     }
@@ -437,13 +423,9 @@ mod tests {
     #[test]
     fn allocate_proportionally_multiple_weights() {
         let total: i64 = 1000;
-        let weights: HashMap<String, f64> = [
-            ("cache".to_string(), 0.6),
-            ("worker".to_string(), 0.3),
-            ("buffer".to_string(), 0.1),
-        ]
-        .into_iter()
-        .collect();
+        let weights: HashMap<&str, f64> = [("cache", 0.6), ("worker", 0.3), ("buffer", 0.1)]
+            .into_iter()
+            .collect();
         let result = allocate_proportionally(total, &weights);
         assert_eq!(result["cache"], 600);
         assert_eq!(result["worker"], 300);
@@ -452,23 +434,23 @@ mod tests {
 
     #[test]
     fn allocate_proportionally_zero_total() {
-        let weights: HashMap<String, f64> = [("a".to_string(), 0.5)].into_iter().collect();
+        let weights: HashMap<&str, f64> = [("a", 0.5)].into_iter().collect();
         let result = allocate_proportionally(0, &weights);
         assert_eq!(result["a"], 0);
     }
 
     #[test]
-    fn allocate_proportionally_nil_weights() {
-        let weights: HashMap<String, f64> = HashMap::new();
+    fn allocate_proportionally_empty_weights() {
+        let weights: HashMap<&str, f64> = HashMap::new();
         let result = allocate_proportionally(1000, &weights);
         assert!(result.is_empty());
     }
 
     #[test]
     fn allocate_proportionally_truncation() {
-        // 1001 * 0.3 = 300.3 -> truncated to 300 (matches Go int64(float64*...)).
+        // 1001 * 0.3 = 300.3 -> truncated toward zero, never rounded.
         let total: i64 = 1001;
-        let weights: HashMap<String, f64> = [("a".to_string(), 0.3)].into_iter().collect();
+        let weights: HashMap<&str, f64> = [("a", 0.3)].into_iter().collect();
         let result = allocate_proportionally(total, &weights);
         assert_eq!(result["a"], 300);
     }

@@ -1,30 +1,26 @@
-//! Pipeline coordinator configuration and memory model — port of the
-//! dependency-light parts of `internal/framework/coordinator.go`.
+//! Pipeline coordinator configuration and memory model.
 //!
-//! The full Go `Coordinator` owns the live blob/diff/UAST pipeline stages and
-//! the libgit2 worker pool, so the running orchestrator is blocked on the
-//! unported `cf-gitlib`/`cf-cache`/`cf-uast` crates. What is **self-contained**
-//! and ported here verbatim:
+//! Provides:
 //!
-//! - [`CoordinatorConfig`] (every field) and [`CoordinatorConfig::default`]
-//!   (Go `DefaultCoordinatorConfig`), including the CPU-ratio worker math.
+//! - [`CoordinatorConfig`] (every tuning field) and
+//!   [`CoordinatorConfig::default`], including the CPU-ratio worker math.
 //! - [`PipelineStats`] and [`PipelineStats::add`] (cross-chunk aggregation).
 //! - [`CoordinatorConfig::estimated_overhead`] — the memory model used by the
-//!   streaming planner (must match `pkg/budget/model.go`).
+//!   streaming planner (must stay in sync with `cf-budget`'s model).
 //! - The system-memory detection (`/proc/meminfo`) and soft-memory-limit math
 //!   ([`detect_total_memory_bytes`], [`resolve_memory_limit_from_budget`],
 //!   [`resolve_memory_limit_with_ratio`]).
 //!
 //! Time-valued tuning fields use [`std::time::Duration`]; a value of
-//! `Duration::ZERO` means "use the package default", matching Go's zero-value
-//! sentinel handling in the config builder.
+//! `Duration::ZERO` means "use the package default" (the config builder only
+//! applies positive values).
 
 use std::time::Duration;
 
 use cf_safeconv::safe_int64;
 
 // ---------------------------------------------------------------------------
-// Worker-sizing ratios (coordinator.go).
+// Worker-sizing ratios.
 // ---------------------------------------------------------------------------
 
 /// Factor by which buffer size scales with worker count.
@@ -71,13 +67,13 @@ const KIBIBYTE: u64 = 1024;
 const MIN_MEMINFO_FIELDS: usize = 2;
 
 // ---------------------------------------------------------------------------
-// Pipeline memory model constants (mirror pkg/budget/model.go, duplicated in
-// coordinator.go to avoid a circular dependency).
+// Pipeline memory model constants (duplicated from cf-budget's model to avoid
+// a circular dependency; keep the two in sync).
 // ---------------------------------------------------------------------------
 
-/// Go runtime + libgit2 base + shared mmap.
+/// Runtime + libgit2 base + shared mmap.
 pub const RUNTIME_OVERHEAD: i64 = 250 * 1024 * 1024;
-/// Per-worker libgit2 handle (Go-visible).
+/// Per-worker libgit2 repository handle.
 pub const REPO_HANDLE_SIZE: i64 = 10 * 1024 * 1024;
 /// Per-worker C/mmap overhead from libgit2.
 pub const WORKER_NATIVE_OVERHEAD: i64 = 50 * 1024 * 1024;
@@ -86,17 +82,10 @@ pub const AVG_DIFF_ENTRY_SIZE: i64 = 2 * 1024;
 /// Average in-flight commit data.
 pub const AVG_COMMIT_DATA_SIZE: i64 = 64 * 1024;
 
-// Pipeline-tuning package defaults referenced by `default()`. The Go values
-// live across blob_pipeline.go / diff_pipeline.go / uast_pipeline.go /
-// sampler.go; the dependency-light defaults are mirrored here. (The blocked
-// stage modules will re-export the authoritative copies when they land.)
-// Values verified against the Go source: uast_pipeline.go
-// (uastSpillThreshold=32, uastSpillTrimInterval=16, defaultMaxIntraCommitWorkers=4,
-// intraCommitParallelThreshold=4, maxUASTBlobSize=256*1024, defaultParseTimeout=10s),
-// diff_pipeline.go (defaultMaxDiffBatchSize=1000, diffJobBufferMultiplier=10),
-// runner.go (nativeTrimInterval=10), streaming.go (maxStreamingBuffering=3,
-// drainPrefetchTimeout=30s), sampler.go (samplerInterval=2s),
-// blob_pipeline.go (maxChangesPerCommit=10000).
+// Pipeline-tuning stage defaults referenced by `default()`. These values are
+// reference-implementation behavior (they steer chunk planning and worker
+// sizing, which the differential gate pins indirectly); change them only with
+// a corresponding gate run.
 const UAST_SPILL_THRESHOLD: i64 = 32;
 const INTRA_COMMIT_PARALLEL_THRESHOLD: i64 = 4;
 const DEFAULT_MAX_INTRA_COMMIT_WORKERS: i64 = 4;
@@ -111,9 +100,9 @@ const DEFAULT_PARSE_TIMEOUT: Duration = Duration::from_secs(10);
 const DRAIN_PREFETCH_TIMEOUT: Duration = Duration::from_secs(30);
 const SAMPLER_INTERVAL: Duration = Duration::from_secs(2);
 
-/// Cumulative pipeline metrics for a single coordinator run. Mirrors Go
-/// `framework.PipelineStats`. Valid after the output channel is fully drained.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+/// Cumulative pipeline metrics for a single coordinator run. Valid after the
+/// output channel is fully drained.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PipelineStats {
     /// Total time spent in the blob stage.
     pub blob_duration: Duration,
@@ -133,8 +122,8 @@ pub struct PipelineStats {
 
 impl PipelineStats {
     /// Accumulates another `PipelineStats` into this one (cross-chunk
-    /// aggregation). Mirrors Go `(*PipelineStats).Add`.
-    pub fn add(&mut self, other: &PipelineStats) {
+    /// aggregation).
+    pub fn add(&mut self, other: &Self) {
         self.blob_duration += other.blob_duration;
         self.diff_duration += other.diff_duration;
         self.uast_duration += other.uast_duration;
@@ -145,10 +134,8 @@ impl PipelineStats {
     }
 }
 
-/// Configures the pipeline coordinator. Mirrors Go `framework.CoordinatorConfig`
-/// field-for-field (the `BatchConfig` field is deferred until `cf-gitlib`
-/// lands and is therefore omitted here; all other fields are present).
-#[derive(Debug, Clone, PartialEq)]
+/// Configures the pipeline coordinator.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CoordinatorConfig {
     /// Number of commits to process in each batch.
     pub commit_batch_size: i64,
@@ -162,11 +149,11 @@ pub struct CoordinatorConfig {
     pub diff_cache_size: i64,
     /// Size of the memory arena for blob loading.
     pub blob_arena_size: i64,
-    /// Number of goroutines for parallel UAST parsing (0 disables the stage).
+    /// Number of workers for parallel UAST parsing (0 disables the stage).
     pub uast_pipeline_workers: i64,
-    /// Number of goroutines for parallel leaf analyzer consumption.
+    /// Number of workers for parallel leaf analyzer consumption.
     pub leaf_workers: i64,
-    /// Go GC aggressiveness (0 = auto).
+    /// GC aggressiveness (0 = auto; retained for CLI-flag parity).
     pub gc_percent: i64,
     /// Bytes reserved in a long-lived slice to smooth GC (0 disables ballast).
     pub ballast_size: i64,
@@ -181,7 +168,7 @@ pub struct CoordinatorConfig {
     pub uast_spill_threshold: i64,
     /// Minimum file changes for intra-commit parallelism.
     pub intra_commit_parallel_threshold: i64,
-    /// Caps goroutines for parsing files within a single commit.
+    /// Caps workers for parsing files within a single commit.
     pub max_intra_commit_workers: i64,
     /// Maximum blob size (bytes) for UAST parsing.
     pub max_uast_blob_size: i64,
@@ -201,7 +188,7 @@ pub struct CoordinatorConfig {
     pub native_trim_interval: i64,
     /// Maximum buffering factor for streaming (triple-buffering).
     pub max_streaming_buffering: i64,
-    /// Timeout for abandoning prefetch goroutines.
+    /// Timeout for abandoning prefetch workers.
     pub drain_prefetch_timeout: Duration,
     /// Polling interval for the pipeline sampler.
     pub sampler_interval: Duration,
@@ -224,9 +211,9 @@ pub struct CoordinatorConfig {
 }
 
 impl Default for CoordinatorConfig {
-    /// Mirrors Go `DefaultCoordinatorConfig`. Worker counts derive from the CPU
-    /// count using the same integer-ratio math: `max(NumCPU * ratio / 100, 1)`
-    /// for workers, and `max(NumCPU / divisor, min)` for leaf workers.
+    /// Worker counts derive from the CPU count using integer-ratio math:
+    /// `max(num_cpu * ratio / 100, 1)` for workers, and
+    /// `max(num_cpu / divisor, min)` for leaf workers.
     fn default() -> Self {
         let num_cpu = num_cpus() as i64;
         let workers = (num_cpu * OPTIMAL_WORKER_RATIO / (PERCENT_DIVISOR as i64)).max(1);
@@ -274,17 +261,16 @@ impl Default for CoordinatorConfig {
     }
 }
 
-/// Default blob LRU cache size. Mirrors `cache.DefaultLRUCacheSize` (256 MiB,
-/// `internal/cache/lru.go:10`); re-declared here until `cf-cache` lands so
-/// `default()` is self-contained.
+/// Default blob LRU cache size (256 MiB). Duplicated from the blob cache's
+/// default so `default()` is self-contained; keep the two in sync.
 pub const DEFAULT_LRU_CACHE_SIZE: i64 = 256 * 1024 * 1024;
 
 impl CoordinatorConfig {
     /// Returns the estimated memory consumed by the pipeline infrastructure
     /// (runtime, workers, caches, buffers, native/mmap overhead) — everything
-    /// except analyzer state. Mirrors Go `(CoordinatorConfig).EstimatedOverhead`.
+    /// except analyzer state.
     #[must_use]
-    pub fn estimated_overhead(&self) -> i64 {
+    pub const fn estimated_overhead(&self) -> i64 {
         let workers =
             self.workers * (REPO_HANDLE_SIZE + self.blob_arena_size + WORKER_NATIVE_OVERHEAD);
         let caches = self.blob_cache_size + self.diff_cache_size * AVG_DIFF_ENTRY_SIZE;
@@ -294,21 +280,18 @@ impl CoordinatorConfig {
 }
 
 /// Detects total system memory in bytes from `/proc/meminfo`, returning 0 on
-/// non-Linux or any failure. Mirrors Go `detectTotalMemoryBytes`.
+/// non-Linux or any failure.
 #[must_use]
 pub fn detect_total_memory_bytes() -> u64 {
     if !cfg!(target_os = "linux") {
         return 0;
     }
-    match std::fs::read(PROC_MEMINFO_PATH) {
-        Ok(bytes) => parse_mem_total_bytes(&bytes),
-        Err(_) => 0,
-    }
+    std::fs::read(PROC_MEMINFO_PATH).map_or(0, |bytes| parse_mem_total_bytes(&bytes))
 }
 
-/// Parses the `MemTotal:` line out of `/proc/meminfo` contents. Mirrors Go
-/// `parseMemTotalBytes`: scans for the prefix, reads the numeric field, and
-/// scales by the unit (`kB` → KiB, otherwise raw bytes).
+/// Parses the `MemTotal:` line out of `/proc/meminfo` contents: scans for the
+/// prefix, reads the numeric field, and scales by the unit (`kB` → KiB,
+/// otherwise raw bytes).
 #[must_use]
 pub fn parse_mem_total_bytes(mem_info: &[u8]) -> u64 {
     for line in mem_info.split(|&b| b == b'\n') {
@@ -316,18 +299,17 @@ pub fn parse_mem_total_bytes(mem_info: &[u8]) -> u64 {
             continue;
         }
         let fields: Vec<&[u8]> = line
-            .split(|b| b.is_ascii_whitespace())
+            .split(u8::is_ascii_whitespace)
             .filter(|f| !f.is_empty())
             .collect();
         if fields.len() < MIN_MEMINFO_FIELDS {
             return 0;
         }
-        let value = match std::str::from_utf8(fields[1])
+        let Some(value) = std::str::from_utf8(fields[1])
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
-        {
-            Some(v) => v,
-            None => return 0,
+        else {
+            return 0;
         };
         let unit = if fields.len() > MIN_MEMINFO_FIELDS {
             std::str::from_utf8(fields[2]).unwrap_or("")
@@ -347,7 +329,7 @@ fn scale_bytes_by_unit(value: u64, unit: &str) -> u64 {
 }
 
 /// Computes the soft memory limit from a user budget, capped at a fraction of
-/// system RAM. Mirrors Go `resolveMemoryLimitFromBudget`.
+/// system RAM.
 #[must_use]
 pub fn resolve_memory_limit_from_budget(
     budget: i64,
@@ -364,8 +346,8 @@ pub fn resolve_memory_limit_from_budget(
 }
 
 /// Computes the soft memory limit from a fraction of system RAM, capped at
-/// [`DEFAULT_MEMORY_LIMIT_BYTES`]. Mirrors Go `resolveMemoryLimitWithRatio`:
-/// a zero total falls back to the default limit.
+/// [`DEFAULT_MEMORY_LIMIT_BYTES`]. A zero total falls back to the default
+/// limit.
 #[must_use]
 pub fn resolve_memory_limit_with_ratio(total_memory_bytes: u64, ratio: i64) -> u64 {
     if total_memory_bytes == 0 {
@@ -375,15 +357,14 @@ pub fn resolve_memory_limit_with_ratio(total_memory_bytes: u64, ratio: i64) -> u
     system_based.min(DEFAULT_MEMORY_LIMIT_BYTES)
 }
 
-/// Saturating cast of a memory limit (u64) to the `i64` Go passes to
-/// `debug.SetMemoryLimit`. Mirrors the `safeconv.SafeInt64` call sites.
+/// Saturating cast of a memory limit (u64) to the `i64` the runtime
+/// soft-memory-limit setter expects.
 #[must_use]
 pub fn memory_limit_as_i64(limit: u64) -> i64 {
     safe_int64(limit)
 }
 
-/// Logical CPU count, mirroring Go's `runtime.NumCPU()`. Uses the std parallelism
-/// hint, falling back to 1.
+/// Logical CPU count: the std parallelism hint, falling back to 1.
 fn num_cpus() -> usize {
     std::thread::available_parallelism()
         .map(std::num::NonZeroUsize::get)
@@ -452,9 +433,10 @@ mod tests {
 
     #[test]
     fn parse_mem_total_two_fields_defaults_to_kib() {
-        // Go: when len(fields) <= minMemInfoFields (==2) the unit is NOT read
-        // from fields[2] and stays the default "kB", so a bare "MemTotal: 2048"
-        // is scaled by 1024 — exactly as the Go parseMemTotalBytes does.
+        // When there are exactly MIN_MEMINFO_FIELDS fields the unit is NOT
+        // read from fields[2] and stays the default "kB", so a bare
+        // "MemTotal: 2048" is scaled by 1024 (reference-implementation
+        // behavior).
         let info = b"MemTotal: 2048\n";
         assert_eq!(parse_mem_total_bytes(info), 2048 * 1024);
     }

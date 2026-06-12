@@ -7,12 +7,12 @@
 //! parser into [`GoValue`] suffices. Integers that fit in `i64`/`u64` are kept
 //! as [`GoValue::Int`]/[`GoValue::Uint`]; anything with a `.`/`e` becomes
 //! [`GoValue::Float`], matching how Go's `json.Unmarshal` into `any` would later
-//! re-marshal (Go uses `float64` for all numbers, but Codefang's report values
+//! re-marshal (the reference decoder uses doubles for all numbers, but report values
 //! round-trip through this typed model; integer preservation keeps re-encoded
 //! counts free of spurious decimals).
 //!
 //! Object values are stored in **map-origin** [`GoMap`]s so that any
-//! re-encoding byte-sorts keys exactly like Go.
+//! re-encoding byte-sorts keys per the report-format contract.
 
 use cf_gojson::{GoMap, GoValue};
 
@@ -306,7 +306,7 @@ impl<'a> Parser<'a> {
     }
 }
 
-fn utf8_len(first: u8) -> usize {
+const fn utf8_len(first: u8) -> usize {
     if first < 0x80 {
         1
     } else if first >> 5 == 0b110 {
@@ -338,8 +338,8 @@ mod tests {
         assert_eq!(parse(b"42").unwrap(), GoValue::Int(42));
         assert_eq!(parse(b"-7").unwrap(), GoValue::Int(-7));
         assert_eq!(parse(br#""hi""#).unwrap(), GoValue::Str("hi".into()));
-        match parse(b"3.14").unwrap() {
-            GoValue::Float(f) => assert!((f - 3.14).abs() < 1e-9),
+        match parse(b"2.75").unwrap() {
+            GoValue::Float(f) => assert!((f - 2.75).abs() < 1e-9),
             other => panic!("expected float, got {other:?}"),
         }
     }

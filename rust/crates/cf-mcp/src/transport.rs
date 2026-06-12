@@ -1,26 +1,23 @@
 //! Stdio transport + JSON-RPC dispatch for the MCP server.
 //!
-//! Ports Go `Server.Run` (`StdioTransport`) and `Server.RunWithTransport`.
-//!
 //! ## Why a hand-rolled, sync loop rather than rmcp/tokio
 //!
-//! The Go server delegated transport + JSON-RPC framing to
-//! `modelcontextprotocol/go-sdk`. The Rust counterpart would be the `rmcp` crate
-//! over `tokio`, but those are not yet in the workspace dependency set and adding
-//! an async runtime to a feature-gated, not-shipped crate is disproportionate at
-//! this port stage (DESIGN rule 4: external crates are integrated centrally; see
-//! the crate todos / `externalCrates`). To keep `cf-mcp` self-contained and
-//! behavior-faithful in the meantime, this module implements the small subset of
-//! the MCP wire protocol the three tools need — `initialize`, `tools/list`,
-//! `tools/call` — over newline-delimited JSON-RPC on a synchronous
-//! [`std::io::BufRead`] / [`std::io::Write`] pair. Swapping to rmcp later only
-//! changes this file.
+//! The ecosystem MCP SDK would be the `rmcp` crate over `tokio`, but those are
+//! not in the workspace dependency set and adding an async runtime to a
+//! feature-gated, not-shipped crate is disproportionate (DESIGN rule 4:
+//! external crates are integrated centrally; see the crate todos /
+//! `externalCrates`). To keep `cf-mcp` self-contained, this module implements
+//! the small subset of the MCP wire protocol the three tools need —
+//! `initialize`, `tools/list`, `tools/call` — over newline-delimited JSON-RPC
+//! on a synchronous [`std::io::BufRead`] / [`std::io::Write`] pair. Swapping
+//! to rmcp later only changes this file.
 //!
 //! The JSON-RPC envelope itself (ids, `jsonrpc`, `result`/`error`) is **not** a
 //! machine-format report and is not under the byte-identity guarantee, so it is
 //! built with `serde_json`; only the tool report payload flows through the
-//! Go-compatible encoder in [`crate::gojson`] (via [`crate::result::ToolResult`]).
-//! See `DESIGN.md` §2 — the lens covers report bytes, not the transport envelope.
+//! report-compatible encoder in [`crate::gojson`] (via
+//! [`crate::result::ToolResult`]). See `DESIGN.md` §2 — the lens covers report
+//! bytes, not the transport envelope.
 
 use std::io::{BufRead, Write};
 
@@ -31,25 +28,17 @@ use crate::tools::{
     AnalyzeInput, HistoryInput, UastParseInput, TOOL_NAME_ANALYZE, TOOL_NAME_HISTORY, TOOL_NAME_UAST,
 };
 
-/// Error type for the transport loop, mirroring Go's
-/// `fmt.Errorf("mcp server: %w", err)`.
-#[derive(Debug)]
+/// Error type for the transport loop. The `mcp server: ` prefix is the
+/// caller-visible wording.
+#[derive(Debug, thiserror::Error)]
+#[error("mcp server: {0}")]
 pub struct TransportError(pub String);
 
-impl std::fmt::Display for TransportError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "mcp server: {}", self.0)
-    }
-}
-
-impl std::error::Error for TransportError {}
-
-/// A cancellation signal, mirroring Go's `context.Context` cancellation.
+/// A cancellation signal.
 ///
-/// Go's `Server.Run(ctx)` returns an error when the context is already canceled.
-/// We model just that observable behavior with a simple predicate the caller
-/// supplies; `run`/`run_with_transport` check it before serving and return the
-/// wrapped error if already canceled (matching `TestServer_Run_CancelledContext`).
+/// The observable contract: serving with an already-cancelled signal returns
+/// `mcp server: context canceled` without serving. `run` /
+/// `run_with_transport` check the predicate before entering the loop.
 pub trait Cancellation {
     /// Whether cancellation has been requested.
     fn is_cancelled(&self) -> bool;
@@ -74,10 +63,8 @@ impl Cancellation for AlreadyCancelled {
 impl Server {
     /// Starts the MCP server on stdio transport, blocking until EOF.
     ///
-    /// Reproduces Go `Server.Run(ctx)` over `StdioTransport`. If `ctx` is already
-    /// canceled it returns `mcp server: context canceled` without serving,
-    /// matching `TestServer_Run_CancelledContext`. Errors are wrapped
-    /// `mcp server: <err>`.
+    /// If `ctx` is already canceled it returns `mcp server: context canceled`
+    /// without serving. Errors are wrapped `mcp server: <err>`.
     ///
     /// # Errors
     /// Returns a [`TransportError`] on a canceled context or an I/O failure.
@@ -92,10 +79,8 @@ impl Server {
         self.serve(reader, writer)
     }
 
-    /// Starts the MCP server on the given synchronous byte transport.
-    ///
-    /// Reproduces Go `Server.RunWithTransport(ctx, transport)`. Used by the
-    /// in-memory integration tests.
+    /// Starts the MCP server on the given synchronous byte transport. Used by
+    /// the in-memory integration tests.
     ///
     /// # Errors
     /// Returns a [`TransportError`] on a canceled context or an I/O failure.
@@ -197,7 +182,7 @@ impl Server {
 
     fn rpc_tools_call(&self, params: &Value) -> Value {
         let name = params.get("name").and_then(Value::as_str).unwrap_or("");
-        let args = params.get("arguments").cloned().unwrap_or(json!({}));
+        let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
 
         let (result, _output) = match name {
             TOOL_NAME_ANALYZE => {
@@ -301,7 +286,7 @@ mod tests {
 
     #[test]
     fn cancelled_context_returns_error() {
-        // Mirrors TestServer_Run_CancelledContext.
+        // Mirrors the reference suite's TestServer_Run_CancelledContext.
         let srv = Server::new(ServerDeps::default());
         let input: &[u8] = b"";
         let mut output = Vec::new();
@@ -313,7 +298,7 @@ mod tests {
 
     #[test]
     fn tools_list_returns_three_tools_with_schemas() {
-        // Mirrors TestMCPServer_InMemoryTransport_ToolsList.
+        // Mirrors the reference suite's TestMCPServer_InMemoryTransport_ToolsList.
         let srv = Server::new(ServerDeps::default());
         let resp = srv.rpc_tools_list();
         let tools = resp["result"]["tools"].as_array().unwrap();
@@ -337,7 +322,7 @@ mod tests {
 
     #[test]
     fn call_analyze_with_empty_code_is_error() {
-        // Mirrors TestMCPServer_InMemoryTransport_CallAnalyze_Error.
+        // Mirrors the reference suite's TestMCPServer_InMemoryTransport_CallAnalyze_Error.
         let srv = Server::new(ServerDeps::default());
         let params = json!({
             "name": "codefang_analyze",

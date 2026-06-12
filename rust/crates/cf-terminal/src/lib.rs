@@ -1,11 +1,8 @@
 //! Terminal rendering utilities for analyzer CLI output.
 //!
-//! This crate is the Rust port of the Go package
-//! `internal/analyzers/common/terminal` (files `terminal.go`, `box.go`,
-//! `color.go`, `progress.go`, `text.go`). It groups the helpers used by the
-//! renderer, the `analyze` command, and many analyzers to draw headers,
-//! separators, progress / percentage bars, score badges, and to colorize and
-//! pad text.
+//! Helpers used by the renderer, the `analyze` command, and many analyzers to
+//! draw headers, separators, progress / percentage bars, score badges, and to
+//! colorize and pad text.
 //!
 //! # Human output only (non-binding)
 //!
@@ -18,23 +15,24 @@
 //!
 //! # Byte length
 //!
-//! Matching the Go implementation, [`pad_right`], [`truncate_with_ellipsis`],
-//! and [`draw_header`] all measure string length in **bytes** (Go's `len()` on
-//! a `string`), not in runes or display columns. This is preserved exactly.
+//! [`pad_right`], [`truncate_with_ellipsis`], and [`draw_header`] all measure
+//! string length in **bytes**, not in chars or display columns. This is a
+//! deliberate compatibility choice (reference-implementation behavior) and is
+//! preserved exactly.
 
 #![forbid(unsafe_code)]
 
 use std::env;
 
-/// Default terminal width when none can be detected (`DefaultWidth` in Go).
+/// Default terminal width when none can be detected.
 pub const DEFAULT_WIDTH: i64 = 80;
-/// Minimum sensible terminal width (`MinWidth` in Go).
+/// Minimum sensible terminal width.
 pub const MIN_WIDTH: i64 = 60;
-/// Maximum sensible terminal width (`MaxWidth` in Go).
+/// Maximum sensible terminal width.
 pub const MAX_WIDTH: i64 = 120;
 
 // ---------------------------------------------------------------------------
-// Box-drawing glyphs (box.go)
+// Box-drawing glyphs
 // ---------------------------------------------------------------------------
 
 /// Light box horizontal line `─` (U+2500). Used by [`draw_separator`].
@@ -76,11 +74,11 @@ pub const BOX_ROUND_BOTTOM_LEFT: &str = "\u{2570}";
 /// Rounded box bottom-right corner `╯` (U+256F).
 pub const BOX_ROUND_BOTTOM_RIGHT: &str = "\u{256F}";
 
-/// Space around header content (`HeaderPadding` in Go).
+/// Space around header content.
 pub const HEADER_PADDING: i64 = 1;
 
 // ---------------------------------------------------------------------------
-// Progress glyphs (progress.go)
+// Progress glyphs
 // ---------------------------------------------------------------------------
 
 /// Filled progress cell `█` (U+2588).
@@ -88,30 +86,30 @@ pub const PROGRESS_FILLED: &str = "\u{2588}";
 /// Empty progress cell `░` (U+2591).
 pub const PROGRESS_EMPTY: &str = "\u{2591}";
 
-/// Maximum score value for the `N/10` display (`ScoreMax` in Go).
+/// Maximum score value for the `N/10` display.
 pub const SCORE_MAX: i64 = 10;
-/// Multiplier converting a `0..1` fraction to `0..100` (`PercentMultiplier`).
+/// Multiplier converting a `0..1` fraction to `0..100`.
 pub const PERCENT_MULTIPLIER: i64 = 100;
 
-/// Score threshold (inclusive) for "good" coloring (`ScoreThresholdGood`).
+/// Score threshold (inclusive) for "good" coloring.
 pub const SCORE_THRESHOLD_GOOD: f64 = 0.8;
-/// Score threshold (inclusive) for "fair" coloring (`ScoreThresholdFair`).
+/// Score threshold (inclusive) for "fair" coloring.
 pub const SCORE_THRESHOLD_FAIR: f64 = 0.5;
 
 // ---------------------------------------------------------------------------
-// Text constants (text.go)
+// Text constants
 // ---------------------------------------------------------------------------
 
-/// Suffix appended to truncated strings (`Ellipsis` in Go).
+/// Suffix appended to truncated strings.
 pub const ELLIPSIS: &str = "...";
-/// Byte length of [`ELLIPSIS`] (`EllipsisLen` in Go).
+/// Byte length of [`ELLIPSIS`].
 pub const ELLIPSIS_LEN: i64 = 3;
 
 // ---------------------------------------------------------------------------
-// Config / width detection (terminal.go)
+// Config / width detection
 // ---------------------------------------------------------------------------
 
-/// Terminal rendering configuration, mirroring the Go `Config` struct.
+/// Terminal rendering configuration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Config {
     /// Rendering width in columns.
@@ -124,28 +122,28 @@ impl Config {
     /// Create a [`Config`] with defaults derived from the environment.
     ///
     /// `width` is [`detect_width`] and `no_color` is `true` when the `NO_COLOR`
-    /// environment variable is set to a non-empty value. Mirrors Go `NewConfig`,
-    /// which uses `os.Getenv("NO_COLOR") != ""`.
+    /// environment variable is set to a non-empty value.
+    #[must_use]
     pub fn new() -> Self {
-        Config {
+        Self {
             width: detect_width(),
-            no_color: env::var("NO_COLOR").map(|v| !v.is_empty()).unwrap_or(false),
+            no_color: env::var("NO_COLOR").is_ok_and(|v| !v.is_empty()),
         }
     }
 
     /// Wrap `text` in the ANSI codes for `color`, unless [`Config::no_color`]
-    /// is set, in which case `text` is returned unchanged. Mirrors Go
-    /// `(*Config).Colorize`.
+    /// is set, in which case `text` is returned unchanged.
     ///
     /// [`Color::None`] also returns `text` unchanged regardless of
-    /// [`Config::no_color`], matching the Go `switch` arm.
+    /// [`Config::no_color`].
+    #[must_use]
     pub fn colorize(&self, text: &str, color: Color) -> String {
         if self.no_color {
             return text.to_string();
         }
         match color {
             Color::None => text.to_string(),
-            other => format!("{}{}{}", other.code(), text, ANSI_RESET),
+            other => format!("{}{text}{ANSI_RESET}", other.code()),
         }
     }
 }
@@ -157,12 +155,12 @@ impl Default for Config {
 }
 
 /// Detect the terminal width from the `COLUMNS` environment variable, falling
-/// back to [`DEFAULT_WIDTH`] when unset or unparseable. Mirrors Go `DetectWidth`.
+/// back to [`DEFAULT_WIDTH`] when unset or unparseable.
 ///
-/// Matching Go's `strconv.Atoi`, a value such as `"120"` parses to `120` (it is
-/// not clamped to [`MIN_WIDTH`]/[`MAX_WIDTH`]); an invalid value such as
-/// `"invalid"` yields [`DEFAULT_WIDTH`]. An empty/unset `COLUMNS` yields
-/// [`DEFAULT_WIDTH`].
+/// A value such as `"120"` parses to `120` — it is deliberately **not** clamped
+/// to [`MIN_WIDTH`]/[`MAX_WIDTH`]. An invalid value such as `"invalid"` and an
+/// empty/unset `COLUMNS` both yield [`DEFAULT_WIDTH`].
+#[must_use]
 pub fn detect_width() -> i64 {
     match env::var("COLUMNS") {
         Ok(s) if !s.is_empty() => atoi(&s).unwrap_or(DEFAULT_WIDTH),
@@ -170,11 +168,11 @@ pub fn detect_width() -> i64 {
     }
 }
 
-/// Parse a base-10 integer the way Go's `strconv.Atoi` does for our inputs:
-/// an optional leading sign followed by ASCII digits, with no surrounding
-/// whitespace. Returns `None` on any deviation (e.g. `"invalid"`).
+/// Parse a base-10 integer: an optional leading sign followed by ASCII digits,
+/// with no surrounding whitespace allowed (`" 12"` fails). Returns `None` on
+/// any deviation (e.g. `"invalid"`). These are the exact acceptance rules the
+/// CLI has always applied to `COLUMNS`.
 fn atoi(s: &str) -> Option<i64> {
-    // strconv.Atoi does NOT trim whitespace; "12 " or " 12" fail.
     if s.is_empty() {
         return None;
     }
@@ -192,58 +190,59 @@ fn atoi(s: &str) -> Option<i64> {
         if !b.is_ascii_digit() {
             return None;
         }
-        acc = acc.checked_mul(10)?.checked_add((b - b'0') as i64)?;
+        acc = acc.checked_mul(10)?.checked_add(i64::from(b - b'0'))?;
     }
     Some(if neg { -acc } else { acc })
 }
 
 // ---------------------------------------------------------------------------
-// Color (color.go)
+// Color
 // ---------------------------------------------------------------------------
 
-/// ANSI reset sequence (`ansiReset` in Go).
+/// ANSI reset sequence.
 const ANSI_RESET: &str = "\u{1b}[0m";
 
-/// A named terminal color, mirroring the Go `Color` (an `int` with `iota`
-/// constants). The discriminants match the Go ordering exactly:
+/// A named terminal color. The discriminants are stable:
 /// `None=0, Green=1, Yellow=2, Red=3, Blue=4, Gray=5`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(i64)]
 pub enum Color {
-    /// No color; [`Config::colorize`] returns the text unchanged (`ColorNone`).
+    /// No color; [`Config::colorize`] returns the text unchanged.
     None = 0,
-    /// Green foreground `\x1b[32m` (`ColorGreen`).
+    /// Green foreground `\x1b[32m`.
     Green = 1,
-    /// Yellow foreground `\x1b[33m` (`ColorYellow`).
+    /// Yellow foreground `\x1b[33m`.
     Yellow = 2,
-    /// Red foreground `\x1b[31m` (`ColorRed`).
+    /// Red foreground `\x1b[31m`.
     Red = 3,
-    /// Blue foreground `\x1b[34m` (`ColorBlue`).
+    /// Blue foreground `\x1b[34m`.
     Blue = 4,
-    /// Gray (bright black) foreground `\x1b[90m` (`ColorGray`).
+    /// Gray (bright black) foreground `\x1b[90m`.
     Gray = 5,
 }
 
 impl Color {
     /// The raw ANSI escape sequence for this color. [`Color::None`] has no code
-    /// (empty string), matching the Go `switch` where `ColorNone` returns the
-    /// text directly without a prefix.
-    pub fn code(self) -> &'static str {
+    /// (empty string): colorizing with it emits the text with no prefix or
+    /// reset.
+    #[must_use]
+    pub const fn code(self) -> &'static str {
         match self {
-            Color::None => "",
-            Color::Green => "\u{1b}[32m",
-            Color::Yellow => "\u{1b}[33m",
-            Color::Red => "\u{1b}[31m",
-            Color::Blue => "\u{1b}[34m",
-            Color::Gray => "\u{1b}[90m",
+            Self::None => "",
+            Self::Green => "\u{1b}[32m",
+            Self::Yellow => "\u{1b}[33m",
+            Self::Red => "\u{1b}[31m",
+            Self::Blue => "\u{1b}[34m",
+            Self::Gray => "\u{1b}[90m",
         }
     }
 }
 
-/// Pick a color for a normalized score in `[0, 1]`, mirroring Go `ColorForScore`.
+/// Pick a color for a normalized score in `[0, 1]`.
 ///
 /// `score >= 0.8` → [`Color::Green`]; `score >= 0.5` → [`Color::Yellow`];
 /// otherwise [`Color::Red`].
+#[must_use]
 pub fn color_for_score(score: f64) -> Color {
     if score >= SCORE_THRESHOLD_GOOD {
         Color::Green
@@ -255,27 +254,25 @@ pub fn color_for_score(score: f64) -> Color {
 }
 
 // ---------------------------------------------------------------------------
-// Progress / scores (progress.go)
+// Progress / scores
 // ---------------------------------------------------------------------------
 
 /// Draw a progress bar of `width` cells for a fraction `value` in `[0, 1]`.
 ///
-/// `value` is clamped to `[0, 1]` (but `width` is **not** clamped, matching Go).
-/// The number of filled cells is `int(value * width)` (truncated toward zero,
-/// matching Go's `int(...)` conversion). Filled cells use [`PROGRESS_FILLED`]
-/// and the remaining `width - filled` cells use [`PROGRESS_EMPTY`]. Mirrors Go
-/// `DrawProgressBar`.
+/// `value` is clamped to `[0, 1]` (but `width` is deliberately **not**
+/// clamped). The number of filled cells is `value * width` truncated toward
+/// zero. Filled cells use [`PROGRESS_FILLED`] and the remaining
+/// `width - filled` cells use [`PROGRESS_EMPTY`].
 ///
 /// # Panics
 ///
-/// Like the Go original (which would produce a negative `strings.Repeat` count
-/// and panic), a negative `width` is out of contract; callers always pass a
-/// non-negative width.
+/// A negative `width` is out of contract; callers always pass a non-negative
+/// width.
+#[must_use]
 pub fn draw_progress_bar(value: f64, width: i64) -> String {
-    // Mirror Go's sequential `if value < 0 {..}; if value > 1 {..}` exactly.
-    // f64::clamp is intentionally NOT used: it has different NaN behavior than
-    // Go's two comparisons (which leave NaN untouched), and we keep byte-for-byte
-    // parity with the Go source.
+    // Two sequential comparisons rather than f64::clamp: clamp handles NaN
+    // differently, and this output layout is pinned to the long-standing CLI
+    // behavior (NaN passes through untouched).
     #[allow(clippy::manual_clamp)]
     let v = {
         let mut v = value;
@@ -300,33 +297,35 @@ pub fn draw_progress_bar(value: f64, width: i64) -> String {
 
 /// Format a normalized score in `[0, 1]` as `"N/10"`.
 ///
-/// `N = round(score * 10)` using round-half-away-from-zero (matching Go's
-/// `math.Round`), so `0.75 → "8/10"`. Mirrors Go `FormatScore`.
+/// `N = round(score * 10)` using round-half-away-from-zero, so
+/// `0.75 → "8/10"`.
+#[must_use]
 pub fn format_score(score: f64) -> String {
     let scaled = (score * SCORE_MAX as f64).round() as i64;
-    format!("{}/{}", scaled, SCORE_MAX)
+    format!("{scaled}/{SCORE_MAX}")
 }
 
 /// Format a score as a bracketed bar followed by the `"N/10"` badge, e.g.
-/// `"[████████░░] 8/10"`. Mirrors Go `FormatScoreBar`.
+/// `"[████████░░] 8/10"`.
+#[must_use]
 pub fn format_score_bar(score: f64, bar_width: i64) -> String {
     let bar = draw_progress_bar(score, bar_width);
     let label = format_score(score);
-    format!("[{}] {}", bar, label)
+    format!("[{bar}] {label}")
 }
 
 /// Draw a labeled percentage bar row.
 ///
-/// Mirrors Go `DrawPercentBar`, whose format string is
-/// `"%s %s %3d%%  (%d)"`:
+/// Layout (printf-style `"%s %s %3d%%  (%d)"`):
 /// * `label` is right-padded to `label_width` **bytes** via [`pad_right`];
 /// * `bar` is [`draw_progress_bar`] of `bar_width` cells;
-/// * the percentage is `int(percent * 100)` (truncated), printed right-aligned
-///   in a field of width 3;
+/// * the percentage is `percent * 100` truncated to an integer, printed
+///   right-aligned in a field of width 3;
 /// * `count` is shown in parentheses, preceded by **two** spaces.
 ///
 /// Example: `"Simple (1-5)     ████████████████░░░░  68%  (68)"`. This is
 /// **cosmetic / non-binding** output (DESIGN.md §2.7).
+#[must_use]
 pub fn draw_percent_bar(
     label: &str,
     percent: f64,
@@ -337,28 +336,27 @@ pub fn draw_percent_bar(
     let padded_label = pad_right(label, label_width);
     let bar = draw_progress_bar(percent, bar_width);
     let pct_value = (percent * PERCENT_MULTIPLIER as f64) as i64;
-    // "%3d" => right-align in width 3 (space padding), like Go's fmt.
-    format!("{} {} {:>3}%  ({})", padded_label, bar, pct_value, count)
+    format!("{padded_label} {bar} {pct_value:>3}%  ({count})")
 }
 
 // ---------------------------------------------------------------------------
-// Text helpers (text.go)
+// Text helpers
 // ---------------------------------------------------------------------------
 
 /// Truncate `s` to at most `max_width` **bytes**, appending `"..."` when it is
-/// shortened. Mirrors Go `TruncateWithEllipsis`, which slices by byte index.
+/// shortened.
 ///
 /// * If `s` has `<= max_width` bytes it is returned unchanged.
 /// * If `max_width <= 3`, the result is `max_width` `'.'` characters.
-/// * Otherwise the result is the first `max_width - 3` **bytes** of `s` followed
-///   by `"..."` (total `max_width` bytes).
+/// * Otherwise the result is the first `max_width - 3` **bytes** of `s`
+///   followed by `"..."` (total `max_width` bytes).
 ///
 /// # Panics
 ///
-/// Matching the Go original's `s[:maxWidth-EllipsisLen]` slice, the byte index
-/// `max_width - 3` must fall on a UTF-8 character boundary; otherwise this
-/// panics, exactly as Go would produce mojibake/partial runes. Callers pass
-/// ASCII-ish labels where this does not occur.
+/// The byte index `max_width - 3` must fall on a UTF-8 character boundary;
+/// slicing mid-character panics. Callers pass ASCII-ish labels where this does
+/// not occur.
+#[must_use]
 pub fn truncate_with_ellipsis(s: &str, max_width: i64) -> String {
     let len = s.len() as i64;
     if len <= max_width {
@@ -369,29 +367,29 @@ pub fn truncate_with_ellipsis(s: &str, max_width: i64) -> String {
         return ".".repeat(n);
     }
     let keep = (max_width - ELLIPSIS_LEN) as usize;
-    format!("{}{}", &s[..keep], ELLIPSIS)
+    format!("{}{ELLIPSIS}", &s[..keep])
 }
 
 /// Pad `s` on the right with spaces to reach `width` **bytes**.
 ///
 /// If the byte length of `s` is `>= width`, `s` is returned unchanged (never
-/// truncated). Length is measured in bytes, matching Go's `len()`. Mirrors Go
-/// `PadRight`.
+/// truncated). Length is measured in bytes, not display columns.
+#[must_use]
 pub fn pad_right(s: &str, width: i64) -> String {
     let len = s.len() as i64;
     if len >= width {
         return s.to_string();
     }
-    format!("{}{}", s, " ".repeat((width - len) as usize))
+    format!("{s}{}", " ".repeat((width - len) as usize))
 }
 
 // ---------------------------------------------------------------------------
-// Box drawing (box.go)
+// Box drawing
 // ---------------------------------------------------------------------------
 
 /// Draw a thin horizontal separator line of `width` light box-drawing
 /// characters ([`BOX_HORIZONTAL`], `─`). A `width <= 0` yields an empty string.
-/// Mirrors Go `DrawSeparator`.
+#[must_use]
 pub fn draw_separator(width: i64) -> String {
     if width <= 0 {
         return String::new();
@@ -399,7 +397,7 @@ pub fn draw_separator(width: i64) -> String {
     BOX_HORIZONTAL.repeat(width as usize)
 }
 
-/// Draw a heavy-bordered three-line section header. Mirrors Go `DrawHeader`:
+/// Draw a heavy-bordered three-line section header:
 ///
 /// ```text
 /// ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -416,6 +414,7 @@ pub fn draw_separator(width: i64) -> String {
 /// space. All lengths are byte lengths.
 ///
 /// This is **cosmetic / non-binding** output (DESIGN.md §2.7).
+#[must_use]
 pub fn draw_header(title: &str, right_text: &str, width: i64) -> String {
     const HEADER_EXTRA_CHARS: i64 = 4; // borders + spacing around title/rightText
     const BORDER_COUNT: i64 = 2; // left and right borders
@@ -446,14 +445,11 @@ pub fn draw_header(title: &str, right_text: &str, width: i64) -> String {
         pad_right(title, content_width)
     } else {
         let gap = (content_width - title_len - right_len).max(1) as usize;
-        format!("{}{}{}", title, " ".repeat(gap), right_text)
+        format!("{title}{}{right_text}", " ".repeat(gap))
     };
 
     let pad = " ".repeat(HEADER_PADDING.max(0) as usize);
-    let content_line = format!(
-        "{}{}{}{}{}",
-        BOX_HEAVY_VERTICAL, pad, content, pad, BOX_HEAVY_VERTICAL
-    );
+    let content_line = format!("{BOX_HEAVY_VERTICAL}{pad}{content}{pad}{BOX_HEAVY_VERTICAL}");
 
     let bottom_border = format!(
         "{}{}{}",
@@ -462,7 +458,7 @@ pub fn draw_header(title: &str, right_text: &str, width: i64) -> String {
         BOX_HEAVY_BOTTOM_RIGHT
     );
 
-    format!("{}\n{}\n{}", top_border, content_line, bottom_border)
+    format!("{top_border}\n{content_line}\n{bottom_border}")
 }
 
 #[cfg(test)]
@@ -470,11 +466,11 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
-    // Serialize env-mutating tests so they do not race (Go used t.Setenv,
-    // which the test framework isolates per-test).
+    // Serialize env-mutating tests so they do not race (the reference test
+    // suite isolates env changes per test; Rust tests share the process env).
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
-    /// Ported from Go `TestDetectWidth_Default`.
+    /// Ports reference test `TestDetectWidth_Default`.
     #[test]
     fn test_detect_width_default() {
         let _g = ENV_LOCK.lock().unwrap();
@@ -482,7 +478,7 @@ mod tests {
         assert_eq!(detect_width(), 80);
     }
 
-    /// Ported from Go `TestDetectWidth_FromEnv`.
+    /// Ports reference test `TestDetectWidth_FromEnv`.
     #[test]
     fn test_detect_width_from_env() {
         let _g = ENV_LOCK.lock().unwrap();
@@ -491,7 +487,7 @@ mod tests {
         env::remove_var("COLUMNS");
     }
 
-    /// Ported from Go `TestDetectWidth_InvalidEnv`.
+    /// Ports reference test `TestDetectWidth_InvalidEnv`.
     #[test]
     fn test_detect_width_invalid_env() {
         let _g = ENV_LOCK.lock().unwrap();
@@ -500,7 +496,7 @@ mod tests {
         env::remove_var("COLUMNS");
     }
 
-    /// Ported from Go `TestNewConfig_Defaults`.
+    /// Ports reference test `TestNewConfig_Defaults`.
     #[test]
     fn test_new_config_defaults() {
         let _g = ENV_LOCK.lock().unwrap();
@@ -511,7 +507,7 @@ mod tests {
         assert!(!cfg.no_color);
     }
 
-    /// Ported from Go `TestNewConfig_NoColorFromEnv`.
+    /// Ports reference test `TestNewConfig_NoColorFromEnv`.
     #[test]
     fn test_new_config_no_color_from_env() {
         let _g = ENV_LOCK.lock().unwrap();
@@ -521,32 +517,32 @@ mod tests {
         env::remove_var("NO_COLOR");
     }
 
-    /// Ported from Go `TestDrawProgressBar_Zero`.
+    /// Ports reference test `TestDrawProgressBar_Zero`.
     #[test]
     fn test_draw_progress_bar_zero() {
         assert_eq!(draw_progress_bar(0.0, 10), "░░░░░░░░░░");
     }
 
-    /// Ported from Go `TestDrawProgressBar_Full`.
+    /// Ports reference test `TestDrawProgressBar_Full`.
     #[test]
     fn test_draw_progress_bar_full() {
         assert_eq!(draw_progress_bar(1.0, 10), "██████████");
     }
 
-    /// Ported from Go `TestDrawProgressBar_Partial`.
+    /// Ports reference test `TestDrawProgressBar_Partial`.
     #[test]
     fn test_draw_progress_bar_partial() {
         assert_eq!(draw_progress_bar(0.7, 10), "███████░░░");
     }
 
-    /// Ported from Go `TestDrawProgressBar_Clamps`.
+    /// Ports reference test `TestDrawProgressBar_Clamps`.
     #[test]
     fn test_draw_progress_bar_clamps() {
         assert_eq!(draw_progress_bar(-0.5, 10), "░░░░░░░░░░");
         assert_eq!(draw_progress_bar(1.5, 10), "██████████");
     }
 
-    /// Ported from Go `TestFormatScore`.
+    /// Ports reference test `TestFormatScore`.
     #[test]
     fn test_format_score() {
         assert_eq!(format_score(0.0), "0/10");
@@ -556,37 +552,37 @@ mod tests {
         assert_eq!(format_score(0.75), "8/10"); // rounds half away from zero
     }
 
-    /// Ported from Go `TestFormatScoreBar`.
+    /// Ports reference test `TestFormatScoreBar`.
     #[test]
     fn test_format_score_bar() {
         assert_eq!(format_score_bar(0.8, 10), "[████████░░] 8/10");
     }
 
-    /// Ported from Go `TestTruncateWithEllipsis_Short`.
+    /// Ports reference test `TestTruncateWithEllipsis_Short`.
     #[test]
     fn test_truncate_short() {
         assert_eq!(truncate_with_ellipsis("hello", 10), "hello");
     }
 
-    /// Ported from Go `TestTruncateWithEllipsis_Exact`.
+    /// Ports reference test `TestTruncateWithEllipsis_Exact`.
     #[test]
     fn test_truncate_exact() {
         assert_eq!(truncate_with_ellipsis("hello", 5), "hello");
     }
 
-    /// Ported from Go `TestTruncateWithEllipsis_Long`.
+    /// Ports reference test `TestTruncateWithEllipsis_Long`.
     #[test]
     fn test_truncate_long() {
         assert_eq!(truncate_with_ellipsis("hello world", 8), "hello...");
     }
 
-    /// Ported from Go `TestTruncateWithEllipsis_TooSmall`.
+    /// Ports reference test `TestTruncateWithEllipsis_TooSmall`.
     #[test]
     fn test_truncate_too_small() {
         assert_eq!(truncate_with_ellipsis("hello", 2), "..");
     }
 
-    /// Ported from Go `TestPadRight`.
+    /// Ports reference test `TestPadRight`.
     #[test]
     fn test_pad_right() {
         assert_eq!(pad_right("hello", 10), "hello     ");
@@ -595,19 +591,19 @@ mod tests {
         assert_eq!(pad_right("", 5), "     ");
     }
 
-    /// Ported from Go `TestDrawSeparator`.
+    /// Ports reference test `TestDrawSeparator`.
     #[test]
     fn test_draw_separator() {
         assert_eq!(draw_separator(10), "──────────");
     }
 
-    /// Ported from Go `TestDrawSeparator_Zero`.
+    /// Ports reference test `TestDrawSeparator_Zero`.
     #[test]
     fn test_draw_separator_zero() {
         assert_eq!(draw_separator(0), "");
     }
 
-    /// Ported from Go `TestDrawHeader`.
+    /// Ports reference test `TestDrawHeader`.
     #[test]
     fn test_draw_header() {
         let result = draw_header("COMPLEXITY", "Score: 8/10", 40);
@@ -617,14 +613,14 @@ mod tests {
         assert!(result.contains(BOX_HEAVY_BOTTOM_LEFT));
     }
 
-    /// Ported from Go `TestDrawHeader_TitleOnly`.
+    /// Ports reference test `TestDrawHeader_TitleOnly`.
     #[test]
     fn test_draw_header_title_only() {
         let result = draw_header("IMPORTS", "", 30);
         assert!(result.contains("IMPORTS"));
     }
 
-    /// Ported from Go `TestColorize_Enabled`.
+    /// Ports reference test `TestColorize_Enabled`.
     #[test]
     fn test_colorize_enabled() {
         let cfg = Config {
@@ -636,7 +632,7 @@ mod tests {
         assert!(result.contains("hello"));
     }
 
-    /// Ported from Go `TestColorize_Disabled`.
+    /// Ports reference test `TestColorize_Disabled`.
     #[test]
     fn test_colorize_disabled() {
         let cfg = Config {
@@ -648,7 +644,7 @@ mod tests {
         assert_eq!(result, "hello");
     }
 
-    /// Ported from Go `TestColorForScore`.
+    /// Ports reference test `TestColorForScore`.
     #[test]
     fn test_color_for_score() {
         assert_eq!(color_for_score(0.9), Color::Green);
@@ -656,7 +652,7 @@ mod tests {
         assert_eq!(color_for_score(0.3), Color::Red);
     }
 
-    /// Ported from Go `TestDrawPercentBar`.
+    /// Ports reference test `TestDrawPercentBar`.
     #[test]
     fn test_draw_percent_bar() {
         let result = draw_percent_bar("Simple (1-5)", 0.68, 68, 15, 20);
@@ -666,11 +662,11 @@ mod tests {
         assert!(result.contains(PROGRESS_FILLED));
     }
 
-    // ---- Additional byte-exact tests pinning behavior the Go tests leave to
-    //      strings.Contains (DESIGN.md treats these as non-binding cosmetics,
-    //      but exact tests guard against accidental regressions). ----
+    // ---- Additional byte-exact tests pinning behavior the reference tests
+    //      leave to substring checks (DESIGN.md treats these as non-binding
+    //      cosmetics, but exact tests guard against accidental regressions). ----
 
-    /// Color enum codes match color.go exactly.
+    /// Color enum codes match the documented ANSI sequences exactly.
     #[test]
     fn test_color_codes_exact() {
         assert_eq!(Color::None.code(), "");
@@ -681,7 +677,7 @@ mod tests {
         assert_eq!(Color::Gray.code(), "\u{1b}[90m");
     }
 
-    /// Colorize green produces the exact ansiGreen + text + ansiReset bytes.
+    /// Colorize green produces the exact green + text + reset bytes.
     #[test]
     fn test_colorize_exact_bytes() {
         let cfg = Config {
@@ -691,7 +687,7 @@ mod tests {
         assert_eq!(cfg.colorize("hi", Color::Green), "\u{1b}[32mhi\u{1b}[0m");
     }
 
-    /// ColorNone returns text unchanged even when color is enabled.
+    /// `Color::None` returns text unchanged even when color is enabled.
     #[test]
     fn test_colorize_none_passthrough() {
         let cfg = Config {
@@ -701,8 +697,8 @@ mod tests {
         assert_eq!(cfg.colorize("hi", Color::None), "hi");
     }
 
-    /// DrawPercentBar exact layout: "%s %s %3d%%  (%d)" (two spaces before '(',
-    /// percent right-aligned in width 3).
+    /// `draw_percent_bar` exact layout: `"%s %s %3d%%  (%d)"` (two spaces
+    /// before `(`, percent right-aligned in width 3).
     #[test]
     fn test_draw_percent_bar_exact() {
         let result = draw_percent_bar("Simple (1-5)", 0.68, 68, 15, 20);
@@ -718,7 +714,7 @@ mod tests {
         assert!(result.contains("  68%  (68)"));
     }
 
-    /// DrawHeader full byte-exact layout for title-only, matching box.go.
+    /// `draw_header` full byte-exact layout for title-only.
     #[test]
     fn test_draw_header_exact_title_only() {
         // width=30, title="IMPORTS" (7 bytes), rightText="".
@@ -742,11 +738,11 @@ mod tests {
             BOX_HEAVY_HORIZONTAL.repeat(28),
             BOX_HEAVY_BOTTOM_RIGHT
         );
-        let expected = format!("{}\n{}\n{}", top, content, bottom);
+        let expected = format!("{top}\n{content}\n{bottom}");
         assert_eq!(draw_header("IMPORTS", "", 30), expected);
     }
 
-    /// DrawHeader raises a too-small width to the minimum required.
+    /// `draw_header` raises a too-small width to the minimum required.
     #[test]
     fn test_draw_header_min_width_expand() {
         // width=0 forces expansion; title "AB" (2) -> min_required = 2+0+4+2 = 8.
@@ -765,10 +761,10 @@ mod tests {
             BOX_HEAVY_HORIZONTAL.repeat(6),
             BOX_HEAVY_BOTTOM_RIGHT
         );
-        assert_eq!(result, format!("{}\n{}\n{}", top, content, bottom));
+        assert_eq!(result, format!("{top}\n{content}\n{bottom}"));
     }
 
-    /// `atoi` matches Go strconv.Atoi for the cases we rely on.
+    /// `atoi` acceptance rules for `COLUMNS` parsing.
     #[test]
     fn test_atoi() {
         assert_eq!(atoi("120"), Some(120));
@@ -777,6 +773,6 @@ mod tests {
         assert_eq!(atoi("invalid"), None);
         assert_eq!(atoi("12x"), None);
         assert_eq!(atoi(""), None);
-        assert_eq!(atoi(" 12"), None); // no whitespace trimming, like Go
+        assert_eq!(atoi(" 12"), None); // no whitespace trimming
     }
 }

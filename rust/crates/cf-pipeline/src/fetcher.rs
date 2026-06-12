@@ -1,28 +1,30 @@
-//! The `Fetcher` cache-decorator base interface (`fetcher.go`).
+//! The `Fetcher` cache-decorator base interface.
 
 use crate::context::Ctx;
 
 /// Retrieves a response for a given request.
 ///
 /// Serves as the base interface for the cache decorator pattern: wrap a
-/// [`Fetcher`] with "check cache → fetch misses → update cache" logic. Mirrors
-/// Go's `Fetcher[Req, Resp]` interface.
+/// [`Fetcher`] with "check cache → fetch misses → update cache" logic.
 pub trait Fetcher<Req, Resp> {
     /// The error type produced by a failed fetch.
     type Error;
 
     /// Fetches the response for `req`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Self::Error`] when the fetch fails.
     fn fetch(&self, ctx: &Ctx, req: Req) -> Result<Resp, Self::Error>;
 }
 
-/// Adapts a plain closure to the [`Fetcher`] trait, mirroring Go's
-/// `FetcherFunc[Req, Resp]`.
+/// Adapts a plain closure to the [`Fetcher`] trait.
 pub struct FetcherFunc<F>(pub F);
 
 impl<F> FetcherFunc<F> {
     /// Wraps `f` as a [`Fetcher`].
-    pub fn new(f: F) -> Self {
-        FetcherFunc(f)
+    pub const fn new(f: F) -> Self {
+        Self(f)
     }
 }
 

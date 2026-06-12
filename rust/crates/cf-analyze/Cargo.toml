@@ -6,10 +6,11 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "Analyzer registry/dispatch hub + analyzer interfaces, BaseHistoryAnalyzer, and cross-format report conversion (json/yaml/ndjson/timeseries/binary). Rust port of Go internal/analyzers/analyze. Stays BELOW the framework layer. See specs/rust-rewrite/DESIGN.md §3."
+description = "Analyzer registry/dispatch hub + analyzer interfaces, BaseHistoryAnalyzer, and cross-format report conversion (json/yaml/ndjson/timeseries/binary). Stays BELOW the framework layer. See specs/rust-rewrite/DESIGN.md §3."
 
 [dependencies]
-# Tier-0 Go-byte-compatible serialization crates. ALL machine-format report
+# Tier-0 report-format serialization crates (byte-pinned by rust/tests/compat).
+# ALL machine-format report
 # bytes (json, yaml, ndjson, timeseries, timeseries+ndjson, compact, bin) flow
 # through these — never serde_json/serde_yaml for output (DESIGN §2).
 cf-gojson = { path = "../cf-gojson" }
@@ -18,7 +19,7 @@ cf-goyaml = { path = "../cf-goyaml" }
 cf-reportutil = { path = "../cf-reportutil" }
 # ConfigurationOption (analyzer config surface) + WorkerPool (parallel dispatch).
 cf-pipeline = { path = "../cf-pipeline" }
-# AnalysisMetadata.codefang_version source (Go pkg/version).
+# AnalysisMetadata.codefang_version source.
 cf-version = { path = "../cf-version" }
 # mapx helpers: unique() (registry.rs) and build_lookup_set() (timeseries.rs).
 cf-alg-mapx = { path = "../cf-alg-mapx" }
@@ -29,7 +30,7 @@ thiserror = "1"
 
 [dev-dependencies]
 # Tests only: serde_json is used SOLELY to PARSE machine output back into a value
-# tree for assertions (mirroring the Go tests' json.Unmarshal). It is NEVER used
+# tree for assertions (as the reference test suite does). It is NEVER used
 # to PRODUCE report bytes — all output goes through cf-gojson/cf-goyaml/
 # cf-reportutil per DESIGN §2.
 serde_json = { workspace = true }

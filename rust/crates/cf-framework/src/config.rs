@@ -1,17 +1,16 @@
-//! CLI-parameter → coordinator-config construction — port of
-//! `internal/framework/config.go`.
+//! CLI-parameter → coordinator-config construction.
 //!
 //! [`ConfigParams`] holds the raw CLI values; [`build_config_from_params`]
-//! turns them into a [`CoordinatorConfig`] plus a memory budget in bytes,
-//! mirroring the Go `BuildConfigFromParams`. All human-readable size strings
-//! (e.g. `"256MB"`, `"1GiB"`) go through [`parse_bytes`], a faithful port of
-//! `github.com/dustin/go-humanize`'s `ParseBytes` so byte-size parsing matches
-//! Go exactly (including the SI-vs-IEC unit table and the float-then-truncate
-//! arithmetic — `"42 mib"` → `44_040_192`, `"42 MB"` → `42_000_000`).
+//! turns them into a [`CoordinatorConfig`] plus a memory budget in bytes.
+//! All human-readable size strings (e.g. `"256MB"`, `"1GiB"`) go through
+//! [`parse_bytes`], which implements the humanize size grammar (SI-vs-IEC unit
+//! table, float-then-truncate arithmetic — `"42 mib"` → `44_040_192`,
+//! `"42 MB"` → `42_000_000`); the accepted inputs and results are part of the
+//! CLI compatibility contract.
 //!
-//! Durations parse via [`parse_go_duration`], a port of Go's
-//! `time.ParseDuration` (units `ns`, `us`/`µs`, `ms`, `s`, `m`, `h`), used by
-//! the advanced tuning fields.
+//! Durations parse via [`parse_go_duration`] (units `ns`, `us`/`µs`, `ms`,
+//! `s`, `m`, `h` — the same syntax the reference CLI accepts), used by the
+//! advanced tuning fields.
 
 use std::time::Duration;
 
@@ -22,59 +21,49 @@ use crate::coordinator::{
 };
 
 /// The fraction (percent) of system memory to use as the default budget.
-/// Mirrors Go `defaultMemoryBudgetRatio`.
 pub const DEFAULT_MEMORY_BUDGET_RATIO: i64 = 50;
 
-/// Divisor for converting a percentage ratio to a fraction. Mirrors Go
-/// `percentDenominator`.
+/// Divisor for converting a percentage ratio to a fraction.
 pub const PERCENT_DENOMINATOR: u64 = 100;
 
-/// Maximum auto-detected memory budget (2 GiB). Mirrors Go
-/// `defaultMemoryBudgetCap`. Forces smaller chunks on large repos, keeping peak
-/// RSS bounded; native C memory (libgit2 mwindow, object cache, glibc arenas)
-/// adds ~1.5 GiB on top, so a 2 GiB budget targets ~3.5 GiB total RSS.
+/// Maximum auto-detected memory budget (2 GiB). Forces smaller chunks on large
+/// repos, keeping peak RSS bounded; native C memory (libgit2 mwindow, object
+/// cache, glibc arenas) adds ~1.5 GiB on top, so a 2 GiB budget targets
+/// ~3.5 GiB total RSS.
 pub const DEFAULT_MEMORY_BUDGET_CAP: i64 = 2 * 1024 * 1024 * 1024;
 
-/// Errors from configuration construction. Mirrors Go's sentinel errors plus
-/// the wrapped parse failures (`fmt.Errorf("%w for <field>: <value>")`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Errors from configuration construction. The error strings are part of the
+/// CLI compatibility contract; do not edit them.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConfigError {
     /// A size string was not a valid humanize byte size. The payload is the
-    /// `"<field>: <value>"` context Go appends after `ErrInvalidSizeFormat`.
+    /// `"<field>: <value>"` context.
+    #[error("invalid size format for {0}")]
     InvalidSizeFormat(String),
-    /// A negative GC percent was supplied. Mirrors `ErrInvalidGCPercent`.
+    /// A negative GC percent was supplied.
+    #[error("invalid GC percent: {0}")]
     InvalidGcPercent(i64),
-    /// A duration string was not parseable by Go's `time.ParseDuration`. The
-    /// payload is the `"<field>: <value>"` context.
+    /// A duration string was not parseable. The payload is the
+    /// `"<field>: <value>"` context. Deliberately shares the
+    /// "invalid size format" message prefix with [`Self::InvalidSizeFormat`]
+    /// (CLI error-text contract).
+    #[error("invalid size format for {0}")]
     InvalidDuration(String),
     /// The memory-budget solver returned an error. Payload is the message.
+    #[error("memory budget error: {0}")]
     MemoryBudget(String),
     /// Generic parse failure (e.g. "failed to parse budget").
+    #[error("{0}")]
     Parse(String),
 }
 
-impl std::fmt::Display for ConfigError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ConfigError::InvalidSizeFormat(ctx) => write!(f, "invalid size format for {ctx}"),
-            ConfigError::InvalidGcPercent(v) => write!(f, "invalid GC percent: {v}"),
-            ConfigError::InvalidDuration(ctx) => write!(f, "invalid size format for {ctx}"),
-            ConfigError::MemoryBudget(m) => write!(f, "memory budget error: {m}"),
-            ConfigError::Parse(m) => write!(f, "{m}"),
-        }
-    }
-}
-
-impl std::error::Error for ConfigError {}
-
-/// Resolves a memory budget (bytes) to a [`CoordinatorConfig`]. Mirrors Go
-/// `framework.BudgetSolver` (`func(budgetBytes int64) (CoordinatorConfig, error)`).
+/// Resolves a memory budget (bytes) to a [`CoordinatorConfig`].
 pub type BudgetSolver<'a> = dyn Fn(i64) -> Result<CoordinatorConfig, String> + 'a;
 
-/// Raw CLI parameter values for building a [`CoordinatorConfig`]. Mirrors Go
-/// `framework.ConfigParams` field-for-field. All size strings use humanize
-/// format; durations use Go duration format. A zero numeric field means "use
-/// the default" (the Go builder only applies positive values).
+/// Raw CLI parameter values for building a [`CoordinatorConfig`]. The field
+/// set matches the CLI flag surface one-for-one. All size strings use humanize
+/// format; durations use the [`parse_go_duration`] syntax. A zero numeric
+/// field means "use the default" (the builder only applies positive values).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ConfigParams {
     /// Worker count.
@@ -91,7 +80,7 @@ pub struct ConfigParams {
     pub blob_arena_size: String,
     /// Memory budget (humanize string; empty = auto-detect).
     pub memory_budget: String,
-    /// Go GC percent.
+    /// GC percent tuning knob (retained for CLI-flag parity; unused by the Rust runtime).
     pub gc_percent: i64,
     /// Ballast size (humanize string).
     pub ballast_size: String,
@@ -105,7 +94,7 @@ pub struct ConfigParams {
     pub max_intra_commit_workers: i64,
     /// Max UAST blob size (bytes).
     pub max_uast_blob_size: i64,
-    /// UAST parse timeout (Go duration string).
+    /// UAST parse timeout (duration string).
     pub uast_parse_timeout: String,
     /// Max file changes per commit.
     pub max_changes_per_commit: i64,
@@ -125,9 +114,9 @@ pub struct ConfigParams {
     pub native_trim_interval: i64,
     /// Max streaming buffering factor.
     pub max_streaming_buffering: i64,
-    /// Drain prefetch timeout (Go duration string).
+    /// Drain prefetch timeout (duration string).
     pub drain_prefetch_timeout: String,
-    /// Sampler interval (Go duration string).
+    /// Sampler interval (duration string).
     pub sampler_interval: String,
     /// Worker ratio (percent).
     pub worker_ratio: i64,
@@ -147,7 +136,7 @@ pub struct ConfigParams {
     pub diff_job_buffer_multiplier: i64,
 }
 
-/// Checkpoint-related configuration. Mirrors Go `framework.CheckpointParams`.
+/// Checkpoint-related configuration.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CheckpointParams {
     /// Whether checkpointing is enabled.
@@ -161,16 +150,14 @@ pub struct CheckpointParams {
 }
 
 /// Returns a sensible memory budget from available system memory.
-/// `min(50% of total RAM, 2 GiB)`, or 0 if detection fails. Mirrors Go
-/// `DefaultMemoryBudget`.
+/// `min(50% of total RAM, 2 GiB)`, or 0 if detection fails.
 #[must_use]
 pub fn default_memory_budget() -> i64 {
     default_memory_budget_with_params(DEFAULT_MEMORY_BUDGET_RATIO, "")
 }
 
 /// Returns a memory budget with a configurable ratio and cap. An empty cap
-/// string uses [`DEFAULT_MEMORY_BUDGET_CAP`]. Mirrors Go
-/// `DefaultMemoryBudgetWithParams`.
+/// string uses [`DEFAULT_MEMORY_BUDGET_CAP`].
 #[must_use]
 pub fn default_memory_budget_with_params(ratio: i64, cap_str: &str) -> i64 {
     let total = detect_total_memory_bytes();
@@ -194,7 +181,12 @@ pub fn default_memory_budget_with_params(ratio: i64, cap_str: &str) -> i64 {
 /// Builds a [`CoordinatorConfig`] from raw parameters, returning the config and
 /// the memory budget in bytes (0 if not set). The `budget_solver` is called
 /// when `params.memory_budget` is set; pass `None` if memory-budget is not
-/// supported. Mirrors Go `BuildConfigFromParams`.
+/// supported.
+///
+/// # Errors
+///
+/// Returns a [`ConfigError`] when any size/duration string fails to parse, a
+/// negative GC percent is supplied, or the budget solver rejects the budget.
 pub fn build_config_from_params(
     params: &ConfigParams,
     budget_solver: Option<&BudgetSolver<'_>>,
@@ -232,9 +224,8 @@ fn build_config_from_budget(
         .map_err(|_| ConfigError::InvalidSizeFormat(format!("memory-budget: {budget_str}")))?;
 
     match solver {
-        // Go passes a nil solver and would panic; in Rust we surface a clear
-        // error rather than panicking when the budget path is used without a
-        // solver wired in.
+        // Surface a clear error (rather than panicking) when the budget path
+        // is used without a solver wired in.
         None => Err(ConfigError::MemoryBudget(
             "no budget solver configured".to_string(),
         )),
@@ -374,8 +365,13 @@ fn apply_runtime_tuning_params(
 }
 
 /// Parses a human-readable size string, returning 0 for empty or `"0"`.
-/// Mirrors Go `ParseOptionalSize` (note: it trims whitespace and treats both
-/// `""` and `"0"` as zero before delegating to humanize).
+/// Trims whitespace and treats both `""` and `"0"` as zero before delegating
+/// to [`parse_bytes`].
+///
+/// # Errors
+///
+/// Returns [`ConfigError::InvalidSizeFormat`] when the value is non-empty and
+/// not a valid size string.
 pub fn parse_optional_size(size_value: &str) -> Result<i64, ConfigError> {
     let trimmed = size_value.trim();
     if trimmed.is_empty() || trimmed == "0" {
@@ -387,26 +383,27 @@ pub fn parse_optional_size(size_value: &str) -> Result<i64, ConfigError> {
 }
 
 // ---------------------------------------------------------------------------
-// go-humanize ParseBytes port.
+// Humanize byte-size parsing (CLI input contract).
 // ---------------------------------------------------------------------------
 
 /// Parses a string representation of bytes into the number of bytes it
-/// represents. Faithful port of `github.com/dustin/go-humanize`'s `ParseBytes`.
+/// represents, using the humanize size grammar.
 ///
-/// Examples (byte-identical to Go): `parse_bytes("42 MB") == Ok(42_000_000)`,
+/// Examples: `parse_bytes("42 MB") == Ok(42_000_000)`,
 /// `parse_bytes("42 mib") == Ok(44_040_192)`. The leading numeric run (digits,
 /// `.`, `,`) is parsed as an `f64` (commas stripped), then multiplied by the
-/// unit multiplier from the SI/IEC lookup table; the float product is truncated
-/// to `u64` exactly as Go does.
+/// unit multiplier from the SI/IEC lookup table; the float product is
+/// truncated to `u64`. The float-then-truncate arithmetic and the error
+/// strings are part of the CLI compatibility contract — keep them exact.
 ///
 /// # Errors
 ///
 /// Returns `Err` when the numeric prefix is not a valid float, when the product
 /// would reach `u64::MAX`, or when the unit suffix is not recognized.
 pub fn parse_bytes(s: &str) -> Result<u64, String> {
-    // Mirror Go's loop: advance `last_digit` over the leading run of digits,
-    // '.', and ',', stopping at the first other byte. `last_digit` is the byte
-    // index where the numeric prefix ends; `s[..last_digit]` is the number and
+    // Advance `last_digit` over the leading run of digits, '.', and ',',
+    // stopping at the first other byte. `last_digit` is the byte index where
+    // the numeric prefix ends; `s[..last_digit]` is the number and
     // `s[last_digit..]` is the unit suffix.
     let mut last_digit = s.len();
     let mut has_comma = false;
@@ -420,10 +417,10 @@ pub fn parse_bytes(s: &str) -> Result<u64, String> {
         }
     }
 
-    let num: String = if has_comma {
-        s[..last_digit].replace(',', "")
+    let num: std::borrow::Cow<'_, str> = if has_comma {
+        std::borrow::Cow::Owned(s[..last_digit].replace(',', ""))
     } else {
-        s[..last_digit].to_string()
+        std::borrow::Cow::Borrowed(&s[..last_digit])
     };
 
     finish_parse(&num, &s[last_digit..])
@@ -447,9 +444,8 @@ fn finish_parse(num: &str, rest: &str) -> Result<u64, String> {
     }
 }
 
-/// The SI/IEC unit multiplier table used by [`parse_bytes`]. Mirrors humanize's
-/// combined `bytesSizeTable` (lowercased keys; IEC = 1024-based, SI = 1000-based;
-/// suffix-less short forms included).
+/// The SI/IEC unit multiplier table used by [`parse_bytes`] (lowercased keys;
+/// IEC = 1024-based, SI = 1000-based; suffix-less short forms included).
 fn size_table(unit: &str) -> Option<u64> {
     const KI: u64 = 1 << 10;
     const MI: u64 = 1 << 20;
@@ -482,18 +478,17 @@ fn size_table(unit: &str) -> Option<u64> {
 }
 
 // ---------------------------------------------------------------------------
-// Go time.ParseDuration port (subset used by config).
+// Duration parsing (CLI input contract; subset of units used by config).
 // ---------------------------------------------------------------------------
 
-/// Parses a Go duration string (e.g. `"10s"`, `"1h30m"`, `"500ms"`). Port of
-/// Go's `time.ParseDuration` for the unit set the framework uses: `ns`, `us`,
-/// `µs`, `ms`, `s`, `m`, `h`. A leading sign is allowed; the special string
-/// `"0"` is zero.
+/// Parses a duration string (e.g. `"10s"`, `"1h30m"`, `"500ms"`) with the
+/// unit set the framework uses: `ns`, `us`, `µs`, `ms`, `s`, `m`, `h`. A
+/// leading sign is allowed; the special string `"0"` is zero. The accepted
+/// grammar and error strings follow the reference CLI exactly.
 ///
 /// # Errors
 ///
-/// Returns `Err` for empty input, unknown units, or malformed numbers — the
-/// same cases Go rejects.
+/// Returns `Err` for empty input, unknown units, or malformed numbers.
 pub fn parse_go_duration(s: &str) -> Result<Duration, String> {
     let orig = s;
     if s == "0" || s == "+0" || s == "-0" {
@@ -546,8 +541,8 @@ pub fn parse_go_duration(s: &str) -> Result<Duration, String> {
         total_nanos = -total_nanos;
     }
     if total_nanos < 0 {
-        // Durations in the config are non-negative; Go would carry the sign,
-        // but every consumer here uses positive timeouts. Clamp to zero.
+        // Durations in the config are non-negative; every consumer here uses
+        // positive timeouts, so a negative result clamps to zero.
         return Ok(Duration::ZERO);
     }
     Ok(Duration::from_nanos(total_nanos as u64))
@@ -580,8 +575,8 @@ fn unit_nanos(unit: &str) -> Option<f64> {
     })
 }
 
-/// Saturating cap helper kept for parity with the Go default-budget cap path.
-/// (Exposed so callers can clamp a budget to [`DEFAULT_MEMORY_LIMIT_BYTES`].)
+/// Clamps a budget to [`DEFAULT_MEMORY_LIMIT_BYTES`] (the default-budget cap
+/// path).
 #[must_use]
 pub fn cap_to_default_memory_limit(value: u64) -> u64 {
     value.min(DEFAULT_MEMORY_LIMIT_BYTES)

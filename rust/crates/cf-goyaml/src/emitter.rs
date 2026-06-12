@@ -1,18 +1,19 @@
-//! Port of yaml.v3's block emitter (emitterc.go) over [`cf_gojson::GoValue`].
+//! The block YAML emitter over [`cf_gojson::GoValue`] (frozen algorithm).
 //!
-//! Rather than queueing the full libyaml event list, we walk the value tree in
-//! the exact order yaml.v3 would emit events and reproduce the emitter's mutable
-//! state (`column`, `whitespace`, `indention`, `indent`, the `indents` stack and
-//! enough of the `states` stack to drive `increase_indent`). Indices, indent
-//! rounding, indicator spacing and the plain/single/double/literal writers all
-//! mirror the Go source line-for-line.
+//! Rather than queueing a full event list, we walk the value tree in the exact
+//! order the reference emitter would process events and reproduce its mutable
+//! state (`column`, `whitespace`, `indention`, `indent`, the `indents` stack
+//! and enough of the `states` stack to drive `increase_indent`). Indent
+//! rounding, indicator spacing and the plain/single/double/literal writers are
+//! all part of the byte contract pinned by the differential gate; treat them
+//! as frozen.
 
 use crate::float;
 use crate::resolve;
 use crate::scalar::{self, ScalarData};
 use cf_gojson::GoValue;
 
-/// Scalar styles the encoder may request (yaml.v3 `yaml_scalar_style_t`).
+/// Scalar styles the encoder may request.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Style {
     Plain,
@@ -37,10 +38,10 @@ pub struct Emitter {
     indention: bool,
     indent: i32,
     best_indent: i32,
-    /// yaml.v3 `Marshal` never sets a line width: `yaml_emitter_initialize`
-    /// leaves `best_width = -1`, which `emit_stream_start` turns into
-    /// `1<<31 - 1`. So plain / single / double scalars are **never** folded;
-    /// the `column > best_width` guards thus never fire.
+    /// The marshalling configuration never sets a line width (it resolves to
+    /// `i32::MAX`), so plain / single / double scalars are **never** folded;
+    /// the `column > best_width` guards thus never fire. They are kept so the
+    /// writer logic matches the reference emitter audit-for-audit.
     best_width: i32,
     indents: Vec<i32>,
     states: Vec<State>,
@@ -70,14 +71,14 @@ impl Emitter {
         self.out
     }
 
-    /// Top-level `marshalDoc` + `finish`: emits the single document body with no
-    /// `---` and exactly one trailing newline.
+    /// Emits the single document body with no `---` and exactly one trailing
+    /// newline.
     pub fn marshal_document(&mut self, value: &GoValue) {
         self.root_context = true;
         self.emit_node(value, true, false, false, false);
-        // Document end (implicit, no `...`): yaml.v3 calls write_indent, which
-        // appends exactly one break because the root node left indention=false
-        // and column > 0. Indent is back to -1 (treated as 0).
+        // Document end (implicit, no `...`): one write_indent, which appends
+        // exactly one break because the root node left indention=false and
+        // column > 0. Indent is back to -1 (treated as 0).
         self.indent = -1;
         self.write_indent();
     }
@@ -97,14 +98,14 @@ impl Emitter {
         *i += w;
     }
 
-    /// Write a line break (LF), reset column. Mirrors `put_break`.
+    /// Write a line break (LF), reset column.
     fn put_break(&mut self) {
         self.out.push(b'\n');
         self.column = 0;
         self.indention = true;
     }
 
-    /// `write_break`: for '\n' emit a break; advance past the break char(s).
+    /// For '\n' emit a break; advance past the break char(s).
     fn write_break(&mut self, value: &[u8], i: &mut usize) {
         if value[*i] == b'\n' {
             self.put_break();
@@ -190,12 +191,12 @@ impl Emitter {
         }
     }
 
-    /// Emits scalars, and empty `[]`/`{}` (which yaml.v3 routes through the flow
-    /// path producing `[]` / `{}`).
+    /// Emits scalars, and empty collections (routed through the flow path,
+    /// producing `[]` / `{}`).
     fn emit_scalar_or_empty(&mut self, value: &GoValue, simple_key: bool) {
         match value {
-            // A nil slice (`var s []T`) renders `[]` in yaml.v3, identical to an
-            // empty slice (the JSON encoder renders it `null` instead).
+            // A nil slice renders `[]` in YAML, identical to an empty slice
+            // (the JSON encoder renders it `null` instead).
             GoValue::Array(_) | GoValue::NilSlice => self.emit_flow_empty(b'[', b']'),
             GoValue::Map(_) => self.emit_flow_empty(b'{', b'}'),
             _ => {
@@ -205,8 +206,8 @@ impl Emitter {
         }
     }
 
-    /// Empty flow collection: `[` immediately followed by `]` (or `{}`),
-    /// matching `emit_flow_*_item` for an immediate END event.
+    /// Empty flow collection: `[` immediately followed by `]` (or `{}`) —
+    /// the immediate-end shape of the flow item path.
     fn emit_flow_empty(&mut self, open: u8, close: u8) {
         self.write_indicator(&[open], true, true, false);
         // increase_indent(flow=true) then immediate end; column != 0 so no
@@ -238,9 +239,9 @@ impl Emitter {
         let int_keys = m.origin() == cf_gojson::MapOrigin::IntMap;
         for (k, v) in yaml_key_order(m) {
             self.write_indent();
-            // String-origin keys emit as `!!str` scalars (quoted when they would
-            // otherwise resolve to another tag). Int-origin keys (`map[int]…`)
-            // emit as plain `!!int` scalars (unquoted), matching yaml.v3.
+            // String-origin keys emit as `!!str` scalars (quoted when they
+            // would otherwise resolve to another tag). Int-origin keys emit as
+            // plain `!!int` scalars (unquoted) — reference-emitter behavior.
             let key_val = if int_keys {
                 GoValue::Int(k.parse::<i64>().unwrap_or(0))
             } else {
@@ -326,7 +327,7 @@ impl Emitter {
         style
     }
 
-    // --- the four scalar writers (faithful ports) ---
+    // --- the four scalar writers (frozen byte-contract logic) ---
 
     fn write_plain_scalar(&mut self, value: &[u8], allow_breaks: bool) {
         if !value.is_empty() && !self.whitespace {
@@ -561,8 +562,6 @@ impl Emitter {
 
 /// Maps a non-collection [`GoValue`] to its scalar text and the style the
 /// encoder *requests* (before the emitter downgrades plain→single/double).
-///
-/// Mirrors `encoder.{intv,uintv,floatv,boolv,nilv,stringv}`.
 fn scalar_text_and_style(value: &GoValue) -> (String, Style) {
     match value {
         GoValue::Null => ("null".to_string(), Style::Plain),
@@ -571,18 +570,18 @@ fn scalar_text_and_style(value: &GoValue) -> (String, Style) {
         GoValue::Uint(u) => (u.to_string(), Style::Plain),
         GoValue::Float(f) => (float::format_g(*f), Style::Plain),
         GoValue::Str(s) => string_style(s),
-        // Collections are handled before reaching here. A nil slice renders `[]`
-        // in yaml.v3, identical to an empty slice.
+        // Collections are handled before reaching here. A nil slice renders
+        // `[]`, identical to an empty slice.
         GoValue::Array(_) | GoValue::NilSlice => ("[]".to_string(), Style::Plain),
         GoValue::Map(_) => ("{}".to_string(), Style::Plain),
     }
 }
 
-/// `encoder.stringv`: choose Literal (newline), Plain (resolves to str), or
-/// DoubleQuoted (would resolve to a non-str tag).
+/// Chooses a string's requested style: Literal (contains a newline), Plain
+/// (resolves to str), or DoubleQuoted (would resolve to a non-str tag).
 fn string_style(s: &str) -> (String, Style) {
-    // A Rust &str is always valid UTF-8, so yaml.v3's `!utf8.ValidString`
-    // base64 branch is unreachable here.
+    // A Rust &str is always valid UTF-8, so the reference encoder's
+    // invalid-UTF-8 base64 branch is unreachable here.
     let can_use_plain = resolve::string_can_use_plain(s);
     let style = if s.contains('\n') {
         // not in flow -> literal block scalar
@@ -597,27 +596,27 @@ fn string_style(s: &str) -> (String, Style) {
 
 // --- byte helpers shared with the writers ---
 
-/// A string map key is rendered as a complex (`?`) key exactly when yaml.v3's
-/// `check_simple_key` returns false, i.e. the scalar is multiline (the analyzer
-/// set `multiline`, which is `line_breaks`).
+/// A string map key is rendered as a complex (`?`) key exactly when it fails
+/// the simple-key check, i.e. the scalar is multiline (the analyzer set
+/// `multiline`).
 fn key_is_multiline(k: &str) -> bool {
     scalar::analyze(k.as_bytes()).multiline
 }
 
-/// Order a block-mapping's entries the way `yaml.v3` does at marshal time.
+/// Orders a block-mapping's entries for emission (YAML key order contract).
 ///
-/// Struct-origin maps keep declaration order (yaml.v3 emits struct fields in
-/// field order); map-origin maps are sorted by yaml.v3's `keyList.Less`
-/// (`sorter.go`). Our keys are always strings, so the numeric/bool fast-path
-/// in `keyList.Less` never applies and we port only its rune-comparison branch,
-/// which orders embedded digit runs *numerically* (e.g. `a2` < `a10`).
+/// Struct-origin maps keep declaration order; map-origin maps sort with
+/// [`yaml_key_less`], the reference emitter's key comparator, which orders
+/// embedded digit runs *numerically* (e.g. `a2` < `a10`). Note this differs
+/// from the JSON byte-sort. Keys here are always strings, so the comparator's
+/// numeric/bool fast path never applies and only the rune-comparison branch is
+/// implemented.
 fn yaml_key_order(m: &cf_gojson::GoMap) -> Vec<&(String, GoValue)> {
     let mut refs: Vec<&(String, GoValue)> = m.entries().iter().collect();
     match m.origin() {
         cf_gojson::MapOrigin::Map => {
-            // A stable sort matches Go's `sort.Sort` only up to ties, but
-            // `yaml_key_less` is a total order over distinct map keys (keys are
-            // unique), so stability is irrelevant here.
+            // `yaml_key_less` is a total order over distinct map keys (keys
+            // are unique), so sort stability is irrelevant here.
             refs.sort_by(|a, b| {
                 if yaml_key_less(&a.0, &b.0) {
                     std::cmp::Ordering::Less
@@ -628,8 +627,8 @@ fn yaml_key_order(m: &cf_gojson::GoMap) -> Vec<&(String, GoValue)> {
                 }
             });
         }
-        // Integer map keys sort by integer value (yaml.v3 `keyList.Less` numeric
-        // fast-path for `map[int]…`).
+        // Integer map keys sort by integer value (the key comparator's
+        // numeric fast path).
         cf_gojson::MapOrigin::IntMap => {
             refs.sort_by(|a, b| {
                 match (a.0.parse::<i64>(), b.0.parse::<i64>()) {
@@ -643,9 +642,9 @@ fn yaml_key_order(m: &cf_gojson::GoMap) -> Vec<&(String, GoValue)> {
     refs
 }
 
-/// Port of the string branch of `yaml.v3`'s `keyList.Less` (`sorter.go`).
+/// The string branch of the reference emitter's key comparator (frozen).
 ///
-/// Both inputs are compared as `[]rune`. Equal prefixes are skipped (tracking
+/// Both inputs are compared as sequences of `char`. Equal prefixes are skipped (tracking
 /// whether the last matched rune was a digit); at the first differing position:
 /// letters compare by code point; a letter vs non-letter is ordered by the
 /// `digits` context; otherwise the maximal digit runs starting at that position
@@ -706,9 +705,8 @@ fn yaml_key_less(a: &str, b: &str) -> bool {
     ar.len() < br.len()
 }
 
-/// `unicode.IsLetter` for the rune classes yaml.v3 keys can contain. Go's
-/// `unicode.IsLetter` covers all Unicode letter categories; `char::is_alphabetic`
-/// is the matching Rust predicate (both are the Unicode "Letter" supercategory).
+/// Letter test for the key comparator: the Unicode "Letter" supercategory,
+/// which is exactly `char::is_alphabetic`.
 fn is_letter(c: char) -> bool {
     c.is_alphabetic()
 }
@@ -746,12 +744,13 @@ fn is_break(v: &[u8], i: usize) -> bool {
     false
 }
 
-/// libyaml `is_bom`: tests the buffer **start**, not position `i`.
+/// BOM test — deliberately tests the buffer **start**, not position `i`
+/// (reference-emitter behavior, kept for parity).
 fn is_bom(v: &[u8], _i: usize) -> bool {
     v.len() >= 3 && v[0] == 0xEF && v[1] == 0xBB && v[2] == 0xBF
 }
 
-/// Byte-prefix `is_printable`, identical to yaml.v3 `yamlprivateh.go`. Note this
+/// Byte-prefix printability test (the reference emitter's table). Note this
 /// returns **false** for 4-byte (astral-plane) UTF-8, so emoji are escaped.
 fn is_printable(b: &[u8], i: usize) -> bool {
     let g = |j: usize| -> u8 {

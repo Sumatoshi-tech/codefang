@@ -1,14 +1,12 @@
-//! In-memory coupling accumulator (port of the framework-independent parts of
-//! `aggregator.go`, plus the pure reduction helpers from `history.go`).
+//! In-memory coupling accumulator and pure reduction helpers.
 //!
-//! The full Go `Aggregator` implements `analyze.Aggregator` over a
-//! `spillstore.SpillStore` (disk-backed overflow), and the `Consume`/`Fork`/
-//! `Merge` pipeline driver depends on git tree diffs, identity detection, and
-//! Bloom-filtered merge dedup. Those framework crates (`cf-spillstore`,
-//! `cf-gitlib`, `cf-analyze`, identity/plumbing) are not yet ported, so this
-//! module provides the **pure in-memory accumulation and report-building**
-//! logic that the streaming aggregator wraps, behind small traits the eventual
-//! framework integration can satisfy. See crate TODOs.
+//! The full streaming aggregator runs over a disk-backed spill store, and the
+//! consume/fork/merge pipeline driver depends on git tree diffs, identity
+//! detection, and Bloom-filtered merge dedup. Those framework crates are not
+//! yet wired in, so this module provides the **pure in-memory accumulation
+//! and report-building** logic that the streaming aggregator wraps, behind
+//! small traits the eventual framework integration can satisfy. See crate
+//! TODOs.
 
 use crate::matrix::{
     build_files_index, compute_files_matrix, compute_people_matrix, People, RawFiles,
@@ -17,11 +15,10 @@ use crate::metrics::ReportData;
 use crate::tc::{CommitData, RenamePair};
 use std::collections::BTreeMap;
 
-/// Minimal interface the streaming aggregator needs from a spill store
-/// (Go: `spillstore.SpillStore[map[string]int]`).
+/// Minimal interface the streaming aggregator needs from a spill store.
 ///
 /// Defined here so the in-memory core compiles without `cf-spillstore`. The
-/// real integration implements this over the ported spill store.
+/// real integration implements this over the spill store.
 pub trait FileSpill {
     /// Returns the current in-memory `file -> otherFile -> count` buffer.
     fn current(&self) -> &RawFiles;
@@ -54,7 +51,7 @@ impl FileSpill for MemFileSpill {
     }
 }
 
-/// In-memory coupling accumulator (Go: `Aggregator`, in-memory subset).
+/// In-memory coupling accumulator.
 #[derive(Debug, Default)]
 pub struct Aggregator {
     files: MemFileSpill,
@@ -65,11 +62,11 @@ pub struct Aggregator {
 }
 
 impl Aggregator {
-    /// Creates an aggregator sized for `people_number` developers
-    /// (Go: `newAggregator`, in-memory subset). Slices are `people_number + 1`
-    /// long to leave room for the "missing author" slot.
+    /// Creates an aggregator sized for `people_number` developers. Slices are
+    /// `people_number + 1` long to leave room for the "missing author" slot.
+    #[must_use]
     pub fn new(people_number: usize) -> Self {
-        Aggregator {
+        Self {
             files: MemFileSpill::default(),
             people: vec![BTreeMap::new(); people_number + 1],
             people_commits: vec![0; people_number + 1],
@@ -78,7 +75,7 @@ impl Aggregator {
         }
     }
 
-    /// Ingests a single per-commit payload (Go: `Aggregator.Add`).
+    /// Ingests a single per-commit payload.
     pub fn add(&mut self, author: usize, data: &CommitData) {
         self.ensure_capacity(author + 1);
         if data.commit_counted {
@@ -89,7 +86,7 @@ impl Aggregator {
         self.renames.extend(data.renames.iter().cloned());
     }
 
-    /// Merges per-commit author file touches (Go: `addAuthorFiles`).
+    /// Merges per-commit author file touches.
     fn add_author_files(&mut self, author_files: &BTreeMap<String, i64>, author: usize) {
         for (file, &count) in author_files {
             *self.people[author].entry(file.clone()).or_insert(0) += count;
@@ -97,7 +94,7 @@ impl Aggregator {
     }
 
     /// Increments the file co-occurrence matrix for every ordered file pair,
-    /// including the diagonal (Go: `addFileCouplings`).
+    /// including the diagonal.
     fn add_file_couplings(&mut self, coupling_files: &[String]) {
         let files = self.files.current_mut();
         for a in coupling_files {
@@ -108,8 +105,7 @@ impl Aggregator {
         }
     }
 
-    /// Grows the people/commit slices to at least `min_size`
-    /// (Go: `ensureCapacity`).
+    /// Grows the people/commit slices to at least `min_size`.
     fn ensure_capacity(&mut self, min_size: usize) {
         if min_size <= self.people.len() {
             return;
@@ -119,23 +115,26 @@ impl Aggregator {
     }
 
     /// Returns the accumulated raw file coupling map.
+    #[must_use]
     pub fn raw_files(&self) -> &RawFiles {
         self.files.current()
     }
 
     /// Returns the accumulated per-developer file maps.
-    pub fn people(&self) -> &People {
+    #[must_use]
+    pub const fn people(&self) -> &People {
         &self.people
     }
 
-    /// Builds the dense [`ReportData`] from the accumulated state, restricted to
-    /// the given current-file set (Go: `buildReport`, without the git-tree line
-    /// counting which requires libgit2).
+    /// Builds the dense [`ReportData`] from the accumulated state, restricted
+    /// to the given current-file set (without the git-tree line counting,
+    /// which requires libgit2).
     ///
-    /// `current_files`: when `Some`, only these files are retained (the Go code
-    /// derives this from the final commit tree); when `None`, all accumulated
-    /// files are kept. `files_lines` is supplied by the caller because line
-    /// counts require reading blobs from the final commit (libgit2).
+    /// `current_files`: when `Some`, only these files are retained (callers
+    /// derive this from the final commit tree); when `None`, all accumulated
+    /// files are kept. `files_lines_by_name` is supplied by the caller because
+    /// line counts require reading blobs from the final commit (libgit2).
+    #[must_use]
     pub fn build_report(
         &self,
         current_files: Option<&std::collections::HashSet<String>>,
@@ -169,12 +168,11 @@ impl Aggregator {
         }
     }
 
-    /// Filters files and people to the current-file set (Go: `reduceFiles` /
-    /// `reducePeople`) — the public surface the store-record path
-    /// (`WriteToStoreFromAggregator` → `collectAndReduce`) shares with
-    /// [`Aggregator::build_report`]. With `current_files = None`, keeps
-    /// everything (the streaming fallback where the last commit's tree is
-    /// unavailable).
+    /// Filters files and people to the current-file set — the public surface
+    /// the store-record path shares with [`Aggregator::build_report`]. With
+    /// `current_files = None`, keeps everything (the streaming fallback where
+    /// the last commit's tree is unavailable).
+    #[must_use]
     pub fn reduced(
         &self,
         current_files: Option<&std::collections::HashSet<String>>,
@@ -182,13 +180,13 @@ impl Aggregator {
         self.reduce(current_files)
     }
 
-    /// Filters files and people to the current-file set (Go: `reduceFiles` /
-    /// `reducePeople`). With `current_files = None`, keeps everything.
+    /// Filters files and people to the current-file set. With
+    /// `current_files = None`, keeps everything.
     fn reduce(
         &self,
         current_files: Option<&std::collections::HashSet<String>>,
     ) -> (RawFiles, People) {
-        let keep = |f: &str| current_files.is_none_or(|s| s.contains(f));
+        let keep = |f: &str| current_files.map_or(true, |s| s.contains(f));
 
         let mut reduced_files: RawFiles = BTreeMap::new();
         for (file, refmap) in self.files.current() {
@@ -228,8 +226,8 @@ mod tests {
 
     fn commit(files: &[&str]) -> CommitData {
         CommitData {
-            coupling_files: files.iter().map(|s| s.to_string()).collect(),
-            author_files: files.iter().map(|s| (s.to_string(), 1)).collect(),
+            coupling_files: files.iter().map(|s| (*s).to_string()).collect(),
+            author_files: files.iter().map(|s| ((*s).to_string(), 1)).collect(),
             renames: Vec::new(),
             commit_counted: true,
         }

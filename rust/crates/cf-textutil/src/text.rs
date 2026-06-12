@@ -1,19 +1,16 @@
 //! Byte-level text utilities: binary detection and line counting.
 //!
-//! Direct port of the byte helpers in Go `pkg/textutil/textutil.go`. These
-//! operate on raw byte slices (`&[u8]`), mirroring Go's `[]byte` semantics
-//! exactly — no UTF-8 decoding is performed.
+//! These operate on raw byte slices (`&[u8]`); no UTF-8 decoding is
+//! performed. Their classifications feed report counts, so the heuristics are
+//! part of the report compatibility contract.
 
 /// Maximum number of bytes scanned for null-byte detection.
 ///
-/// Matches the heuristic used by Git and most editors. Port of Go
-/// `BinarySniffLength`.
+/// Matches the well-known 8000-byte heuristic used by Git and most editors.
 pub const BINARY_SNIFF_LENGTH: usize = 8000;
 
 /// Returns `true` if `data` contains a null byte within the first
 /// [`BINARY_SNIFF_LENGTH`] bytes. Empty data is not binary.
-///
-/// Port of Go `IsBinary`.
 ///
 /// # Examples
 ///
@@ -23,6 +20,7 @@ pub const BINARY_SNIFF_LENGTH: usize = 8000;
 /// assert!(!is_binary(b"hello world\n"));
 /// assert!(is_binary(b"hello\x00world"));
 /// ```
+#[must_use]
 pub fn is_binary(data: &[u8]) -> bool {
     if data.is_empty() {
         return false;
@@ -38,7 +36,7 @@ pub fn is_binary(data: &[u8]) -> bool {
 /// Returns the number of newline-delimited lines in `data`.
 ///
 /// A non-empty buffer without a trailing newline counts the last partial line.
-/// Returns `0` for empty data. Port of Go `CountLines`.
+/// Returns `0` for empty data.
 ///
 /// # Examples
 ///
@@ -50,28 +48,21 @@ pub fn is_binary(data: &[u8]) -> bool {
 /// assert_eq!(count_lines(b"a\nb\nc"), 3);
 /// assert_eq!(count_lines(b"\n\n\n"), 3);
 /// ```
+#[must_use]
 pub fn count_lines(data: &[u8]) -> usize {
     if data.is_empty() {
         return 0;
     }
-    let mut lines = bytecount_newlines(data);
-    if data[data.len() - 1] != b'\n' {
-        lines += 1;
-    }
-    lines
-}
-
-/// Counts `'\n'` bytes in `data`. Equivalent to Go's `bytes.Count(data, "\n")`.
-#[inline]
-fn bytecount_newlines(data: &[u8]) -> usize {
-    data.iter().filter(|&&b| b == b'\n').count()
+    let newlines = data.iter().filter(|&&b| b == b'\n').count();
+    let partial_last_line = usize::from(data[data.len() - 1] != b'\n');
+    newlines + partial_last_line
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // --- IsBinary (ported from Go) ---
+    // --- is_binary ---
 
     #[test]
     fn test_is_binary_empty_data() {
@@ -114,7 +105,7 @@ mod tests {
         assert!(!is_binary(b"short"));
     }
 
-    // --- CountLines (ported from Go) ---
+    // --- count_lines ---
 
     #[test]
     fn test_count_lines_empty_data() {
@@ -158,7 +149,7 @@ mod tests {
         assert_eq!(count_lines(&lines), 10000);
     }
 
-    // --- BinarySniffLength constant ---
+    // --- BINARY_SNIFF_LENGTH constant ---
 
     #[test]
     fn test_binary_sniff_length_value() {

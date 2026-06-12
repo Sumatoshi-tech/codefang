@@ -6,6 +6,6 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "Generic map and slice helpers (clone, additive merge, deterministic SortedKeys, sort-and-limit, lookup-set, unique). Rust port of Go pkg/alg/mapx."
+description = "Generic map and slice helpers (clone, additive merge, deterministic sorted_keys, sort-and-limit, lookup-set, unique)."
 
 [dependencies]

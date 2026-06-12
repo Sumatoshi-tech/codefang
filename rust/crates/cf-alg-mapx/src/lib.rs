@@ -1,8 +1,6 @@
 //! `cf-alg-mapx` — generic map and slice helpers.
 //!
-//! Rust port of the Go package `pkg/alg/mapx` (`maps.go` + `slices.go`).
-//!
-//! The package provides three families of helpers used throughout the analyzers:
+//! Three families of helpers used throughout the analyzers:
 //!
 //! * **Clone**: [`clone_func`], [`clone_nested`] — deep copies of (nested) maps.
 //! * **Merge**: [`merge_additive`], [`merge_nested_additive`] — additive merges
@@ -11,30 +9,25 @@
 //!   ordering helper), [`sort_and_limit`], [`build_lookup_set`], [`unique`],
 //!   plus [`estimate_map_size`].
 //!
-//! # The Go nil/empty distinction
+//! # The absent/empty distinction
 //!
-//! Go distinguishes a `nil` map/slice from an empty (but allocated) one, and the
-//! original package deliberately propagates that distinction: every function
-//! returns `nil` when given `nil`, but returns an allocated empty value when
-//! given an allocated empty value. Rust's `Option` models this exactly:
-//!
-//! | Go input | Go output | Rust input | Rust output |
-//! | --- | --- | --- | --- |
-//! | `nil` map | `nil` | `None` | `None` |
-//! | `map{}` (empty) | `map{}`/`[]` (empty, non-nil) | `Some(empty)` | `Some(empty)` |
+//! Callers distinguish an *absent* map/slice from an *empty* (but allocated)
+//! one, and these helpers deliberately propagate that distinction
+//! (reference-implementation behavior): every function returns `None` when
+//! given `None`, but returns an allocated empty value when given an allocated
+//! empty value.
 //!
 //! So the cloning/extraction helpers take `Option<&...>` and return
-//! `Option<...>`. The mutating merge helpers take `Option<&mut ...>` for `dst`
-//! (a `None` `dst` is a no-op, mirroring Go's "nil dst" behavior).
+//! `Option<...>`. The mutating merge helpers take `Option<&mut ...>` for
+//! `dst` (a `None` `dst` is a no-op).
 
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
 /// Numeric constraint for additive merges (the `+=` operator).
 ///
-/// Mirrors Go's `Numeric` interface, which admits every signed/unsigned integer
-/// width and both float widths. In Rust we express it as a trait with a blanket
-/// impl for the corresponding primitive types.
+/// Admits every signed/unsigned integer width and both float widths via a
+/// blanket impl for the corresponding primitive types.
 pub trait Numeric: Copy + std::ops::AddAssign {}
 
 macro_rules! impl_numeric {
@@ -47,7 +40,7 @@ impl_numeric!(i8, i16, i32, i64, isize, u8, u16, u32, u64, usize, f32, f64);
 
 /// Returns a deep copy of `m`, applying `clone_v` to each value.
 ///
-/// Mirrors Go's `CloneFunc`. Returns `None` for a `None` map (Go's nil → nil).
+/// Returns `None` for a `None` map.
 ///
 /// The keys are cloned with [`Clone`]; each value is produced by the supplied
 /// `clone_v` closure, which is how callers express a deep copy of value types
@@ -79,6 +72,7 @@ impl_numeric!(i8, i16, i32, i64, isize, u8, u16, u32, u64, usize, f32, f64);
 /// let out = clone_func::<String, Vec<i32>, _>(None, |v: &Vec<i32>| v.clone());
 /// assert!(out.is_none());
 /// ```
+#[must_use]
 pub fn clone_func<K, V, F>(m: Option<&HashMap<K, V>>, mut clone_v: F) -> Option<HashMap<K, V>>
 where
     K: Eq + Hash + Clone,
@@ -94,9 +88,8 @@ where
 
 /// Returns a deep copy of a two-level nested map.
 ///
-/// Mirrors Go's `CloneNested`. Outer and inner maps are independently
-/// allocated. Returns `None` for a `None` map. A `None` inner map is preserved
-/// as `None` (Go's "nil inner maps are preserved as nil").
+/// Outer and inner maps are independently allocated. Returns `None` for a
+/// `None` map. A `None` inner map is preserved as `None`.
 ///
 /// Values are cloned with [`Clone`].
 ///
@@ -117,6 +110,7 @@ where
 /// assert_eq!(src[&1].as_ref().unwrap()[&10], 100);
 /// assert!(cloned[&2].is_none());
 /// ```
+#[must_use]
 pub fn clone_nested<K1, K2, V>(
     m: Option<&HashMap<K1, Option<HashMap<K2, V>>>>,
 ) -> Option<HashMap<K1, Option<HashMap<K2, V>>>>
@@ -143,10 +137,9 @@ where
 /// Additively merges `src` into `dst`: `dst[k] += src[k]` for every key in
 /// `src`.
 ///
-/// Mirrors Go's `MergeAdditive`. If `dst` is `None`, this is a no-op (Go's "nil
-/// dst → no-op"). Keys present only in `src` are inserted with their `src`
-/// value (because the missing `dst` entry starts at the additive identity,
-/// matching Go's zero-value `+=`).
+/// If `dst` is `None`, this is a no-op. Keys present only in `src` are
+/// inserted with their `src` value (the missing `dst` entry starts at the
+/// additive identity).
 ///
 /// # Examples
 ///
@@ -175,7 +168,7 @@ where
 
 /// Additively merges two-level maps.
 ///
-/// Mirrors Go's `MergeNestedAdditive`. For each key `k1` in `src` with a
+/// For each key `k1` in `src` with a
 /// non-empty inner map, the inner map is merged additively into `dst[k1]` via
 /// [`merge_additive`]; a missing `dst[k1]` is initialized first. Empty inner
 /// maps in `src` are skipped (so they do not allocate a `dst` entry). If `dst`
@@ -229,8 +222,8 @@ pub fn merge_nested_additive<K1, K2, V>(
 
 /// Estimates the memory usage of `m`, assuming `entry_bytes` per entry.
 ///
-/// Mirrors Go's `EstimateMapSize`: `len(m) * entry_bytes`. A `None` (nil) map
-/// has length zero, so it estimates `0`.
+/// Computes `m.len() * entry_bytes`. A `None` (absent) map has length zero,
+/// so it estimates `0`.
 ///
 /// # Examples
 ///
@@ -242,17 +235,18 @@ pub fn merge_nested_additive<K1, K2, V>(
 /// assert_eq!(estimate_map_size(Some(&m), 56), 3 * 56);
 /// assert_eq!(estimate_map_size::<&str, i32>(None, 56), 0);
 /// ```
+#[must_use]
 pub fn estimate_map_size<K, V>(m: Option<&HashMap<K, V>>, entry_bytes: i64) -> i64 {
     m.map_or(0, |m| m.len() as i64) * entry_bytes
 }
 
 /// Returns the keys of `m` in sorted (ascending) order.
 ///
-/// Mirrors Go's `SortedKeys`. Returns `None` for a `None` (nil) map. This is the
+/// Returns `None` for a `None` (absent) map. This is the
 /// deterministic-ordering primitive used throughout the analyzers: callers
 /// iterate `sorted_keys(Some(&m))` instead of `m.keys()` so that output is
-/// reproducible regardless of the map's internal iteration order (Go map and
-/// Rust [`HashMap`] iteration order are both unspecified).
+/// reproducible regardless of the map's internal (unspecified) iteration
+/// order.
 ///
 /// # Examples
 ///
@@ -275,6 +269,7 @@ pub fn estimate_map_size<K, V>(m: Option<&HashMap<K, V>>, entry_bytes: i64) -> i
 /// let empty: HashMap<i32, &str> = HashMap::new();
 /// assert_eq!(sorted_keys(Some(&empty)), Some(vec![]));
 /// ```
+#[must_use]
 pub fn sorted_keys<K, V>(m: Option<&HashMap<K, V>>) -> Option<Vec<K>>
 where
     K: Ord + Clone,
@@ -288,12 +283,12 @@ where
 /// Copies `items`, sorts the copy with `less`, and returns at most `limit`
 /// elements.
 ///
-/// Mirrors Go's `SortAndLimit`. Returns `None` for a `None` (nil) slice. If
-/// `limit <= 0`, the limit is ignored and all sorted items are returned (Go:
-/// "limit=0 means no limit"). The original slice is never mutated.
+/// Returns `None` for a `None` (absent) slice. If `limit <= 0`, the limit is
+/// ignored and all sorted items are returned. The original slice is never
+/// mutated.
 ///
-/// `less(a, b)` returns `true` when `a` should sort before `b` (the same
-/// convention as Go's `sort.Slice` less function). The sort is stable.
+/// `less(a, b)` returns `true` when `a` should sort before `b`. The sort is
+/// stable.
 ///
 /// # Examples
 ///
@@ -308,6 +303,7 @@ where
 /// let all = sort_and_limit(Some(&[3, 1, 2]), descending, 0);
 /// assert_eq!(all, Some(vec![3, 2, 1]));
 /// ```
+#[must_use]
 pub fn sort_and_limit<T, F>(items: Option<&[T]>, mut less: F, limit: i64) -> Option<Vec<T>>
 where
     T: Clone,
@@ -332,8 +328,8 @@ where
 
 /// Converts a slice into a lookup set.
 ///
-/// Mirrors Go's `BuildLookupSet` (`map[T]struct{}`). Duplicate items are
-/// silently deduplicated. Returns `None` for a `None` (nil) slice.
+/// Duplicate items are silently deduplicated. Returns `None` for a `None`
+/// (absent) slice.
 ///
 /// # Examples
 ///
@@ -344,6 +340,7 @@ where
 /// assert_eq!(set.len(), 3);
 /// assert!(set.contains(&1) && set.contains(&2) && set.contains(&3));
 /// ```
+#[must_use]
 pub fn build_lookup_set<T>(items: Option<&[T]>) -> Option<HashSet<T>>
 where
     T: Eq + Hash + Clone,
@@ -359,7 +356,7 @@ where
 /// Returns a new vector containing only the first occurrence of each element,
 /// preserving insertion order.
 ///
-/// Mirrors Go's `Unique`. Returns `None` for a `None` (nil) slice.
+/// Returns `None` for a `None` (absent) slice.
 ///
 /// # Examples
 ///
@@ -369,6 +366,7 @@ where
 /// let got = unique(Some(&[3, 1, 2, 1, 3, 4, 2]));
 /// assert_eq!(got, Some(vec![3, 1, 2, 4]));
 /// ```
+#[must_use]
 pub fn unique<T>(s: Option<&[T]>) -> Option<Vec<T>>
 where
     T: Eq + Hash + Clone,
@@ -390,7 +388,7 @@ where
 mod tests {
     use super::*;
 
-    // ---- clone_func (Go: TestCloneFunc) ----
+    // ---- clone_func ----
 
     #[test]
     fn clone_func_nil_returns_nil() {
@@ -412,7 +410,7 @@ mod tests {
         assert_eq!(src["x"][0], 1);
     }
 
-    // ---- clone_nested (Go: TestCloneNested) ----
+    // ---- clone_nested ----
 
     #[test]
     fn clone_nested_nil_returns_nil() {
@@ -459,7 +457,7 @@ mod tests {
         );
     }
 
-    // ---- merge_additive (Go: TestMergeAdditive) ----
+    // ---- merge_additive ----
 
     #[test]
     fn merge_additive_nil_src_no_op() {
@@ -503,7 +501,7 @@ mod tests {
         assert!((dst["y"] - 3.0).abs() < 0.0001);
     }
 
-    // ---- merge_nested_additive (Go: TestMergeNestedAdditive) ----
+    // ---- merge_nested_additive ----
 
     #[test]
     fn merge_nested_additive_nil_dst_no_panic() {
@@ -564,7 +562,7 @@ mod tests {
         assert_eq!(dst["b"]["z"], 4);
     }
 
-    // ---- estimate_map_size (Go: TestEstimateMapSize) ----
+    // ---- estimate_map_size ----
 
     #[test]
     fn estimate_map_size_nil_returns_zero() {
@@ -595,7 +593,7 @@ mod tests {
         assert_eq!(estimate_map_size(Some(&m), 0), 0);
     }
 
-    // ---- sorted_keys (Go: TestSortedKeys) ----
+    // ---- sorted_keys ----
 
     #[test]
     fn sorted_keys_nil_returns_nil() {
@@ -631,7 +629,7 @@ mod tests {
         assert_eq!(sorted_keys(Some(&b)), Some(vec![1, 2, 3, 4, 5, 6, 9]));
     }
 
-    // ---- sort_and_limit (Go: TestSortAndLimit) ----
+    // ---- sort_and_limit ----
 
     fn descending(a: &i32, b: &i32) -> bool {
         a > b
@@ -680,7 +678,7 @@ mod tests {
         assert_eq!(got, Some(vec![3, 2, 1]));
     }
 
-    // ---- build_lookup_set (Go: TestBuildLookupSet) ----
+    // ---- build_lookup_set ----
 
     #[test]
     fn build_lookup_set_nil_returns_nil() {
@@ -722,7 +720,7 @@ mod tests {
         assert!(got.contains(&"alpha") && got.contains(&"beta"));
     }
 
-    // ---- unique (Go: TestUnique) ----
+    // ---- unique ----
 
     #[test]
     fn unique_nil_returns_nil() {

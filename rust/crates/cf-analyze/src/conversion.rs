@@ -1,18 +1,18 @@
 //! Cross-format conversion hub: the unified model and the format dispatcher.
 //!
-//! Port of `internal/analyzers/analyze/conversion.go`. This is the heart of the
-//! "convert a finished run between machine formats" path. Every machine format
+//! This is the heart of the "convert a finished run between machine formats"
+//! path. Every machine format
 //! routes through the tier-0 encoders (DESIGN §2.3):
 //!
-//! - **json**: indented (`SetIndent("", "  ")`) + trailing `\n` (conversion.go:305).
-//! - **yaml**: yaml.v3-compatible emitter (conversion.go:315).
-//! - **binary**: CFB1 envelope (conversion.go:317).
+//! - **json**: indented (two spaces) + trailing `\n`.
+//! - **yaml**: yaml.v3-compatible emitter.
+//! - **binary**: CFB1 envelope.
 //! - **timeseries / timeseries+ndjson / ndjson**: delegated to
-//!   [`crate::timeseries`] / the compact per-line encoder (conversion.go:323-343).
-//! - **plot**: a registered renderer (cosmetic; conversion.go:329).
+//!   [`crate::timeseries`] / the compact per-line encoder.
+//! - **plot**: a registered renderer (cosmetic).
 //!
 //! [`UnifiedModel`] and [`AnalyzerResult`] are wrapper structs — their fields
-//! serialize in declaration order with the same json/yaml tags as Go, while the
+//! serialize in declaration order with the contract's json/yaml tags, while the
 //! per-analyzer [`crate::Report`] payloads byte-sort as map-origin objects.
 
 use std::io::Write;
@@ -40,21 +40,21 @@ pub const INPUT_FORMAT_AUTO: &str = "auto";
 
 /// Errors raised while converting between formats.
 ///
-/// The variants mirror the Go sentinels (conversion.go:23, 84-93) and their
-/// `Display` reproduces the Go error wording.
+/// The variants mirror the reference sentinels and their
+/// `Display` reproduces the contract error wording (part of the CLI surface).
 #[derive(Debug)]
 pub enum ConversionError {
-    /// `ErrInvalidUnifiedModel` (conversion.go:23): malformed canonical data.
+    /// Malformed canonical unified-model data.
     InvalidUnifiedModel(String),
-    /// `ErrInvalidMixedFormat` (conversion.go:85).
+    /// Invalid format for mixed static+history output.
     InvalidMixedFormat(FormatError),
-    /// `ErrInvalidStaticFormat` (conversion.go:87).
+    /// Invalid format for static output.
     InvalidStaticFormat(FormatError),
-    /// `ErrInvalidHistoryFormat` (conversion.go:89).
+    /// Invalid format for history output.
     InvalidHistoryFormat(FormatError),
-    /// `ErrInvalidInputFormat` (conversion.go:91).
+    /// Invalid input-format hint.
     InvalidInputFormat(String),
-    /// `ErrBinaryEnvelopeCount` (conversion.go:93).
+    /// Unexpected number of binary envelopes.
     BinaryEnvelopeCount {
         /// Expected number of envelopes.
         expected: usize,
@@ -63,7 +63,7 @@ pub enum ConversionError {
     },
     /// The requested output format is unsupported (`ErrUnsupportedFormat`).
     UnsupportedFormat(FormatError),
-    /// A wrapped I/O / encoding failure with the Go-style context prefix.
+    /// A wrapped I/O / encoding failure with a `{step}: {cause}` context prefix.
     Encode(String),
 }
 
@@ -88,7 +88,7 @@ impl std::error::Error for ConversionError {}
 
 /// One analyzer report in canonical converted output.
 ///
-/// Mirrors `AnalyzerResult` (conversion.go:26). Wrapper struct: serialized field
+/// Wrapper struct: serialized field
 /// order `id`, `mode`, `schema` (omitempty), `report`; json and yaml share the
 /// same tags.
 #[derive(Debug, Clone)]
@@ -105,7 +105,7 @@ pub struct AnalyzerResult {
 
 impl AnalyzerResult {
     /// Builds the wrapper [`GoValue`] in declaration order, honoring `omitempty`
-    /// on `schema` (omitted when `None` or empty, matching Go's nil-map
+    /// on `schema` (omitted when `None` or empty, the report contract's nil-map
     /// omitempty).
     #[must_use]
     pub fn to_go_value(&self) -> GoValue {
@@ -122,7 +122,7 @@ impl AnalyzerResult {
     }
 }
 
-/// Converts an [`AnalyzerSchema`] (Go `map[string]FieldMeta`) into a byte-sorted
+/// Converts an [`AnalyzerSchema`] into a byte-sorted
 /// map-origin [`GoValue`]; each [`crate::schema_registry::FieldMeta`] is a
 /// wrapper struct (`type`, `grain,omitempty`, `description,omitempty`).
 fn schema_to_go_value(schema: &AnalyzerSchema) -> GoValue {
@@ -145,7 +145,7 @@ fn schema_to_go_value(schema: &AnalyzerSchema) -> GoValue {
 
 /// The canonical intermediate model for run-output conversion.
 ///
-/// Mirrors `UnifiedModel` (conversion.go:34). Wrapper struct: serialized field
+/// Wrapper struct: serialized field
 /// order `version`, `metadata` (omitempty), `analyzers`.
 #[derive(Debug, Clone)]
 pub struct UnifiedModel {
@@ -175,13 +175,13 @@ impl UnifiedModel {
 
     /// Ensures canonical model constraints are satisfied.
     ///
-    /// Mirrors `Validate` (conversion.go:41): version must equal
-    /// [`UNIFIED_MODEL_VERSION`]; each analyzer must have a non-blank id, a valid
-    /// mode, and a non-nil report (here: a present `Report`, always non-nil).
+    /// The version must equal [`UNIFIED_MODEL_VERSION`]; each analyzer must
+    /// have a non-blank id, a valid mode, and a non-nil report (here: a
+    /// present `Report`, always non-nil).
     ///
     /// # Errors
     /// Returns [`ConversionError::InvalidUnifiedModel`] describing the first
-    /// violation, with wording matching Go's `fmt.Errorf` messages.
+    /// violation; the wording is part of the CLI error contract.
     pub fn validate(&self) -> Result<(), ConversionError> {
         if self.version != UNIFIED_MODEL_VERSION {
             return Err(ConversionError::InvalidUnifiedModel(format!(
@@ -209,7 +209,7 @@ impl UnifiedModel {
 
 /// Parses canonical JSON bytes into a validated [`UnifiedModel`].
 ///
-/// Mirrors `ParseUnifiedModelJSON` (conversion.go:64). Decoding uses
+/// Decoding uses
 /// `serde_json` purely as a *parser* for input (not for output); the resulting
 /// model re-encodes through [`cf_gojson`] for byte-identity (DESIGN §2 — serde is
 /// allowed for decode, never for machine-format encode).
@@ -231,7 +231,7 @@ pub fn parse_unified_model_json(_data: &[u8]) -> Result<UnifiedModel, Conversion
 
 /// Determines the output formats for the static and history phases.
 ///
-/// Mirrors `ResolveFormats` (conversion.go:98). Returns `(static_fmt,
+/// Returns `(static_fmt,
 /// history_fmt)`: both equal to the universal-validated format when both phases
 /// are active; the static-validated format (static phase only); or the
 /// universal-validated format (history phase only). When neither phase is active
@@ -265,9 +265,8 @@ pub fn resolve_formats(
 
 /// Determines the input format from the path and an explicit hint.
 ///
-/// Mirrors `ResolveInputFormat` (conversion.go:143): an empty/`auto` hint uses
-/// the extension (`.bin` → binary, else json); otherwise the normalized hint
-/// must be json or binary.
+/// An empty/`auto` hint uses the extension (`.bin` → binary, else json);
+/// otherwise the normalized hint must be json or binary.
 ///
 /// # Errors
 /// Returns [`ConversionError::InvalidInputFormat`] (carrying the original hint)
@@ -288,7 +287,7 @@ pub fn resolve_input_format(input_path: &str, input_format: &str) -> Result<Stri
     }
 }
 
-/// Case-insensitive extension check, mirroring Go's
+/// Case-insensitive extension check, equivalent to
 /// `strings.EqualFold(filepath.Ext(path), ".bin")`.
 fn has_extension_ignore_ascii_case(path: &str, ext: &str) -> bool {
     match std::path::Path::new(path).extension() {
@@ -305,10 +304,10 @@ fn has_extension_ignore_ascii_case(path: &str, ext: &str) -> bool {
 /// Decodes multiple CFB1 envelopes (each a raw [`crate::Report`] JSON) and pairs
 /// them positionally with `ids`/`modes` to build a [`UnifiedModel`].
 ///
-/// Mirrors `DecodeCombinedBinaryReports` (conversion.go:201). Used by the
+/// Used by the
 /// combined static+history rendering path where each phase serializes its
 /// Reports as separate envelopes. Each payload's report JSON is parsed into a
-/// map-origin [`crate::Report`] via [`crate::json_parse`] (Go
+/// map-origin [`crate::Report`] via [`crate::json_parse`] (the reference decoder uses
 /// `json.Unmarshal(payload, &report)`), the analyzer's schema is looked up via
 /// [`schema_for_analyzer`], and the results are assembled into a
 /// [`UnifiedModel`] with [`UNIFIED_MODEL_VERSION`] and no metadata (the caller
@@ -335,9 +334,9 @@ pub fn decode_combined_binary_reports(
 
     let mut analyzers = Vec::with_capacity(payloads.len());
     for (i, payload) in payloads.iter().enumerate() {
-        // Go: json.Unmarshal(payload, &report) where Report = map[string]any.
+        // The payload decodes into a dynamic string-keyed report map.
         // The parser yields map-origin maps so re-encoding byte-sorts keys
-        // exactly like Go's map[string]any round-trip.
+        // exactly like the reference decoder's dynamic-map round-trip.
         let value = crate::json_parse::parse(payload)
             .map_err(|e| ConversionError::Encode(format!("unmarshal report {i}: {e}")))?;
         let report = match value {
@@ -364,28 +363,31 @@ pub fn decode_combined_binary_reports(
     })
 }
 
+/// A plot renderer callback for [`write_converted_output`]'s `plot` format.
+pub type PlotRenderer = dyn Fn(&UnifiedModel, &mut dyn Write) -> Result<(), ConversionError>;
+
 /// Encodes a [`UnifiedModel`] in `output_format` to `writer`.
 ///
-/// Mirrors `WriteConvertedOutput` (conversion.go:302). Dispatch:
-/// - **json**: indented (`"  "`) + trailing `\n` (conversion.go:305).
-/// - **yaml**: yaml.v3 emitter (conversion.go:315).
-/// - **binary**: CFB1 envelope of the whole model (conversion.go:317).
-/// - **timeseries / timeseries+ndjson**: merged-timeseries writers
-///   (conversion.go:323-326), built from the history reports.
+/// Dispatch:
+/// - **json**: indented (`"  "`) + trailing `\n`.
+/// - **yaml**: yaml.v3 emitter.
+/// - **binary**: CFB1 envelope of the whole model.
+/// - **timeseries / timeseries+ndjson**: merged-timeseries writers, built
+///   from the history reports.
 /// - **ndjson**: one compact line per analyzer result, preceded by a
-///   `{version, metadata}` line when metadata is present (conversion.go:342).
+///   `{version, metadata}` line when metadata is present.
 /// - **plot**: the registered renderer must be supplied via `plot_renderer`.
 ///
 /// # Errors
 /// - [`ConversionError::UnsupportedFormat`] for unknown formats or a missing
-///   plot renderer (matching `ErrUnsupportedFormat: plot renderer not registered`).
-/// - [`ConversionError::Encode`] wrapping a write failure with the Go context
+///   plot renderer (`unsupported format: plot renderer not registered`).
+/// - [`ConversionError::Encode`] wrapping a write failure with the contract's context
 ///   prefix.
 pub fn write_converted_output(
     model: &UnifiedModel,
     output_format: &str,
     writer: &mut dyn Write,
-    plot_renderer: Option<&dyn Fn(&UnifiedModel, &mut dyn Write) -> Result<(), ConversionError>>,
+    plot_renderer: Option<&PlotRenderer>,
 ) -> Result<(), ConversionError> {
     match output_format {
         FORMAT_JSON => {
@@ -426,7 +428,7 @@ pub fn write_converted_output(
 /// Writes one compact JSON line per analyzer result, with a leading
 /// `{version, metadata}` line when metadata is present.
 ///
-/// Mirrors `writeConvertedNDJSON` (conversion.go:342).
+///
 fn write_converted_ndjson(model: &UnifiedModel, writer: &mut dyn Write) -> Result<(), ConversionError> {
     let enc = Encoder::compact().with_trailing_newline(true);
 
@@ -453,7 +455,7 @@ fn write_converted_ndjson(model: &UnifiedModel, writer: &mut dyn Write) -> Resul
 
 /// Builds merged timeseries from the model's history reports and writes it.
 ///
-/// Mirrors `writeConvertedTimeSeries` (conversion.go:369). With no per-commit
+/// With no per-commit
 /// extraction wired at this layer, the commit metadata is derived from the
 /// history reports (`buildOrderedCommitMetaFromReports`); the merged series is
 /// then serialized via [`write_merged_time_series`] or
@@ -463,7 +465,7 @@ fn write_converted_time_series(
     ndjson: bool,
     writer: &mut dyn Write,
 ) -> Result<(), ConversionError> {
-    // Collect history-mode reports (Go filters ar.Mode == ModeHistory).
+    // Collect history-mode reports (filter: ar.mode == history).
     let _history_reports: Vec<&AnalyzerResult> = model
         .analyzers
         .iter()
@@ -487,8 +489,7 @@ fn write_converted_time_series(
 }
 
 /// Attaches the registry schema to an analyzer id, for callers building
-/// [`AnalyzerResult`]s. Mirrors the `SchemaForAnalyzer(ids[i])` calls in
-/// `DecodeCombinedBinaryReports` (conversion.go:224).
+/// [`AnalyzerResult`]s, as [`decode_combined_binary_reports`] does per id.
 #[must_use]
 pub fn schema_for(id: &str) -> Option<AnalyzerSchema> {
     schema_for_analyzer(id)
@@ -765,7 +766,7 @@ mod tests {
     fn decode_combined_binary_reports_builds_model() {
         // Two CFB1 envelopes (static then history) -> one UnifiedModel whose
         // analyzers carry the parsed reports in id/mode order, version set, and
-        // no metadata (the caller stamps it). Mirrors Go DecodeCombinedBinaryReports.
+        // no metadata (the caller stamps it), as in decode_combined_binary_reports.
         let mut input = Vec::new();
         input.extend_from_slice(
             &cf_reportutil::binary::encode_binary_envelope(&GoValue::Map(report(&[(

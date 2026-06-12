@@ -5,27 +5,24 @@
 //! comparing signatures in `O(k)` time, where `k` is the number of hash
 //! functions (typically 128).
 //!
-//! This is a behavior-preserving port of the Go package `pkg/alg/minhash`. It
-//! uses FNV-1a base hashing with per-hash-function seeds mixed via a
+//! Uses FNV-1a base hashing with per-hash-function seeds mixed via a
 //! SplitMix64-derived finalizer to produce `k` independent hash values from a
 //! single base hash computation. The hashing primitives are shared with the
-//! other probabilistic data structures via the [`cf_alg_hashutil`] crate (a
-//! bit-identical port of `pkg/alg/internal/hashutil`), so signatures are
-//! byte-identical to the Go implementation for the same inputs.
+//! other probabilistic data structures via the [`cf_alg_hashutil`] crate, so
+//! signatures are bit-stable for the same inputs (reference-implementation
+//! behavior, pinned by the parity vector below).
 //!
-//! All integer arithmetic uses wrapping operators (via [`cf_alg_hashutil`]) to
-//! reproduce Go's `uint64` overflow semantics exactly. See
+//! All integer arithmetic uses wrapping operators (via [`cf_alg_hashutil`]) so
+//! results are identical in every build profile. See
 //! `specs/rust-rewrite/DESIGN.md` §2.6 for the determinism requirements.
 //!
 //! # Thread safety
 //!
-//! The Go `Signature` guards its minimum slice with a `sync.Mutex` so that
-//! `Add` can be called concurrently on a shared `*Signature`. In Rust,
-//! mutation requires `&mut self`, which the borrow checker proves is exclusive
+//! Mutation requires `&mut self`, which the borrow checker proves is exclusive
 //! at compile time, so no runtime lock is needed for the single-owner case.
 //! Callers that genuinely need to share a signature across threads wrap it in
-//! their own `Mutex`/`RwLock`. The numeric results are identical to the Go
-//! implementation regardless of locking strategy.
+//! their own `Mutex`/`RwLock`. The numeric results are identical regardless of
+//! locking strategy.
 //!
 //! # Examples
 //!
@@ -47,48 +44,33 @@ use std::fmt;
 use cf_alg_hashutil::{fnv64a, generate_seeds, mix_hash, splitmix64};
 
 /// Number of bytes for the `num_hashes` `u32` length prefix in serialization.
-///
-/// Mirrors Go `minhash.HeaderSize`.
 pub const HEADER_SIZE: usize = 4;
 
 /// Number of bytes per `u64` hash value in serialization.
-///
-/// Mirrors Go `minhash.BytesPerHash`.
 pub const BYTES_PER_HASH: usize = 8;
 
 /// Errors returned by [`Signature`] operations.
 ///
-/// These mirror the Go sentinel error values one-for-one, preserving the exact
-/// message strings so error text is byte-identical across the port.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The message strings are part of the CLI/log compatibility contract and
+/// must not change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum MinHashError {
-    /// `num_hashes` was zero. Mirrors Go `ErrZeroNumHashes`.
+    /// `num_hashes` was zero.
+    #[error("minhash: numHashes must be positive")]
     ZeroNumHashes,
-    /// Two signatures being compared/merged have different sizes. Mirrors Go
-    /// `ErrSizeMismatch`.
+    /// Two signatures being compared/merged have different sizes.
+    #[error("minhash: signature sizes do not match")]
     SizeMismatch,
-    /// A nil signature was provided. Mirrors Go `ErrNilSignature`.
+    /// A nil signature was provided.
     ///
-    /// Rust's type system makes "nil" unrepresentable for `&Signature`, so this
-    /// variant exists only for API/parity completeness with the Go sentinel.
+    /// The type system makes "nil" unrepresentable for `&Signature`, so this
+    /// variant exists only to keep the error surface complete.
+    #[error("minhash: signature must not be nil")]
     NilSignature,
-    /// Deserialization input was invalid. Mirrors Go `ErrInvalidData`.
+    /// Deserialization input was invalid.
+    #[error("minhash: invalid serialized data")]
     InvalidData,
 }
-
-impl fmt::Display for MinHashError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let msg = match self {
-            MinHashError::ZeroNumHashes => "minhash: numHashes must be positive",
-            MinHashError::SizeMismatch => "minhash: signature sizes do not match",
-            MinHashError::NilSignature => "minhash: signature must not be nil",
-            MinHashError::InvalidData => "minhash: invalid serialized data",
-        };
-        f.write_str(msg)
-    }
-}
-
-impl std::error::Error for MinHashError {}
 
 /// A MinHash signature for Jaccard similarity estimation.
 ///
@@ -110,9 +92,7 @@ impl Signature {
     ///
     /// # Errors
     ///
-    /// Returns [`MinHashError::ZeroNumHashes`] when `num_hashes == 0`
-    /// (mirroring Go's `numHashes <= 0` guard; negative values are not
-    /// representable in the `usize` parameter).
+    /// Returns [`MinHashError::ZeroNumHashes`] when `num_hashes == 0`.
     pub fn new(num_hashes: usize) -> Result<Self, MinHashError> {
         if num_hashes == 0 {
             return Err(MinHashError::ZeroNumHashes);
@@ -128,8 +108,7 @@ impl Signature {
     ///
     /// The base FNV-1a hash of `token` is mixed with each per-function seed; for
     /// each function the running minimum is lowered if the mixed value is
-    /// smaller. An empty (Go's nil) token is valid and still updates the
-    /// minimums, matching the Go behavior.
+    /// smaller. An empty token is valid and still updates the minimums.
     pub fn add(&mut self, token: &[u8]) {
         let base_hash = fnv64a(token);
         for (min, &seed) in self.mins.iter_mut().zip(self.seeds.iter()) {
@@ -148,8 +127,8 @@ impl Signature {
     ///
     /// Returns [`MinHashError::SizeMismatch`] if the signatures have different
     /// lengths.
-    pub fn similarity(&self, other: &Signature) -> Result<f64, MinHashError> {
-        // Self-comparison shortcut, matching Go's `s == other` identity check.
+    pub fn similarity(&self, other: &Self) -> Result<f64, MinHashError> {
+        // Identity shortcut: a signature is always fully similar to itself.
         if std::ptr::eq(self, other) {
             return Ok(1.0);
         }
@@ -178,8 +157,8 @@ impl Signature {
     ///
     /// Returns [`MinHashError::SizeMismatch`] if the signatures have different
     /// lengths.
-    pub fn merge(&mut self, other: &Signature) -> Result<(), MinHashError> {
-        // Self-merge is a no-op, matching Go's `s == other` identity check.
+    pub fn merge(&mut self, other: &Self) -> Result<(), MinHashError> {
+        // Identity shortcut: self-merge is a no-op.
         if std::ptr::eq(self, other) {
             return Ok(());
         }
@@ -199,14 +178,13 @@ impl Signature {
 
     /// Serializes the signature to a compact binary format.
     ///
-    /// Format: `[num_hashes as u32 big-endian (4 bytes)] + [mins as []u64
-    /// big-endian]`. Mirrors Go `Signature.Bytes` using
-    /// `binary.BigEndian.PutUint32` / `PutUint64`.
+    /// Format (frozen): `[num_hashes as u32 big-endian (4 bytes)] +
+    /// [mins as []u64 big-endian]`.
     #[must_use]
     pub fn bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(HEADER_SIZE + self.mins.len() * BYTES_PER_HASH);
-        // num_hashes as u32 BE. Go casts len to uint32; `as u32` reproduces Go's
-        // truncation, and lengths beyond u32 are not reachable in practice.
+        // num_hashes as u32 BE. The cast truncates by design; lengths beyond
+        // u32 are not reachable in practice.
         data.extend_from_slice(&(self.mins.len() as u32).to_be_bytes());
         for &v in &self.mins {
             data.extend_from_slice(&v.to_be_bytes());
@@ -278,8 +256,8 @@ impl Signature {
     }
 }
 
-// Manual Debug avoids dumping the large min/seed vectors while remaining useful.
-// Not part of the Go API; included for ergonomics.
+// Manual Debug avoids dumping the large min/seed vectors while remaining
+// useful.
 impl fmt::Debug for Signature {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Signature")
@@ -302,7 +280,7 @@ mod tests {
         (a - b).abs() <= delta
     }
 
-    // --- Constructor Tests (ported from TestNew_*) ---
+    // --- Constructor Tests ---
 
     #[test]
     fn test_new_valid_num_hashes() {
@@ -328,7 +306,7 @@ mod tests {
         assert_eq!(sig.len(), 1024);
     }
 
-    // --- Add Tests (ported from TestAdd_*) ---
+    // --- Add Tests ---
 
     #[test]
     fn test_add_single_token() {
@@ -340,7 +318,7 @@ mod tests {
     #[test]
     fn test_add_nil_token() {
         let mut sig = Signature::new(TEST_SMALL_NUM_HASHES).expect("valid");
-        // Adding an empty (Go's nil) token must not panic.
+        // Adding an empty token must not panic.
         sig.add(&[]);
     }
 
@@ -352,7 +330,7 @@ mod tests {
         assert!(!sig.is_empty());
     }
 
-    // --- Similarity Tests (ported from TestSimilarity_*) ---
+    // --- Similarity Tests ---
 
     #[test]
     fn test_similarity_identical() {
@@ -439,14 +417,14 @@ mod tests {
 
     #[test]
     fn test_similarity_self() {
-        // Mirrors Go's `s == other` self-comparison shortcut returning 1.0.
+        // The self-comparison shortcut must return exactly 1.0.
         let mut a = Signature::new(TEST_NUM_HASHES).expect("valid");
         a.add(b"x");
         let sim = a.similarity(&a).expect("ok");
         assert_eq!(sim, 1.0);
     }
 
-    // --- Merge Tests (ported from TestMerge_*) ---
+    // --- Merge Tests ---
 
     #[test]
     fn test_merge_basic() {
@@ -475,11 +453,10 @@ mod tests {
     #[test]
     fn test_merge_idempotent_with_clone() {
         // Merging a signature with a copy of itself must leave it unchanged,
-        // exercising the element-wise-min logic on equal inputs. (Go's literal
-        // `s == other` self-merge no-op cannot be expressed in safe Rust
-        // because it would alias `&mut self` with `&other`; the `ptr::eq` guard
-        // in `merge` covers that exact path, and this asserts the numeric
-        // invariant.)
+        // exercising the element-wise-min logic on equal inputs. (A literal
+        // self-merge cannot be expressed in safe Rust because it would alias
+        // `&mut self` with `&other`; the `ptr::eq` guard in `merge` covers
+        // that exact path, and this asserts the numeric invariant.)
         let mut a = Signature::new(TEST_SMALL_NUM_HASHES).expect("valid");
         a.add(b"x");
         let copy = a.clone();
@@ -488,7 +465,7 @@ mod tests {
         assert_eq!(before, a.bytes());
     }
 
-    // --- Serialization Tests (ported from TestBytes_*/TestFromBytes_*) ---
+    // --- Serialization Tests ---
 
     #[test]
     fn test_bytes_from_bytes_round_trip() {
@@ -531,7 +508,7 @@ mod tests {
         assert_eq!(data.len(), HEADER_SIZE + TEST_NUM_HASHES * BYTES_PER_HASH);
     }
 
-    // --- Reset Tests (ported from TestReset / TestIsEmpty_AfterReset) ---
+    // --- Reset Tests ---
 
     #[test]
     fn test_reset() {
@@ -556,7 +533,7 @@ mod tests {
         }
     }
 
-    // --- Clone Tests (ported from TestClone) ---
+    // --- Clone Tests ---
 
     #[test]
     fn test_clone() {
@@ -572,7 +549,7 @@ mod tests {
         assert!(sim2 < 1.0, "clone should be independent, sim2 = {sim2}");
     }
 
-    // --- IsEmpty Tests (ported from TestIsEmpty_*) ---
+    // --- IsEmpty Tests ---
 
     #[test]
     fn test_is_empty_new() {
@@ -587,7 +564,7 @@ mod tests {
         assert!(!sig.is_empty());
     }
 
-    // --- Determinism Tests (ported from TestDeterministic / TestSeedGeneration_Deterministic) ---
+    // --- Determinism Tests ---
 
     #[test]
     fn test_deterministic() {
@@ -611,7 +588,7 @@ mod tests {
         assert!(approx(1.0, sim, 0.001), "deterministic seeds sim = {sim}");
     }
 
-    // --- Len Tests (ported from TestLen) ---
+    // --- Len Tests ---
 
     #[test]
     fn test_len() {
@@ -619,7 +596,7 @@ mod tests {
         assert_eq!(sig.len(), TEST_NUM_HASHES);
     }
 
-    // --- Accuracy Tests (ported from TestAccuracy_KnownJaccard) ---
+    // --- Accuracy Tests ---
 
     #[test]
     fn test_accuracy_known_jaccard() {
@@ -644,18 +621,18 @@ mod tests {
 
     // --- Byte-parity fixed vector ---
     //
-    // The expected bytes below were captured from the real Go implementation
-    // (`minhash.New(8)` then Add("a"),Add("b"),Add("c"),Add("d")), confirming
-    // the seed sequence + FNV-1a + mix pipeline + big-endian serialization are
-    // byte-identical to Go. See the crate notes for how these were generated.
+    // The expected bytes below were captured from the reference implementation
+    // (an 8-hash signature after adding "a", "b", "c", "d"), confirming the
+    // seed sequence + FNV-1a + mix pipeline + big-endian serialization are
+    // bit-exact.
     #[test]
-    fn test_go_parity_fixed_vector() {
+    fn test_reference_parity_fixed_vector() {
         let mut sig = Signature::new(8).expect("valid");
         for tok in ["a", "b", "c", "d"] {
             sig.add(tok.as_bytes());
         }
         let expected_hex = "000000082b6f8f5c860519cf663c8930b083847b2879c5e3f62f41d6113d66bba91cae1234667cd1f127248875599e283ca0811f423a92627a434a9915d10f7d0fc711cd";
         let got_hex: String = sig.bytes().iter().map(|b| format!("{b:02x}")).collect();
-        assert_eq!(got_hex, expected_hex, "Go-parity byte vector mismatch");
+        assert_eq!(got_hex, expected_hex, "parity byte vector mismatch");
     }
 }

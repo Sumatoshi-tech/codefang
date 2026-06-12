@@ -1,9 +1,8 @@
 //! Cache operations: lookups, insertion, batch ops, clearing, and the
 //! intrusive-list / eviction internals.
 //!
-//! This is the Rust port of the Go `ops.go` file. Each public method mirrors
-//! its Go counterpart one-to-one; the private helpers reproduce the linked-list
-//! and eviction logic over the index-based slab (see [`crate::Inner`]).
+//! The private helpers implement the linked-list and eviction logic over the
+//! index-based slab (see [`crate::Inner`]).
 
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -20,8 +19,6 @@ where
     /// access count is incremented. If a Bloom filter is configured, definite
     /// misses are short-circuited without acquiring the main lock. Returns
     /// [`None`] (and records a miss) when the key is absent.
-    ///
-    /// Mirrors Go's `Get`, which returns `(V, bool)`.
     pub fn get(&self, key: &K) -> Option<V>
     where
         V: Clone,
@@ -58,8 +55,6 @@ where
     ///
     /// If the value exceeds the maximum cache size it is silently skipped. When
     /// a clone function is configured the value is cloned before insertion.
-    ///
-    /// Mirrors Go's `Put`.
     pub fn put(&self, key: K, value: V) {
         let val_size = self.value_size(&value);
 
@@ -75,8 +70,6 @@ where
     }
 
     /// Inserts or updates an entry under the write lock.
-    ///
-    /// Mirrors Go's `putLocked`.
     fn put_locked(&self, inner: &mut Inner<K, V>, key: K, value: V, val_size: i64) {
         // Update existing entry.
         if let Some(&idx) = inner.index.get(&key) {
@@ -125,8 +118,6 @@ where
     /// Returns a map of found key-value pairs and a vector of missing keys. When
     /// a Bloom filter is configured, definite misses are partitioned out before
     /// the main lock is taken.
-    ///
-    /// Mirrors Go's `GetMulti`, which returns `(map[K]V, []K)`.
     #[must_use]
     pub fn get_multi(&self, keys: &[K]) -> (HashMap<K, V>, Vec<K>)
     where
@@ -163,8 +154,8 @@ where
     /// Adds multiple key-value pairs to the cache using a single lock
     /// acquisition for the entire batch.
     ///
-    /// Mirrors Go's `PutMulti`. Iteration order over `items` is unspecified, as
-    /// in Go's map range.
+    /// Iteration order over `items` is unspecified (it follows the map's
+    /// internal order).
     pub fn put_multi(&self, items: HashMap<K, V>) {
         let mut inner = self.write_inner();
 
@@ -185,8 +176,6 @@ where
     /// The caller guarantees the values are exclusively owned and safe to store
     /// directly, avoiding the clone cost when values have already been detached
     /// from shared memory.
-    ///
-    /// Mirrors Go's `PutMultiOwned`.
     pub fn put_multi_owned(&self, items: HashMap<K, V>) {
         let mut inner = self.write_inner();
 
@@ -202,8 +191,6 @@ where
     }
 
     /// Removes all entries and resets the Bloom filter.
-    ///
-    /// Mirrors Go's `Clear`.
     pub fn clear(&self) {
         let mut inner = self.write_inner();
 
@@ -220,10 +207,10 @@ where
         }
     }
 
-    // --- private helpers (port of the unexported Go methods) ---
+    // --- private helpers ---
 
     /// Returns the size of a value using the configured size function, or 1 if
-    /// none is configured. Mirrors Go's `valueSize`.
+    /// none is configured.
     fn value_size(&self, value: &V) -> i64 {
         match &self.size_func {
             Some(f) => f(value),
@@ -232,7 +219,7 @@ where
     }
 
     /// Clones `value` via the configured clone function, or returns it
-    /// unchanged. Mirrors the inline `if c.cloneFunc != nil` checks in Go.
+    /// unchanged.
     fn maybe_clone(&self, value: V) -> V {
         match &self.clone_func {
             Some(f) => f(&value),
@@ -252,9 +239,9 @@ where
         f(key)
     }
 
-    /// Separates keys into Bloom-positive candidates and definite misses.
-    /// Without a Bloom filter, all keys are candidates. Mirrors Go's
-    /// `bloomPartition` (the `missing` out-parameter becomes a `&mut Vec`).
+    /// Separates keys into Bloom-positive candidates and definite misses,
+    /// appending the misses to `missing`. Without a Bloom filter, all keys are
+    /// candidates.
     fn bloom_partition(&self, keys: &[K], missing: &mut Vec<K>) -> Vec<K> {
         let Some(filter_lock) = &self.filter else {
             return keys.to_vec();
@@ -276,7 +263,7 @@ where
         candidates
     }
 
-    /// Removes entries until the new value fits. Mirrors Go's `evictUntilFits`.
+    /// Removes entries until the new value fits.
     fn evict_until_fits(&self, inner: &mut Inner<K, V>, val_size: i64) {
         // Count-based eviction.
         while self.max_entries > 0
@@ -295,8 +282,7 @@ where
         }
     }
 
-    /// Removes one entry using cost-based sampling or simple LRU. Mirrors Go's
-    /// `evictOne`.
+    /// Removes one entry using cost-based sampling or simple LRU.
     fn evict_one(&self, inner: &mut Inner<K, V>) {
         if self.cost_func.is_some() && self.sample_size > 0 {
             self.evict_lowest_cost(inner);
@@ -306,7 +292,7 @@ where
         Self::evict_tail(inner);
     }
 
-    /// Removes the least recently used entry. Mirrors Go's `evictTail`.
+    /// Removes the least recently used entry.
     fn evict_tail(inner: &mut Inner<K, V>) {
         if inner.tail == NIL {
             return;
@@ -319,8 +305,7 @@ where
         inner.cur_size -= entry.size;
     }
 
-    /// Samples entries from the tail and evicts the lowest-cost one. Mirrors
-    /// Go's `evictLowestCost`.
+    /// Samples entries from the tail and evicts the lowest-cost one.
     fn evict_lowest_cost(&self, inner: &mut Inner<K, V>) {
         if inner.tail == NIL {
             return;
@@ -360,7 +345,7 @@ where
         inner.cur_size -= entry.size;
     }
 
-    /// Moves an entry to the head of the LRU list. Mirrors Go's `moveToFront`.
+    /// Moves an entry to the head of the LRU list.
     fn move_to_front(inner: &mut Inner<K, V>, idx: usize) {
         if idx == inner.head {
             return;
@@ -370,7 +355,7 @@ where
         Self::add_to_front(inner, idx);
     }
 
-    /// Adds an entry at the head of the LRU list. Mirrors Go's `addToFront`.
+    /// Adds an entry at the head of the LRU list.
     fn add_to_front(inner: &mut Inner<K, V>, idx: usize) {
         let old_head = inner.head;
 
@@ -391,7 +376,7 @@ where
         }
     }
 
-    /// Removes an entry from the LRU list. Mirrors Go's `removeFromList`.
+    /// Removes an entry from the LRU list.
     fn remove_from_list(inner: &mut Inner<K, V>, idx: usize) {
         let (prev, next) = {
             let ent = inner.entry(idx);

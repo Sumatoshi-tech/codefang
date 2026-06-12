@@ -1,15 +1,14 @@
-//! Configuration-option description types used to build CLI flags
-//! (`options.go`).
+//! Configuration-option description types used to build CLI flags.
 //!
-//! `cf-commands` iterates each analyzer's configuration options to register one
-//! clap flag per option, so the option's name, default, help text, and rendered
-//! type/default strings must match the Go originals byte-for-byte to keep the
-//! CLI golden (DESIGN §4.1) clean.
+//! `cf-commands` iterates each analyzer's configuration options to register
+//! one clap flag per option, so the option's name, default, help text, and
+//! rendered type/default strings are byte-frozen (CLI compatibility contract;
+//! the CLI golden of DESIGN §4.1 pins them).
 
 /// The possible types of a [`ConfigurationOption`]'s value.
 ///
-/// The discriminant order mirrors Go's `iota` declaration order so that any
-/// numeric persistence (e.g. config dumps) round-trips identically.
+/// The discriminant order is frozen so that any numeric persistence (e.g.
+/// config dumps) round-trips identically.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ConfigurationOptionType {
     /// Boolean value type.
@@ -27,34 +26,33 @@ pub enum ConfigurationOptionType {
 }
 
 impl ConfigurationOptionType {
-    /// Returns the integer discriminant matching Go's `iota` ordering
+    /// Returns the frozen integer discriminant
     /// (`Bool=0`, `Int=1`, `String=2`, `Float=3`, `Strings=4`, `Path=5`).
     #[must_use]
-    pub fn discriminant(self) -> i64 {
+    pub const fn discriminant(self) -> i64 {
         match self {
-            ConfigurationOptionType::Bool => 0,
-            ConfigurationOptionType::Int => 1,
-            ConfigurationOptionType::String => 2,
-            ConfigurationOptionType::Float => 3,
-            ConfigurationOptionType::Strings => 4,
-            ConfigurationOptionType::Path => 5,
+            Self::Bool => 0,
+            Self::Int => 1,
+            Self::String => 2,
+            Self::Float => 3,
+            Self::Strings => 4,
+            Self::Path => 5,
         }
     }
 }
 
 impl std::fmt::Display for ConfigurationOptionType {
-    /// Reproduces Go's `ConfigurationOptionType.String()`: an empty string for
-    /// the boolean type, `"int"` for integers, `"string"` for strings and
-    /// string-slices, `"float"` for floats, and `"path"` for paths. Used in the
-    /// CLI to show the argument's type.
+    /// Renders the CLI-facing type name (byte-frozen contract): an empty
+    /// string for the boolean type, `"int"` for integers, `"string"` for
+    /// strings and string-slices, `"float"` for floats, and `"path"` for
+    /// paths. Used in the CLI to show the argument's type.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            ConfigurationOptionType::Bool => "",
-            ConfigurationOptionType::Int => "int",
-            ConfigurationOptionType::String => "string",
-            ConfigurationOptionType::Float => "float",
-            ConfigurationOptionType::Strings => "string",
-            ConfigurationOptionType::Path => "path",
+            Self::Bool => "",
+            Self::Int => "int",
+            Self::String | Self::Strings => "string",
+            Self::Float => "float",
+            Self::Path => "path",
         };
         f.write_str(s)
     }
@@ -62,29 +60,27 @@ impl std::fmt::Display for ConfigurationOptionType {
 
 /// The default value carried by a [`ConfigurationOption`].
 ///
-/// Go stores the default as `any`; the variants here cover every value
-/// `FormatDefault` and the CLI flag registration can encounter (Bool / Int /
-/// String / Float / Strings / Path). [`DefaultValue::format`] reproduces the
-/// `fmt.Sprint` / `fmt.Sprintf("%q", ...)` rendering that Go uses.
+/// The variants cover every value [`ConfigurationOption::format_default`] and
+/// the CLI flag registration can encounter (Bool / Int / String / Float /
+/// Strings / Path). The rendering of each variant is byte-frozen (CLI
+/// compatibility contract).
 #[derive(Debug, Clone, PartialEq)]
 pub enum DefaultValue {
-    /// Boolean default (`fmt.Sprint` → `true` / `false`).
+    /// Boolean default (rendered `true` / `false`).
     Bool(bool),
-    /// Integer default (`fmt.Sprint` → decimal).
+    /// Integer default (rendered as decimal).
     Int(i64),
-    /// String default (`fmt.Sprintf("%q", ...)` → Go-quoted).
+    /// String default (rendered double-quoted with escapes).
     String(String),
-    /// Float default (`fmt.Sprint` → Go's `%v` float rendering).
+    /// Float default (shortest-form float rendering).
     Float(f64),
-    /// String-slice default (joined with `,` then `%q`-quoted).
+    /// String-slice default (joined with `,` then double-quoted).
     Strings(Vec<String>),
-    /// Path default (rendered like a string via `fmt.Sprint`).
+    /// Path default (rendered like a plain string).
     Path(String),
 }
 
 /// Allows for the unified, retrospective way to set up pipeline items.
-///
-/// Field set mirrors Go's `ConfigurationOption` struct.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConfigurationOption {
     /// The initial value of the configuration option.
@@ -100,17 +96,15 @@ pub struct ConfigurationOption {
 }
 
 impl ConfigurationOption {
-    /// Converts the default value to a string for CLI display.
+    /// Converts the default value to a string for CLI display (byte-frozen
+    /// contract):
     ///
-    /// Reproduces Go's `ConfigurationOption.FormatDefault`:
-    ///
-    /// - `StringsConfigurationOption` → `fmt.Sprintf("%q", strings.Join(slice, ","))`
-    ///   (the joined, comma-separated values, Go-double-quoted). If the stored
-    ///   default is not actually a string slice, Go falls back to
-    ///   `fmt.Sprint(default)`; that fallback cannot occur here because the type
-    ///   tag and the value variant are coupled.
-    /// - `StringConfigurationOption` → `fmt.Sprintf("%q", default)` (Go-quoted).
-    /// - everything else → `fmt.Sprint(default)`.
+    /// - `Strings` → the comma-joined values, double-quoted. A stored default
+    ///   that is not actually a string slice would fall back to the plain
+    ///   rendering; that cannot occur here because the type tag and the value
+    ///   variant are coupled, but the fallback is kept for exactness.
+    /// - `String` → double-quoted with escapes.
+    /// - everything else → plain rendering.
     #[must_use]
     pub fn format_default(&self) -> String {
         if self.option_type == ConfigurationOptionType::Strings {
@@ -126,9 +120,9 @@ impl ConfigurationOption {
             return go_sprint(&self.default);
         }
 
-        // String option: %q-quote the default. For a non-string default Go
-        // would call `fmt.Sprintf("%q", v)` on a non-string, but our typed
-        // variant guarantees a string here in practice; handle defensively.
+        // String option: double-quote the default. The typed variant
+        // guarantees a string here in practice; handle a mismatched variant
+        // defensively with the plain rendering.
         match &self.default {
             DefaultValue::String(s) | DefaultValue::Path(s) => go_quote(s),
             other => go_sprint(other),
@@ -136,7 +130,8 @@ impl ConfigurationOption {
     }
 }
 
-/// Reproduces Go's `fmt.Sprint(v)` for the default-value variants we carry.
+/// Plain (unquoted) rendering of a default value — the reference CLI's
+/// display format (byte-frozen; e.g. a string slice renders as `[a b c]`).
 fn go_sprint(v: &DefaultValue) -> String {
     match v {
         DefaultValue::Bool(b) => {
@@ -149,7 +144,7 @@ fn go_sprint(v: &DefaultValue) -> String {
         DefaultValue::Int(i) => i.to_string(),
         DefaultValue::String(s) | DefaultValue::Path(s) => s.clone(),
         DefaultValue::Float(fl) => go_float_v(*fl),
-        // `fmt.Sprint` on a []string prints `[a b c]` (space-separated, bracketed).
+        // A string slice prints `[a b c]` (space-separated, bracketed).
         DefaultValue::Strings(items) => {
             let mut out = String::from("[");
             for (i, item) in items.iter().enumerate() {
@@ -164,15 +159,16 @@ fn go_sprint(v: &DefaultValue) -> String {
     }
 }
 
-/// Reproduces Go's `fmt.Sprintf("%q", s)` — a Go double-quoted string literal.
-///
-/// Go's `%q` quotes with `strconv.Quote`: wrap in double quotes, escape `"` and
-/// `\`, render `\a \b \f \n \r \t \v` shortcuts, escape other non-printable /
-/// control bytes as `\xNN` / `\uNNNN` / `\UNNNNNNNN`. For the CLI-default
-/// strings this package handles (flag/identifier-like values), the common cases
-/// are plain ASCII; the escapes below cover the standard control set so the
-/// output matches `strconv.Quote` for typical defaults.
+/// Double-quoted string rendering — the reference CLI's quoted-literal format
+/// (byte-frozen): wrap in double quotes, escape `"` and `\`, render the
+/// `\a \b \f \n \r \t \v` shortcuts, and escape other control bytes as
+/// `\xNN`. For the CLI-default strings this package handles
+/// (flag/identifier-like values), the common cases are plain ASCII; the
+/// escapes below cover the standard control set so the output matches the
+/// reference renderer for typical defaults.
 fn go_quote(s: &str) -> String {
+    use std::fmt::Write as _;
+
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
     for ch in s.chars() {
@@ -187,7 +183,8 @@ fn go_quote(s: &str) -> String {
             '\t' => out.push_str("\\t"),
             '\u{000B}' => out.push_str("\\v"),
             c if (c as u32) < 0x20 => {
-                out.push_str(&format!("\\x{:02x}", c as u32));
+                // Writing to a String cannot fail.
+                let _ = write!(out, "\\x{:02x}", c as u32);
             }
             c => out.push(c),
         }
@@ -196,18 +193,18 @@ fn go_quote(s: &str) -> String {
     out
 }
 
-/// Reproduces Go's default float rendering for `fmt.Sprint`/`%v`, which uses
-/// `strconv.FormatFloat(f, 'g', -1, 64)` shortest form. For the integer-valued
-/// and simple defaults used in CLI options this matches Go; arbitrary-precision
-/// `'g'` parity with Go is the concern of `cf-gojson` (out of scope for this
-/// crate, which never emits machine bytes).
+/// Shortest-form float rendering — the reference CLI's display format for
+/// float defaults. For the integer-valued and simple defaults used in CLI
+/// options this matches the reference renderer exactly; full
+/// arbitrary-precision shortest-form parity is the concern of `cf-gojson`
+/// (out of scope for this crate, which never emits machine bytes).
 fn go_float_v(f: f64) -> String {
     if f == f.trunc() && f.is_finite() && f.abs() < 1e21 {
-        // Integer-valued: Go's %v prints without a decimal point (e.g. `0`, `1`).
+        // Integer-valued floats print without a decimal point (e.g. `0`, `1`).
         format!("{}", f as i64)
     } else {
         let mut s = format!("{f}");
-        // Rust prints `inf`/`-inf`/`NaN`; Go prints `+Inf`/`-Inf`/`NaN`.
+        // Rust prints `inf`/`-inf`; the reference format is `+Inf`/`-Inf`.
         if s == "inf" {
             s = "+Inf".to_string();
         } else if s == "-inf" {
@@ -224,7 +221,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn type_string_matches_go() {
+    fn type_string_matches_reference() {
         assert_eq!(ConfigurationOptionType::Bool.to_string(), "");
         assert_eq!(ConfigurationOptionType::Int.to_string(), "int");
         assert_eq!(ConfigurationOptionType::String.to_string(), "string");
@@ -279,7 +276,7 @@ mod tests {
 
     #[test]
     fn format_default_string_is_quoted() {
-        // Go: fmt.Sprintf("%q", "json") => "\"json\""
+        // Reference rendering: fmt.Sprintf("%q", "json") => "\"json\""
         assert_eq!(
             opt(
                 ConfigurationOptionType::String,
@@ -313,7 +310,7 @@ mod tests {
 
     #[test]
     fn format_default_strings_joined_and_quoted() {
-        // Go: fmt.Sprintf("%q", strings.Join([]string{"a","b"}, ",")) => "\"a,b\""
+        // Reference rendering: fmt.Sprintf("%q", strings.Join([]string{"a","b"}, ",")) => "\"a,b\""
         assert_eq!(
             opt(
                 ConfigurationOptionType::Strings,
@@ -335,7 +332,7 @@ mod tests {
 
     #[test]
     fn format_default_float() {
-        // Integer-valued float prints without a point, like Go's %v.
+        // Integer-valued float prints without a point.
         assert_eq!(
             opt(ConfigurationOptionType::Float, DefaultValue::Float(0.0)).format_default(),
             "0"
@@ -348,7 +345,7 @@ mod tests {
 
     #[test]
     fn format_default_path() {
-        // Path is not StringConfigurationOption, so fmt.Sprint (unquoted).
+        // Path is not the String option type, so the plain (unquoted) rendering.
         assert_eq!(
             opt(
                 ConfigurationOptionType::Path,

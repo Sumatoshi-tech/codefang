@@ -1,14 +1,14 @@
 //! `BaseHistoryAnalyzer` — embeddable default `HistoryAnalyzer` implementation.
 //!
-//! Port of `internal/analyzers/analyze/base_history.go`. Concrete analyzers embed
+//! Concrete analyzers embed
 //! this to avoid boilerplate. The serialization paths route through
 //! [`cf_gojson`] / [`cf_goyaml`] / [`cf_reportutil`] so JSON/YAML/binary output
 //! stays byte-identical (DESIGN §2.3): JSON uses `json.Marshal` semantics
-//! (compact, HTML-escape on, **no** trailing newline — the Go base uses
+//! (compact, HTML-escape on, **no** trailing newline — the reference base uses
 //! `json.Marshal`, not an `Encoder`), YAML uses the yaml.v3-compatible emitter,
 //! and Binary uses the CFB1 envelope.
 //!
-//! Go's structural-typing `metricsSerializer` (ToJSON/ToYAML) is expressed as the
+//! The structural `metricsSerializer` contract (ToJSON/ToYAML) is expressed as the
 //! [`MetricsSerializer`] trait; metrics implementing it provide a format-specific
 //! [`cf_gojson::GoValue`], otherwise the metrics' own value is used.
 
@@ -22,10 +22,21 @@ use crate::formats::{FormatError, FORMAT_BINARY, FORMAT_JSON, FORMAT_PLOT, FORMA
 use crate::history::AnalyzerError;
 use crate::tc::Tick;
 
-/// `ErrMissingComputeMetrics` (base_history.go:18).
+/// Sentinel error text: no `compute_metrics_fn` hook is set.
 pub const ERR_MISSING_COMPUTE_METRICS: &str = "missing ComputeMetricsFn hook";
 
-/// The Go `metricsSerializer` structural interface (base_history.go:23).
+/// Hook: converts a report to typed metrics.
+pub type ComputeMetricsFn<M> =
+    Box<dyn Fn(&crate::analyzer::Report) -> Result<M, AnalyzerError> + Send + Sync>;
+/// Hook: converts aggregated ticks to a report.
+pub type TicksToReportFn = Box<dyn Fn(&[Tick]) -> crate::analyzer::Report + Send + Sync>;
+/// Hook: creates a per-analyzer aggregator.
+pub type AggregatorFn = Box<dyn Fn(AggregatorOptions) -> Box<dyn Aggregator> + Send + Sync>;
+/// Hook: custom report serializer (text/plot paths).
+pub type SerializeReportFn =
+    Box<dyn Fn(&crate::analyzer::Report, &mut dyn Write) -> Result<(), AnalyzerError> + Send + Sync>;
+
+/// Serialization hooks for computed metrics.
 ///
 /// Metrics types that need a different shape for JSON vs YAML implement this; the
 /// returned [`cf_gojson::GoValue`] is what gets serialized. Metrics that don't
@@ -40,8 +51,7 @@ pub trait MetricsSerializer {
 /// A complete default implementation for the history-analyzer + parallelizable
 /// contracts, intended to be embedded by concrete analyzers.
 ///
-/// Mirrors `BaseHistoryAnalyzer[M]` (base_history.go:33). The generic `M` is the
-/// metrics type; the [`compute_metrics_fn`](Self::compute_metrics_fn) hook turns
+/// The generic `M` is the metrics type; the [`compute_metrics_fn`](Self::compute_metrics_fn) hook turns
 /// a [`Report`] into `M` and `M` must produce a serializable
 /// [`cf_gojson::GoValue`] via [`to_go_value`](Self::to_go_value) (the default) or
 /// a [`MetricsSerializer`] impl.
@@ -62,16 +72,16 @@ pub struct BaseHistoryAnalyzer<M> {
     // Hooks.
     /// Converts a report to typed metrics (`ComputeMetricsFn`). `None` ⇒
     /// [`ERR_MISSING_COMPUTE_METRICS`].
-    pub compute_metrics_fn: Option<Box<dyn Fn(&crate::analyzer::Report) -> Result<M, AnalyzerError> + Send + Sync>>,
+    pub compute_metrics_fn: Option<ComputeMetricsFn<M>>,
     /// Converts aggregated ticks to a report (`TicksToReportFn`).
-    pub ticks_to_report_fn: Option<Box<dyn Fn(&[Tick]) -> crate::analyzer::Report + Send + Sync>>,
+    pub ticks_to_report_fn: Option<TicksToReportFn>,
     /// Aggregator factory (`AggregatorFn`).
-    pub aggregator_fn: Option<Box<dyn Fn(AggregatorOptions) -> Box<dyn Aggregator> + Send + Sync>>,
+    pub aggregator_fn: Option<AggregatorFn>,
 
     /// Custom text serializer (`SerializeTextFn`).
-    pub serialize_text_fn: Option<Box<dyn Fn(&crate::analyzer::Report, &mut dyn Write) -> Result<(), AnalyzerError> + Send + Sync>>,
+    pub serialize_text_fn: Option<SerializeReportFn>,
     /// Custom plot serializer (`SerializePlotFn`).
-    pub serialize_plot_fn: Option<Box<dyn Fn(&crate::analyzer::Report, &mut dyn Write) -> Result<(), AnalyzerError> + Send + Sync>>,
+    pub serialize_plot_fn: Option<SerializeReportFn>,
 
     /// How to turn an `M` into a serializable value. Set by the constructor; the
     /// Rust analogue of "the metrics value is itself JSON-serializable".
@@ -103,7 +113,7 @@ impl<M> BaseHistoryAnalyzer<M> {
         }
     }
 
-    /// The analyzer name (descriptor ID). Mirrors `Name` (base_history.go:54).
+    /// The analyzer name (descriptor ID).
     #[must_use]
     pub fn name(&self) -> String {
         self.desc.id.clone()
@@ -111,7 +121,7 @@ impl<M> BaseHistoryAnalyzer<M> {
 
     /// The CLI flag — the part after `history/`, else the whole ID.
     ///
-    /// Mirrors `Flag` (base_history.go:59).
+    ///
     #[must_use]
     pub fn flag(&self) -> String {
         match self.desc.id.split_once('/') {
@@ -120,49 +130,49 @@ impl<M> BaseHistoryAnalyzer<M> {
         }
     }
 
-    /// The analyzer description. Mirrors `Description` (base_history.go:69).
+    /// The analyzer description.
     #[must_use]
     pub fn description(&self) -> String {
         self.desc.description.clone()
     }
 
-    /// Stable descriptor. Mirrors `Descriptor` (base_history.go:74).
+    /// Stable descriptor.
     #[must_use]
     pub fn descriptor(&self) -> Descriptor {
         self.desc.clone()
     }
 
-    /// True if the analyzer cannot be parallelized. Mirrors `SequentialOnly`.
+    /// True if the analyzer cannot be parallelized.
     #[must_use]
-    pub fn sequential_only(&self) -> bool {
+    pub const fn sequential_only(&self) -> bool {
         self.sequential
     }
 
-    /// True if `consume` is CPU-intensive. Mirrors `CPUHeavy`.
+    /// True if `consume` is CPU-intensive.
     #[must_use]
-    pub fn cpu_heavy(&self) -> bool {
+    pub const fn cpu_heavy(&self) -> bool {
         self.cpu_heavy_flag
     }
 
-    /// Estimated working-state bytes. Mirrors `WorkingStateSize`.
+    /// Estimated working-state bytes.
     #[must_use]
-    pub fn working_state_size(&self) -> i64 {
+    pub const fn working_state_size(&self) -> i64 {
         self.estimated_state_size
     }
 
-    /// Estimated per-commit TC payload bytes. Mirrors `AvgTCSize`.
+    /// Estimated per-commit TC payload bytes.
     #[must_use]
-    pub fn avg_tc_size(&self) -> i64 {
+    pub const fn avg_tc_size(&self) -> i64 {
         self.estimated_tc_size
     }
 
-    /// Configurable options. Mirrors `ListConfigurationOptions`.
+    /// Configurable options.
     #[must_use]
     pub fn list_configuration_options(&self) -> Vec<ConfigurationOption> {
         self.config_options.clone()
     }
 
-    /// Default no-op configure. Mirrors `Configure` (base_history.go:104).
+    /// Default no-op configure.
     ///
     /// # Errors
     /// Never returns an error in the base implementation.
@@ -170,15 +180,13 @@ impl<M> BaseHistoryAnalyzer<M> {
         Ok(())
     }
 
-    /// Creates an aggregator via the hook, or `None`. Mirrors `NewAggregator`
-    /// (base_history.go:112).
+    /// Creates an aggregator via the hook, or `None`.
     #[must_use]
     pub fn new_aggregator(&self, opts: AggregatorOptions) -> Option<Box<dyn Aggregator>> {
         self.aggregator_fn.as_ref().map(|f| f(opts))
     }
 
-    /// Serializes a finalized report in `format`. Mirrors `Serialize`
-    /// (base_history.go:133).
+    /// Serializes a finalized report in `format`.
     ///
     /// Custom text/plot hooks take priority; otherwise `compute_metrics_fn`
     /// produces the metrics and they are written via JSON/YAML/Binary.
@@ -212,8 +220,7 @@ impl<M> BaseHistoryAnalyzer<M> {
         self.write_metrics_to_format(&metrics, format, writer)
     }
 
-    /// Encodes metrics in `format`. Mirrors `writeMetricsToFormat`
-    /// (base_history.go:156).
+    /// Encodes metrics in `format`.
     fn write_metrics_to_format(
         &self,
         metrics: &M,
@@ -252,7 +259,7 @@ impl<M> BaseHistoryAnalyzer<M> {
 
     /// Serializes from aggregated ticks via the report hook, then [`serialize`].
     ///
-    /// Mirrors `SerializeTICKs` (base_history.go:194).
+    ///
     ///
     /// # Errors
     /// [`AnalyzerError::NotImplemented`] when no `ticks_to_report_fn` is set, or
@@ -270,8 +277,7 @@ impl<M> BaseHistoryAnalyzer<M> {
         self.serialize(&report, format, writer)
     }
 
-    /// Converts aggregated ticks into a report. Mirrors `ReportFromTICKs`
-    /// (base_history.go:205).
+    /// Converts aggregated ticks into a report.
     ///
     /// # Errors
     /// [`AnalyzerError::NotImplemented`] when no `ticks_to_report_fn` is set.
@@ -282,16 +288,16 @@ impl<M> BaseHistoryAnalyzer<M> {
         }
     }
 
-    /// Default no-op plumbing snapshot. Mirrors `SnapshotPlumbing`.
+    /// Default no-op plumbing snapshot.
     #[must_use]
     pub fn snapshot_plumbing(&self) -> crate::history::PlumbingSnapshot {
         None
     }
 
-    /// Default no-op snapshot apply. Mirrors `ApplySnapshot`.
+    /// Default no-op snapshot apply.
     pub fn apply_snapshot(&self, _snapshot: crate::history::PlumbingSnapshot) {}
 
-    /// Default no-op snapshot release. Mirrors `ReleaseSnapshot`.
+    /// Default no-op snapshot release.
     pub fn release_snapshot(&self, _snapshot: crate::history::PlumbingSnapshot) {}
 }
 
@@ -330,7 +336,7 @@ mod tests {
         })
     }
 
-    /// Zero-value descriptor for tests (Go's zero `Descriptor{}`: empty id /
+    /// Zero-value descriptor for tests (empty id /
     /// description, default `static` mode).
     fn dummy_descriptor() -> Descriptor {
         Descriptor {

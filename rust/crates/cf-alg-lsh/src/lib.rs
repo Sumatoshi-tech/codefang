@@ -10,14 +10,13 @@
 //! inserted/queried signature. A higher `num_bands` lowers the similarity
 //! threshold for candidate retrieval.
 //!
-//! This is a behavior-preserving port of the Go package `pkg/alg/lsh`
-//! (`pkg/alg/lsh/lsh.go`). Determinism is exact: each band hash is computed with
-//! FNV-1a (64-bit) — identical to Go's `hash/fnv.New64a()` via
-//! [`cf_alg_hashutil::fnv64a`] — over the band index (8 bytes, big-endian, for
-//! domain separation) followed by that band's slice of the signature's
-//! big-endian serialized minimums (skipping the 4-byte header). Because both the
-//! signature bytes ([`cf_alg_minhash`]) and the FNV hashing are bit-identical to
-//! Go, candidate sets are reproducible across runs and platforms.
+//! Determinism is exact: each band hash is computed with FNV-1a (64-bit, as
+//! in [`cf_alg_hashutil::fnv64a`]) over the band index (8 bytes, big-endian,
+//! for domain separation) followed by that band's slice of the signature's
+//! big-endian serialized minimums (skipping the 4-byte header). Because both
+//! the signature bytes ([`cf_alg_minhash`]) and the FNV hashing are
+//! bit-stable, candidate sets are reproducible across runs and platforms
+//! (reference-implementation behavior, pinned by golden tests below).
 //!
 //! This crate produces **no** MACHINE-format report bytes — its outputs are
 //! in-memory candidate ID lists consumed internally by clone detection — so it
@@ -26,12 +25,11 @@
 //!
 //! # Thread safety
 //!
-//! The Go [`Index`] guards its maps with a `sync.RWMutex` so concurrent
-//! `Insert`/`Query` are safe. In Rust, mutation (`insert`) takes `&mut self` and
-//! reads (`query`) take `&self`; the borrow checker proves exclusivity at compile
-//! time, so no runtime lock is needed. To share an [`Index`] for concurrent
-//! reads, wrap it in an [`std::sync::Arc`]; for concurrent mutation, wrap it in a
-//! `Mutex`/`RwLock`. Numeric results are identical regardless of strategy.
+//! Mutation (`insert`) takes `&mut self` and reads (`query`) take `&self`;
+//! the borrow checker proves exclusivity at compile time, so no runtime lock
+//! is needed. To share an [`Index`] for concurrent reads, wrap it in an
+//! [`std::sync::Arc`]; for concurrent mutation, wrap it in a `Mutex`/`RwLock`.
+//! Numeric results are identical regardless of strategy.
 //!
 //! # Examples
 //!
@@ -58,64 +56,53 @@ use std::fmt;
 use cf_alg_minhash::{Signature, HEADER_SIZE};
 
 /// Number of bytes per `u64` value used when slicing signature bytes for band
-/// hashing. Mirrors Go `bytesPerUint64`.
+/// hashing.
 const BYTES_PER_UINT64: usize = 8;
 
-/// FNV-1a 64-bit offset basis (the hash of empty input), matching Go's
-/// `hash/fnv` `offset64`. Used as the starting state when accumulating a band
-/// hash from multiple byte chunks.
+/// FNV-1a 64-bit offset basis (the hash of empty input; canonical constant).
+/// Used as the starting state when accumulating a band hash from multiple
+/// byte chunks.
 const FNV64A_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-/// FNV-1a 64-bit prime, matching Go's `hash/fnv` `prime64`.
+/// FNV-1a 64-bit prime (canonical constant).
 const FNV64A_PRIME: u64 = 0x0000_0100_0000_01b3;
 
 /// Errors returned by [`Index`] operations.
 ///
-/// These mirror the Go sentinel error values one-for-one, preserving the exact
-/// message strings so error text is byte-identical across the port.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The message strings are part of the CLI/log compatibility contract and
+/// must not change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum LshError {
-    /// `num_bands` or `num_rows` was not positive. Mirrors Go `ErrInvalidParams`.
+    /// `num_bands` or `num_rows` was not positive.
+    #[error("lsh: numBands and numRows must be positive")]
     InvalidParams,
-    /// A nil signature was provided. Mirrors Go `ErrNilSignature`.
+    /// A nil signature was provided.
     ///
-    /// Rust's type system makes "nil" unrepresentable for `&Signature`, so this
-    /// variant exists only for API/parity completeness with the Go sentinel.
+    /// The type system makes "nil" unrepresentable for `&Signature`, so this
+    /// variant exists only to keep the error surface complete.
+    #[error("lsh: signature must not be nil")]
     NilSignature,
-    /// Signature size did not equal `num_bands * num_rows`. Mirrors Go
-    /// `ErrSizeMismatch`.
+    /// Signature size did not equal `num_bands * num_rows`.
+    #[error("lsh: signature size must equal numBands * numRows")]
     SizeMismatch,
 }
-
-impl fmt::Display for LshError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let msg = match self {
-            LshError::InvalidParams => "lsh: numBands and numRows must be positive",
-            LshError::NilSignature => "lsh: signature must not be nil",
-            LshError::SizeMismatch => "lsh: signature size must equal numBands * numRows",
-        };
-        f.write_str(msg)
-    }
-}
-
-impl std::error::Error for LshError {}
 
 /// A deterministic LSH index for approximate nearest-neighbor retrieval over
 /// MinHash signatures.
 ///
 /// Construct one with [`Index::new`]. The index stores, per band, a map from
 /// band-hash to the set of item IDs in that bucket, plus the full signatures
-/// (needed by [`Index::query_threshold`]). Inserting an existing ID replaces the
-/// prior entry, matching the Go implementation.
+/// (needed by [`Index::query_threshold`]). Inserting an existing ID replaces
+/// the prior entry.
 pub struct Index {
     num_bands: usize,
     num_rows: usize,
     /// One bucket map per band: band-hash -> set of item IDs.
     ///
-    /// Mirrors Go `[]map[uint64]map[string]bool`. The inner set is keyed for
-    /// membership; iteration order is not observable to callers (Go's `Query`
-    /// returns IDs in unspecified map order, and so does ours).
+    /// The inner map is keyed for membership; iteration order is not
+    /// observable to callers ([`Index::query`] returns IDs in unspecified map
+    /// order).
     bands: Vec<HashMap<u64, HashMap<String, bool>>>,
-    /// All stored signatures by ID. Mirrors Go `map[string]*Signature`.
+    /// All stored signatures by ID.
     sigs: HashMap<String, Signature>,
 }
 
@@ -128,8 +115,7 @@ impl Index {
     /// # Errors
     ///
     /// Returns [`LshError::InvalidParams`] if `num_bands == 0` or
-    /// `num_rows == 0` (mirroring Go's `numBands <= 0 || numRows <= 0`; negative
-    /// values are not representable in the `usize` parameters).
+    /// `num_rows == 0`.
     pub fn new(num_bands: usize, num_rows: usize) -> Result<Self, LshError> {
         if num_bands == 0 || num_rows == 0 {
             return Err(LshError::InvalidParams);
@@ -151,15 +137,14 @@ impl Index {
     /// Inserts a signature into the index under the given `id`.
     ///
     /// If `id` already exists, its previous signature is removed from all band
-    /// buckets before the new one is inserted (an update, not a duplicate),
-    /// matching the Go behavior.
+    /// buckets before the new one is inserted (an update, not a duplicate).
     ///
     /// # Errors
     ///
     /// - [`LshError::SizeMismatch`] if `sig.len() != num_bands * num_rows`.
     ///
-    /// (Go's [`LshError::NilSignature`] is unreachable here because `sig` is a
-    /// non-null reference; the variant exists only for parity.)
+    /// ([`LshError::NilSignature`] is unreachable here because `sig` is a
+    /// non-null reference.)
     pub fn insert(&mut self, id: String, sig: &Signature) -> Result<(), LshError> {
         let expected_size = self.num_bands * self.num_rows;
         if sig.len() != expected_size {
@@ -168,7 +153,7 @@ impl Index {
 
         let band_hashes = self.compute_band_hashes(sig);
 
-        // Remove old entry if ID already exists, mirroring Go's removeLocked.
+        // Remove the old entry if the ID already exists.
         if let Some(old_sig) = self.sigs.get(&id) {
             let old_hashes = self.compute_band_hashes(old_sig);
             self.remove(&id, &old_hashes);
@@ -187,8 +172,7 @@ impl Index {
     /// band hash with the query signature.
     ///
     /// The order of returned IDs is unspecified (it follows hash-map iteration
-    /// order), matching Go's `Query`, which collects IDs from a
-    /// `map[string]bool`.
+    /// order).
     ///
     /// # Errors
     ///
@@ -201,7 +185,7 @@ impl Index {
 
         let band_hashes = self.compute_band_hashes(sig);
 
-        // Deduplicate via a membership map, mirroring Go's `seen map[string]bool`.
+        // Deduplicate via a membership map.
         let mut seen: HashMap<String, bool> = HashMap::new();
         for (b, &h) in band_hashes.iter().enumerate() {
             if let Some(bucket) = self.bands[b].get(&h) {
@@ -220,7 +204,7 @@ impl Index {
     /// This first retrieves LSH candidates via [`Index::query`], then filters
     /// them by computing the exact MinHash similarity against each stored
     /// signature, keeping those `>= threshold`. Candidates whose similarity
-    /// computation fails (e.g. size mismatch) are skipped, matching Go.
+    /// computation fails (e.g. size mismatch) are skipped.
     ///
     /// # Errors
     ///
@@ -238,7 +222,7 @@ impl Index {
             let Some(stored) = self.sigs.get(&id) else {
                 continue;
             };
-            // Go skips entries whose Similarity errors; we do the same.
+            // Entries whose similarity computation errors are skipped.
             if let Ok(sim) = sig.similarity(stored) {
                 if sim >= threshold {
                     result.push(id);
@@ -249,10 +233,8 @@ impl Index {
         Ok(result)
     }
 
-    /// Removes a signature's ID from all band buckets given its precomputed band
-    /// hashes, dropping now-empty buckets and the stored signature.
-    ///
-    /// Mirrors Go's `removeLocked`.
+    /// Removes a signature's ID from all band buckets given its precomputed
+    /// band hashes, dropping now-empty buckets and the stored signature.
     fn remove(&mut self, id: &str, band_hashes: &[u64]) {
         for (b, &h) in band_hashes.iter().enumerate() {
             if let Some(bucket) = self.bands[b].get_mut(&h) {
@@ -270,7 +252,7 @@ impl Index {
     /// For band `b`: the 8-byte big-endian encoding of `b` is hashed first (for
     /// domain separation), followed by that band's `num_rows * 8` bytes from the
     /// signature's serialized form (after skipping the [`HEADER_SIZE`]-byte
-    /// header). This is bit-identical to Go's `computeBandHashes`.
+    /// header). The scheme is frozen (pinned by the golden test below).
     fn compute_band_hashes(&self, sig: &Signature) -> Vec<u64> {
         let data = sig.bytes();
         // Skip the 4-byte header (num_hashes prefix).
@@ -301,8 +283,6 @@ impl Index {
     }
 
     /// Returns the number of signatures currently stored in the index.
-    ///
-    /// Mirrors the Go test helper `Index.Size`.
     #[must_use]
     pub fn size(&self) -> usize {
         self.sigs.len()
@@ -316,8 +296,6 @@ impl Index {
 
     /// Removes all signatures and empties every band bucket, preserving the
     /// `num_bands` / `num_rows` configuration.
-    ///
-    /// Mirrors the Go test helper `Index.Clear`.
     pub fn clear(&mut self) {
         for band in &mut self.bands {
             band.clear();
@@ -325,16 +303,15 @@ impl Index {
         self.sigs.clear();
     }
 
-    /// Returns the configured number of bands. Mirrors Go `Index.NumBands`.
+    /// Returns the configured number of bands.
     #[must_use]
-    pub fn num_bands(&self) -> usize {
+    pub const fn num_bands(&self) -> usize {
         self.num_bands
     }
 
-    /// Returns the configured number of rows per band. Mirrors Go
-    /// `Index.NumRows`.
+    /// Returns the configured number of rows per band.
     #[must_use]
-    pub fn num_rows(&self) -> usize {
+    pub const fn num_rows(&self) -> usize {
         self.num_rows
     }
 }
@@ -354,15 +331,15 @@ mod tests {
     use super::*;
     use cf_alg_hashutil::fnv64a;
 
-    // Test constants mirroring lsh_test.go.
+    // Test constants.
     const TEST_BANDS: usize = 16;
     const TEST_ROWS: usize = 8;
     const TEST_NUM_HASHES: usize = TEST_BANDS * TEST_ROWS;
     const TEST_LARGE_INDEX_SIZE: usize = 1000;
     const TEST_HIGH_THRESHOLD: f64 = 0.8;
     const TEST_LOW_THRESHOLD: f64 = 0.0;
-    const TEST_CONCURRENT_GOROUTINES: usize = 50;
-    const TEST_CONCURRENT_OPS_PER_GOROUTINE: usize = 20;
+    const TEST_CONCURRENT_THREADS: usize = 50;
+    const TEST_CONCURRENT_OPS_PER_THREAD: usize = 20;
 
     fn new_sig(n: usize) -> Signature {
         Signature::new(n).expect("valid signature")
@@ -370,7 +347,6 @@ mod tests {
 
     // --- Constructor Tests ---
 
-    /// Ported from `TestNew_Valid`.
     #[test]
     fn test_new_valid() {
         let idx = Index::new(TEST_BANDS, TEST_ROWS).expect("valid");
@@ -379,14 +355,12 @@ mod tests {
         assert_eq!(idx.size(), 0);
     }
 
-    /// Ported from `TestNew_ZeroBands`.
     #[test]
     fn test_new_zero_bands() {
         let err = Index::new(0, TEST_ROWS).unwrap_err();
         assert_eq!(err, LshError::InvalidParams);
     }
 
-    /// Ported from `TestNew_ZeroRows`.
     #[test]
     fn test_new_zero_rows() {
         let err = Index::new(TEST_BANDS, 0).unwrap_err();
@@ -395,7 +369,6 @@ mod tests {
 
     // --- Insert and Query Tests ---
 
-    /// Ported from `TestInsert_Query_Duplicate`.
     #[test]
     fn test_insert_query_duplicate() {
         let mut idx = Index::new(TEST_BANDS, TEST_ROWS).expect("valid");
@@ -419,7 +392,6 @@ mod tests {
         );
     }
 
-    /// Ported from `TestInsert_Query_Dissimilar`.
     #[test]
     fn test_insert_query_dissimilar() {
         let mut idx = Index::new(TEST_BANDS, TEST_ROWS).expect("valid");
@@ -440,7 +412,6 @@ mod tests {
         );
     }
 
-    /// Ported from `TestInsert_Query_SimilarPair`.
     #[test]
     fn test_insert_query_similar_pair() {
         let mut idx = Index::new(TEST_BANDS, TEST_ROWS).expect("valid");
@@ -470,7 +441,6 @@ mod tests {
 
     // --- QueryThreshold Tests ---
 
-    /// Ported from `TestQueryThreshold_FiltersCorrectly`.
     #[test]
     fn test_query_threshold_filters_correctly() {
         let mut idx = Index::new(TEST_BANDS, TEST_ROWS).expect("valid");
@@ -501,7 +471,6 @@ mod tests {
         assert!(!results.iter().any(|c| c == "different"), "{results:?}");
     }
 
-    /// Ported from `TestQueryThreshold_ZeroThreshold`.
     #[test]
     fn test_query_threshold_zero_threshold() {
         let mut idx = Index::new(TEST_BANDS, TEST_ROWS).expect("valid");
@@ -515,7 +484,6 @@ mod tests {
 
     // --- Empty Index Tests ---
 
-    /// Ported from `TestQuery_EmptyIndex`.
     #[test]
     fn test_query_empty_index() {
         let idx = Index::new(TEST_BANDS, TEST_ROWS).expect("valid");
@@ -528,7 +496,6 @@ mod tests {
 
     // --- Size Mismatch Tests ---
 
-    /// Ported from `TestInsert_SizeMismatch`.
     #[test]
     fn test_insert_size_mismatch() {
         let mut idx = Index::new(TEST_BANDS, TEST_ROWS).expect("valid");
@@ -537,7 +504,6 @@ mod tests {
         assert_eq!(err, LshError::SizeMismatch);
     }
 
-    /// Ported from `TestQuery_SizeMismatch`.
     #[test]
     fn test_query_size_mismatch() {
         let idx = Index::new(TEST_BANDS, TEST_ROWS).expect("valid");
@@ -548,7 +514,6 @@ mod tests {
 
     // --- Size and Clear Tests ---
 
-    /// Ported from `TestSize`.
     #[test]
     fn test_size() {
         let mut idx = Index::new(TEST_BANDS, TEST_ROWS).expect("valid");
@@ -564,7 +529,6 @@ mod tests {
         assert_eq!(idx.size(), 2);
     }
 
-    /// Ported from `TestClear`.
     #[test]
     fn test_clear() {
         let mut idx = Index::new(TEST_BANDS, TEST_ROWS).expect("valid");
@@ -581,7 +545,6 @@ mod tests {
 
     // --- Duplicate Insert Test ---
 
-    /// Ported from `TestInsert_DuplicateID`.
     #[test]
     fn test_insert_duplicate_id() {
         let mut idx = Index::new(TEST_BANDS, TEST_ROWS).expect("valid");
@@ -601,14 +564,12 @@ mod tests {
 
     // --- NumBands / NumRows Tests ---
 
-    /// Ported from `TestNumBands`.
     #[test]
     fn test_num_bands() {
         let idx = Index::new(TEST_BANDS, TEST_ROWS).expect("valid");
         assert_eq!(idx.num_bands(), TEST_BANDS);
     }
 
-    /// Ported from `TestNumRows`.
     #[test]
     fn test_num_rows() {
         let idx = Index::new(TEST_BANDS, TEST_ROWS).expect("valid");
@@ -617,7 +578,6 @@ mod tests {
 
     // --- Large Index Test ---
 
-    /// Ported from `TestInsert_Query_LargeIndex`.
     #[test]
     fn test_insert_query_large_index() {
         let mut idx = Index::new(TEST_BANDS, TEST_ROWS).expect("valid");
@@ -665,9 +625,9 @@ mod tests {
 
     // --- Concurrent Access Test ---
 
-    /// Ported from `TestConcurrent_InsertQuery`. In Rust, concurrent mutation
-    /// requires a lock; we wrap the index in a `Mutex` and exercise mixed
-    /// insert/query from many threads, then assert the index is non-empty.
+    /// Concurrent mutation requires a lock; wrap the index in a `Mutex` and
+    /// exercise mixed insert/query from many threads, then assert the index is
+    /// non-empty.
     #[test]
     fn test_concurrent_insert_query() {
         use std::sync::{Arc, Mutex};
@@ -675,16 +635,16 @@ mod tests {
 
         let idx = Arc::new(Mutex::new(Index::new(TEST_BANDS, TEST_ROWS).expect("valid")));
 
-        let handles: Vec<_> = (0..TEST_CONCURRENT_GOROUTINES)
+        let handles: Vec<_> = (0..TEST_CONCURRENT_THREADS)
             .map(|g| {
                 let idx = Arc::clone(&idx);
                 thread::spawn(move || {
-                    for i in 0..TEST_CONCURRENT_OPS_PER_GOROUTINE {
+                    for i in 0..TEST_CONCURRENT_OPS_PER_THREAD {
                         let mut sig = match Signature::new(TEST_NUM_HASHES) {
                             Ok(s) => s,
                             Err(_) => continue,
                         };
-                        sig.add(format!("goroutine_{g}_token_{i}").as_bytes());
+                        sig.add(format!("thread_{g}_token_{i}").as_bytes());
 
                         if g % 2 == 0 {
                             let _ = idx.lock().unwrap().insert(format!("func_{g}_{i}"), &sig);
@@ -705,9 +665,8 @@ mod tests {
 
     // --- Band-hash byte-parity cross-check ---
     //
-    // Reproduces Go's `computeBandHashes` for a single band by hand and confirms
-    // the accumulating FNV-1a path matches the reference one-shot FNV over the
-    // concatenated [band-index BE u64] ++ [band bytes].
+    // Confirms the accumulating FNV-1a path matches a reference one-shot FNV
+    // over the concatenated [band-index BE u64] ++ [band bytes].
     #[test]
     fn test_compute_band_hashes_matches_reference_fnv() {
         let idx = Index::new(TEST_BANDS, TEST_ROWS).expect("valid");
@@ -732,15 +691,14 @@ mod tests {
         }
     }
 
-    /// Hard cross-language golden: the band hashes for signature
-    /// `["a","b","c"]` with `16` bands × `8` rows must equal the exact `u64`
-    /// values produced by the Go `computeBandHashes` (captured from the real
-    /// `pkg/alg/lsh` via `hash/fnv.New64a()`). This proves byte-for-byte
-    /// determinism end-to-end: MinHash seeds + FNV-1a base hash + mix + big-endian
+    /// Hard golden: the band hashes for signature `["a","b","c"]` with `16`
+    /// bands × `8` rows must equal the exact `u64` values captured from the
+    /// reference implementation. This proves byte-for-byte determinism
+    /// end-to-end: MinHash seeds + FNV-1a base hash + mix + big-endian
     /// serialization + band-index domain separation + band FNV-1a.
     #[test]
-    fn test_band_hashes_go_golden() {
-        const GO_BAND_HASHES: [u64; 16] = [
+    fn test_band_hashes_reference_golden() {
+        const REFERENCE_BAND_HASHES: [u64; 16] = [
             5_179_986_799_449_527_917,
             2_684_347_889_088_141_715,
             8_071_132_555_451_129_258,
@@ -765,7 +723,10 @@ mod tests {
             sig.add(tok.as_bytes());
         }
         let got = idx.compute_band_hashes(&sig);
-        assert_eq!(got, GO_BAND_HASHES, "band hashes diverged from Go golden");
+        assert_eq!(
+            got, REFERENCE_BAND_HASHES,
+            "band hashes diverged from the reference golden"
+        );
     }
 
     /// Band-index domain separation: different band slots hash an empty

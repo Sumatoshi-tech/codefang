@@ -1,51 +1,54 @@
-//! Human-facing report-section logic (port of `report_section.go`).
+//! Human-facing report-section logic.
 //!
 //! Computes the section score, status message, coupling-strength distribution,
 //! and per-pair severity. These feed the (cosmetic, non-binding) terminal/HTML
-//! summary; the numeric values are reproduced faithfully so the section behaves
-//! identically to Go.
+//! summary; the numeric values follow the reference implementation so the
+//! section behaves identically.
 
 use crate::metrics::{ComputedMetrics, FileCouplingData};
 
-/// Section title (Go: `ReportSectionTitle`).
+/// Section title.
 pub const REPORT_SECTION_TITLE: &str = "COUPLES";
 
-/// Status message when no coupling data is available (Go: `DefaultStatusMsg`).
+/// Status message when no coupling data is available.
 pub const DEFAULT_STATUS_MSG: &str = "No coupling data available";
 
-/// Sentinel score used for info-only sections (Go: `analyze.ScoreInfoOnly`).
+/// Sentinel score used for info-only sections.
 ///
-/// The exact constant lives in the not-yet-ported `cf-analyze` crate; the Go
-/// value is `-1.0`. Reconcile when `cf-analyze` lands (see crate TODOs).
+/// The canonical constant belongs in `cf-analyze`; the contractual value is
+/// `-1.0`. Reconcile when `cf-analyze` lands (see crate TODOs).
 pub const SCORE_INFO_ONLY: f64 = -1.0;
 
-// Distribution thresholds (Go: Dist*Min).
+// Distribution thresholds.
 const DIST_STRONG_MIN: f64 = 0.7;
 const DIST_MODERATE_MIN: f64 = 0.4;
 const DIST_WEAK_MIN: f64 = 0.1;
 
-/// Distribution bucket labels (Go: DistLabel*).
+/// Distribution bucket labels.
 pub const DIST_LABEL_STRONG: &str = "Strong (>70%)";
 pub const DIST_LABEL_MOD: &str = "Moderate (40-70%)";
 pub const DIST_LABEL_WEAK: &str = "Weak (10-40%)";
 pub const DIST_LABEL_NONE: &str = "Minimal (<10%)";
 
-// Issue severity thresholds (Go: IssueSeverity*Min).
+// Issue severity thresholds.
 const ISSUE_SEVERITY_HIGH_MIN: f64 = 0.7;
 const ISSUE_SEVERITY_MED_MIN: f64 = 0.4;
 
-/// Severity labels (Go: `analyze.Severity*`). These string values live in the
-/// not-yet-ported `cf-analyze` crate; the Go literals are reproduced here.
+/// Severity labels. The canonical string values belong in `cf-analyze`; the
+/// contractual literals are reproduced here until that crate lands.
 pub const SEVERITY_POOR: &str = "poor";
 pub const SEVERITY_FAIR: &str = "fair";
 pub const SEVERITY_GOOD: &str = "good";
 
-/// Computes the section score and status message (Go: `computeScore`).
+/// Computes the section score and status message.
 ///
 /// Score is `1.0 - avg_coupling_strength` (clamped to `[0, ∞)`); a higher score
 /// means lower coupling. Returns [`SCORE_INFO_ONLY`] / [`DEFAULT_STATUS_MSG`]
 /// when there are no files.
+#[must_use]
 pub fn compute_score(m: &ComputedMetrics) -> (f64, String) {
+    const GOOD_THRESHOLD: f64 = 0.7;
+    const FAIR_THRESHOLD: f64 = 0.4;
     if m.aggregate.total_files == 0 {
         return (SCORE_INFO_ONLY, DEFAULT_STATUS_MSG.to_string());
     }
@@ -53,8 +56,6 @@ pub fn compute_score(m: &ComputedMetrics) -> (f64, String) {
     if score < 0.0 {
         score = 0.0;
     }
-    const GOOD_THRESHOLD: f64 = 0.7;
-    const FAIR_THRESHOLD: f64 = 0.4;
     let msg = if score >= GOOD_THRESHOLD {
         format!("Good - low coupling across {} files", m.aggregate.total_files)
     } else if score >= FAIR_THRESHOLD {
@@ -71,7 +72,7 @@ pub fn compute_score(m: &ComputedMetrics) -> (f64, String) {
     (score, msg)
 }
 
-/// Coupling-strength distribution counts (Go: `strengthDistCounts`).
+/// Coupling-strength distribution counts.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct StrengthDistCounts {
     pub strong: i32,
@@ -80,7 +81,8 @@ pub struct StrengthDistCounts {
     pub minimal: i32,
 }
 
-/// Categorizes coupling pairs by strength (Go: `categorizeStrength`).
+/// Categorizes coupling pairs by strength.
+#[must_use]
 pub fn categorize_strength(couples: &[FileCouplingData]) -> StrengthDistCounts {
     let mut counts = StrengthDistCounts::default();
     for cp in couples {
@@ -97,7 +99,8 @@ pub fn categorize_strength(couples: &[FileCouplingData]) -> StrengthDistCounts {
     counts
 }
 
-/// Maps a coupling strength to a severity label (Go: `severityForStrength`).
+/// Maps a coupling strength to a severity label.
+#[must_use]
 pub fn severity_for_strength(strength: f64) -> &'static str {
     if strength >= ISSUE_SEVERITY_HIGH_MIN {
         SEVERITY_POOR
@@ -108,17 +111,18 @@ pub fn severity_for_strength(strength: f64) -> &'static str {
     }
 }
 
-/// Computes a fraction `count / total`, returning `0.0` for an empty total
-/// (Go: `pct`).
+/// Computes a fraction `count / total`, returning `0.0` for an empty total.
+#[must_use]
 pub fn pct(count: i32, total: i32) -> f64 {
     if total == 0 {
         0.0
     } else {
-        count as f64 / total as f64
+        f64::from(count) / f64::from(total)
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::float_cmp)] // exact contract values (score constants, guards) are the point
 mod tests {
     use super::*;
     use crate::metrics::AggregateData;

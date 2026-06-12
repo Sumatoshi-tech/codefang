@@ -1,37 +1,36 @@
 //! Analyzer descriptors, modes, and ID normalization.
-//!
-//! Port of `internal/analyzers/analyze/descriptor.go` (and the `AnalyzerMode`
-//! type / `Descriptor` struct declared in `registry.go`).
 
 use std::fmt;
 
-/// Analyzer runtime mode. Port of Go `AnalyzerMode` (a `string`).
+/// Analyzer runtime mode.
 ///
 /// The string values (`static`, `history`) are byte-identity relevant: they
 /// appear in descriptor IDs (`static/complexity`, `history/burndown`) and in
 /// `UnifiedModel` JSON/YAML output, so they are reproduced exactly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AnalyzerMode {
-    /// `static` — UAST-phase analysis. Go `ModeStatic`.
+    /// `static` — UAST-phase analysis.
     Static,
-    /// `history` — commit-history analysis. Go `ModeHistory`.
+    /// `history` — commit-history analysis.
     History,
 }
 
 impl AnalyzerMode {
-    /// Returns the Go string value (`static` / `history`).
-    pub fn as_str(self) -> &'static str {
+    /// Returns the wire string value (`static` / `history`).
+    #[must_use] 
+    pub const fn as_str(self) -> &'static str {
         match self {
-            AnalyzerMode::Static => "static",
-            AnalyzerMode::History => "history",
+            Self::Static => "static",
+            Self::History => "history",
         }
     }
 
-    /// Parses a mode string, matching the Go constant values.
-    pub fn parse(s: &str) -> Option<AnalyzerMode> {
+    /// Parses a mode string (`static` / `history`).
+    #[must_use] 
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
-            "static" => Some(AnalyzerMode::Static),
-            "history" => Some(AnalyzerMode::History),
+            "static" => Some(Self::Static),
+            "history" => Some(Self::History),
             _ => None,
         }
     }
@@ -43,7 +42,7 @@ impl fmt::Display for AnalyzerMode {
     }
 }
 
-/// Stable analyzer metadata. Port of Go `Descriptor`.
+/// Stable analyzer metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Descriptor {
     /// `ID` — e.g. `static/complexity` or `history/burndown`.
@@ -56,8 +55,9 @@ pub struct Descriptor {
 
 const NORMALIZE_EXTRA_CAPACITY: usize = 4;
 
-/// Builds stable analyzer metadata from a mode, name, and description. Port of
-/// Go `NewDescriptor`: the ID is `"{mode}/{normalized-name}"`.
+/// Builds stable analyzer metadata from a mode, name, and description.
+/// The ID is `"{mode}/{normalized-name}"`.
+#[must_use] 
 pub fn new_descriptor(mode: AnalyzerMode, name: &str, description: &str) -> Descriptor {
     Descriptor {
         id: format!("{}/{}", mode.as_str(), normalize_name(name)),
@@ -66,7 +66,7 @@ pub fn new_descriptor(mode: AnalyzerMode, name: &str, description: &str) -> Desc
     }
 }
 
-/// Normalizes an analyzer name to kebab-case. Port of Go `normalizeName`.
+/// Normalizes an analyzer name to kebab-case.
 ///
 /// Rules (preserved exactly):
 /// * `_` and ` ` become `-` (and reset the "previous-lower" state).
@@ -74,6 +74,7 @@ pub fn new_descriptor(mode: AnalyzerMode, name: &str, description: &str) -> Desc
 ///   a lowercase letter, then lower-cases it (camelCase → kebab boundaries).
 /// * Other runes are lower-cased.
 /// * Leading/trailing `-` are trimmed.
+#[must_use] 
 pub fn normalize_name(name: &str) -> String {
     let trimmed = name.trim();
     if trimmed.is_empty() {
@@ -94,8 +95,8 @@ pub fn normalize_name(name: &str) -> String {
             if previous_lower {
                 builder.push('-');
             }
-            // Go uses unicode.ToLower; chars may lower to multiple chars in
-            // general, but Go's rune-based ToLower yields a single rune. Use
+            // The reference normalizer lowers rune-by-rune (one rune in, one
+            // rune out), unlike full Unicode lowercasing which may expand. Use
             // to_lowercase to cover the rare multi-char cases identically to
             // Rust's Unicode tables (parity is fine for ASCII analyzer names).
             builder.extend(current.to_lowercase());

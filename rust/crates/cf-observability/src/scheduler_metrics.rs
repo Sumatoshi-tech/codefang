@@ -1,20 +1,16 @@
-//! Runtime scheduler metrics (goroutines / threads), exposed as OTel gauges.
-//!
-//! Port of `internal/observability/scheduler_metrics.go`.
+//! Runtime scheduler metrics, exposed as OTel gauges.
 //!
 //! # Runtime-source caveat (behavioral, not byte-binding)
 //!
-//! The Go version reads live values from `runtime/metrics`
-//! (`/sched/goroutines:goroutines`, `/sched/threads:threads`,
-//! `/sched/goroutines-created:goroutines`). Rust has no goroutines and no
-//! equivalent stable runtime/metrics surface, so the *observable values* cannot
-//! match Go run-to-run (they are non-deterministic gauges in either language and
-//! are NOT part of any machine report — DESIGN §3). What this port preserves is
-//! the *contract*: the same three instrument names/units/descriptions are
-//! registered, an observer callback is wired in, and registration succeeds with
-//! a no-op meter. The numeric sampler is pluggable via [`RuntimeSampler`] so a
-//! richer source (e.g. tokio runtime metrics) can be supplied without changing
-//! the instrument surface. See crate-level todos.
+//! These instruments were defined for a runtime with green-thread scheduler
+//! metrics (live goroutine/thread counts); this runtime has no equivalent
+//! stable metrics surface, and the values are non-deterministic gauges that
+//! are NOT part of any machine report (DESIGN §3). What is preserved is the
+//! *telemetry contract*: the same three instrument names/units/descriptions
+//! are registered, an observer callback is wired in, and registration
+//! succeeds with a no-op meter. The numeric sampler is pluggable via
+//! [`RuntimeSampler`] so a richer source (e.g. tokio runtime metrics) can be
+//! supplied without changing the instrument surface. See crate-level todos.
 
 use std::sync::Arc;
 
@@ -22,7 +18,8 @@ use opentelemetry::metrics::{Meter, MetricsError, ObservableGauge};
 
 use crate::metric_builder::MetricBuildError;
 
-// Instrument names (Go consts).
+// Instrument names (telemetry contract; the goroutine wording is the
+// established dashboard surface).
 const METRIC_GOROUTINES: &str = "codefang.runtime.goroutines";
 const METRIC_THREADS: &str = "codefang.runtime.threads";
 const METRIC_GOROUTINES_CREATED: &str = "codefang.runtime.goroutines.created";
@@ -53,9 +50,8 @@ pub struct NullRuntimeSampler;
 
 impl RuntimeSampler for NullRuntimeSampler {}
 
-/// Go runtime scheduler metrics exposed as OTel instruments
-/// (Go `SchedulerMetrics`). Holding the gauges keeps the registered callback
-/// alive for the meter's lifetime.
+/// Scheduler metrics exposed as OTel instruments. Holding the gauges keeps
+/// the registered callback alive for the meter's lifetime.
 pub struct SchedulerMetrics {
     _goroutines: ObservableGauge<i64>,
     _threads: ObservableGauge<i64>,
@@ -65,8 +61,8 @@ pub struct SchedulerMetrics {
 impl SchedulerMetrics {
     /// Creates the scheduler instruments backed by [`NullRuntimeSampler`].
     ///
-    /// Port of Go `NewSchedulerMetrics` (which uses runtime/metrics). The
-    /// meter's periodic reader invokes the registered callback automatically.
+    /// The meter's periodic reader invokes the registered callback
+    /// automatically.
     ///
     /// # Errors
     ///
@@ -105,8 +101,7 @@ impl SchedulerMetrics {
         let t = threads.clone();
         let gc = goroutines_created.clone();
 
-        // Single callback observing all three instruments, mirroring Go's
-        // mt.RegisterCallback(sm.observe, ...).
+        // Single callback observing all three instruments.
         meter
             .register_callback(
                 &[g.as_any(), t.as_any(), gc.as_any()],
@@ -120,7 +115,7 @@ impl SchedulerMetrics {
                 MetricBuildError::new("register scheduler metrics callback", e)
             })?;
 
-        Ok(SchedulerMetrics {
+        Ok(Self {
             _goroutines: goroutines,
             _threads: threads,
             _goroutines_created: goroutines_created,
@@ -133,7 +128,7 @@ mod tests {
     use super::*;
     use opentelemetry::metrics::{noop::NoopMeterProvider, MeterProvider};
 
-    /// Port of Go `TestNewSchedulerMetrics_NoopMeter`.
+    /// Mirrors the reference suite's `TestNewSchedulerMetrics_NoopMeter`.
     #[test]
     fn new_scheduler_metrics_noop_meter() {
         let meter = NoopMeterProvider::new().meter("test");
@@ -142,7 +137,7 @@ mod tests {
     }
 
     #[test]
-    fn metric_names_match_go() {
+    fn metric_names_match_contract() {
         assert_eq!(METRIC_GOROUTINES, "codefang.runtime.goroutines");
         assert_eq!(METRIC_THREADS, "codefang.runtime.threads");
         assert_eq!(METRIC_GOROUTINES_CREATED, "codefang.runtime.goroutines.created");

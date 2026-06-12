@@ -1,7 +1,7 @@
-# cf-config — Rust port of Go package internal/config.
+# cf-config — configuration model + layered loader.
 #
 # Configuration model (analyzer/pipeline/history/checkpoint constants) plus a
-# viper-style loader with precedence flag > env (CODEFANG_) > file > default.
+# layered loader with precedence flag > env (CODEFANG_) > file > default.
 #
 # Config is *input*, never machine-format *output*. Per DESIGN.md §2 the
 # byte-identity serializers (cf-gojson / cf-goyaml) are reserved for report
@@ -15,7 +15,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "Configuration model + loader (analyzer/pipeline/history/checkpoint constants). Port of Go internal/config; used by analyze, mcp, cmd/codefang/commands."
+description = "Configuration model + loader (analyzer/pipeline/history/checkpoint constants). Used by analyze, mcp, cmd/codefang/commands."
 
 [lints.rust]
 unsafe_code = "forbid"
@@ -23,6 +23,10 @@ unsafe_code = "forbid"
 [dependencies]
 serde = { workspace = true }
 serde_yaml = "0.9"
+# Derived Display/Error impls for LoadError; the `read config:` /
+# `unmarshal config:` / `validate config:` wrappings are part of the CLI
+# compatibility contract and are kept byte-identical.
+thiserror = "1"
 
 [dev-dependencies]
 tempfile = "3"

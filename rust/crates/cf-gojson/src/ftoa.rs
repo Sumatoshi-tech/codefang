@@ -1,16 +1,16 @@
-//! Go-compatible `f64` formatting.
+//! Contract `f64` formatting (frozen float layout; do not alter).
 //!
 //! Two renderings are provided, both built on the **shortest round-trip** digit
 //! sequence (the unique decimal that parses back to the same `f64`):
 //!
-//! * [`format_json_float`] reproduces Go's `encoding/json` float encoder
-//!   (`encoding/json/encode.go`, `floatEncoder.encode`). This is what
-//!   [`crate::marshal`] uses for every [`crate::GoValue::Float`].
-//! * [`format_float_g`] reproduces `strconv.FormatFloat(f, 'g', -1, 64)`.
+//! * [`format_json_float`] — the JSON-number layout used by [`crate::marshal`]
+//!   for every [`crate::GoValue::Float`].
+//! * [`format_float_g`] — the `'g'` layout (shortest precision, two-digit
+//!   exponent).
 //!
 //! They share the same digits and differ only in layout:
 //!
-//! | aspect | `encoding/json` | `strconv 'g'` |
+//! | aspect | JSON layout | `'g'` layout |
 //! | --- | --- | --- |
 //! | exponent threshold | `abs < 1e-6 \|\| abs >= 1e21` | `decExp < -4 \|\| decExp >= 21` |
 //! | exponent digits | **≥1** (`1e-5`, `1e+21`) | **≥2** (`1e-05`, `1e+21`) |
@@ -19,19 +19,19 @@
 //! # Where the digits come from
 //!
 //! Rust's own `{}`/`Display` for `f64` emits the shortest round-trip decimal
-//! (Grisu/Ryū), the *same digit sequence* Go's `strconv` produces. We parse that
-//! Rust output back into `(sign, digits, decimal_exponent)` and re-render with
-//! Go's layout rules, so the byte differences between Rust `Display` and Go are
-//! eliminated while reusing the (already correct) shortest digits. The oracle
-//! tests in `tests/` assert byte-equality against Go for millions-scale corpora.
+//! (Grisu/Ryū) — the *same digit sequence* the reference formatter produces. We
+//! parse that Rust output back into `(sign, digits, decimal_exponent)` and
+//! re-render with the contract layout rules, reusing the (already correct)
+//! shortest digits. The oracle data under `tests/` asserts byte-equality
+//! against the reference implementation for millions-scale corpora.
 
 /// A parsed shortest-decimal: `(-1)^neg * 0.<digits> * 10^(dec_point)`.
 ///
 /// `digits` holds significant digits with no leading/trailing zeros (except the
 /// single digit `"0"` for a zero value). `dec_point` is the position of the
 /// decimal point relative to the first digit, i.e. the value equals
-/// `digits * 10^(dec_point - len(digits))` — matching Go's `decimalSlice`
-/// convention where `d.dp` is the number of digits before the decimal point.
+/// `digits * 10^(dec_point - len(digits))`; equivalently, `dec_point` is the
+/// count of digits before the decimal point.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Shortest {
     neg: bool,
@@ -41,7 +41,7 @@ struct Shortest {
 
 /// Decomposes an `f64` into its shortest-round-trip decimal via Rust's Display.
 ///
-/// `f` must be finite (callers guarantee this; Go errors on NaN/Inf in JSON).
+/// `f` must be finite (callers guarantee this; JSON has no NaN/Inf encoding).
 fn shortest_decimal(f: f64) -> Shortest {
     let neg = f.is_sign_negative();
     let abs = f.abs();
@@ -84,22 +84,22 @@ fn shortest_decimal(f: f64) -> Shortest {
     }
 }
 
-/// Formats `f` exactly as Go's `encoding/json` encodes a `float64` JSON number.
+/// Formats `f` as a report-contract JSON number.
 ///
-/// Mirrors `floatEncoder.encode` in `encoding/json/encode.go`:
+/// Layout rules (frozen contract):
 ///
 /// 1. choose `'e'` (exponent) form when `abs < 1e-6 || abs >= 1e21`, else `'f'`;
 /// 2. emit the shortest digits in that form; then
 /// 3. for the `'e'` form, rewrite the exponent to strip a leading zero so it has
 ///    at least **one** digit (`e-05` → `e-5`, `e+09` → `e+9`).
 ///
-/// `f` must be finite. Negative zero renders as `-0` (Go preserves the sign bit
-/// here, matching `strconv`).
+/// `f` must be finite. Negative zero renders as `-0` (the sign bit is
+/// preserved).
 #[must_use]
 pub fn format_json_float(f: f64) -> String {
     let abs = f.abs();
-    // Go's threshold is on the magnitude, computed against literal bounds.
-    let use_exp = abs != 0.0 && (abs < 1e-6 || abs >= 1e21);
+    // The threshold is on the magnitude, computed against literal bounds.
+    let use_exp = abs != 0.0 && !(1e-6..1e21).contains(&abs);
     let s = shortest_decimal(f);
     if use_exp {
         render_exponent(&s, /* min_exp_digits = */ 1)
@@ -108,9 +108,9 @@ pub fn format_json_float(f: f64) -> String {
     }
 }
 
-/// Formats `f` exactly as `strconv.FormatFloat(f, 'g', -1, 64)`.
+/// Formats `f` in the shortest-precision `'g'` layout (frozen contract).
 ///
-/// The `'g'` format chooses `'e'` when the decimal exponent `exp < -4` or
+/// The `'g'` layout chooses `'e'` when the decimal exponent `exp < -4` or
 /// `exp >= 21` (where `exp = dec_point - 1`), else `'f'`. The exponent is
 /// rendered with the sign and **at least two** digits (`1e-05`, `1e+21`).
 ///
@@ -119,12 +119,12 @@ pub fn format_json_float(f: f64) -> String {
 pub fn format_float_g(f: f64) -> String {
     let s = shortest_decimal(f);
     if s.digits == [b'0'] {
-        // strconv renders ±0 as "0" / "-0".
+        // ±0 renders as "0" / "-0".
         return if s.neg { "-0".into() } else { "0".into() };
     }
     // 'g' uses the decimal exponent of the leading digit: value ≈ d * 10^exp.
     let exp = s.dec_point - 1;
-    if exp < -4 || exp >= 21 {
+    if !(-4..21).contains(&exp) {
         render_exponent(&s, /* min_exp_digits = */ 2)
     } else {
         render_fixed(&s)
@@ -167,8 +167,8 @@ fn render_fixed(s: &Shortest) -> String {
 /// Renders the shortest decimal in exponent form: `d` or `d.ddd`, then `e`,
 /// sign, and the exponent padded to `min_exp_digits`.
 ///
-/// The mantissa always has exactly one digit before the point (`1`, `1.5`),
-/// matching both Go's `encoding/json` and `strconv 'g'`.
+/// The mantissa always has exactly one digit before the point (`1`, `1.5`) in
+/// both layouts.
 fn render_exponent(s: &Shortest, min_exp_digits: usize) -> String {
     let mut out = String::new();
     if s.neg {
@@ -243,7 +243,7 @@ mod tests {
     }
 
     #[test]
-    fn strconv_g_uses_two_digit_exponent() {
+    fn g_layout_uses_two_digit_exponent() {
         // 'g' exponent threshold is exp < -4 || exp >= 21.
         assert_eq!(format_float_g(1e21), "1e+21");
         assert_eq!(format_float_g(1e20), "100000000000000000000");

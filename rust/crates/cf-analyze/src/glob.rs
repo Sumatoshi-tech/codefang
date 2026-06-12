@@ -1,13 +1,12 @@
-//! A port of Go's `path.Match` for analyzer-ID glob expansion.
+//! Shell-style glob matching for analyzer-ID expansion.
 //!
-//! `internal/analyzers/analyze/registry.go` uses `path.Match(pattern, id)` to
-//! expand patterns like `history/*` and `static/co*`. Rust's standard library
-//! has no equivalent, so this module reimplements `path.Match` semantics
-//! exactly (slash is a path separator that `*`/`?`/`[…]` do not cross), which
-//! is byte-identity relevant because it decides which analyzers appear in
-//! output.
+//! The registry expands patterns like `history/*` and `static/co*`. The
+//! standard library has no equivalent matcher, so this module implements the
+//! reference `path.Match` semantics exactly (slash is a path separator that
+//! `*`/`?`/`[…]` do not cross), which is byte-identity relevant because it
+//! decides which analyzers appear in output.
 
-/// Error returned for a malformed pattern (mirrors Go `path.ErrBadPattern`).
+/// Error returned for a malformed pattern.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BadPattern;
 
@@ -19,8 +18,8 @@ impl std::fmt::Display for BadPattern {
 
 impl std::error::Error for BadPattern {}
 
-/// Reports whether `name` matches the shell pattern `pattern`, using Go
-/// `path.Match` semantics. Port of Go `path.Match`.
+/// Reports whether `name` matches the shell pattern `pattern`, using the
+/// reference implementation's `path.Match` semantics.
 ///
 /// Pattern syntax:
 /// * `*` matches any sequence of non-`/` characters.
@@ -48,7 +47,7 @@ fn match_segment(mut pattern: &[char], mut name: &[char]) -> Result<bool, BadPat
                 // shortest-to-longest expansions.
                 // Fast path: trailing '*' matches everything with no '/'.
                 if rest.is_empty() {
-                    return Ok(!name.iter().any(|&c| c == '/'));
+                    return Ok(!name.contains(&'/'));
                 }
                 let mut i = 0;
                 loop {

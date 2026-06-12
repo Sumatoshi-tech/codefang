@@ -1,17 +1,15 @@
-//! CPU/heap profiling entry points — port of `internal/framework/profiling.go`.
+//! CPU/heap profiling entry points.
 //!
-//! The Go module wraps `runtime/pprof`: `MaybeStartCPUProfile` opens a file and
-//! starts CPU profiling (returning a stop closure), and `MaybeWriteHeapProfile`
-//! GCs then writes a heap profile. Rust has no equivalent of Go's built-in
-//! pprof in the standard library, so the **policy** is ported (the no-op-on-
-//! empty-path contract and the create-file-then-record flow) while the actual
-//! pprof recording is delegated to an injected backend.
+//! [`maybe_start_cpu_profile`] opens a file and starts CPU profiling
+//! (returning a stop closure), and [`maybe_write_heap_profile`] writes a heap
+//! profile. The **policy** lives here (the no-op-on-empty-path contract and
+//! the create-file-then-record flow) while the actual profile recording is
+//! delegated to an injected backend.
 //!
-//! This keeps the framework's call sites identical (`let stop =
-//! maybe_start_cpu_profile(path, backend)?; ... stop();`) and lets the binary
-//! wire in a real profiler (e.g. the `pprof` crate) behind a feature, exactly
-//! as `specs/rust-rewrite/DESIGN.md` §4.1 describes profiling as "behavioral
-//! parity only" behind an optional feature. The no-profiler default is a
+//! This keeps call sites uniform (`let stop = maybe_start_cpu_profile(path,
+//! backend)?; ... stop();`) and lets the binary wire in a real profiler (e.g.
+//! the `pprof` crate) behind a feature; see `specs/rust-rewrite/DESIGN.md`
+//! §4.1 (profiling is behavioral parity only). The no-profiler default is a
 //! faithful no-op.
 
 use std::fs::File;
@@ -21,20 +19,28 @@ use std::path::Path;
 /// A pluggable CPU/heap profiling backend.
 ///
 /// The default [`NoopProfiler`] does nothing (the framework ships without a
-/// profiler by default). A binary can implement this over the `pprof` crate to
-/// get behavior matching Go's `runtime/pprof`.
+/// profiler by default). A binary can implement this over the `pprof` crate
+/// for real profile capture.
 pub trait Profiler {
     /// Begin CPU profiling, writing to `file` when stopped. Returns a token the
     /// caller drops/stops to finish the profile.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the backend fails to start recording.
     fn start_cpu_profile(&self, file: File) -> io::Result<Box<dyn CpuProfileGuard>>;
 
-    /// Force a GC and write a heap profile to `file`. Mirrors
-    /// `runtime.GC(); pprof.WriteHeapProfile(f)`.
+    /// Write a heap profile to `file` (collecting garbage first where the
+    /// backend supports it).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the backend fails to collect or write the profile.
     fn write_heap_profile(&self, file: File) -> io::Result<()>;
 }
 
-/// RAII guard returned by [`Profiler::start_cpu_profile`]; stopping/dropping it
-/// finishes the CPU profile. Mirrors the deferred stop closure Go returns.
+/// RAII guard returned by [`Profiler::start_cpu_profile`]; stopping/dropping
+/// it finishes the CPU profile.
 pub trait CpuProfileGuard {
     /// Stop the CPU profile and flush. Idempotent.
     fn stop(self: Box<Self>);
@@ -60,15 +66,15 @@ impl Profiler for NoopProfiler {
     }
 }
 
-/// Starts CPU profiling to the given path, returning a stop closure that must be
-/// run when profiling should end. A no-op (returning an empty closure) when
-/// `path` is empty. Mirrors Go `MaybeStartCPUProfile`.
+/// Starts CPU profiling to the given path, returning a stop closure that must
+/// be run when profiling should end. A no-op (returning an empty closure)
+/// when `path` is empty.
 ///
 /// # Errors
 ///
-/// Returns an error if the profile file cannot be created or the backend fails
-/// to start, mirroring Go's `"could not create CPU profile"` /
-/// `"could not start CPU profile"` paths.
+/// Returns a `"could not create CPU profile"` error if the profile file
+/// cannot be created, or `"could not start CPU profile"` if the backend fails
+/// to start.
 pub fn maybe_start_cpu_profile<P: Profiler>(
     path: &str,
     profiler: &P,
@@ -89,11 +95,12 @@ pub fn maybe_start_cpu_profile<P: Profiler>(
 }
 
 /// Writes a heap profile to the given path. A no-op when `path` is empty.
-/// Mirrors Go `MaybeWriteHeapProfile`: errors are logged (here, returned) rather
-/// than propagated as fatal. The provided `profiler` does the GC + write.
+/// The provided `profiler` does the GC + write.
 ///
-/// Returns the error rather than logging (the binary's caller decides how to
-/// surface it; the Go version logs via `slog`).
+/// # Errors
+///
+/// Returns the file-creation or backend error rather than logging; the
+/// binary's caller decides how to surface it (it is non-fatal).
 pub fn maybe_write_heap_profile<P: Profiler>(path: &str, profiler: &P) -> io::Result<()> {
     if path.is_empty() {
         return Ok(());

@@ -1,7 +1,4 @@
 //! Per-tick aggregation of per-commit anomaly data.
-//!
-//! Ports `AggregateCommitsToTicks` / `aggregateTickFromCommits` from
-//! `internal/analyzers/anomaly/metrics.go`.
 
 use std::collections::BTreeMap;
 
@@ -11,12 +8,11 @@ use crate::model::{CommitAnomalyData, TickMetrics};
 /// `commits_by_tick` mapping (commit hash hex -> commit data;
 /// tick -> ordered list of commit hashes).
 ///
-/// Mirrors Go `AggregateCommitsToTicks`. Returns an empty map when either input
-/// is empty (Go returns `nil`, which callers treat as empty).
+/// Returns an empty map when either input is empty.
 ///
-/// `commits_by_tick` preserves Go's per-tick hash ordering via a `Vec`; the
-/// outer `BTreeMap` keys (ticks) are iterated in ascending order, matching the
-/// deterministic `mapx.SortedKeys` consumption downstream.
+/// `commits_by_tick` preserves the per-tick hash ordering via a `Vec`; the
+/// outer `BTreeMap` keys (ticks) are iterated in ascending order, matching
+/// the deterministic sorted-key consumption downstream.
 #[must_use]
 pub fn aggregate_commits_to_ticks(
     commit_metrics: &BTreeMap<String, CommitAnomalyData>,
@@ -39,8 +35,8 @@ pub fn aggregate_commits_to_ticks(
 }
 
 /// Merges commit-level anomaly data for a single tick. Returns `None` when no
-/// listed commit hash is present in `commit_metrics` (Go returns a nil pointer,
-/// which the caller drops from the result map).
+/// listed commit hash is present in `commit_metrics` (the tick is then
+/// dropped from the result map).
 fn aggregate_tick_from_commits(
     hashes: &[String],
     commit_metrics: &BTreeMap<String, CommitAnomalyData>,
@@ -59,7 +55,7 @@ fn aggregate_tick_from_commits(
         acc.lines_removed += cm.lines_removed;
         acc.files.extend(cm.files.iter().cloned());
 
-        // mapx.MergeAdditive: sum language counts across commits.
+        // Sum language counts additively across commits.
         for (lang, count) in &cm.languages {
             *acc.languages.entry(lang.clone()).or_insert(0) += count;
         }
@@ -81,7 +77,7 @@ mod tests {
 
     #[test]
     fn basic_aggregation() {
-        // Mirrors Go TestAggregateCommitsToTicks_Basic.
+        // Mirrors reference test TestAggregateCommitsToTicks_Basic.
         let mut commit_metrics = BTreeMap::new();
         commit_metrics.insert(
             hash('a'),
@@ -125,7 +121,7 @@ mod tests {
 
     #[test]
     fn multiple_ticks() {
-        // Mirrors Go TestAggregateCommitsToTicks_MultipleTicks.
+        // Mirrors reference test TestAggregateCommitsToTicks_MultipleTicks.
         let mut commit_metrics = BTreeMap::new();
         commit_metrics.insert(
             hash('a'),
@@ -145,7 +141,7 @@ mod tests {
 
     #[test]
     fn empty_inputs() {
-        // Mirrors Go TestAggregateCommitsToTicks_EmptyInputs.
+        // Mirrors reference test TestAggregateCommitsToTicks_EmptyInputs.
         let empty_cm: BTreeMap<String, CommitAnomalyData> = BTreeMap::new();
         let some_tick = BTreeMap::from([(0_i64, Vec::<String>::new())]);
         assert!(aggregate_commits_to_ticks(&empty_cm, &some_tick).is_empty());
@@ -157,7 +153,7 @@ mod tests {
 
     #[test]
     fn missing_commit_is_skipped() {
-        // Mirrors Go TestAggregateCommitsToTicks_MissingCommit.
+        // Mirrors reference test TestAggregateCommitsToTicks_MissingCommit.
         let mut commit_metrics = BTreeMap::new();
         commit_metrics.insert(
             hash('a'),

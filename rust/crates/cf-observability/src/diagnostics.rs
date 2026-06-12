@@ -1,12 +1,9 @@
 //! HTTP diagnostics server (`/healthz`, `/readyz`, `/metrics`).
 //!
-//! Port of `internal/observability/diagnostics.go`. Starts an HTTP server that
-//! exposes liveness, readiness, and Prometheus metrics endpoints for operational
-//! monitoring, registering scheduler metrics on the supplied meter.
-//!
-//! Go uses `net/http`; the Rust port uses hyper + tokio. The route table,
-//! response bodies, and lifecycle (`Addr`, `Close`/graceful shutdown) mirror the
-//! Go server.
+//! Starts a hyper + tokio HTTP server that exposes liveness, readiness, and
+//! Prometheus metrics endpoints for operational monitoring, registering
+//! scheduler metrics on the supplied meter. The route table and response
+//! bodies are a stable operational surface.
 
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -27,31 +24,22 @@ use crate::prometheus_bridge::PrometheusScrape;
 use crate::scheduler_metrics::SchedulerMetrics;
 
 /// Error returned when the diagnostics server fails to start or stop.
-#[derive(Debug)]
+///
+/// The error wording is a stable operator-facing surface.
+#[derive(Debug, thiserror::Error)]
 pub enum DiagnosticsError {
     /// Binding the listener failed.
-    Listen(std::io::Error),
+    #[error("listen: {0}")]
+    Listen(#[source] std::io::Error),
     /// Building the Prometheus handler failed.
+    #[error("create prometheus handler: {0}")]
     Prometheus(String),
     /// Registering scheduler metrics failed.
+    #[error("register scheduler metrics: {0}")]
     SchedulerMetrics(String),
 }
 
-impl std::fmt::Display for DiagnosticsError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            // Wording mirrors Go's wrapped errors.
-            DiagnosticsError::Listen(e) => write!(f, "listen: {e}"),
-            DiagnosticsError::Prometheus(e) => write!(f, "create prometheus handler: {e}"),
-            DiagnosticsError::SchedulerMetrics(e) => write!(f, "register scheduler metrics: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for DiagnosticsError {}
-
-/// Exposes health, readiness, and Prometheus metrics endpoints over HTTP
-/// (Go `DiagnosticsServer`).
+/// Exposes health, readiness, and Prometheus metrics endpoints over HTTP.
 pub struct DiagnosticsServer {
     addr: SocketAddr,
     shutdown_tx: Option<oneshot::Sender<()>>,
@@ -63,11 +51,10 @@ pub struct DiagnosticsServer {
 }
 
 impl DiagnosticsServer {
-    /// Starts the server at `addr` with `/healthz`, `/readyz`, and `/metrics`
-    /// (Go `NewDiagnosticsServer`).
+    /// Starts the server at `addr` with `/healthz`, `/readyz`, and `/metrics`.
     ///
     /// When `meter` is `Some`, scheduler metrics are registered on it; pass
-    /// `None` to skip (matching Go's nil-meter behavior).
+    /// `None` to skip.
     ///
     /// # Errors
     ///
@@ -78,13 +65,12 @@ impl DiagnosticsServer {
             PrometheusScrape::new().map_err(|e| DiagnosticsError::Prometheus(e.to_string()))?,
         );
 
-        let scheduler_metrics = match meter {
-            Some(m) => Some(
+        let scheduler_metrics = meter
+            .map(|m| {
                 SchedulerMetrics::new(m)
-                    .map_err(|e| DiagnosticsError::SchedulerMetrics(e.to_string()))?,
-            ),
-            None => None,
-        };
+                    .map_err(|e| DiagnosticsError::SchedulerMetrics(e.to_string()))
+            })
+            .transpose()?;
 
         let listener = TcpListener::bind(addr)
             .await
@@ -99,10 +85,7 @@ impl DiagnosticsServer {
                 tokio::select! {
                     _ = &mut shutdown_rx => break,
                     accepted = listener.accept() => {
-                        let (stream, _) = match accepted {
-                            Ok(pair) => pair,
-                            Err(_) => continue,
-                        };
+                        let Ok((stream, _)) = accepted else { continue };
                         let io = TokioIo::new(stream);
                         let scrape = Arc::clone(&scrape_for_task);
                         tokio::spawn(async move {
@@ -119,7 +102,7 @@ impl DiagnosticsServer {
             }
         });
 
-        Ok(DiagnosticsServer {
+        Ok(Self {
             addr: local_addr,
             shutdown_tx: Some(shutdown_tx),
             join: Some(join),
@@ -128,13 +111,13 @@ impl DiagnosticsServer {
         })
     }
 
-    /// Returns the address the server is listening on (Go `Addr`).
+    /// Returns the address the server is listening on.
     #[must_use]
-    pub fn addr(&self) -> SocketAddr {
+    pub const fn addr(&self) -> SocketAddr {
         self.addr
     }
 
-    /// Gracefully shuts down the server (Go `Close`).
+    /// Gracefully shuts down the server.
     ///
     /// # Errors
     ///
@@ -159,8 +142,8 @@ async fn route(
     match path {
         "/healthz" => Ok(json_response(StatusCode::OK, health_response().body)),
         "/readyz" => {
-            // No checks are registered through this server (Go registers none),
-            // so readiness is always OK.
+            // No checks are registered through this server, so readiness is
+            // always OK.
             let body = format!("{{\"status\":\"{HEALTH_STATUS_OK}\"}}").into_bytes();
             Ok(json_response(StatusCode::OK, body))
         }
@@ -196,7 +179,7 @@ mod tests {
     use super::*;
 
     /// Integration: server starts, serves /healthz, and shuts down cleanly.
-    /// Covers the route table and lifecycle (Go diagnostics behavior).
+    /// Covers the route table and lifecycle.
     #[tokio::test]
     async fn serves_healthz_and_shuts_down() {
         let server = DiagnosticsServer::new("127.0.0.1:0", None)

@@ -1,6 +1,6 @@
 //! Unified time-series machine format.
 //!
-//! Port of `internal/analyzers/analyze/timeseries.go`. Builds a merged,
+//! Builds a merged,
 //! per-commit time-series from per-analyzer extracted data and serializes it
 //! as either indented JSON (`timeseries`) or NDJSON (`timeseries+ndjson`).
 //!
@@ -8,12 +8,12 @@
 //!
 //! * [`MergedCommitData`] flattens the four fixed metadata fields with the
 //!   per-analyzer flag keys into a single `map[string]any` and marshals it,
-//!   which Go's `encoding/json` then **byte-sorts**. We reproduce this by
+//!   whose keys the report encoder then **byte-sorts**. We reproduce this by
 //!   emitting a map-origin [`GoMap`] (sorted on encode by `cf-gojson`).
 //! * [`MergedTimeSeries`] is a wrapper struct whose fields keep declaration
 //!   order (`version`, `tick_size_hours`, `analyzers`, `commits`), so it is a
 //!   struct-origin [`GoMap`].
-//! * `tick_size_hours` is a float, rendered via Go's float formatter
+//! * `tick_size_hours` is a float, rendered via the contract float formatter
 //!   (`format_go_float`).
 
 use std::collections::BTreeMap;
@@ -22,7 +22,7 @@ use std::io::{self, Write};
 use cf_alg_mapx::build_lookup_set;
 use cf_gojson::{Encoder, GoMap, GoValue};
 
-/// Schema version for unified time-series output. Go `TimeSeriesModelVersion`.
+/// Schema version for unified time-series output.
 pub const TIMESERIES_MODEL_VERSION: &str = "codefang.timeseries.v1";
 
 /// Errors raised while building or serializing the merged time-series.
@@ -55,14 +55,14 @@ impl From<io::Error> for TimeSeriesError {
     }
 }
 
-/// Fallback tick duration in hours. Go `defaultTickSizeHours`.
+/// Fallback tick duration in hours.
 const DEFAULT_TICK_SIZE_HOURS: f64 = 24.0;
 
-/// Number of fixed metadata fields flattened with analyzer data. Go
+/// Number of fixed metadata fields flattened with analyzer data. Reference
 /// `numCommitMetaFields`.
 const NUM_COMMIT_META_FIELDS: usize = 4;
 
-/// Per-commit metadata for time-series construction. Port of Go `CommitMeta`.
+/// Per-commit metadata for time-series construction.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CommitMeta {
     /// `hash` — commit hash (hex).
@@ -76,7 +76,7 @@ pub struct CommitMeta {
 }
 
 /// Pairs an analyzer flag with its per-commit extracted data (hash → value).
-/// Port of Go `AnalyzerData`.
+///
 #[derive(Debug, Clone, Default)]
 pub struct AnalyzerData {
     /// The analyzer flag (e.g. `quality`).
@@ -85,7 +85,7 @@ pub struct AnalyzerData {
     pub data: BTreeMap<String, GoValue>,
 }
 
-/// Merged analyzer data for a single commit. Port of Go `MergedCommitData`.
+/// Merged analyzer data for a single commit.
 #[derive(Debug, Clone, Default)]
 pub struct MergedCommitData {
     /// `hash` — commit hash.
@@ -96,14 +96,15 @@ pub struct MergedCommitData {
     pub author: String,
     /// `tick` — tick index.
     pub tick: i64,
-    /// Per-analyzer data keyed by flag (the Go `Analyzers map[string]any` with
+    /// Per-analyzer data keyed by flag (a dynamic map with
     /// `json:"-"`, flattened into the parent object by `MarshalJSON`).
     pub analyzers: BTreeMap<String, GoValue>,
 }
 
 impl MergedCommitData {
     /// Flattens metadata and per-analyzer data into a single map-origin object
-    /// (byte-sorted on encode). Port of Go `(MergedCommitData).MarshalJSON`.
+    /// (byte-sorted on encode).
+    #[must_use] 
     pub fn to_go_value(&self) -> GoValue {
         let mut flat = GoMap::new_map();
         // Capacity hint parity only; ordering comes from the map-origin sort.
@@ -119,7 +120,7 @@ impl MergedCommitData {
     }
 }
 
-/// Top-level unified time-series output. Port of Go `MergedTimeSeries`.
+/// Top-level unified time-series output.
 #[derive(Debug, Clone, Default)]
 pub struct MergedTimeSeries {
     /// `version` — schema version.
@@ -152,7 +153,8 @@ impl MergedTimeSeries {
 }
 
 /// Builds a unified time-series from pre-extracted per-analyzer commit data.
-/// Port of Go `BuildMergedTimeSeriesDirect`.
+///
+#[must_use] 
 pub fn build_merged_time_series_direct(
     active: &[AnalyzerData],
     commit_meta: &[CommitMeta],
@@ -175,8 +177,7 @@ pub fn build_merged_time_series_direct(
     }
 }
 
-/// Merges per-analyzer data into ordered [`MergedCommitData`]. Port of Go
-/// `assembleCommits`.
+/// Merges per-analyzer data into ordered [`MergedCommitData`].
 fn assemble_commits(active: &[AnalyzerData], commit_meta: &[CommitMeta]) -> Vec<MergedCommitData> {
     let mut meta_by_hash: BTreeMap<String, &CommitMeta> = BTreeMap::new();
     for m in commit_meta {
@@ -213,7 +214,7 @@ fn assemble_commits(active: &[AnalyzerData], commit_meta: &[CommitMeta]) -> Vec<
 }
 
 /// Returns commit hashes in `meta` order, filtered to those in `commit_set`.
-/// Port of Go `orderCommitsByMeta`.
+///
 fn order_commits_by_meta(
     meta: &[CommitMeta],
     commit_set: &std::collections::HashSet<String>,
@@ -227,8 +228,8 @@ fn order_commits_by_meta(
     ordered
 }
 
-/// Encodes a [`MergedTimeSeries`] as indented JSON. Port of Go
-/// `WriteMergedTimeSeries` (`json.NewEncoder` + `SetIndent("", "  ")`).
+/// Encodes a [`MergedTimeSeries`] as indented JSON (stream-encoded,
+/// two-space indent, trailing newline).
 pub fn write_merged_time_series(ts: &MergedTimeSeries, w: &mut dyn Write) -> io::Result<()> {
     let bytes = Encoder::indented("  ")
         .with_trailing_newline(true)
@@ -236,9 +237,8 @@ pub fn write_merged_time_series(ts: &MergedTimeSeries, w: &mut dyn Write) -> io:
     w.write_all(&bytes)
 }
 
-/// Writes a [`MergedTimeSeries`] as NDJSON — one JSON line per commit. Port of
-/// Go `WriteTimeSeriesNDJSON` (`json.NewEncoder`, compact, trailing newline per
-/// line).
+/// Writes a [`MergedTimeSeries`] as NDJSON — one JSON line per commit
+/// (stream-encoded: compact, trailing newline per line).
 pub fn write_time_series_ndjson(ts: &MergedTimeSeries, w: &mut dyn Write) -> io::Result<()> {
     let enc = Encoder::encoder();
     for commit in &ts.commits {
@@ -315,7 +315,7 @@ mod tests {
         let s = String::from_utf8(buf).unwrap();
         assert!(s.starts_with("{\n  \"version\": \"codefang.timeseries.v1\""));
         assert!(s.ends_with("}\n"));
-        // tick_size_hours float renders as integral "24" (Go 'g' formatting).
+        // tick_size_hours float renders as integral "24" (contract 'g' formatting).
         assert!(s.contains("\"tick_size_hours\": 24"));
         assert!(!s.contains("24.0"));
     }

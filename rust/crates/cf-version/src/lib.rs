@@ -1,31 +1,21 @@
 //! Build/version metadata for codefang.
 //!
-//! This crate is the Rust port of the Go package `pkg/version`
-//! (`/home/dmitriy/sources/codefang/pkg/version/version.go`). Its job is to hold
-//! the build-metadata strings and render the one-line banner both binaries
-//! print:
+//! Holds the build-metadata strings and renders the one-line banner both
+//! binaries print (CLI compatibility contract; pinned by the `version` CLI
+//! golden):
 //!
 //! ```text
 //! <name> <Version> (commit: <Commit>, built: <Date>)
 //! ```
 //!
-//! Confirmed call sites in Go:
-//! - `cmd/codefang/main.go:306`:
-//!   `fmt.Fprintf(os.Stdout, "codefang %s (commit: %s, built: %s)\n", Version, Commit, Date)`
-//! - `cmd/uast/main.go:57`:
-//!   `fmt.Fprintf(os.Stdout, "uast %s (commit: %s, built: %s)\n", Version, Commit, Date)`
+//! # Injection model (build script)
 //!
-//! # Injection model (ldflags → build script)
-//!
-//! In Go, `Version`/`Commit`/`Date` are injected at link time via
-//! `-ldflags "-X .../pkg/version.Version=..."` and fall back to the
-//! compile-time defaults `dev` / `none` / `unknown`. Rust has no ldflags
-//! equivalent, so per [`DESIGN.md` §2.8] we inject the same values through a
-//! build script (`build.rs`) that reads environment variables and re-exports
-//! them as `rustc-env` entries; the library reads those with [`option_env!`],
-//! falling back to the Go defaults when unset. A plain `cargo build` with no
-//! environment therefore produces exactly `dev` / `none` / `unknown`,
-//! byte-identical to a Go build with no ldflags.
+//! `Version`/`Commit`/`Date` are injected at build time (DESIGN.md §2.8)
+//! through a build script (`build.rs`) that reads environment variables and
+//! re-exports them as `rustc-env` entries; the library reads those with
+//! [`option_env!`], falling back to the defaults `dev` / `none` / `unknown`
+//! when unset. A plain `cargo build` with no environment therefore produces
+//! exactly `dev` / `none` / `unknown`.
 //!
 //! Recognized build-time inputs (see `build.rs`):
 //! - `Version`: `CF_VERSION`, then `GIT_VERSION`
@@ -33,32 +23,29 @@
 //! - `Date`:    `CF_DATE`,    then `SOURCE_DATE_EPOCH` (epoch → RFC3339 UTC)
 //!
 //! `SOURCE_DATE_EPOCH` support keeps the `built:` date reproducible so the
-//! `version` CLI golden (DESIGN §6, Layer D) is stable on both Go and Rust.
-//!
-//! [`DESIGN.md` §2.8]: ../../../specs/rust-rewrite/DESIGN.md
+//! `version` CLI golden (DESIGN §6, Layer D) is stable across builds.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
 use std::fmt::Write as _;
 
-/// Default version when none is injected — mirrors Go's `Version = "dev"`.
+/// Default version when none is injected.
 pub const DEFAULT_VERSION: &str = "dev";
-/// Default commit when none is injected — mirrors Go's `Commit = "none"`.
+/// Default commit when none is injected.
 pub const DEFAULT_COMMIT: &str = "none";
-/// Default build date when none is injected — mirrors Go's `Date = "unknown"`.
+/// Default build date when none is injected.
 pub const DEFAULT_DATE: &str = "unknown";
-/// Default git hash of the running binary — mirrors Go's
-/// `BinaryGitHash = "<unknown>"`. There is no link-time/env injection for this
-/// in Go (it is set elsewhere at runtime if at all), so it is a plain default.
+/// Default git hash of the running binary. There is no build-time injection
+/// for this field, so it is a plain default.
 pub const DEFAULT_BINARY_GIT_HASH: &str = "<unknown>";
-/// Default API version — mirrors Go's `Binary = 0`. See [`binary_api_version`].
+/// Default API version. See [`binary_api_version`].
 pub const DEFAULT_BINARY: i64 = 0;
 
 /// The build version string.
 ///
-/// Equivalent to Go's `version.Version`. Injected via `CF_VERSION` /
-/// `GIT_VERSION` at build time; defaults to [`DEFAULT_VERSION`] (`"dev"`).
+/// Injected via `CF_VERSION` / `GIT_VERSION` at build time; defaults to
+/// [`DEFAULT_VERSION`] (`"dev"`).
 pub const VERSION: &str = match option_env!("CF_VERSION_INJECTED") {
     Some(v) => v,
     None => DEFAULT_VERSION,
@@ -66,8 +53,8 @@ pub const VERSION: &str = match option_env!("CF_VERSION_INJECTED") {
 
 /// The build commit hash.
 ///
-/// Equivalent to Go's `version.Commit`. Injected via `CF_COMMIT` /
-/// `GIT_COMMIT` at build time; defaults to [`DEFAULT_COMMIT`] (`"none"`).
+/// Injected via `CF_COMMIT` / `GIT_COMMIT` at build time; defaults to
+/// [`DEFAULT_COMMIT`] (`"none"`).
 pub const COMMIT: &str = match option_env!("CF_COMMIT_INJECTED") {
     Some(v) => v,
     None => DEFAULT_COMMIT,
@@ -75,9 +62,8 @@ pub const COMMIT: &str = match option_env!("CF_COMMIT_INJECTED") {
 
 /// The build date.
 ///
-/// Equivalent to Go's `version.Date`. Injected via `CF_DATE` /
-/// `SOURCE_DATE_EPOCH` at build time; defaults to [`DEFAULT_DATE`]
-/// (`"unknown"`).
+/// Injected via `CF_DATE` / `SOURCE_DATE_EPOCH` at build time; defaults to
+/// [`DEFAULT_DATE`] (`"unknown"`).
 pub const DATE: &str = match option_env!("CF_DATE_INJECTED") {
     Some(v) => v,
     None => DEFAULT_DATE,
@@ -85,24 +71,22 @@ pub const DATE: &str = match option_env!("CF_DATE_INJECTED") {
 
 /// The git hash of the running binary.
 ///
-/// Equivalent to Go's `version.BinaryGitHash`. Go declares it as a mutable
-/// package var defaulting to `"<unknown>"`; nothing in the binaries reassigns
-/// it from this package, so we expose the constant default.
+/// Nothing in the binaries reassigns this, so the constant default is
+/// exposed directly.
 pub const BINARY_GIT_HASH: &str = DEFAULT_BINARY_GIT_HASH;
 
 /// Render the one-line version banner for a binary named `name`, using the
 /// compile-time-injected [`VERSION`], [`COMMIT`], and [`DATE`].
 ///
 /// The returned string carries **no trailing newline**; the `version`
-/// subcommands of both binaries print it with a trailing `\n`, reproducing the
-/// Go `fmt.Fprintf(os.Stdout, "%s %s (commit: %s, built: %s)\n", name, ...)`
-/// call exactly. Use [`println!`] (or write the string then `\n`) at the call
-/// site to emit the final newline.
+/// subcommands of both binaries print it with a trailing `\n` (the banner
+/// format is a frozen CLI contract). Use [`println!`] (or write the string
+/// then `\n`) at the call site to emit the final newline.
 ///
 /// # Examples
 ///
 /// ```
-/// // With no ldflags / env injection, the defaults are used:
+/// // With no build-time injection, the defaults are used:
 /// assert_eq!(
 ///     cf_version::banner("codefang"),
 ///     "codefang dev (commit: none, built: unknown)"
@@ -117,9 +101,8 @@ pub fn banner(name: &str) -> String {
     banner_with(name, VERSION, COMMIT, DATE)
 }
 
-/// Returns the `codefang version` line, byte-identical to Go
-/// `fmt.Fprintf(os.Stdout, "codefang %s (commit: %s, built: %s)\n", …)`
-/// (cmd/codefang/main.go) — the banner plus a trailing newline.
+/// Returns the `codefang version` line — the banner plus a trailing newline
+/// (frozen CLI contract, pinned by `rust/tests/compat`).
 #[must_use]
 pub fn codefang_version_line() -> String {
     let mut s = banner("codefang");
@@ -127,9 +110,8 @@ pub fn codefang_version_line() -> String {
     s
 }
 
-/// Returns the `uast version` line, byte-identical to Go
-/// `fmt.Fprintf(os.Stdout, "uast %s (commit: %s, built: %s)\n", …)`
-/// (cmd/uast/main.go) — the banner plus a trailing newline.
+/// Returns the `uast version` line — the banner plus a trailing newline
+/// (frozen CLI contract, pinned by `rust/tests/compat`).
 #[must_use]
 pub fn uast_version_line() -> String {
     let mut s = banner("uast");
@@ -151,22 +133,21 @@ pub fn banner_with(name: &str, version: &str, commit: &str, date: &str) -> Strin
     s
 }
 
-/// Compute codefang's integer API version from a Go-style package path, the
-/// Rust analogue of Go's `version.InitBinaryVersion`.
+/// Compute codefang's integer API version from a dotted package-path-style
+/// identifier.
 ///
-/// Go derives `Binary` from the *last dot-separated component* of the package
-/// import path, stripping its first byte and parsing the remainder as an
-/// integer (`reflect ... PkgPath()` → split on `"."` → `Atoi(last[1:])`). The
-/// convention is a path component like `v0`, `v3`, … so the leading `v` is
-/// dropped. On any parse failure Go leaves `Binary` at its zero value `0`.
+/// The API version is derived from the *last dot-separated component*,
+/// stripping its first character and parsing the remainder as an integer.
+/// The convention is a component like `v0`, `v3`, … so the leading `v` is
+/// dropped. Callers pass the path explicitly (e.g. the binary's module path
+/// or a configured identifier).
 ///
-/// In Rust there is no equivalent package-path reflection, so callers pass the
-/// path explicitly (e.g. the binary's module path or a configured identifier).
-/// The parsing rule is reproduced exactly:
+/// The parsing rule is frozen (reference-implementation behavior):
 /// 1. take the substring after the last `'.'` (or the whole string if none);
-/// 2. drop the first character (Go's `[1:]`, which Go does on bytes — we drop
-///    the first `char` boundary, matching for the ASCII `vN` convention);
-/// 3. parse the remainder as `i64`; on failure return [`DEFAULT_BINARY`] (`0`).
+/// 2. drop the first character (the ASCII `vN` convention makes the byte/char
+///    distinction moot);
+/// 3. parse the remainder as `i64`; on failure return [`DEFAULT_BINARY`]
+///    (`0`).
 ///
 /// # Examples
 ///
@@ -182,8 +163,7 @@ pub fn binary_api_version(pkg_path: &str) -> i64 {
         Some((_, tail)) => tail,
         None => pkg_path,
     };
-    // Go does `last[1:]` (byte slice). Drop the first char boundary; for the
-    // `vN` ASCII convention this is identical.
+    // Drop the first character of the component (the `vN` prefix convention).
     let rest = match last.char_indices().nth(1) {
         Some((idx, _)) => &last[idx..],
         None => "", // 0- or 1-char component -> empty remainder
@@ -196,9 +176,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_match_go() {
-        // Go: Version="dev", Commit="none", Date="unknown",
-        //     BinaryGitHash="<unknown>", Binary=0.
+    fn defaults_are_frozen() {
+        // Frozen defaults: Version="dev", Commit="none", Date="unknown",
+        // BinaryGitHash="<unknown>", Binary=0.
         assert_eq!(DEFAULT_VERSION, "dev");
         assert_eq!(DEFAULT_COMMIT, "none");
         assert_eq!(DEFAULT_DATE, "unknown");
@@ -207,8 +187,8 @@ mod tests {
     }
 
     #[test]
-    fn banner_with_explicit_fields_matches_go_format() {
-        // Reproduces fmt.Fprintf("%s %s (commit: %s, built: %s)\n", ...) sans \n.
+    fn banner_with_explicit_fields_matches_frozen_format() {
+        // "<name> <version> (commit: <commit>, built: <date>)" sans newline.
         assert_eq!(
             banner_with("codefang", "1.2.3", "abc123", "2024-01-02T03:04:05Z"),
             "codefang 1.2.3 (commit: abc123, built: 2024-01-02T03:04:05Z)"
@@ -236,7 +216,7 @@ mod tests {
 
     #[test]
     fn banner_has_no_trailing_newline() {
-        // The newline is the caller's responsibility (matches Go's Printf "\n").
+        // The newline is the caller's responsibility.
         assert!(!banner("codefang").ends_with('\n'));
     }
 
@@ -247,7 +227,7 @@ mod tests {
 
     #[test]
     fn binary_api_version_strips_leading_char_and_parses() {
-        // Go: split on '.', take last, Atoi(last[1:]).
+        // Split on '.', take last component, parse it minus its first char.
         assert_eq!(binary_api_version("github.com/x/pkg/version.v3"), 3);
         assert_eq!(binary_api_version("v0"), 0);
         assert_eq!(binary_api_version("v42"), 42);
@@ -256,7 +236,7 @@ mod tests {
 
     #[test]
     fn binary_api_version_falls_back_to_zero_on_parse_error() {
-        // Non-numeric remainder -> Atoi error -> Binary stays 0.
+        // Non-numeric remainder -> parse error -> 0.
         assert_eq!(binary_api_version("version"), 0); // "ersion" -> err -> 0
         assert_eq!(binary_api_version(""), 0);
         assert_eq!(binary_api_version("v"), 0); // remainder "" -> err -> 0

@@ -10,22 +10,21 @@ publish = false
 
 [features]
 # `default-deps` wires the policy to the concrete classification crates
-# (cf-pathfilter for generated-file heuristics, cf-langpath for enry vendor
-# classification). It is OFF by default because, at the time this crate was
-# ported, both dependency crates still expose only scaffold stubs (their
-# src/lib.rs export just CRATE_NAME); their real APIs — `cf_pathfilter::PathFilter`
-# with `is_generated_path`/`is_generated_content`, and `cf_langpath::is_vendor` —
-# are not available yet. Enable this feature once they land (see the crate's
-# `DefaultClassifier`). Until then, the crate is fully usable via the
-# `Classifier` trait, which is what the analyzers/plumbing callers should inject.
+# (cf-pathfilter for vendor classification and generated-file heuristics,
+# cf-langpath for enry language data). It is OFF by default so the exclusion
+# logic stays usable through the `Classifier` trait alone; analyzer crates that
+# want the production wiring (the `exclude` function / `DefaultClassifier`)
+# enable it explicitly.
 default = []
-default-deps = ["dep:cf-pathfilter", "dep:cf-langpath", "dep:once_cell"]
+default-deps = ["dep:cf-pathfilter", "dep:cf-langpath"]
 
 [dependencies]
-# Generated-file heuristics (filename suffixes, prefixes, content markers).
-# Go: pkg/pathfilter.New()/IsGeneratedPath/IsGeneratedContent.
+# Vendor classification + generated-file heuristics (filename suffixes,
+# prefixes, content markers).
 cf-pathfilter = { path = "../cf-pathfilter", optional = true }
-# Vendoring classification via enry (vendored Linguist data).
-# Go: github.com/src-d/enry/v2 enry.IsVendor.
+# enry language data (vendored Linguist tables).
 cf-langpath = { path = "../cf-langpath", optional = true }
-once_cell = { version = "1", optional = true }
+
+[[example]]
+name = "probe_filter"
+required-features = ["default-deps"]

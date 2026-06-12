@@ -8,7 +8,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-# OTel API/SDK pinned to 0.24 — the release line the ported modules target
+# OTel API/SDK pinned to 0.24 — the release line these modules target
 # (`opentelemetry::metrics::MetricsError`, public `metrics::noop`, instrument
 # `.init()`, `with_unit(&str)`); opentelemetry-prometheus 0.17 / prometheus 0.13
 # are its matching exporter pair (no exporter release exists for otel 0.25/0.26).
@@ -16,12 +16,14 @@ opentelemetry = { version = "0.24", default-features = false, features = ["metri
 opentelemetry_sdk = { version = "0.24", default-features = false, features = ["metrics", "trace"] }
 opentelemetry-prometheus = "0.17"
 prometheus = "0.13"
-# config.rs carries the Go slog.Level as tracing::Level.
+# config.rs carries the minimum log severity as tracing::Level.
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 # logger.rs JSON record shape. Allowed here: observability is outside the
 # report path (DESIGN §2 — no report bytes come from this crate).
 serde_json = { workspace = true }
-# diagnostics.rs HTTP server (Go net/http analogue).
+# Error derive; every error Display string stays a stable operator surface.
+thiserror = "1"
+# diagnostics.rs HTTP server.
 hyper = { version = "1", features = ["server", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"

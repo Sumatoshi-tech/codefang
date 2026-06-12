@@ -1,40 +1,40 @@
 //! Observability configuration.
 //!
-//! Port of `internal/observability/config.go`. Defines [`AppMode`], the
-//! [`Config`] struct, and [`Config::default`] (Go's `DefaultConfig`).
+//! Defines [`AppMode`], the [`Config`] struct, and the zero-config defaults in
+//! [`Config::default`].
 
 use std::collections::BTreeMap;
 
 use tracing::Level;
 
-/// Default OTel service name (`defaultServiceName` in Go).
+/// Default OTel service name.
 pub const DEFAULT_SERVICE_NAME: &str = "codefang";
 
-/// Default shutdown timeout in seconds (`defaultShutdownTimeoutSec` in Go).
+/// Default shutdown timeout in seconds.
 pub const DEFAULT_SHUTDOWN_TIMEOUT_SEC: i32 = 5;
 
-/// Identifies the application execution mode (Go `AppMode`).
+/// Identifies the application execution mode.
 ///
 /// The string form (used as the `app.mode` resource attribute and the `mode`
-/// log field) matches Go exactly: `"cli"`, `"mcp"`, `"serve"`.
+/// log field) is part of the telemetry contract: `"cli"`, `"mcp"`, `"serve"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AppMode {
-    /// CLI command execution mode (`ModeCLI` = `"cli"`).
+    /// CLI command execution mode (`"cli"`).
     Cli,
-    /// MCP stdio server mode (`ModeMCP` = `"mcp"`).
+    /// MCP stdio server mode (`"mcp"`).
     Mcp,
-    /// HTTP/gRPC server mode (`ModeServe` = `"serve"`).
+    /// HTTP/gRPC server mode (`"serve"`).
     Serve,
 }
 
 impl AppMode {
-    /// Returns the wire string for this mode, matching the Go `AppMode` value.
+    /// Returns the wire string for this mode.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            AppMode::Cli => "cli",
-            AppMode::Mcp => "mcp",
-            AppMode::Serve => "serve",
+            Self::Cli => "cli",
+            Self::Mcp => "mcp",
+            Self::Serve => "serve",
         }
     }
 }
@@ -45,10 +45,7 @@ impl std::fmt::Display for AppMode {
     }
 }
 
-/// Holds all observability configuration (Go `Config`).
-///
-/// Field semantics mirror the Go struct one-for-one. [`Config::default`]
-/// reproduces `DefaultConfig()`.
+/// Holds all observability configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
     /// OTel resource service name.
@@ -71,9 +68,8 @@ pub struct Config {
 
     /// Additional gRPC metadata headers for the OTLP exporter.
     ///
-    /// A [`BTreeMap`] is used so iteration order is deterministic (mirroring
-    /// the Go map being sorted before use); Go's `ParseOTLPHeaders` returns an
-    /// unordered map, but header order is not observable behavior.
+    /// A [`BTreeMap`] keeps iteration order deterministic; header order is not
+    /// observable behavior.
     pub otlp_headers: BTreeMap<String, String>,
 
     /// Disables TLS for the OTLP gRPC connection.
@@ -86,7 +82,7 @@ pub struct Config {
     /// is false. Zero uses the SDK default (parent-based with always-on root).
     pub sample_ratio: f64,
 
-    /// Minimum log severity (Go `slog.Level`).
+    /// Minimum log severity.
     pub log_level: Level,
 
     /// Enables hot-path spans (per-commit, per-file, per-git-op). When false
@@ -101,13 +97,11 @@ pub struct Config {
 }
 
 impl Default for Config {
-    /// Returns a `Config` with sensible defaults for zero-config startup.
-    ///
-    /// Port of Go `DefaultConfig()`:
-    /// `ServiceName="codefang"`, `Mode=ModeCLI`, `LogLevel=slog.LevelInfo`,
-    /// `ShutdownTimeoutSec=5`; all other fields zero/empty.
+    /// Returns a `Config` with sensible defaults for zero-config startup:
+    /// `service_name = "codefang"`, `mode = Cli`, `log_level = INFO`,
+    /// `shutdown_timeout_sec = 5`; all other fields zero/empty.
     fn default() -> Self {
-        Config {
+        Self {
             service_name: DEFAULT_SERVICE_NAME.to_string(),
             service_version: String::new(),
             environment: String::new(),
@@ -129,7 +123,7 @@ impl Default for Config {
 mod tests {
     use super::*;
 
-    /// Port of Go `TestDefaultConfig_HasSensibleDefaults`.
+    /// Mirrors the reference suite's `TestDefaultConfig_HasSensibleDefaults`.
     #[test]
     fn default_config_has_sensible_defaults() {
         let cfg = Config::default();
@@ -145,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn app_mode_strings_match_go() {
+    fn app_mode_wire_strings() {
         assert_eq!(AppMode::Cli.as_str(), "cli");
         assert_eq!(AppMode::Mcp.as_str(), "mcp");
         assert_eq!(AppMode::Serve.as_str(), "serve");

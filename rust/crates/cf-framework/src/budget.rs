@@ -1,20 +1,15 @@
-//! Budget hooks — port of the `BudgetHook` interface and `BudgetSnapshot`
-//! struct from `internal/framework/runner.go`.
+//! Budget hooks: the [`BudgetHook`] interface and [`BudgetSnapshot`] struct.
 //!
 //! During a streaming run the runner periodically samples heap usage against a
 //! configured memory budget. A [`BudgetHook`] is notified when the budget is
-//! crossed (and when it returns to OK), and can supply its own snapshot. The
-//! concrete sampling loop that invokes the hook lives in the (currently
-//! blocked) `runner`/`streaming` modules; this module is the dependency-free
-//! interface that those modules and external callers share.
+//! crossed (and when it returns to OK), and can supply its own snapshot. This
+//! module is the dependency-free interface that the sampling loop and external
+//! callers share.
 
 /// Captures memory state at a point in time for budget decisions.
-///
-/// Mirrors Go `framework.BudgetSnapshot` (`runner.go`). Field order and types
-/// are preserved so that any future serialization matches the Go struct.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct BudgetSnapshot {
-    /// Current Go-heap allocation in bytes (`runtime.MemStats.HeapAlloc`).
+    /// Current heap allocation in bytes.
     pub heap_alloc_bytes: i64,
     /// The configured memory budget in bytes (0 = no budget).
     pub budget_bytes: i64,
@@ -24,18 +19,6 @@ pub struct BudgetSnapshot {
     pub over_budget: bool,
     /// Number of commits processed at the moment of the check.
     pub commits_at_check: i64,
-}
-
-impl Default for BudgetSnapshot {
-    fn default() -> Self {
-        Self {
-            heap_alloc_bytes: 0,
-            budget_bytes: 0,
-            usage_ratio: 0.0,
-            over_budget: false,
-            commits_at_check: 0,
-        }
-    }
 }
 
 impl BudgetSnapshot {
@@ -67,16 +50,6 @@ impl BudgetSnapshot {
 }
 
 /// Invoked when memory budget thresholds are crossed.
-///
-/// Mirrors Go `framework.BudgetHook`:
-///
-/// ```text
-/// type BudgetHook interface {
-///     OnBudgetExceeded(snapshot BudgetSnapshot)
-///     OnBudgetOK(snapshot BudgetSnapshot)
-///     BudgetSnapshot() BudgetSnapshot
-/// }
-/// ```
 pub trait BudgetHook {
     /// Called when the heap first crosses above the budget.
     fn on_budget_exceeded(&mut self, snapshot: BudgetSnapshot);
@@ -113,8 +86,8 @@ mod tests {
         assert!(s.over_budget);
     }
 
-    /// A trivial hook that records the last events, exercising the trait object
-    /// path the runner uses (`budgetHook BudgetHook`).
+    /// A trivial hook that records the last events, exercising the trait
+    /// object path the runner uses.
     struct RecordingHook {
         last: BudgetSnapshot,
         exceeded: u32,

@@ -1,12 +1,13 @@
 //! Chunk-boundary planning and budget-aware scheduling for streaming execution.
 //!
-//! Port of Go `internal/streaming/planner.go`. Reproduces the static [`Planner`],
-//! the feedback-driven [`AdaptivePlanner`], memory-pressure detection, and the
-//! unified budget [`compute_schedule`] decomposition byte-for-byte.
+//! Provides the static [`Planner`], the feedback-driven [`AdaptivePlanner`],
+//! memory-pressure detection, and the unified budget [`compute_schedule`]
+//! decomposition.
 //!
-//! All commit counts are `i64` (Go `int` is 64-bit) and all byte quantities are
-//! `i64` (Go `int64`) so the integer arithmetic — including truncating division
-//! and overflow — matches Go exactly.
+//! All commit counts and byte quantities are `i64`, so the integer arithmetic
+//! — including truncating division — is platform-independent and matches the
+//! reference implementation exactly (chunk plans steer analyzer state
+//! aggregation, which the differential gate pins indirectly).
 
 use cf_alg::{chunk, Range};
 use cf_alg_stats::{exceeds_threshold, Ema};
@@ -14,18 +15,18 @@ use cf_units::{KIB, MIB};
 
 /// A chunk of commits to process: a half-open `[start, end)` interval.
 ///
-/// Alias for [`cf_alg::Range`] (Go: `type ChunkBounds = alg.Range`) so `alg`
-/// consumers and streaming consumers exchange values without conversion. Its
-/// `start`/`end` fields are `usize` (commit indices are never negative); the
-/// planner's byte/budget math is done in `i64` to match Go's `int64` semantics,
-/// and the two are bridged only at the [`cf_alg::chunk`] boundary via the private
-/// `chunk_i64` helper.
+/// Alias for [`cf_alg::Range`] so `alg` consumers and streaming consumers
+/// exchange values without conversion. Its `start`/`end` fields are `usize`
+/// (commit indices are never negative); the planner's byte/budget math is done
+/// in `i64`, and the two are bridged only at the [`cf_alg::chunk`] boundary
+/// via the private `chunk_i64` helper.
 pub type ChunkBounds = Range;
 
 /// Bridges the planner's `i64` commit count + chunk size into [`cf_alg::chunk`],
 /// whose API is `usize`. Callers guarantee `total > 0` and `size > 0`, so the
-/// conversions never wrap; a defensive `try_into` falls back to an empty plan if
-/// a caller ever violates that (mirroring Go's non-positive guard).
+/// conversions never wrap; a defensive `try_into` falls back to an empty plan
+/// if a caller ever violates that (the same non-positive guard the planner
+/// applies).
 fn chunk_i64(total: i64, size: i64) -> Vec<ChunkBounds> {
     let (Ok(total), Ok(size)): (Result<usize, _>, Result<usize, _>) =
         (total.try_into(), size.try_into())
@@ -72,8 +73,8 @@ pub const DEFAULT_AVG_TC_SIZE: i64 = 100 * KIB;
 
 /// Calculates chunk boundaries for streaming execution.
 ///
-/// Port of Go `streaming.Planner`. Construct with [`Planner::default`] and set
-/// the public fields, or use the struct literal directly.
+/// Construct with [`Planner::default`] and set the public fields, or use the
+/// struct literal directly.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Planner {
     /// Number of commits to process.
@@ -109,10 +110,11 @@ impl Planner {
         }
 
         // Available memory for analyzer state (after overhead).
-        let mut overhead = BASE_OVERHEAD;
-        if self.pipeline_overhead > 0 {
-            overhead = self.pipeline_overhead;
-        }
+        let overhead = if self.pipeline_overhead > 0 {
+            self.pipeline_overhead
+        } else {
+            BASE_OVERHEAD
+        };
 
         let available = self.memory_budget - overhead;
         if available <= 0 {
@@ -130,8 +132,8 @@ impl Planner {
         // Max commits that fit in available memory.
         let max_commits = available / growth;
 
-        // Go: max(min(maxCommits, MaxChunkSize), MinChunkSize). MIN <= MAX always
-        // (50 <= 3000), so this is exactly clamp(maxCommits, MIN, MAX).
+        // max(min(max_commits, MAX_CHUNK_SIZE), MIN_CHUNK_SIZE); MIN <= MAX
+        // always (50 <= 3000), so this is exactly clamp(max_commits, MIN, MAX).
         max_commits.clamp(MIN_CHUNK_SIZE, MAX_CHUNK_SIZE)
     }
 
@@ -146,11 +148,9 @@ impl Planner {
             return Vec::new();
         }
 
-        let sub = Planner {
+        let sub = Self {
             total_commits: remaining,
-            memory_budget: self.memory_budget,
-            aggregate_growth_per_commit: self.aggregate_growth_per_commit,
-            pipeline_overhead: self.pipeline_overhead,
+            ..*self
         };
 
         // start_commit is non-negative here (remaining > 0 implies it is less
@@ -205,8 +205,8 @@ pub struct ReplanObservation {
     pub chunk_index: i32,
     /// Bounds of the chunk just processed.
     pub chunk: ChunkBounds,
-    /// Observed per-commit working state growth in bytes (HeapInuse delta minus
-    /// aggregator state delta, per commit).
+    /// Observed per-commit working state growth in bytes (heap-in-use delta
+    /// minus aggregator state delta, per commit).
     pub work_growth_per_commit: i64,
     /// Observed per-commit TC payload size in bytes.
     pub tc_payload_per_commit: i64,
@@ -221,8 +221,6 @@ pub struct ReplanObservation {
 /// After each chunk it examines three separate metrics (working state growth,
 /// TC payload size, aggregator state growth), updates smoothed EMA estimates,
 /// and re-plans remaining chunks if any metric diverges beyond a threshold.
-///
-/// Port of Go `streaming.AdaptivePlanner`.
 #[derive(Debug, Clone)]
 pub struct AdaptivePlanner {
     total_commits: i64,
@@ -240,10 +238,8 @@ pub struct AdaptivePlanner {
 
 impl AdaptivePlanner {
     /// Creates an adaptive planner seeded with the declared growth rate.
-    ///
-    /// Port of Go `NewAdaptivePlanner`.
     #[must_use]
-    pub fn new(
+    pub const fn new(
         total_commits: i64,
         mem_budget: i64,
         declared_growth: i64,
@@ -269,13 +265,12 @@ impl AdaptivePlanner {
     ///
     /// Processed chunks `[0..=chunk_index]` are never modified (checkpoint
     /// safety). The returned slice always covers exactly `[0..total_commits)`.
-    ///
-    /// Port of Go `(*AdaptivePlanner).Replan`.
     #[must_use]
     pub fn replan(&mut self, obs: ReplanObservation) -> Vec<ChunkBounds> {
-        // Chunks are well-formed (end >= start); saturating_sub guards against a
-        // malformed observation rather than panicking. Go's `<= 0` becomes
-        // `== 0` because these usize indices are never negative.
+        // Chunks are well-formed (end >= start); saturating_sub guards against
+        // a malformed observation rather than panicking. The non-positive
+        // guard reduces to `== 0` because these usize indices are never
+        // negative.
         let commits_in_chunk = obs.chunk.end.saturating_sub(obs.chunk.start);
         if commits_in_chunk == 0 {
             return obs.current_chunks;
@@ -332,14 +327,13 @@ impl AdaptivePlanner {
     }
 
     /// Returns adaptive planner telemetry.
-    ///
-    /// Port of Go `(*AdaptivePlanner).Stats`.
     #[must_use]
     pub fn stats(&self) -> AdaptiveStats {
-        let mut final_rate = self.declared_growth as f64;
-        if self.work_ema.initialized() {
-            final_rate = self.work_ema.value();
-        }
+        let final_rate = if self.work_ema.initialized() {
+            self.work_ema.value()
+        } else {
+            self.declared_growth as f64
+        };
 
         AdaptiveStats {
             replan_count: self.replan_count,
@@ -351,7 +345,7 @@ impl AdaptivePlanner {
         }
     }
 
-    fn build_planner(&self, growth: i64) -> Planner {
+    const fn build_planner(&self, growth: i64) -> Planner {
         Planner {
             total_commits: self.total_commits,
             memory_budget: self.memory_budget,
@@ -360,29 +354,23 @@ impl AdaptivePlanner {
         }
     }
 
-    // --- Test-only accessors (mirroring the Go `*_test.go` helper methods) ---
+    // --- Test-support accessors ---
 
     /// The initial plan using the declared growth rate.
-    ///
-    /// Mirrors the Go test helper `(*AdaptivePlanner).InitialPlan`.
     #[must_use]
     pub fn initial_plan(&self) -> Vec<ChunkBounds> {
         self.build_planner(self.declared_growth).plan()
     }
 
     /// Total commits the planner was created with.
-    ///
-    /// Mirrors the Go test helper `(*AdaptivePlanner).TotalCommits`.
     #[must_use]
-    pub fn total_commits(&self) -> i64 {
+    pub const fn total_commits(&self) -> i64 {
         self.total_commits
     }
 
     /// Declared growth rate the planner was seeded with.
-    ///
-    /// Mirrors the Go test helper `(*AdaptivePlanner).DeclaredGrowth`.
     #[must_use]
-    pub fn declared_growth(&self) -> i64 {
+    pub const fn declared_growth(&self) -> i64 {
         self.declared_growth
     }
 }
@@ -399,8 +387,6 @@ pub const PRESSURE_WARNING_RATIO: f64 = 0.80;
 pub const PRESSURE_CRITICAL_RATIO: f64 = 0.90;
 
 /// How close heap usage is to the budget.
-///
-/// Port of Go `streaming.MemoryPressureLevel`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemoryPressureLevel {
     /// Heap usage is well within budget.
@@ -414,8 +400,6 @@ pub enum MemoryPressureLevel {
 /// Compares current heap usage against the memory budget and returns the
 /// pressure level. Returns [`MemoryPressureLevel::None`] when budget is zero or
 /// negative (unlimited).
-///
-/// Port of Go `streaming.CheckMemoryPressure`.
 #[must_use]
 pub fn check_memory_pressure(heap_inuse: i64, mem_budget: i64) -> MemoryPressureLevel {
     if mem_budget <= 0 {
@@ -450,8 +434,6 @@ pub const AGG_STATE_PERCENT: i64 = 30;
 pub const CHUNK_MEM_PERCENT: i64 = 10;
 
 /// Inputs for the unified budget-aware scheduler.
-///
-/// Port of Go `streaming.SchedulerConfig`.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SchedulerConfig {
     /// Number of commits to process.
@@ -473,8 +455,6 @@ pub struct SchedulerConfig {
 }
 
 /// Computed scheduling parameters.
-///
-/// Port of Go `streaming.Schedule`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Schedule {
     /// Planned chunk boundaries.
@@ -488,7 +468,7 @@ pub struct Schedule {
 }
 
 /// Returns `max_buf` clamped to at least 1.
-fn clamp_max_buffering(max_buf: i32) -> i32 {
+const fn clamp_max_buffering(max_buf: i32) -> i32 {
     if max_buf <= 0 {
         1
     } else {
@@ -502,8 +482,6 @@ fn clamp_max_buffering(max_buf: i32) -> i32 {
 /// The buffering factor is the highest value in `[1, max_buffering]` for which
 /// `chunk_size >= MIN_CHUNK_SIZE`. Only the working-state region is divided
 /// among buffering slots; the aggregator spill budget is unaffected.
-///
-/// Port of Go `streaming.ComputeSchedule`.
 #[must_use]
 pub fn compute_schedule(cfg: SchedulerConfig) -> Schedule {
     let max_buf = clamp_max_buffering(cfg.max_buffering);
@@ -522,10 +500,9 @@ pub fn compute_schedule(cfg: SchedulerConfig) -> Schedule {
         }
         .plan();
 
-        let mut chunk_size = MAX_CHUNK_SIZE;
-        if let Some(first) = chunks.first() {
-            chunk_size = (first.end - first.start) as i64;
-        }
+        let chunk_size = chunks
+            .first()
+            .map_or(MAX_CHUNK_SIZE, |first| (first.end - first.start) as i64);
 
         return Schedule {
             chunks,

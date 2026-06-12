@@ -1,67 +1,67 @@
-//! Minimal Go `encoding/json`-byte-compatible encoder, shaped after the
-//! design's tier-0 `cf-gojson` crate (DESIGN.md sec 2.2).
+//! Minimal report-format JSON encoder, shaped after the shared tier-0
+//! `cf-gojson` crate (DESIGN.md sec 2.2).
 //!
-//! Per the design, machine-format report bytes must be byte-identical to Go's
-//! `encoding/json`, which differs from `serde_json` on four points: map-key
-//! ordering, HTML escaping (on by default), float formatting
-//! (`strconv.AppendFloat(_, 'g', -1, 64)` with the `21` exponent threshold),
-//! and compact-vs-indent semantics. `cf-gojson` is still a scaffold in this
-//! workspace, so this module provides the subset the renderer needs with the
-//! same [`GoValue`]/[`Encoder`] API shape. When `cf-gojson` lands, delete this
-//! module and depend on it (see this crate's `Cargo.toml`).
+//! Machine-format report bytes are a frozen contract (pinned by
+//! `rust/tests/compat`) and differ from `serde_json` defaults on four points:
+//! map-key ordering, HTML escaping (on by default), float formatting
+//! (shortest-round-trip `'g'` style with the `1e21` exponent threshold), and
+//! compact-vs-indent semantics. This module provides the subset the renderer
+//! needs with the same [`GoValue`]/[`Encoder`] API shape as `cf-gojson`; see
+//! this crate's `Cargo.toml` for the consolidation plan.
 //!
-//! Scope ported here (sufficient for the renderer's JSON models):
+//! Scope covered here (sufficient for the renderer's JSON models):
 //! - struct-origin objects emit fields in declaration order, honoring
 //!   `omitempty` (modeled by callers choosing which entries to push);
 //! - map-origin objects byte-sort their keys;
 //! - HTML escaping of `<`, `>`, `&` and control characters;
-//! - Go float formatting for the integer-valued and short-decimal cases used by
-//!   scores/percentages.
+//! - report-contract float formatting for the integer-valued and short-decimal
+//!   cases used by scores/percentages.
 
 use std::collections::BTreeMap;
 
-/// A JSON value with Go `encoding/json` semantics.
+/// A JSON value with report-format semantics.
 ///
 /// Mirrors `cf-gojson::GoValue`. [`GoValue::Object`] preserves the
 /// caller-provided field order (struct-origin: declaration order). [`GoValue::Map`]
-/// byte-sorts its keys at encode time (map-origin), matching Go's
-/// `map[string]X` marshaling.
+/// byte-sorts its keys at encode time (map-origin), per the report-format
+/// contract for string-keyed maps.
 #[derive(Debug, Clone, PartialEq)]
 pub enum GoValue {
-    /// Go `nil` / JSON `null`.
+    /// JSON `null`.
     Null,
-    /// Go `bool`.
+    /// JSON boolean.
     Bool(bool),
-    /// Go integer (`int`); never routed through the float formatter.
+    /// Integer; never routed through the float formatter.
     Int(i64),
-    /// Go `float64`; formatted via [`go_float`].
+    /// Float; formatted via [`go_float`].
     Float(f64),
-    /// Go `string`.
+    /// String.
     Str(String),
-    /// Go slice / JSON array.
-    Array(Vec<GoValue>),
+    /// JSON array.
+    Array(Vec<Self>),
     /// Struct-origin object: fields emitted in the given (declaration) order.
-    Object(Vec<(String, GoValue)>),
+    Object(Vec<(String, Self)>),
     /// Map-origin object: keys byte-sorted at encode time.
-    Map(BTreeMap<String, GoValue>),
+    Map(BTreeMap<String, Self>),
 }
 
 /// Encoder configuration mirroring `cf-gojson::Encoder` (DESIGN.md sec 2.2).
 #[derive(Debug, Clone)]
 pub struct Encoder {
-    /// `None` = compact (`json.Marshal`); `Some("  ")` = `SetIndent("", "  ")`.
+    /// `None` = compact; `Some("  ")` = two-space indented output.
     pub indent: Option<&'static str>,
-    /// HTML escaping of `<`, `>`, `&`. Default `true`, matching Go.
+    /// HTML escaping of `<`, `>`, `&`. Default `true` (report-format contract).
     pub escape_html: bool,
-    /// Append exactly one trailing `\n` (Encoder.Encode paths). `false` for
-    /// Marshal paths.
+    /// Append exactly one trailing `\n` (stream-encode paths). `false` for
+    /// plain marshal paths.
     pub trailing_newline: bool,
 }
 
 impl Default for Encoder {
-    /// Compact, HTML-escape on, no trailing newline — matching `json.Marshal`.
+    /// Compact, HTML-escape on, no trailing newline — the report-format
+    /// marshal defaults.
     fn default() -> Self {
-        Encoder {
+        Self {
             indent: None,
             escape_html: true,
             trailing_newline: false,
@@ -71,6 +71,7 @@ impl Default for Encoder {
 
 impl Encoder {
     /// Encodes a [`GoValue`] to a byte-compatible JSON string.
+    #[must_use]
     pub fn encode(&self, value: &GoValue) -> String {
         let mut out = String::new();
         self.write_value(&mut out, value, 0);
@@ -96,7 +97,8 @@ impl Encoder {
             }
             GoValue::Map(map) => {
                 // Map-origin: keys byte-sorted. BTreeMap already orders by the
-                // Rust `String` Ord, which is byte (UTF-8) order, matching Go.
+                // Rust `String` Ord, which is byte (UTF-8) order, as the
+                // report-format contract requires.
                 let pairs: Vec<(&str, &GoValue)> =
                     map.iter().map(|(k, v)| (k.as_str(), v)).collect();
                 self.write_object(out, &pairs, depth);
@@ -152,10 +154,11 @@ impl Encoder {
         }
     }
 
-    /// Writes a JSON string literal reproducing Go's `encodeState.string`:
+    /// Writes a JSON string literal per the report-format string contract:
     /// escape `"`, `\`, control chars (`\n`/`\r`/`\t` shortcuts, else
     /// `\u00XX`), and `<`/`>`/`&` when `escape_html`.
     fn write_string(&self, out: &mut String, s: &str) {
+        use std::fmt::Write as _;
         out.push('"');
         for ch in s.chars() {
             match ch {
@@ -165,11 +168,13 @@ impl Encoder {
                 '\r' => out.push_str("\\r"),
                 '\t' => out.push_str("\\t"),
                 '<' | '>' | '&' if self.escape_html => {
-                    out.push_str(&format!("\\u{:04x}", ch as u32));
+                    let _ = write!(out, "\\u{:04x}", ch as u32);
                 }
                 '\u{2028}' if self.escape_html => out.push_str("\\u2028"),
                 '\u{2029}' if self.escape_html => out.push_str("\\u2029"),
-                c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+                c if (c as u32) < 0x20 => {
+                    let _ = write!(out, "\\u{:04x}", c as u32);
+                }
                 c => out.push(c),
             }
         }
@@ -177,22 +182,23 @@ impl Encoder {
     }
 }
 
-/// Formats an `f64` the way Go's `encoding/json` does
-/// (`strconv.AppendFloat(_, 'g', -1, 64)` semantics).
+/// Formats an `f64` per the report-format float contract (shortest-round-trip
+/// `'g'`-style formatting).
 ///
 /// Integer-valued floats print without a decimal point (`1.0` -> `"1"`), and
 /// short decimals print their shortest round-trip form. Non-finite values are
-/// rendered as `null` (Go errors on them, but the renderer never produces NaN
-/// scores; `null` keeps the output well-formed and visible).
+/// rendered as `null` (the reference encoder errors on them, but the renderer
+/// never produces NaN scores; `null` keeps the output well-formed and visible).
 ///
 /// NOTE: full exponent/`e±NN` edge-case parity is owned by `cf-gojson`; the
 /// renderer's scores/percentages are always finite values in `0..=10`.
+#[must_use]
 pub fn go_float(f: f64) -> String {
     if !f.is_finite() {
         return "null".to_string();
     }
     if f == 0.0 {
-        // Preserve -0.0 like Go (which prints "-0").
+        // Preserve -0.0 (the report contract prints "-0").
         return if f.is_sign_negative() {
             "-0".to_string()
         } else {
@@ -203,8 +209,8 @@ pub fn go_float(f: f64) -> String {
         // Integer-valued float: no decimal point.
         return format!("{}", f as i64);
     }
-    // Shortest round-trip form (Rust's default matches Go's 'g' digits for the
-    // small magnitudes the renderer emits).
+    // Shortest round-trip form (Rust's default matches the contract's 'g'
+    // digits for the small magnitudes the renderer emits).
     format!("{f}")
 }
 
@@ -239,10 +245,9 @@ mod tests {
 
     #[test]
     fn html_escaping_on_by_default() {
-        // Go encoding/json escapes <, > and & by default (DESIGN.md 2.1):
-        // '<' -> <, '>' -> >, '&' -> &. The default Encoder has
-        // escape_html=true, so the output must contain the escaped forms, NOT
-        // the raw characters.
+        // The report contract escapes <, > and & by default (DESIGN.md 2.1).
+        // The default Encoder has escape_html=true, so the output must contain
+        // the escaped forms, NOT the raw characters.
         let enc = Encoder::default();
         assert_eq!(
             enc.encode(&GoValue::Str("a<b>&c".to_string())),
@@ -252,7 +257,7 @@ mod tests {
 
     #[test]
     fn html_escaping_can_be_disabled() {
-        // SetEscapeHTML(false) leaves <, >, & untouched.
+        // escape_html=false leaves <, >, & untouched.
         let enc = Encoder {
             indent: None,
             escape_html: false,
@@ -266,7 +271,7 @@ mod tests {
 
     #[test]
     fn unicode_line_separators_escaped_when_html_on() {
-        // Go escapes U+2028/U+2029 to \u2028/\u2029 when HTML-escaping is on.
+        // U+2028/U+2029 escape to \u2028/\u2029 when HTML-escaping is on.
         let enc = Encoder::default();
         assert_eq!(
             enc.encode(&GoValue::Str("a\u{2028}b\u{2029}c".to_string())),

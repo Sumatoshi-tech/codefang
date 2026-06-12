@@ -1,26 +1,18 @@
 //! `FileDiff` provider.
 //!
-//! Port of `internal/analyzers/plumbing/file_diff.go`.
-//!
 //! Produces, per **modified** file, the old/new line-of-code counts and a
-//! line-granular diff. The Go implementation only diffs `Modify` changes
-//! (inserts and deletes are not emitted here), applies two fast paths, skips
-//! binary blobs, and uses the diff-match-patch line algorithm so its output
-//! matches `sergi/go-diff`.
+//! line-granular diff. Only `Modify` changes are diffed (inserts and deletes
+//! are not emitted here); two fast paths and a binary guard run first, and the
+//! diff itself uses the diff-match-patch line algorithm.
 //!
 //! # Diff engine boundary
 //!
-//! The line diff itself is the byte-identity-critical step: Go runs
-//! ```text
-//! src, dst, _ := dmp.DiffLinesToRunes(stripWhitespace(from), stripWhitespace(to))
-//! diffs := dmp.DiffMainRunes(src, dst, false)
-//! if !CleanupDisabled { diffs = dmp.DiffCleanupMerge(dmp.DiffCleanupSemanticLossless(diffs)) }
-//! ```
-//! against `sergi/go-diff` v1.4.0. There is no Rust crate that reproduces
-//! go-diff byte-for-byte (and none was available to the build), so — per port
-//! rule (5) — the engine is expressed as the [`LineDiffer`] trait and injected.
-//! A faithful Rust port of go-diff's `diffmatchpatch` (a `cf-godiff` crate) is
-//! the intended implementation; see the crate `todos`.
+//! The line diff itself is the byte-identity-critical step. The reference
+//! pipeline is: encode both (whitespace-stripped) sides to lines-as-runes,
+//! run the main diff, and — unless cleanup is disabled — apply the
+//! semantic-lossless and merge cleanup passes. The engine is expressed as the
+//! [`LineDiffer`] trait and injected; `cf-godiff` is the byte-faithful
+//! implementation (its output is pinned by the differential gate).
 
 use std::collections::HashMap;
 
@@ -28,24 +20,24 @@ use crate::analyzer::{dep, Analyzer, AnalyzerError, ValueMap};
 use crate::blob_cache::{is_binary, CachedBlob};
 use crate::git_model::{Action, Change, Changes, Hash};
 
-/// Default diff timeout in milliseconds, mirroring Go's `DefaultValue = 1000`.
+/// Default diff timeout in milliseconds.
 pub const DEFAULT_DIFF_TIMEOUT_MS: i64 = 1000;
 
-/// Diff operation kind, mirroring `diffmatchpatch.Operation`.
+/// Diff operation kind.
 ///
-/// Discriminants match Go's `DiffDelete (-1)`, `DiffEqual (0)`,
-/// `DiffInsert (1)` so a serializer can emit the same integer codes.
+/// The discriminants (`Delete = -1`, `Equal = 0`, `Insert = 1`) are frozen so
+/// a serializer can emit the same integer codes as the diff engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiffOp {
-    /// Text removed (`DiffDelete`, Go value -1).
+    /// Text removed.
     Delete = -1,
-    /// Text unchanged (`DiffEqual`, Go value 0).
+    /// Text unchanged.
     Equal = 0,
-    /// Text added (`DiffInsert`, Go value 1).
+    /// Text added.
     Insert = 1,
 }
 
-/// One element of a diff, mirroring `diffmatchpatch.Diff`.
+/// One element of a diff.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diff {
     /// Diff operation.
@@ -54,65 +46,65 @@ pub struct Diff {
     pub text: String,
 }
 
-/// Parameters passed to a [`LineDiffer`], mirroring the dmp configuration in
-/// Go's `processChange`.
+/// Parameters passed to a [`LineDiffer`].
 #[derive(Debug, Clone, Copy)]
 pub struct DiffParams {
-    /// Diff timeout in milliseconds (`0` = no limit). Go's `dmp.DiffTimeout`.
+    /// Diff timeout in milliseconds (`0` = no limit).
     pub timeout_ms: i64,
-    /// Whether to skip the `DiffCleanupSemanticLossless` + `DiffCleanupMerge`
-    /// pass. Go's `CleanupDisabled`.
+    /// Whether to skip the semantic-lossless + merge cleanup pass.
     pub cleanup_disabled: bool,
 }
 
-/// Outcome of a line diff: the diff segments plus the encoded-line counts that
-/// Go reports as `len(src)` / `len(dst)`.
+/// Outcome of a line diff: the diff segments plus the encoded-line counts
+/// reported as the old/new lines of code.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LineDiffResult {
-    /// `len(src)` — number of encoded lines on the old side.
+    /// Number of encoded lines on the old side.
     pub old_lines_of_code: usize,
-    /// `len(dst)` — number of encoded lines on the new side.
+    /// Number of encoded lines on the new side.
     pub new_lines_of_code: usize,
-    /// Diff segments after `DiffCharsToLines` (and optional cleanup).
+    /// Diff segments (after the optional cleanup pass).
     pub diffs: Vec<Diff>,
 }
 
-/// The line-diff engine, abstracting `sergi/go-diff`'s `diffmatchpatch`.
+/// The line-diff engine boundary.
 ///
-/// Implementations must reproduce the exact go-diff line pipeline for the
-/// machine output to stay byte-identical; see the module note.
+/// Implementations must reproduce the reference diff-match-patch line
+/// pipeline exactly for the machine output to stay byte-identical
+/// (`cf-godiff` does); see the module note.
 pub trait LineDiffer {
     /// Diff two already-whitespace-normalized strings at line granularity.
     fn line_diff(&self, old: &str, new: &str, params: DiffParams) -> LineDiffResult;
 }
 
-/// Per-file diff result, mirroring Go's `pkgplumbing.FileDiffData`.
+/// Per-file diff result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileDiffData {
-    /// Lines of code before the change (Go: `len(src)`).
+    /// Lines of code before the change.
     pub old_lines_of_code: usize,
-    /// Lines of code after the change (Go: `len(dst)`).
+    /// Lines of code after the change.
     pub new_lines_of_code: usize,
     /// The diff segments.
     pub diffs: Vec<Diff>,
 }
 
-/// `FileDiff` provider, mirroring Go's `FileDiffAnalyzer`.
+/// `FileDiff` provider.
 pub struct FileDiff<D: LineDiffer> {
-    /// When true, skip the cleanup pass (Go's `CleanupDisabled`).
+    /// When true, skip the cleanup pass.
     pub cleanup_disabled: bool,
-    /// Ignore whitespace when diffing (Go's `WhitespaceIgnore`): spaces are
-    /// stripped from both sides before the line diff.
+    /// Ignore whitespace when diffing: spaces are stripped from both sides
+    /// before the line diff.
     pub whitespace_ignore: bool,
-    /// Diff timeout in milliseconds; `0` means no limit (Go's `Timeout`).
+    /// Diff timeout in milliseconds; `0` means no limit.
     pub timeout_ms: i64,
     differ: D,
 }
 
 impl<D: LineDiffer> FileDiff<D> {
-    /// Construct a `FileDiff` over the given diff engine with Go's defaults.
-    pub fn new(differ: D) -> Self {
-        FileDiff {
+    /// Construct a `FileDiff` over the given diff engine with the standard
+    /// defaults.
+    pub const fn new(differ: D) -> Self {
+        Self {
             cleanup_disabled: false,
             whitespace_ignore: false,
             timeout_ms: DEFAULT_DIFF_TIMEOUT_MS,
@@ -120,10 +112,8 @@ impl<D: LineDiffer> FileDiff<D> {
         }
     }
 
-    /// Build the per-file diff map for one commit's changes.
-    ///
-    /// Mirrors Go's `processChangesSequential`: iterate changes and process
-    /// only modifications.
+    /// Build the per-file diff map for one commit's changes (only
+    /// modifications are processed).
     pub fn build(
         &self,
         changes: &Changes,
@@ -136,14 +126,14 @@ impl<D: LineDiffer> FileDiff<D> {
         result
     }
 
-    /// Process one change, mirroring Go's `processChange`.
+    /// Process one change.
     fn process_change(
         &self,
         change: &Change,
         cache: &HashMap<Hash, CachedBlob>,
         result: &mut HashMap<String, FileDiffData>,
     ) {
-        // Go: only Modify changes are diffed.
+        // Only Modify changes are diffed.
         if change.action() != Some(Action::Modify) {
             return;
         }
@@ -159,12 +149,12 @@ impl<D: LineDiffer> FileDiff<D> {
             return;
         }
 
-        // Skip binary blobs (Go: blobFrom.IsBinary() || blobTo.IsBinary()).
+        // Skip binary blobs (either side binary skips the pair).
         if is_binary(&blob_from.data) || is_binary(&blob_to.data) {
             return;
         }
 
-        // Go uses string([]byte); decode lossily (the dmp operates on runes).
+        // Decode lossily; the diff engine operates on decoded text.
         let str_from = String::from_utf8_lossy(&blob_from.data).into_owned();
         let str_to = String::from_utf8_lossy(&blob_to.data).into_owned();
 
@@ -189,9 +179,8 @@ impl<D: LineDiffer> FileDiff<D> {
         result.insert(change.to.name.clone(), data);
     }
 
-    /// Compute the diff for a modification, mirroring the dmp pipeline in Go's
-    /// `processChange` (whitespace strip, line diff, optional cleanup, and the
-    /// `len(src)`/`len(dst)` LOC counts).
+    /// Compute the diff for a modification: whitespace strip, line diff,
+    /// optional cleanup, and the encoded-line LOC counts.
     pub fn compute_modify(&self, str_from: &str, str_to: &str) -> FileDiffData {
         let from = strip_whitespace(str_from, self.whitespace_ignore);
         let to = strip_whitespace(str_to, self.whitespace_ignore);
@@ -234,8 +223,7 @@ impl<D: LineDiffer> Analyzer for FileDiff<D> {
     }
 }
 
-/// Strip spaces if whitespace is ignored, mirroring Go's `stripWhitespace`
-/// (`strings.ReplaceAll(str, " ", "")`).
+/// Strip spaces (only U+0020) if whitespace is ignored.
 fn strip_whitespace(s: &str, ignore: bool) -> String {
     if ignore {
         s.replace(' ', "")
@@ -244,9 +232,8 @@ fn strip_whitespace(s: &str, ignore: bool) -> String {
     }
 }
 
-/// Count lines the way Go's identical-string fast path does:
-/// `strings.Count(s, "\n")`, plus one when the string is non-empty and does
-/// not end in a newline.
+/// Line counting for the identical-string fast path: the newline count, plus
+/// one when the string is non-empty and does not end in a newline.
 fn count_trailing_aware_lines(s: &str) -> usize {
     let mut count = s.bytes().filter(|&b| b == b'\n').count();
     if !s.is_empty() && s.as_bytes().last() != Some(&b'\n') {
@@ -261,8 +248,7 @@ mod tests {
     use crate::git_model::ChangeEntry;
 
     /// A trivial line differ for exercising the provider control flow. It is
-    /// NOT byte-faithful to go-diff; the real engine is a port of
-    /// `diffmatchpatch` (see module note / todos).
+    /// NOT byte-faithful; the real engine is `cf-godiff` (see module note).
     struct LineCountDiffer;
     impl LineDiffer for LineCountDiffer {
         fn line_diff(&self, old: &str, new: &str, _p: DiffParams) -> LineDiffResult {

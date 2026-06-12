@@ -1,4 +1,4 @@
-//! Couples metrics computation (port of `metrics.go`).
+//! Couples metrics computation.
 //!
 //! These types and functions are the data-parity-critical core: they produce
 //! the numbers that appear in the machine report. The coupling-strength formula
@@ -7,21 +7,20 @@
 
 use std::collections::BTreeMap;
 
-/// Divisor when averaging two revision counts (Go: `pairCount`).
+/// Divisor when averaging two revision counts.
 const PAIR_COUNT: f64 = 2.0;
 
-/// Coupling-strength threshold for the "highly coupled" count
-/// (Go: `CouplingThresholdHigh`).
+/// Coupling-strength threshold for the "highly coupled" count.
 pub const COUPLING_THRESHOLD_HIGH: i64 = 10;
 
-/// Default HLL precision for contributor cardinality (Go:
-/// `fileContribHLLPrecision`). 1024 registers, ~3% error.
+/// Default HLL precision for contributor cardinality.
+/// 1024 registers, ~3% error.
 pub const FILE_CONTRIB_HLL_PRECISION: u8 = 10;
 
 const OWNERSHIP_FEW_THRESHOLD: i32 = 3;
 const OWNERSHIP_MODERATE_THRESHOLD: i32 = 5;
 
-/// Parsed analyzer-report inputs for metric computation (Go: `ReportData`).
+/// Parsed analyzer-report inputs for metric computation.
 #[derive(Debug, Clone, Default)]
 pub struct ReportData {
     /// Developer co-occurrence matrix (index = dev, map dev → shared count).
@@ -38,9 +37,9 @@ pub struct ReportData {
     pub reversed_people_dict: Vec<String>,
 }
 
-/// Coupling data for a file pair (Go: `FileCouplingData`).
+/// Coupling data for a file pair.
 ///
-/// JSON/YAML tags: `file1`, `file2`, `co_changes`, `coupling_strength`.
+/// JSON/YAML keys: `file1`, `file2`, `co_changes`, `coupling_strength`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FileCouplingData {
     pub file1: String,
@@ -49,10 +48,11 @@ pub struct FileCouplingData {
     pub strength: f64,
 }
 
-/// Coupling data for a developer pair (Go: `DeveloperCouplingData`).
+/// Coupling data for a developer pair.
 ///
-/// JSON/YAML tags: `developer1`, `developer1_email` (omitempty), `developer2`,
-/// `developer2_email` (omitempty), `shared_file_changes`, `coupling_strength`.
+/// JSON/YAML keys: `developer1`, `developer1_email` (omit-when-empty),
+/// `developer2`, `developer2_email` (omit-when-empty), `shared_file_changes`,
+/// `coupling_strength`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeveloperCouplingData {
     pub developer1: String,
@@ -63,11 +63,11 @@ pub struct DeveloperCouplingData {
     pub strength: f64,
 }
 
-/// Ownership information for a file (Go: `FileOwnershipData`).
+/// Ownership information for a file.
 ///
-/// JSON/YAML tags: `file`, `lines`, `contributors`, `top_contributor`
-/// (omitempty).
-#[derive(Debug, Clone, PartialEq)]
+/// JSON/YAML keys: `file`, `lines`, `contributors`, `top_contributor`
+/// (omit-when-empty).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileOwnershipData {
     pub file: String,
     pub lines: i32,
@@ -75,11 +75,11 @@ pub struct FileOwnershipData {
     pub top_contributor: String,
 }
 
-/// Aggregate summary statistics (Go: `AggregateData`).
+/// Aggregate summary statistics.
 ///
-/// JSON/YAML tags: `total_files`, `total_developers`, `total_co_changes`,
+/// JSON/YAML keys: `total_files`, `total_developers`, `total_co_changes`,
 /// `avg_coupling_strength`, `highly_coupled_pairs`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct AggregateData {
     pub total_files: i32,
     pub total_developers: i32,
@@ -88,28 +88,16 @@ pub struct AggregateData {
     pub highly_coupled_pairs: i32,
 }
 
-impl Default for AggregateData {
-    fn default() -> Self {
-        AggregateData {
-            total_files: 0,
-            total_developers: 0,
-            total_co_changes: 0,
-            avg_coupling_strength: 0.0,
-            highly_coupled_pairs: 0,
-        }
-    }
-}
-
-/// A contributor-count distribution bucket (Go: `OwnershipBucket`).
+/// A contributor-count distribution bucket.
 ///
-/// JSON/YAML tags: `label`, `count`.
+/// JSON/YAML keys: `label`, `count`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OwnershipBucket {
     pub label: String,
     pub count: i32,
 }
 
-/// Configurable thresholds for metric computation (Go: `MetricOptions`).
+/// Configurable thresholds for metric computation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MetricOptions {
     pub coupling_threshold_high: i32,
@@ -120,21 +108,21 @@ pub struct MetricOptions {
 }
 
 impl Default for MetricOptions {
-    /// Go: `DefaultMetricOptions`.
+    #[allow(clippy::cast_possible_truncation)] // small constants
     fn default() -> Self {
-        MetricOptions {
+        Self {
             coupling_threshold_high: COUPLING_THRESHOLD_HIGH as i32,
             ownership_few_threshold: OWNERSHIP_FEW_THRESHOLD,
             ownership_moderate_threshold: OWNERSHIP_MODERATE_THRESHOLD,
             batch_coupling_threshold: 0,
-            hll_precision: FILE_CONTRIB_HLL_PRECISION as i32,
+            hll_precision: i32::from(FILE_CONTRIB_HLL_PRECISION),
         }
     }
 }
 
-/// All computed metric results (Go: `ComputedMetrics`).
+/// All computed metric results.
 ///
-/// JSON/YAML tags: `file_coupling`, `developer_coupling`, `file_ownership`,
+/// JSON/YAML keys: `file_coupling`, `developer_coupling`, `file_ownership`,
 /// `aggregate`.
 #[derive(Debug, Clone, Default)]
 pub struct ComputedMetrics {
@@ -148,14 +136,15 @@ pub struct ComputedMetrics {
 ///
 /// Public re-export of [`coupling_strength`] for the [`crate::store`] module so
 /// the sparse store path reuses the identical formula.
+#[must_use]
 pub fn coupling_strength_pub(co_changes: i64, self_i: i64, self_j: i64) -> f64 {
     coupling_strength(co_changes, self_i, self_j)
 }
 
-/// Coupling strength: `co_changes / avg(self_i, self_j)`, capped at `1.0`.
-///
-/// Mirrors the Go expression `min(float64(coChanges)/avgRevs, 1.0)` with the
-/// `avgRevs <= 0 → 0.0` guard. Shared by every metric.
+/// Coupling strength: `co_changes / avg(self_i, self_j)`, capped at `1.0`,
+/// with an `avg_revs <= 0 → 0.0` guard. Shared by every metric; the float
+/// math is part of the report contract.
+#[allow(clippy::cast_precision_loss)] // contractual float math on counts
 fn coupling_strength(co_changes: i64, self_i: i64, self_j: i64) -> f64 {
     let avg_revs = (self_i + self_j) as f64 / PAIR_COUNT;
     if avg_revs > 0.0 {
@@ -165,13 +154,14 @@ fn coupling_strength(co_changes: i64, self_i: i64, self_j: i64) -> f64 {
     }
 }
 
-/// Computes file coupling pairs from the dense files matrix
-/// (Go: `FileCouplingMetric.Compute`).
+/// Computes file coupling pairs from the dense files matrix.
 ///
 /// Iterates the upper triangle (`j > i`), skips zero co-changes, and sorts the
-/// result by `co_changes` descending. The Go code uses `sort.Slice`, which is
-/// **not** stable; this port uses a stable sort, which can differ in tie
-/// ordering — see crate TODOs on matching Go's unstable sort for byte-identity.
+/// result by `co_changes` descending. The reference binary uses an unstable
+/// sort here; this implementation uses a stable sort, which can differ in tie
+/// ordering — see crate TODOs on matching the reference's unstable sort for
+/// byte-identity.
+#[must_use]
 pub fn compute_file_coupling(input: &ReportData) -> Vec<FileCouplingData> {
     let mut result: Vec<FileCouplingData> = Vec::new();
     for (i, row) in input.files_matrix.iter().enumerate() {
@@ -205,9 +195,10 @@ pub fn compute_file_coupling(input: &ReportData) -> Vec<FileCouplingData> {
     result
 }
 
-/// Computes developer coupling pairs (Go: `DeveloperCouplingMetric.Compute`).
+/// Computes developer coupling pairs.
 ///
 /// Upper triangle over the people matrix; sorted by `shared_files` descending.
+#[must_use]
 pub fn compute_developer_coupling(input: &ReportData) -> Vec<DeveloperCouplingData> {
     let names = &input.reversed_people_dict;
     let mut result: Vec<DeveloperCouplingData> = Vec::new();
@@ -247,15 +238,18 @@ fn dev_name_email(idx: usize, names: &[String]) -> (String, String) {
     }
 }
 
-/// Computes file ownership with exact contributor counts.
+/// Computes file ownership with per-file contributor counts.
 ///
-/// Go uses per-file HyperLogLog sketches keyed by `LittleEndian(devID)` for
-/// memory efficiency on large repos; with the `hll` feature this uses the same
-/// sketch so counts match exactly, otherwise it counts distinct developer IDs
-/// exactly via a set (parity-equivalent for typical inputs, exact for small
-/// ones). See crate TODOs.
+/// Contributor cardinality comes from per-file `HyperLogLog` sketches keyed by
+/// `LittleEndian(devID)` (memory-efficient on large repos, and the counts are
+/// part of the report contract). Without the `hll` feature it counts distinct
+/// developer IDs exactly via a set (parity-equivalent for typical inputs,
+/// exact for small ones). See crate TODOs.
+#[must_use]
+#[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)] // precision is a small positive int
 pub fn compute_file_ownership(input: &ReportData, opts: MetricOptions) -> Vec<FileOwnershipData> {
-    let contributors = file_contributor_counts(input.files.len(), &input.people_files, opts.hll_precision as u8);
+    let contributors =
+        file_contributor_counts(input.files.len(), &input.people_files, opts.hll_precision as u8);
     let mut result = Vec::with_capacity(input.files.len());
     for (i, file) in input.files.iter().enumerate() {
         let lines = input.files_lines.get(i).copied().unwrap_or(0);
@@ -271,6 +265,7 @@ pub fn compute_file_ownership(input: &ReportData, opts: MetricOptions) -> Vec<Fi
 
 /// Per-file contributor cardinality, indexed by file.
 #[cfg(feature = "hll")]
+#[allow(clippy::cast_possible_truncation)] // HLL counts fit i32 in practice
 fn file_contributor_counts(num_files: usize, people_files: &[Vec<usize>], precision: u8) -> Vec<i32> {
     use cf_alg_hll::Sketch;
     let mut sketches: Vec<Option<Sketch>> = (0..num_files)
@@ -286,12 +281,13 @@ fn file_contributor_counts(num_files: usize, people_files: &[Vec<usize>], precis
     }
     sketches
         .iter()
-        .map(|s| s.as_ref().map(|s| s.count() as i32).unwrap_or(0))
+        .map(|s| s.as_ref().map_or(0, |s| s.count() as i32))
         .collect()
 }
 
 /// Exact-count fallback used without the `hll` feature.
 #[cfg(not(feature = "hll"))]
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 fn file_contributor_counts(num_files: usize, people_files: &[Vec<usize>], _precision: u8) -> Vec<i32> {
     use std::collections::HashSet;
     let mut sets: Vec<HashSet<usize>> = vec![HashSet::new(); num_files];
@@ -305,14 +301,16 @@ fn file_contributor_counts(num_files: usize, people_files: &[Vec<usize>], _preci
     sets.iter().map(|s| s.len() as i32).collect()
 }
 
-/// Computes aggregate statistics from the dense files matrix
-/// (Go: `AggregateMetric.ComputeWithOptions`).
+/// Computes aggregate statistics from the dense files matrix.
+#[must_use]
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)] // report fields are i32
+#[allow(clippy::cast_precision_loss)] // contractual float math on counts
 pub fn compute_aggregate(input: &ReportData, opts: MetricOptions) -> AggregateData {
     let mut total_co_changes: i64 = 0;
     let mut pair_count: i64 = 0;
     let mut highly_coupled: i32 = 0;
     let mut total_strength: f64 = 0.0;
-    let threshold = opts.coupling_threshold_high as i64;
+    let threshold = i64::from(opts.coupling_threshold_high);
 
     for (i, row) in input.files_matrix.iter().enumerate() {
         let self_i = *row.get(&i).unwrap_or(&0);
@@ -348,13 +346,15 @@ pub fn compute_aggregate(input: &ReportData, opts: MetricOptions) -> AggregateDa
     }
 }
 
-/// Groups ownership data into contributor-count buckets
-/// (Go: `BucketOwnership` / `BucketOwnershipWithThresholds`).
+/// Groups ownership data into contributor-count buckets using the default
+/// thresholds.
+#[must_use]
 pub fn bucket_ownership(ownership: &[FileOwnershipData]) -> Vec<OwnershipBucket> {
     bucket_ownership_with_thresholds(ownership, OWNERSHIP_FEW_THRESHOLD, OWNERSHIP_MODERATE_THRESHOLD)
 }
 
 /// Groups ownership data with configurable thresholds.
+#[must_use]
 pub fn bucket_ownership_with_thresholds(
     ownership: &[FileOwnershipData],
     few_threshold: i32,
@@ -383,16 +383,17 @@ pub fn bucket_ownership_with_thresholds(
     ]
 }
 
-/// Returns a copy sorted by contributors ascending (highest risk first)
-/// (Go: `SortOwnershipByRisk`).
+/// Returns a copy sorted by contributors ascending (highest risk first).
+#[must_use]
 pub fn sort_ownership_by_risk(ownership: &[FileOwnershipData]) -> Vec<FileOwnershipData> {
     let mut sorted = ownership.to_vec();
     sorted.sort_by(|a, b| a.contributors.cmp(&b.contributors));
     sorted
 }
 
-/// Limits a developer matrix to the top-N developers by diagonal activity
-/// (Go: `FilterTopDevs`). Returns the input unchanged when within the limit.
+/// Limits a developer matrix to the top-N developers by diagonal activity.
+/// Returns the input unchanged when within the limit.
+#[must_use]
 pub fn filter_top_devs(
     matrix: &[BTreeMap<usize, i64>],
     names: &[String],
@@ -411,7 +412,7 @@ pub fn filter_top_devs(
     let mut new_names = vec![String::new(); limit];
     for (new_idx, &(old_idx, _)) in top_n.iter().enumerate() {
         old_to_new.insert(old_idx, new_idx);
-        new_names[new_idx] = names[old_idx].clone();
+        new_names[new_idx].clone_from(&names[old_idx]);
     }
 
     let mut new_matrix: Vec<BTreeMap<usize, i64>> = vec![BTreeMap::new(); limit];
@@ -426,13 +427,14 @@ pub fn filter_top_devs(
     (new_matrix, new_names)
 }
 
-/// Runs all metrics with default options (Go: `ComputeAllMetrics`).
+/// Runs all metrics with default options.
+#[must_use]
 pub fn compute_all_metrics(input: &ReportData) -> ComputedMetrics {
     compute_all_metrics_with_options(input, MetricOptions::default())
 }
 
-/// Runs all metrics with configurable thresholds
-/// (Go: `ComputeAllMetricsWithOptions`).
+/// Runs all metrics with configurable thresholds.
+#[must_use]
 pub fn compute_all_metrics_with_options(input: &ReportData, opts: MetricOptions) -> ComputedMetrics {
     ComputedMetrics {
         file_coupling: compute_file_coupling(input),
@@ -443,6 +445,7 @@ pub fn compute_all_metrics_with_options(input: &ReportData, opts: MetricOptions)
 }
 
 #[cfg(test)]
+#[allow(clippy::float_cmp)] // exact contract values (caps, guards) are the point
 mod tests {
     use super::*;
 
@@ -542,11 +545,10 @@ mod tests {
         assert_eq!(fn_, names);
     }
 
-    // --- DeveloperCoupling parity tests (ported from metrics_test.go) ---
+    // --- DeveloperCoupling parity tests (mirroring the reference suite) ---
 
     #[test]
     fn developer_coupling_single_pair_strength() {
-        // Go: TestDeveloperCouplingMetric_SinglePair.
         // dev1 self=20, shared=10, dev2 self=15 → strength = 10 / avg(20,15) = 10/17.5.
         let input = ReportData {
             reversed_people_dict: vec!["Dev1|d1@x".into(), "Dev2|d2@x".into()],
@@ -563,7 +565,6 @@ mod tests {
 
     #[test]
     fn developer_coupling_multiple_pairs_sorted_by_shared() {
-        // Go: TestDeveloperCouplingMetric_MultiplePairs_SortedBySharedFiles.
         let input = ReportData {
             reversed_people_dict: vec!["Dev1|".into(), "Dev2|".into(), "Dev3|".into()],
             people_matrix: vec![
@@ -582,8 +583,7 @@ mod tests {
 
     #[test]
     fn developer_coupling_missing_dict_entry() {
-        // Go: TestDeveloperCouplingMetric_MissingDictEntry. dev index 1 has no
-        // dict entry → empty developer2 name/email.
+        // dev index 1 has no dict entry → empty developer2 name/email.
         let input = ReportData {
             reversed_people_dict: vec!["Dev1|d1@x".into()],
             people_matrix: vec![row(&[(0, 20), (1, 10)]), row(&[(0, 10), (1, 15)])],
@@ -597,8 +597,7 @@ mod tests {
 
     #[test]
     fn developer_coupling_skips_zero_shared() {
-        // Go: TestDeveloperCouplingMetric_SkipsZeroSharedChanges. No
-        // off-diagonal entries → no pairs emitted.
+        // No off-diagonal entries → no pairs emitted.
         let input = ReportData {
             reversed_people_dict: vec!["Dev1|".into(), "Dev2|".into()],
             people_matrix: vec![row(&[(0, 20)]), row(&[(1, 15)])],

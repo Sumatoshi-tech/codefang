@@ -205,16 +205,23 @@ dependencies = [
 [[package]]
 name = "cf-alg"
 version = "0.0.0"
+dependencies = [
+ "thiserror",
+]
 
 [[package]]
 name = "cf-alg-bloom"
 version = "0.0.0"
+dependencies = [
+ "thiserror",
+]
 
 [[package]]
 name = "cf-alg-cms"
 version = "0.0.0"
 dependencies = [
  "cf-alg-hashutil",
+ "thiserror",
 ]
 
 [[package]]
@@ -226,6 +233,7 @@ name = "cf-alg-hll"
 version = "0.0.0"
 dependencies = [
  "cf-alg-hashutil",
+ "thiserror",
 ]
 
 [[package]]
@@ -249,6 +257,7 @@ version = "0.0.0"
 dependencies = [
  "cf-alg-hashutil",
  "cf-alg-minhash",
+ "thiserror",
 ]
 
 [[package]]
@@ -260,6 +269,7 @@ name = "cf-alg-minhash"
 version = "0.0.0"
 dependencies = [
  "cf-alg-hashutil",
+ "thiserror",
 ]
 
 [[package]]
@@ -316,6 +326,7 @@ version = "0.0.0"
 dependencies = [
  "cf-framework",
  "cf-units",
+ "thiserror",
 ]
 
 [[package]]
@@ -333,6 +344,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
+ "thiserror",
 ]
 
 [[package]]
@@ -344,6 +356,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
+ "thiserror",
 ]
 
 [[package]]
@@ -457,6 +470,7 @@ dependencies = [
  "serde",
  "serde_yaml",
  "tempfile",
+ "thiserror",
 ]
 
 [[package]]
@@ -493,6 +507,7 @@ name = "cf-framework"
 version = "0.0.0"
 dependencies = [
  "cf-safeconv",
+ "thiserror",
 ]
 
 [[package]]
@@ -555,6 +570,7 @@ name = "cf-iosafety"
 version = "0.0.0"
 dependencies = [
  "tempfile",
+ "thiserror",
 ]
 
 [[package]]
@@ -571,6 +587,7 @@ dependencies = [
  "cf-uast-node",
  "serde",
  "serde_json",
+ "thiserror",
 ]
 
 [[package]]
@@ -600,6 +617,7 @@ dependencies = [
  "opentelemetry_sdk",
  "prometheus",
  "serde_json",
+ "thiserror",
  "tokio",
  "tracing",
 ]
@@ -608,7 +626,6 @@ dependencies = [
 name = "cf-pathfilter"
 version = "0.0.0"
 dependencies = [
- "once_cell",
  "regex",
 ]
 
@@ -618,7 +635,6 @@ version = "0.0.0"
 dependencies = [
  "cf-langpath",
  "cf-pathfilter",
- "once_cell",
 ]
 
 [[package]]
@@ -631,6 +647,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "thiserror",
 ]
 
 [[package]]
@@ -638,6 +655,7 @@ name = "cf-pipeline"
 version = "0.0.0"
 dependencies = [
  "crossbeam-channel",
+ "thiserror",
 ]
 
 [[package]]
@@ -653,6 +671,7 @@ version = "0.0.0"
 dependencies = [
  "cf-identity",
  "serde",
+ "thiserror",
 ]
 
 [[package]]
@@ -667,6 +686,9 @@ dependencies = [
 [[package]]
 name = "cf-renderer"
 version = "0.0.0"
+dependencies = [
+ "thiserror",
+]
 
 [[package]]
 name = "cf-reportutil"
@@ -674,6 +696,7 @@ version = "0.0.0"
 dependencies = [
  "cf-gojson",
  "cf-safeconv",
+ "thiserror",
 ]
 
 [[package]]
@@ -714,6 +737,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "thiserror",
 ]
 
 [[package]]
@@ -731,6 +755,7 @@ dependencies = [
  "cf-alg-stats",
  "cf-sigutil",
  "cf-units",
+ "thiserror",
 ]
 
 [[package]]
@@ -742,6 +767,7 @@ name = "cf-textutil"
 version = "0.0.0"
 dependencies = [
  "cf-gojson",
+ "thiserror",
 ]
 
 [[package]]

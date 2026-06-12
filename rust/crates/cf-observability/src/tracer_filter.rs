@@ -1,50 +1,44 @@
 //! Hot-path tracer/span suppression.
 //!
-//! Port of `internal/observability/tracer_filter.go`. Wraps a real
-//! `TracerProvider` so per-commit/per-file/per-git-op spans are replaced with
-//! no-op spans while structural pipeline spans survive.
+//! Wraps a real `TracerProvider` so per-commit/per-file/per-git-op spans are
+//! replaced with no-op spans while structural pipeline spans survive.
 //!
 //! # Decision logic vs SDK wiring
 //!
-//! Go composes this as a `trace.TracerProvider` whose `Tracer(name)` returns a
-//! no-op tracer for suppressed tracer names, and otherwise wraps the real tracer
-//! so suppressed span names start no-op spans. The two decision points are
-//! [`is_tracer_suppressed`] and [`is_span_suppressed`], which carry the exact
-//! suppression sets from the Go source. [`FilteringTracerProvider`] composes
-//! them over any [`opentelemetry::trace::TracerProvider`]; the binding test for
-//! the suppression sets is on the pure predicates (deterministic), while the
-//! provider wrapper reproduces the dispatch behavior.
+//! The two decision points are [`is_tracer_suppressed`] (a suppressed tracer
+//! name yields a fully no-op tracer) and [`is_span_suppressed`] (a suppressed
+//! span name starts a no-op span inside an otherwise-active tracer); the
+//! suppression sets are a fixed telemetry policy. [`FilteringTracerProvider`]
+//! composes them over any [`opentelemetry::trace::TracerProvider`]; the
+//! binding test for the suppression sets is on the pure predicates
+//! (deterministic), while the provider wrapper reproduces the dispatch
+//! behavior.
 
 use std::collections::HashSet;
 
-/// Tracer names whose spans are entirely suppressed (Go `suppressedTracers`).
+/// Tracer names whose spans are entirely suppressed.
 pub const SUPPRESSED_TRACERS: &[&str] = &["codefang.gitlib", "codefang.uast"];
 
-/// Span names suppressed even within otherwise-active tracers
-/// (Go `suppressedSpans`).
+/// Span names suppressed even within otherwise-active tracers.
 pub const SUPPRESSED_SPANS: &[&str] = &["codefang.analyzer.consume"];
 
 /// Returns true if every span from tracer `name` should be suppressed.
-///
-/// Port of the `suppressedTracers[name]` lookup.
 #[must_use]
 pub fn is_tracer_suppressed(name: &str) -> bool {
     SUPPRESSED_TRACERS.contains(&name)
 }
 
 /// Returns true if a span named `name` should be suppressed.
-///
-/// Port of the `suppressedSpans[name]` lookup.
 #[must_use]
 pub fn is_span_suppressed(name: &str) -> bool {
     SUPPRESSED_SPANS.contains(&name)
 }
 
 /// Wraps a delegate [`TracerProvider`](opentelemetry::trace::TracerProvider) so
-/// hot-path spans become no-op spans (Go `filteringTracerProvider`).
+/// hot-path spans become no-op spans.
 ///
 /// This is parameterized over the delegate provider type so it can wrap either
-/// the SDK provider or a no-op provider, matching Go's `NewFilteringTracerProvider`.
+/// the SDK provider or a no-op provider.
 pub struct FilteringTracerProvider<P> {
     delegate: P,
     suppressed_tracers: HashSet<&'static str>,
@@ -52,8 +46,7 @@ pub struct FilteringTracerProvider<P> {
 }
 
 impl<P> FilteringTracerProvider<P> {
-    /// Wraps `delegate` with the default Codefang suppression sets
-    /// (Go `NewFilteringTracerProvider`).
+    /// Wraps `delegate` with the default Codefang suppression sets.
     #[must_use]
     pub fn new(delegate: P) -> Self {
         FilteringTracerProvider {
@@ -76,7 +69,7 @@ impl<P> FilteringTracerProvider<P> {
     }
 
     /// Borrows the wrapped delegate provider.
-    pub fn delegate(&self) -> &P {
+    pub const fn delegate(&self) -> &P {
         &self.delegate
     }
 }
@@ -85,27 +78,27 @@ impl<P> FilteringTracerProvider<P> {
 mod tests {
     use super::*;
 
-    /// Port of Go `TestFilteringProvider_SuppressedTracer`.
+    /// Mirrors the reference suite's `TestFilteringProvider_SuppressedTracer`.
     #[test]
     fn suppressed_tracer() {
         assert!(is_tracer_suppressed("codefang.gitlib"));
     }
 
-    /// Port of Go `TestFilteringProvider_UASTParseSuppressed`.
+    /// Mirrors the reference suite's `TestFilteringProvider_UASTParseSuppressed`.
     #[test]
     fn uast_tracer_suppressed() {
         assert!(is_tracer_suppressed("codefang.uast"));
     }
 
-    /// Port of Go `TestFilteringProvider_SuppressedSpan` (hot-path span dropped,
-    /// structural span passes).
+    /// Mirrors the reference suite's `TestFilteringProvider_SuppressedSpan`
+    /// (hot-path span dropped, structural span passes).
     #[test]
     fn suppressed_span_vs_structural() {
         assert!(is_span_suppressed("codefang.analyzer.consume"));
         assert!(!is_span_suppressed("codefang.runner.run"));
     }
 
-    /// Port of Go `TestFilteringProvider_PassThrough` (root tracer not suppressed).
+    /// Mirrors the reference suite's `TestFilteringProvider_PassThrough` (root tracer not suppressed).
     #[test]
     fn pass_through_root_tracer() {
         assert!(!is_tracer_suppressed("codefang"));

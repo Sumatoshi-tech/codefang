@@ -1,13 +1,9 @@
 //! A generic thread-safe LRU cache with optional Bloom pre-filtering,
 //! size-based eviction, and cost-aware eviction sampling.
 //!
-//! This is a faithful Rust port of the Go package `pkg/alg/lru`
-//! (`cache.go`, `ops.go`, `stats.go`). Behavior is reproduced exactly:
-//!
-//! - **LRU ordering** is maintained with an intrusive doubly-linked list. The
-//!   Go implementation uses heap pointers; this port uses index handles into a
-//!   slab (a [`Vec`] with a free-list), giving byte-for-byte identical eviction
-//!   order without any `unsafe` code.
+//! - **LRU ordering** is maintained with an intrusive doubly-linked list whose
+//!   nodes are index handles into a slab (a [`Vec`] with a free-list), giving
+//!   deterministic eviction order without any `unsafe` code.
 //! - **Count-based eviction** ([`Builder::with_max_entries`]): the cache holds
 //!   at most `n` entries; the least-recently-used entry is evicted first.
 //! - **Size-based eviction** ([`Builder::with_max_bytes`]): a per-value size
@@ -24,23 +20,22 @@
 //!
 //! At least one capacity limit ([`Builder::with_max_entries`] or
 //! [`Builder::with_max_bytes`]) must be provided to [`Cache::new`]; otherwise
-//! `new` panics, exactly as the Go `New` does.
+//! `new` panics.
 //!
 //! This crate is internal behavior only: per `specs/rust-rewrite/DESIGN.md` the
 //! LRU cache is used by the cache layer and the analyzer framework as an
 //! in-memory cache and never appears in any machine-format report. It therefore
 //! does not depend on the `cf-gojson` / `cf-goyaml` byte-compat serialization
-//! crates — there is no user-visible serialization surface. Its only dependency
-//! is the sibling Bloom-filter crate, mirroring the Go import of `pkg/alg/bloom`.
+//! crates — there is no user-visible serialization surface. Its only
+//! dependency is the sibling Bloom-filter crate.
 //!
 //! # Concurrency
 //!
-//! Like the Go cache, this type is safe to share across threads. The mutable
-//! cache state (map + list + sizes) is guarded by an [`std::sync::RwLock`], and
-//! the Bloom filter (which `get` reads outside that lock for the fast-path
+//! This type is safe to share across threads. The mutable cache state
+//! (map + list + sizes) is guarded by an [`std::sync::RwLock`], and the Bloom
+//! filter (which `get` reads outside that lock for the fast-path
 //! short-circuit) is guarded by its own [`std::sync::RwLock`] so reads do not
-//! contend with the main lock — matching Go's design where `filter.Test` is
-//! called before acquiring the cache mutex.
+//! contend with the main lock.
 //!
 //! # Example
 //!
@@ -78,16 +73,16 @@ pub use stats::Stats;
 /// The default false-positive rate for the Bloom pre-filter.
 ///
 /// At 1%, 99% of definite cache misses are short-circuited without lock
-/// acquisition. Mirrors `defaultBloomFPRate` in the Go `cache.go`.
+/// acquisition.
 const DEFAULT_BLOOM_FP_RATE: f64 = 0.01;
 
-/// A sentinel index meaning "no node" in the intrusive list (Go's `nil`).
+/// A sentinel index meaning "no node" in the intrusive list.
 const NIL: usize = usize::MAX;
 
 /// A doubly-linked-list node holding a key-value pair.
 ///
-/// Mirrors the Go `entry[K, V]` struct. `prev`/`next` are slab indices rather
-/// than pointers; [`NIL`] plays the role of a nil pointer.
+/// `prev`/`next` are slab indices rather than pointers; [`NIL`] marks an
+/// absent link.
 struct Entry<K, V> {
     key: K,
     value: V,
@@ -100,8 +95,8 @@ struct Entry<K, V> {
 /// The mutable interior of the cache, guarded by a single write lock.
 ///
 /// Holds the key→slot map, the slab of [`Entry`] nodes with its free-list, the
-/// head/tail of the LRU list, and the running size accounting. This bundles
-/// everything the Go code mutates under `c.mu` into one lock-guarded value.
+/// head/tail of the LRU list, and the running size accounting — everything
+/// that must mutate atomically lives behind one lock.
 struct Inner<K, V> {
     /// Slab storage for entries. Slots are reused via `free`.
     slots: Vec<Option<Entry<K, V>>>,
@@ -165,24 +160,17 @@ impl<K, V> Inner<K, V> {
 }
 
 /// Optional function converting a key to its Bloom-filter byte representation.
-///
-/// Mirrors Go's `keyToBytes func(K) []byte`.
 type KeyToBytes<K> = Box<dyn Fn(&K) -> Vec<u8> + Send + Sync>;
 
 /// Optional function returning the size in bytes of a value.
-///
-/// Mirrors Go's `sizeFunc func(V) int64`.
 type SizeFunc<V> = Box<dyn Fn(&V) -> i64 + Send + Sync>;
 
 /// Optional function cloning a value before insertion.
-///
-/// Mirrors Go's `cloneFunc func(V) V`.
 type CloneFunc<V> = Box<dyn Fn(&V) -> V + Send + Sync>;
 
 /// Optional cost function for sampling-based eviction.
 ///
-/// Receives `(access_count, size_bytes)`; lower cost is evicted first. Mirrors
-/// Go's `costFunc func(accessCount, sizeBytes int64) float64`.
+/// Receives `(access_count, size_bytes)`; lower cost is evicted first.
 type CostFunc = Box<dyn Fn(i64, i64) -> f64 + Send + Sync>;
 
 /// A thread-safe generic LRU cache.
@@ -191,8 +179,8 @@ type CostFunc = Box<dyn Fn(i64, i64) -> f64 + Send + Sync>;
 /// eviction sampling, and value cloning on insertion. See the [crate-level
 /// documentation](crate) for an overview.
 ///
-/// Construct one with [`Cache::new`], configuring it inside the closure with the
-/// `with_*` builder methods (mirroring Go's functional options).
+/// Construct one with [`Cache::new`], configuring it inside the closure with
+/// the `with_*` builder methods.
 pub struct Cache<K, V>
 where
     K: Eq + Hash + Clone,
@@ -221,9 +209,8 @@ where
 
 /// A builder handle passed to the [`Cache::new`] configuration closure.
 ///
-/// This plays the role of Go's `Option[K, V]` functional options: each method
-/// records one configuration choice. It is a thin mutable view over the
-/// not-yet-finalized [`Cache`].
+/// Each method records one configuration choice; the builder is a thin
+/// mutable view over the not-yet-finalized [`Cache`].
 pub struct Builder<'a, K, V>
 where
     K: Eq + Hash + Clone,
@@ -236,8 +223,6 @@ where
     K: Eq + Hash + Clone,
 {
     /// Sets the maximum number of entries (count-based eviction).
-    ///
-    /// Mirrors Go's `WithMaxEntries`.
     pub fn with_max_entries(&mut self, n: i64) -> &mut Self {
         self.cache.max_entries = n;
         self
@@ -245,8 +230,6 @@ where
 
     /// Sets the maximum total size in bytes and a function to compute the size
     /// of each value, enabling size-based eviction.
-    ///
-    /// Mirrors Go's `WithMaxBytes`.
     pub fn with_max_bytes<F>(&mut self, max_bytes: i64, size_func: F) -> &mut Self
     where
         F: Fn(&V) -> i64 + Send + Sync + 'static,
@@ -258,14 +241,13 @@ where
 
     /// Enables a Bloom pre-filter for [`Cache::get`] and [`Cache::get_multi`].
     ///
-    /// `key_to_bytes` converts a key to its byte representation; `expected_n` is
-    /// the expected number of elements used for Bloom filter sizing. Mirrors
-    /// Go's `WithBloomFilter`.
+    /// `key_to_bytes` converts a key to its byte representation; `expected_n`
+    /// is the expected number of elements used for Bloom filter sizing.
     ///
     /// # Panics
     ///
-    /// Panics if the Bloom filter cannot be constructed. As in Go, this is
-    /// structurally impossible: `expected_n` is clamped to at least 1 and the
+    /// Panics if the Bloom filter cannot be constructed — structurally
+    /// impossible, because `expected_n` is clamped to at least 1 and the
     /// false-positive rate is the constant [`DEFAULT_BLOOM_FP_RATE`].
     pub fn with_bloom_filter<F>(&mut self, key_to_bytes: F, expected_n: usize) -> &mut Self
     where
@@ -285,8 +267,7 @@ where
     ///
     /// Higher cost = less desirable to evict. `sample_size` entries are sampled
     /// from the LRU tail; the one with the lowest cost is evicted. The cost
-    /// function receives `(access_count, size_bytes)`. Mirrors Go's
-    /// `WithCostEviction`.
+    /// function receives `(access_count, size_bytes)`.
     pub fn with_cost_eviction<F>(&mut self, sample_size: i64, cost_func: F) -> &mut Self
     where
         F: Fn(i64, i64) -> f64 + Send + Sync + 'static,
@@ -298,8 +279,7 @@ where
 
     /// Sets a function to clone values before insertion.
     ///
-    /// Useful to detach values from shared memory arenas. Mirrors Go's
-    /// `WithCloneFunc`.
+    /// Useful to detach values from shared memory arenas.
     pub fn with_clone_func<F>(&mut self, clone: F) -> &mut Self
     where
         F: Fn(&V) -> V + Send + Sync + 'static,
@@ -317,7 +297,7 @@ where
     ///
     /// At least one capacity limit ([`Builder::with_max_entries`] or
     /// [`Builder::with_max_bytes`]) must be set inside the closure; otherwise
-    /// this panics, exactly as Go's `New` does.
+    /// this panics.
     ///
     /// # Panics
     ///
@@ -367,8 +347,6 @@ where
     }
 
     /// Returns the number of entries in the cache.
-    ///
-    /// Mirrors Go's `Len`.
     #[must_use]
     pub fn len(&self) -> usize {
         let inner = self.read_inner();

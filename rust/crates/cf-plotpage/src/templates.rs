@@ -1,32 +1,31 @@
-//! Rendered template text — port of Go `plotpage/templates.go` +
-//! `templates/*.html`.
+//! Rendered template text for the plot-page shell (`templates/*.html`).
 //!
-//! Go parses the template files with `html/template` and interpolates data at
-//! run time. The literal bytes between `{{…}}` actions are emitted verbatim,
-//! with two context-sensitive transformations that `html/template` applies to
-//! the template TEXT itself (verified against the live Go binary's output):
+//! The reference renderer parses the template files with `html/template` and
+//! interpolates data at run time. The literal bytes between `{{…}}` actions
+//! are emitted verbatim, with two context-sensitive transformations that
+//! `html/template` applies to the template TEXT itself (verified against the
+//! reference binary's output):
 //!
 //! * the CSS block comment in `page.html` (`/* Override Tailwind's … */`) is
 //!   replaced by a single space; and
 //! * the JS line comment in `scripts.html` (`// Resize echarts …`) is removed
 //!   entirely (its line keeps only the leading indentation).
 //!
-//! The Rust functions below carry the POST-transformation literal bytes, so
-//! their output is byte-identical to Go's `renderTemplate` results. Data slots
-//! that Go HTML-escapes (`{{.Title}}` …) route through
+//! The functions below carry the POST-transformation literal bytes, so their
+//! output is byte-identical to the reference render results. Data slots the
+//! templates HTML-escape (`{{.Title}}` …) route through
 //! [`crate::components::html_escape`]; `template.HTML`/`template.URL`/
 //! `template.CSS` slots (chart content, hint items, the logo data URI,
-//! ExtraCSS) are passed through raw, exactly as in Go.
+//! ExtraCSS) are passed through raw.
 
 use crate::components::html_escape;
 use crate::multipage::PageMeta;
 use crate::theme::ThemeConfig;
 
-/// The embedded logo (Go `//go:embed assets/uast_small.png`).
+/// The embedded logo (`assets/uast_small.png`).
 const LOGO_PNG: &[u8] = include_bytes!("../assets/uast_small.png");
 
-/// Standard-alphabet base64 with `=` padding (Go
-/// `base64.StdEncoding.EncodeToString`).
+/// Standard-alphabet base64 with `=` padding.
 #[must_use]
 fn base64_std(data: &[u8]) -> String {
     const ALPHABET: &[u8; 64] =
@@ -55,13 +54,13 @@ fn base64_std(data: &[u8]) -> String {
     out
 }
 
-/// The logo as a data URI (Go `plotpage.LogoDataURI`, templates.go:99).
+/// The logo as a data URI.
 #[must_use]
 pub fn logo_data_uri() -> String {
     format!("data:image/png;base64,{}", base64_std(LOGO_PNG))
 }
 
-/// Header template data (Go `headerData`).
+/// Header template data.
 pub struct HeaderData<'a> {
     /// Project name (header brand + img alt).
     pub project_name: &'a str,
@@ -81,7 +80,8 @@ pub fn render_header(d: &HeaderData<'_>) -> String {
     let mut out = String::new();
     out.push_str("<header class=\"mb-8\">\n    <div\n        class=\"flex items-center justify-between py-4 border-b border-stone-200 dark:border-stone-800\"\n    >\n        <div class=\"flex items-center gap-3\">\n            <img\n                src=\"");
     // template.URL skips URL sanitization but still passes the quoted-attr
-    // HTML escaper, so the base64 `+` bytes render as `&#43;` (as in Go).
+    // HTML escaper, so the base64 `+` bytes render as `&#43;`
+    // (reference-template behavior).
     out.push_str(&html_escape(&logo_data_uri()));
     out.push_str("\"\n                alt=\"");
     out.push_str(&html_escape(d.project_name));
@@ -106,7 +106,7 @@ pub fn render_header(d: &HeaderData<'_>) -> String {
 }
 
 /// Renders `templates/section.html`. `chart_html` and `hint_items` are raw
-/// HTML (Go `template.HTML`); the title/subtitle/hint-title are escaped.
+/// HTML (`template.HTML` slots); the title/subtitle/hint-title are escaped.
 #[must_use]
 pub fn render_section(
     title: &str,
@@ -123,7 +123,7 @@ pub fn render_section(
     out.push_str("</p>\n    </div>\n    <div class=\"p-5 overflow-x-auto\">\n        <div class=\"chart-container\">");
     out.push_str(chart_html);
     out.push_str("</div>\n    </div>\n");
-    // Go renders the hint block when the hint has any items (plotpage.go:173).
+    // The hint block renders only when the hint has any items.
     if !hint_items.is_empty() {
         out.push_str("\n    <div class=\"mx-5 mb-5 p-4 bg-stone-50 dark:bg-stone-800 border-l-4 border-accent rounded-sm\">\n");
         if !hint_title.is_empty() {
@@ -174,20 +174,41 @@ pub fn render_index_content(pages: &[PageMeta]) -> String {
     out
 }
 
+/// Data slots for the full HTML document shell (`templates/page.html`).
+pub struct PageShell<'a> {
+    /// Page title (escaped into `<title>`).
+    pub title: &'a str,
+    /// Project name (escaped into `<title>`).
+    pub project_name: &'a str,
+    /// `"dark"` or `""` for the `<html>` class attribute.
+    pub dark_class: &'a str,
+    /// Theme colors interpolated into the inline styles.
+    pub theme: &'a ThemeConfig,
+    /// Raw extra CSS appended inside `<style>`.
+    pub extra_css: &'a str,
+    /// Pre-rendered header HTML.
+    pub header: &'a str,
+    /// Pre-rendered sections HTML.
+    pub content: &'a str,
+    /// Pre-rendered scripts block.
+    pub scripts: &'a str,
+}
+
 /// Renders `templates/page.html` — the full HTML document shell. The CSS
 /// block comment in the source template is replaced by one space by
 /// `html/template`'s style-context sanitizer.
 #[must_use]
-pub fn render_page(
-    title: &str,
-    project_name: &str,
-    dark_class: &str,
-    theme: &ThemeConfig,
-    extra_css: &str,
-    header: &str,
-    content: &str,
-    scripts: &str,
-) -> String {
+pub fn render_page(shell: &PageShell<'_>) -> String {
+    let PageShell {
+        title,
+        project_name,
+        dark_class,
+        theme,
+        extra_css,
+        header,
+        content,
+        scripts,
+    } = *shell;
     let mut out = String::new();
     out.push_str("<!doctype html>\n<html class=\"");
     out.push_str(&html_escape(dark_class));
@@ -205,8 +226,9 @@ pub fn render_page(
     out.push_str(theme.border);
     out.push_str(";\n                        border-radius: 4px;\n                    }\n                    ::-webkit-scrollbar-thumb:hover { background: ");
     out.push_str(theme.border_subtle);
-    // The next line carried the CSS comment in the Go template; html/template
-    // replaces it with a single space (20 spaces of indent + 1 space survive).
+    // The next line carried the CSS comment in the source template;
+    // html/template replaces it with a single space (20 spaces of indent + 1
+    // space survive).
     out.push_str("; }\n                     \n                    .tab-panel .container,\n                    .card .container {\n                        max-width: none;\n                        padding: 0;\n                        margin: 0;\n                        width: 100%;\n                    }\n            ");
     out.push_str(extra_css);
     out.push_str("\n        </style>\n    </head>\n    <body\n        class=\"min-h-screen bg-stone-50 dark:bg-stone-950 text-stone-900 dark:text-stone-50 antialiased\"\n    >\n        <div class=\"max-w-6xl mx-auto px-4 py-6\">\n            ");

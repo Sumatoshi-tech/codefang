@@ -1,63 +1,69 @@
 //! Sentinel errors for MCP tool input validation.
 //!
-//! Ported verbatim from the Go `internal/mcp/tools.go` (`ErrEmptyCode`, …) and
-//! `internal/mcp/tools_history.go` (`ErrUnknownHistoryAnalyzer`). The display
-//! strings are byte-for-byte identical to the Go `errors.New(...)` messages
-//! because the tool surfaces them as `TextContent` in the `IsError` result, and
-//! the integration / unit tests assert on substrings of those messages.
-
-use std::fmt;
+//! The display strings are part of the MCP tool contract: the tool surfaces
+//! them as `TextContent` in the `IsError` result, and the integration / unit
+//! tests assert on substrings of those messages. Keep every message
+//! byte-identical when refactoring.
 
 /// Errors produced while validating MCP tool inputs or running a tool.
 ///
-/// The [`fmt::Display`] output of each variant matches the corresponding Go
-/// sentinel error message exactly (including the wrapped `: <detail>` suffixes
-/// produced by Go's `fmt.Errorf("%w: ...", err, ...)`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Each variant's `Display` output (the `#[error]` string) is a frozen,
+/// caller-visible message, including the `: <detail>` suffixes.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ToolError {
-    /// `code parameter is required and must not be empty`
+    /// The inline code input was empty.
+    #[error("code parameter is required and must not be empty")]
     EmptyCode,
-    /// `language parameter is required and must not be empty`
+    /// The language identifier was empty.
+    #[error("language parameter is required and must not be empty")]
     EmptyLanguage,
-    /// `code input exceeds maximum size: <n> bytes (max <m>)`
+    /// The inline code input exceeded the byte limit.
+    #[error("code input exceeds maximum size: {size} bytes (max {max})")]
     CodeTooLarge {
         /// Actual code length in bytes.
         size: usize,
         /// The configured maximum.
         max: usize,
     },
-    /// `repo_path parameter is required and must not be empty`
+    /// The repository path was empty.
+    #[error("repo_path parameter is required and must not be empty")]
     EmptyRepoPath,
-    /// `repo_path must be an absolute path`
+    /// The repository path was relative.
+    #[error("repo_path must be an absolute path")]
     RepoPathNotAbsolute,
-    /// `repository path does not exist: <path>`
+    /// The repository path does not exist.
+    #[error("repository path does not exist: {path}")]
     RepoNotFound {
         /// The offending path.
         path: String,
     },
-    /// `repository path does not exist: <path> is not a directory`
+    /// The repository path exists but is not a directory.
+    #[error("repository path does not exist: {path} is not a directory")]
     RepoNotDirectory {
         /// The offending path.
         path: String,
     },
-    /// `path is not a git repository: <path>`
+    /// The directory has no `.git` entry.
+    #[error("path is not a git repository: {path}")]
     NotGitRepo {
         /// The offending path.
         path: String,
     },
-    /// `unsupported language: <language>`
+    /// The language is not supported by the parser.
+    #[error("unsupported language: {language}")]
     UnsupportedLanguage {
         /// The unsupported language identifier.
         language: String,
     },
-    /// `unknown history analyzer: <name>`
+    /// The requested history analyzer key is not in the known set.
+    #[error("unknown history analyzer: {name}")]
     UnknownHistoryAnalyzer {
         /// The unrecognized analyzer key.
         name: String,
     },
-    /// Wrapper carrying a `<prefix>: <inner>` message, reproducing Go's
-    /// `fmt.Errorf("<prefix>: %w", err)` chaining (e.g. `create parser: ...`,
-    /// `run analyzers: ...`, `load repository: ...`).
+    /// Wrapper carrying a `<prefix>: <inner>` message (e.g.
+    /// `create parser: ...`, `run analyzers: ...`, `load repository: ...`).
+    #[error("{prefix}: {message}")]
     Wrapped {
         /// The context prefix.
         prefix: String,
@@ -67,64 +73,14 @@ pub enum ToolError {
 }
 
 impl ToolError {
-    /// Wraps an arbitrary error message under a Go-style `<prefix>: <msg>` chain.
-    ///
-    /// Mirrors `fmt.Errorf("<prefix>: %w", err)`.
+    /// Wraps an arbitrary error message under a `<prefix>: <msg>` chain.
     pub fn wrap(prefix: impl Into<String>, message: impl Into<String>) -> Self {
-        ToolError::Wrapped {
+        Self::Wrapped {
             prefix: prefix.into(),
             message: message.into(),
         }
     }
 }
-
-impl fmt::Display for ToolError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ToolError::EmptyCode => {
-                write!(f, "code parameter is required and must not be empty")
-            }
-            ToolError::EmptyLanguage => {
-                write!(f, "language parameter is required and must not be empty")
-            }
-            ToolError::CodeTooLarge { size, max } => {
-                // Matches: fmt.Errorf("%w: %d bytes (max %d)", ErrCodeTooLarge, len, max)
-                write!(f, "code input exceeds maximum size: {size} bytes (max {max})")
-            }
-            ToolError::EmptyRepoPath => {
-                write!(f, "repo_path parameter is required and must not be empty")
-            }
-            ToolError::RepoPathNotAbsolute => {
-                write!(f, "repo_path must be an absolute path")
-            }
-            ToolError::RepoNotFound { path } => {
-                // Matches: fmt.Errorf("%w: %s", ErrRepoNotFound, path)
-                write!(f, "repository path does not exist: {path}")
-            }
-            ToolError::RepoNotDirectory { path } => {
-                // Matches: fmt.Errorf("%w: %s is not a directory", ErrRepoNotFound, path)
-                write!(f, "repository path does not exist: {path} is not a directory")
-            }
-            ToolError::NotGitRepo { path } => {
-                // Matches: fmt.Errorf("%w: %s", ErrNotGitRepo, path)
-                write!(f, "path is not a git repository: {path}")
-            }
-            ToolError::UnsupportedLanguage { language } => {
-                // Matches: fmt.Errorf("%w: %s", ErrUnsupportedLanguage, language)
-                write!(f, "unsupported language: {language}")
-            }
-            ToolError::UnknownHistoryAnalyzer { name } => {
-                // Matches: fmt.Errorf("%w: %s", ErrUnknownHistoryAnalyzer, name)
-                write!(f, "unknown history analyzer: {name}")
-            }
-            ToolError::Wrapped { prefix, message } => {
-                write!(f, "{prefix}: {message}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for ToolError {}
 
 #[cfg(test)]
 mod tests {
@@ -194,7 +150,7 @@ mod tests {
     }
 
     #[test]
-    fn wrapped_chains_like_go() {
+    fn wrapped_chains_prefix_and_message() {
         let err = ToolError::wrap("create parser", "boom");
         assert_eq!(err.to_string(), "create parser: boom");
     }

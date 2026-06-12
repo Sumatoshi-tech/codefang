@@ -1,8 +1,9 @@
-//! Port of yaml.v3 `yaml_emitter_analyze_scalar` (emitterc.go).
+//! Scalar character analysis for the YAML emitter.
 //!
 //! Computes the structural properties of a scalar's *characters* that decide
-//! which quoting styles are legal. The encoder operates on UTF-8 bytes;
-//! `width`/`is_printable`/`is_break` etc. are byte-oriented, matching libyaml.
+//! which quoting styles are legal. The analysis operates on raw UTF-8 bytes —
+//! `width`/`is_printable`/`is_break` etc. are byte-oriented — and its exact
+//! classification rules are part of the frozen emitter contract.
 
 /// Per-scalar analysis flags used by the style selector.
 #[derive(Debug, Default, Clone, Copy)]
@@ -55,12 +56,8 @@ fn is_blankz_at(v: &[u8], i: usize) -> bool {
     i >= v.len() || is_blank_at(v, i) || is_break_at(v, i)
 }
 
-fn is_ascii_at(v: &[u8], i: usize) -> bool {
-    v[i] < 0x80
-}
-
-/// Byte-prefix `is_printable`, identical to yaml.v3 `yamlprivateh.go`.
-/// Returns **false** for 4-byte (astral-plane) UTF-8, so emoji are escaped.
+/// Byte-prefix printability test (the reference emitter's table). Returns
+/// **false** for 4-byte (astral-plane) UTF-8, so emoji are escaped.
 fn is_printable_at(v: &[u8], i: usize) -> bool {
     let g = |j: usize| -> u8 {
         if i + j < v.len() {
@@ -80,8 +77,9 @@ fn is_printable_at(v: &[u8], i: usize) -> bool {
             && !(g(1) == 0xBF && (g(2) == 0xBE || g(2) == 0xBF)))
 }
 
-/// Analyzes `value` (UTF-8 bytes) exactly as `yaml_emitter_analyze_scalar`.
-/// `unicode` is always true for yaml.v3 Marshal (`set_unicode(true)`).
+/// Analyzes `value` (UTF-8 bytes), producing the quoting-legality flags.
+/// Unicode output is always enabled (the marshalling default), so only
+/// unprintable characters count as special.
 #[must_use]
 pub fn analyze(value: &[u8]) -> ScalarData {
     let mut block_indicators = false;
@@ -171,8 +169,9 @@ pub fn analyze(value: &[u8]) -> ScalarData {
         if value[i] == b'\t' {
             tab_characters = true;
         } else if !is_printable_at(value, i) {
-            // yaml.v3: `!is_printable || (!is_ascii && !unicode)`. Marshal always
-            // sets unicode=true, so the second term is dead and elided here.
+            // The full predicate is `!is_printable || (!is_ascii && !unicode)`;
+            // unicode output is always enabled here, so the second term is
+            // dead and elided.
             special_characters = true;
         }
 

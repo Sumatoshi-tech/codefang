@@ -1,24 +1,23 @@
 //! Batch metric-instrument construction with first-error-wins accumulation.
 //!
-//! Port of `internal/observability/metric_builder.go`. The Go code wraps OTel
-//! instrument constructors (which return `(T, error)`) in a builder that records
-//! the first error so a whole metrics struct can be built with a single error
-//! check. The Rust OTel API constructors are infallible (`build()` returns the
-//! instrument directly), but downstream callers and ported tests still exercise
-//! the first-error-wins accumulation contract, so it is reproduced exactly.
-
-use std::fmt;
+//! Wraps fallible instrument construction in a builder that records the first
+//! error, so a whole metrics struct can be built with a single error check.
+//! The current OTel-Rust API constructors are infallible, but downstream
+//! callers and the metrics tests exercise the first-error-wins accumulation
+//! contract, so the builder keeps it.
 
 use opentelemetry::metrics::Meter;
 
 /// Error produced when an instrument fails to build.
 ///
-/// Mirrors Go's wrapped error `fmt.Errorf("create %s: %w", name, err)`: the
-/// `Display` form is `create <name>: <source>` and [`std::error::Error::source`]
-/// returns the wrapped cause (so `ErrorIs`-style downcasting works).
-#[derive(Debug)]
+/// The `Display` form is `create <name>: <source>` (a stable operator-facing
+/// wording) and [`std::error::Error::source`] returns the wrapped cause so
+/// callers can downcast it.
+#[derive(Debug, thiserror::Error)]
+#[error("create {name}: {source}")]
 pub struct MetricBuildError {
     name: String,
+    #[source]
     source: Box<dyn std::error::Error + Send + Sync + 'static>,
 }
 
@@ -41,21 +40,8 @@ impl MetricBuildError {
     }
 }
 
-impl fmt::Display for MetricBuildError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Matches Go's "create <name>: <wrapped>".
-        write!(f, "create {}: {}", self.name, self.source)
-    }
-}
-
-impl std::error::Error for MetricBuildError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(self.source.as_ref())
-    }
-}
-
 /// Accumulates instrument-creation errors, enabling batch construction with a
-/// single error check (Go `metricBuilder`).
+/// single error check.
 pub struct MetricBuilder<'m> {
     /// Meter that instruments are created from.
     pub meter: &'m Meter,
@@ -63,7 +49,7 @@ pub struct MetricBuilder<'m> {
 }
 
 impl<'m> MetricBuilder<'m> {
-    /// Creates a builder for the given meter (Go `newMetricBuilder`).
+    /// Creates a builder for the given meter.
     #[must_use]
     pub fn new(meter: &'m Meter) -> Self {
         MetricBuilder { meter, err: None }
@@ -71,9 +57,8 @@ impl<'m> MetricBuilder<'m> {
 
     /// Builds an instrument via `f`, recording any error against `name`.
     ///
-    /// Port of the generic Go `createMetric[T]`. `f` returns `Result<T, E>`;
-    /// on `Err` the first error is retained (later errors ignored) and the
-    /// instrument value is taken from `default_on_err`.
+    /// `f` returns `Result<T, E>`; on `Err` the first error is retained (later
+    /// errors ignored) and the instrument value is taken from `default_on_err`.
     pub fn create_metric<T, E>(
         &mut self,
         name: &str,
@@ -92,7 +77,7 @@ impl<'m> MetricBuilder<'m> {
         }
     }
 
-    /// Records the first instrument-creation error (Go `setErr`).
+    /// Records the first instrument-creation error.
     ///
     /// Only the first error is retained; subsequent calls are ignored.
     pub fn set_err<E>(&mut self, name: &str, err: E)
@@ -104,7 +89,7 @@ impl<'m> MetricBuilder<'m> {
         }
     }
 
-    /// Returns the accumulated error, if any (read-only, mirrors Go `b.err`).
+    /// Returns the accumulated error, if any.
     #[must_use]
     pub fn err(&self) -> Option<&MetricBuildError> {
         self.err.as_ref()
@@ -112,19 +97,22 @@ impl<'m> MetricBuilder<'m> {
 
     /// Consumes the builder, returning `Err` if any instrument failed.
     ///
-    /// Equivalent to the error check inside Go `buildMetrics`.
+    /// # Errors
+    ///
+    /// Returns the first recorded instrument-creation error.
     pub fn finish<T>(self, result: T) -> Result<T, MetricBuildError> {
-        match self.err {
-            Some(e) => Err(e),
-            None => Ok(result),
-        }
+        self.err.map_or(Ok(result), Err)
     }
 }
 
 /// Constructs a metrics struct by delegating instrument creation to `f`.
 ///
-/// Port of the generic Go `buildMetrics[T]`: creates a builder, runs `f`, and
-/// returns the struct only if no instrument errored.
+/// Creates a builder, runs `f`, and returns the struct only if no instrument
+/// errored.
+///
+/// # Errors
+///
+/// Returns the first instrument-creation error recorded by the builder.
 pub fn build_metrics<T, F>(meter: &Meter, f: F) -> Result<T, MetricBuildError>
 where
     F: FnOnce(&mut MetricBuilder<'_>) -> T,
@@ -140,21 +128,20 @@ mod tests {
     use opentelemetry::metrics::MeterProvider;
 
     fn test_meter() -> Meter {
-        // A no-op MeterProvider yields infallible instruments — exactly Go's
-        // noopmetric.NewMeterProvider().Meter("test").
+        // A no-op MeterProvider yields infallible instruments.
         opentelemetry::metrics::noop::NoopMeterProvider::new().meter("test")
     }
 
     #[derive(Debug)]
     struct TestErr(&'static str);
-    impl fmt::Display for TestErr {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    impl std::fmt::Display for TestErr {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.write_str(self.0)
         }
     }
     impl std::error::Error for TestErr {}
 
-    /// Port of Go `TestCreateMetric_Counter` — successful build, no error.
+    /// Mirrors the reference suite's `TestCreateMetric_Counter` — successful build, no error.
     #[test]
     fn create_metric_counter() {
         let meter = test_meter();
@@ -169,7 +156,7 @@ mod tests {
         assert!(b.err().is_none());
     }
 
-    /// Port of Go `TestCreateMetric_ErrorAccumulation_CapturesFirst`.
+    /// Mirrors the reference suite's `TestCreateMetric_ErrorAccumulation_CapturesFirst`.
     #[test]
     fn error_accumulation_captures_first() {
         let meter = test_meter();
@@ -182,7 +169,7 @@ mod tests {
         assert!(e.to_string().contains("test: creation failed"));
     }
 
-    /// Port of Go `TestCreateMetric_ErrorAccumulation_IgnoresSubsequent`.
+    /// Mirrors the reference suite's `TestCreateMetric_ErrorAccumulation_IgnoresSubsequent`.
     #[test]
     fn error_accumulation_ignores_subsequent() {
         let meter = test_meter();
@@ -198,7 +185,7 @@ mod tests {
         assert!(!e.to_string().contains("second error"));
     }
 
-    /// Port of Go `TestBuildMetrics_Success`.
+    /// Mirrors the reference suite's `TestBuildMetrics_Success`.
     #[test]
     fn build_metrics_success() {
         struct M {
@@ -215,7 +202,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    /// Port of Go `TestBuildMetrics_PropagatesError`.
+    /// Mirrors the reference suite's `TestBuildMetrics_PropagatesError`.
     #[test]
     fn build_metrics_propagates_error() {
         struct Empty;

@@ -1,12 +1,11 @@
 //! Minimal UAST + path-filter interface used by the plumbing providers.
 //!
 //! The canonical UAST node model and parser live in `cf-uast`/`cf-uast-node`,
-//! and path filtering lives in `cf-pathfilter`. At the time this crate was
-//! ported those were stubs (their `lib.rs` exports only `CRATE_NAME`), so this
-//! module defines the minimal surface `UASTChanges` needs (`Parser` with
-//! `is_supported`/`parse`, and a `PathFilter` content/name exclusion check).
-//! When the real crates land, replace this module with re-exports of
-//! `cf_uast::Parser` and `cf_pathfilter::Filter`. See the crate `todos`.
+//! and path filtering lives in `cf-pathfilter`. This module defines only the
+//! minimal surface `UASTChanges` needs (`Parser` with `is_supported`/`parse`,
+//! and a `PathFilter` content/name exclusion check) so this crate stays
+//! decoupled; it should collapse into re-exports of `cf_uast::Parser` and
+//! `cf_pathfilter::Filter` as those surfaces stabilize.
 
 use std::sync::Arc;
 
@@ -19,21 +18,20 @@ pub trait NodeLike: std::fmt::Debug + Send + Sync {}
 /// Shared, cloneable parsed UAST root.
 pub type Node = Arc<dyn NodeLike>;
 
-/// A UAST parser, mirroring the methods of Go's `*uast.Parser` used here.
+/// A UAST parser (the subset of the parser surface used here).
 pub trait Parser: Send + Sync {
-    /// Whether the file's language is supported (Go's `parser.IsSupported`).
+    /// Whether the file's language is supported.
     fn is_supported(&self, filename: &str) -> bool;
 
-    /// Parse a blob into a UAST root, or `None` if it cannot be parsed
-    /// (Go's `parser.Parse` returning a nil node on error).
+    /// Parse a blob into a UAST root, or `None` if it cannot be parsed.
     fn parse(&self, filename: &str, content: &[u8]) -> Option<Node>;
 }
 
 /// Shared, cloneable handle to a [`Parser`].
 pub type SharedParser = Arc<dyn Parser>;
 
-/// Vendor/generated path filtering, mirroring `pathfilter.Filter` methods used
-/// by `UASTChanges` (`IsExcluded` and `IsExcludedWithContent`).
+/// Vendor/generated path filtering (the subset of the filter surface used by
+/// `UASTChanges`).
 pub trait PathFilter: Send + Sync {
     /// Whether the path is excluded by name alone (vendor/generated rules).
     fn is_excluded(&self, filename: &str) -> bool;

@@ -7,15 +7,15 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
-# Port of Go package `internal/streaming` — chunked / windowed aggregation over
-# commit history with memory-bounded planning and analyzer hibernation. See
-# specs/rust-rewrite/DESIGN.md.
+# Chunked / windowed aggregation over commit history with memory-bounded
+# planning and analyzer hibernation. See specs/rust-rewrite/DESIGN.md.
 
 [dependencies]
 cf-alg = { path = "../cf-alg" }
 cf-alg-stats = { path = "../cf-alg-stats" }
 cf-units = { path = "../cf-units" }
 cf-sigutil = { path = "../cf-sigutil" }
+thiserror = "1"
 
 [dev-dependencies]
 cf-units = { path = "../cf-units" }

@@ -1,12 +1,13 @@
 //! Vendored vendor-path matcher patterns from `src-d/enry` v2.1.0.
 //!
-//! # Data parity (porting rule 7 + DESIGN §2.6)
+//! # Data parity (DESIGN §2.6)
 //!
-//! File-classification decisions change *which* bytes appear in machine reports,
-//! so the underlying data tables must match the Go library **byte-for-byte**. We
-//! therefore vendor the **same** regular-expression sources that
-//! `github.com/src-d/enry/v2@v2.1.0` compiles in `data/vendor.go`, rather than
-//! swapping in a behaviourally different detector.
+//! File-classification decisions change *which* bytes appear in machine reports
+//! (pinned by `rust/tests/compat`), so the underlying data tables must match
+//! the enry library **byte-for-byte**. We therefore vendor the **same**
+//! regular-expression sources that `github.com/src-d/enry/v2@v2.1.0` compiles
+//! in `data/vendor.go`, rather than swapping in a behaviourally different
+//! detector.
 //!
 //! ## Relationship to `build.rs`
 //!
@@ -18,16 +19,16 @@
 //! vendor_patterns_match_enry_source` test asserts exactly that whenever the
 //! generator ran. If you bump the pinned enry version, regenerate both: extract
 //! each `substring.Regexp(`...`)` argument from that version's `data/vendor.go`
-//! and replace this array (Go backtick/raw literals are copied with no escape
+//! and replace this array (the backtick/raw literals are copied with no escape
 //! translation).
 //!
 //! ## How enry matches
 //!
 //! enry's `data.VendorMatchers` is `substring.Or(substring.Regexp(p1), …)`; each
-//! `substring.Regexp` matches with Go's `regexp.MatchString` (an *unanchored*
-//! search), and `Or` is true if any matches. The Go regexp engine is RE2-syntax,
-//! which the Rust [`regex`] crate also implements, so identical source strings
-//! produce identical match behaviour.
+//! `substring.Regexp` performs an *unanchored* search, and `Or` is true if any
+//! matches. enry's regexp engine is RE2-syntax, which the Rust [`regex`] crate
+//! also implements, so identical source strings produce identical match
+//! behaviour.
 //!
 //! [`regex`]: https://docs.rs/regex
 

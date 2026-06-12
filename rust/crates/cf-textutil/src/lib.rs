@@ -1,41 +1,26 @@
-//! `cf-textutil` — byte-level text utilities and the canonical Go-compatible
-//! JSON writer for codefang reports.
+//! `cf-textutil` — byte-level text utilities and the canonical JSON writer
+//! for codefang reports.
 //!
-//! Rust port of the Go package `pkg/textutil`. It provides two groups of
-//! functionality:
+//! Two groups of functionality:
 //!
 //! 1. **Byte text helpers** ([`is_binary`], [`count_lines`],
-//!    [`BINARY_SNIFF_LENGTH`]) — operate on raw `&[u8]`, mirroring Go's
-//!    `[]byte` semantics exactly.
+//!    [`BINARY_SNIFF_LENGTH`]) — operate on raw `&[u8]`; no UTF-8 decoding.
 //!
-//! 2. **Canonical JSON serialization** ([`write_json`], [`marshal_json`]) — the
-//!    single source of truth for report JSON. Per the rewrite design, report
-//!    serialization routes through a shared Go-byte-compatible encoder (never
-//!    raw `serde_json`) so MACHINE-format report bytes stay byte-identical with
-//!    Go: HTML escaping ON, optional two-space indent, trailing newline. See
-//!    the [`json`] module for the writer and [`gocompat`] for the encoder
-//!    ([`GoValue`] / [`Encoder`]).
+//! 2. **Canonical JSON serialization** ([`write_json`], [`marshal_json`]) —
+//!    the single entry point for report JSON. Report serialization routes
+//!    through the shared contract encoder ([`cf_gojson`]) — never raw
+//!    `serde_json` — with HTML escaping ON, an optional two-space indent, and
+//!    a trailing newline. See the [`json`] module for the writer and
+//!    [`gocompat`] for the encoder re-exports ([`GoValue`] / [`Encoder`]).
 //!
-//! # Byte-identity
-//!
-//! Byte-identity of MACHINE-format report bytes is the project goal. The JSON
-//! writer here matches Go's `json.NewEncoder` + `SetIndent("", "  ")` +
-//! `Encode` call site (`pkg/textutil/textutil.go`).
-//!
-//! # Encoder routing (`cf-gojson`)
-//!
-//! The design's single Go-byte-compatible encoder is the tier-0 crate
-//! `cf-gojson`, which `cf-textutil` is meant to wrap. While `cf-gojson` remains
-//! a scaffold, the encoder lives in the in-crate [`gocompat`] module with an
-//! API identical to the planned `cf-gojson` surface, so the migration is a
-//! one-line `use` swap once `cf-gojson` is implemented.
+//! Compatibility: machine-format report bytes are pinned against the reference
+//! implementation by the differential gate in `rust/tests/compat`.
 
-/// Compatibility alias for the shared Go-byte-compatible encoder.
+/// Re-export of the shared contract encoder's surface.
 ///
-/// Historically `cf-textutil` carried an in-crate `gocompat` encoder while
-/// `cf-gojson` was still a scaffold. `cf-gojson` is now the implemented tier-0
-/// encoder, so `gocompat` is a thin re-export of its surface to keep the
-/// migration a one-line `use` swap for downstream call sites.
+/// Historically `cf-textutil` carried an in-crate `gocompat` encoder before
+/// `cf-gojson` existed; the module remains as a thin re-export so downstream
+/// `use` paths keep working.
 pub mod gocompat {
     pub use cf_gojson::{Encoder, GoMap, GoValue, MapOrigin};
 }

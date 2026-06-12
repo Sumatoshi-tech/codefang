@@ -1,38 +1,37 @@
 //! OpenTelemetry tracing / metrics / logging initialization.
 //!
-//! Port of `internal/observability/init.go`. Initializes tracer + meter
-//! providers and a structured logger, returning [`Providers`] with a
-//! [`Providers::shutdown`] hook. The cardinal behavior — **no-op, zero-export
-//! providers when `OTLPEndpoint` is empty** — is preserved exactly.
+//! Initializes tracer + meter providers and a structured logger, returning
+//! [`Providers`] with a [`Providers::shutdown`] hook. The cardinal behavior:
+//! **no-op, zero-export providers when the OTLP endpoint is empty**.
 //!
-//! # Sampler selection precedence (matched to Go `selectSampler`)
+//! # Sampler selection precedence
 //!
-//! 1. `DebugTrace` → always-on.
+//! 1. `debug_trace` → always-on.
 //! 2. else `OTEL_TRACES_SAMPLER` env (via [`SamplerKind::from_env`]).
-//! 3. else `SampleRatio > 0` → parent-based TraceID-ratio.
+//! 3. else `sample_ratio > 0` → parent-based TraceID-ratio.
 //! 4. else parent-based always-on.
 //!
-//! The sampler decision is exposed as [`SamplerKind`] so the ported
-//! `init_test.go` "ProbeSamplerSpan" assertions (which check whether a fresh
-//! root span is sampled under each env setting) can run without a live exporter.
+//! The sampler decision is exposed as [`SamplerKind`] so the sampler tests
+//! (which check whether a fresh root span is sampled under each env setting)
+//! can run without a live exporter.
 
 use std::collections::BTreeMap;
 
 use crate::config::Config;
 use crate::logger::TracingHandler;
 
-/// Instrumentation-scope name for the tracer Go `Init` acquires
-/// (`tp.Tracer(tracerName)`); export-mode provider wiring will use it.
+/// Instrumentation-scope name for the tracer; export-mode provider wiring
+/// will use it.
 pub const TRACER_NAME: &str = "codefang";
-/// Instrumentation-scope name for the meter Go `Init` acquires
-/// (`mp.Meter(meterName)`); export-mode provider wiring will use it.
+/// Instrumentation-scope name for the meter; export-mode provider wiring
+/// will use it.
 pub const METER_NAME: &str = "codefang";
 
-// Standard OTel env vars (Go consts).
+// Standard OTel env vars.
 const ENV_TRACES_SAMPLER: &str = "OTEL_TRACES_SAMPLER";
 const ENV_TRACES_SAMPLER_ARG: &str = "OTEL_TRACES_SAMPLER_ARG";
 
-// Sampler names (Go consts).
+// Standard OTel sampler names.
 const SAMPLER_ALWAYS_ON: &str = "always_on";
 const SAMPLER_ALWAYS_OFF: &str = "always_off";
 const SAMPLER_TRACE_ID_RATIO: &str = "traceidratio";
@@ -40,7 +39,7 @@ const SAMPLER_PARENT_BASED_ALWAYS_ON: &str = "parentbased_always_on";
 const SAMPLER_PARENT_BASED_ALWAYS_OFF: &str = "parentbased_always_off";
 const SAMPLER_PARENT_BASED_TRACE_ID_RATIO: &str = "parentbased_traceidratio";
 
-/// Resolved sampler, mirroring the cases of Go's `sdktrace.Sampler` selection.
+/// Resolved sampler selection.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SamplerKind {
     /// Always sample.
@@ -58,39 +57,39 @@ pub enum SamplerKind {
 }
 
 impl SamplerKind {
-    /// Maps an `OTEL_TRACES_SAMPLER` value + arg to a sampler (Go `envSampler2Sampler`).
+    /// Maps an `OTEL_TRACES_SAMPLER` value + arg to a sampler.
     ///
-    /// Unknown names fall back to parent-based always-on, matching Go's default.
+    /// Unknown names fall back to parent-based always-on (the default).
     #[must_use]
-    pub fn from_env(name: &str, arg: &str) -> SamplerKind {
+    pub fn from_env(name: &str, arg: &str) -> Self {
         match name {
-            SAMPLER_ALWAYS_ON => SamplerKind::AlwaysOn,
-            SAMPLER_ALWAYS_OFF => SamplerKind::AlwaysOff,
-            SAMPLER_TRACE_ID_RATIO => SamplerKind::TraceIdRatio(parse_ratio(arg)),
-            SAMPLER_PARENT_BASED_ALWAYS_ON => SamplerKind::ParentBasedAlwaysOn,
-            SAMPLER_PARENT_BASED_ALWAYS_OFF => SamplerKind::ParentBasedAlwaysOff,
+            SAMPLER_ALWAYS_ON => Self::AlwaysOn,
+            SAMPLER_ALWAYS_OFF => Self::AlwaysOff,
+            SAMPLER_TRACE_ID_RATIO => Self::TraceIdRatio(parse_ratio(arg)),
+            SAMPLER_PARENT_BASED_ALWAYS_ON => Self::ParentBasedAlwaysOn,
+            SAMPLER_PARENT_BASED_ALWAYS_OFF => Self::ParentBasedAlwaysOff,
             SAMPLER_PARENT_BASED_TRACE_ID_RATIO => {
-                SamplerKind::ParentBasedTraceIdRatio(parse_ratio(arg))
+                Self::ParentBasedTraceIdRatio(parse_ratio(arg))
             }
-            _ => SamplerKind::ParentBasedAlwaysOn,
+            _ => Self::ParentBasedAlwaysOn,
         }
     }
 
     /// Whether a fresh **root** span (no parent) would be sampled.
     ///
-    /// Used by the ported sampler tests. Ratio 1.0 always samples; 0.0 never.
+    /// Used by the sampler tests. Ratio 1.0 always samples; 0.0 never.
     /// Parent-based samplers, with no parent, defer to their root delegate.
     #[must_use]
     pub fn samples_root_span(self) -> bool {
         match self {
-            SamplerKind::AlwaysOn | SamplerKind::ParentBasedAlwaysOn => true,
-            SamplerKind::AlwaysOff | SamplerKind::ParentBasedAlwaysOff => false,
-            SamplerKind::TraceIdRatio(r) | SamplerKind::ParentBasedTraceIdRatio(r) => r >= 1.0,
+            Self::AlwaysOn | Self::ParentBasedAlwaysOn => true,
+            Self::AlwaysOff | Self::ParentBasedAlwaysOff => false,
+            Self::TraceIdRatio(r) | Self::ParentBasedTraceIdRatio(r) => r >= 1.0,
         }
     }
 }
 
-/// Selects the sampler from config + environment (Go `selectSampler`).
+/// Selects the sampler from config + environment.
 fn select_sampler(cfg: &Config, env_sampler: Option<&str>, env_arg: Option<&str>) -> SamplerKind {
     if cfg.debug_trace {
         return SamplerKind::AlwaysOn;
@@ -109,7 +108,7 @@ fn select_sampler(cfg: &Config, env_sampler: Option<&str>, env_arg: Option<&str>
     SamplerKind::ParentBasedAlwaysOn
 }
 
-/// Parses a sampler ratio argument (Go `parseRatio`): empty or unparseable → 1.0.
+/// Parses a sampler ratio argument: empty or unparseable → 1.0.
 fn parse_ratio(s: &str) -> f64 {
     if s.is_empty() {
         return 1.0;
@@ -117,7 +116,7 @@ fn parse_ratio(s: &str) -> f64 {
     s.parse::<f64>().unwrap_or(1.0)
 }
 
-/// Resource attributes built from config (Go `buildResource`).
+/// Resource attributes built from config.
 ///
 /// Always carries `service.name`; `service.version`, `deployment.environment`,
 /// and `app.mode` are added only when their config field is non-empty.
@@ -135,7 +134,7 @@ impl ResourceAttrs {
     }
 }
 
-/// Builds resource attributes from config (Go `buildResource`).
+/// Builds resource attributes from config.
 #[must_use]
 pub fn build_resource(cfg: &Config) -> ResourceAttrs {
     let mut attrs = vec![("service.name".to_string(), cfg.service_name.clone())];
@@ -148,13 +147,12 @@ pub fn build_resource(cfg: &Config) -> ResourceAttrs {
             cfg.environment.clone(),
         ));
     }
-    // Go appends app.mode whenever Mode != "" — AppMode is always non-empty here.
+    // app.mode is always appended: AppMode always has a wire string.
     attrs.push(("app.mode".to_string(), cfg.mode.to_string()));
     ResourceAttrs { attrs }
 }
 
-/// Parses an OTLP headers string in `"key=value,key=value"` format
-/// (Go `ParseOTLPHeaders`).
+/// Parses an OTLP headers string in `"key=value,key=value"` format.
 ///
 /// Returns an empty map for empty or fully-invalid input. Whitespace around keys
 /// and values is trimmed; pairs without `=` are skipped.
@@ -170,18 +168,18 @@ pub fn parse_otlp_headers(raw: &str) -> BTreeMap<String, String> {
         if let Some((k, v)) = trimmed.split_once('=') {
             result.insert(k.trim().to_string(), v.trim().to_string());
         }
-        // pairs without '=' are skipped (Go: !ok → continue)
+        // pairs without '=' are skipped
     }
 
     result
 }
 
-/// Initialized observability providers (Go `Providers`).
+/// Initialized observability providers.
 ///
-/// In a full deployment these wrap real OTel tracer/meter handles; this port
+/// In a full deployment these wrap real OTel tracer/meter handles; this
 /// returns the configured, sampler-resolved, logger-attached bundle and a
-/// shutdown hook. When the OTLP endpoint is empty the providers are no-op (zero
-/// export overhead), exactly as in Go.
+/// shutdown hook. When the OTLP endpoint is empty the providers are no-op
+/// (zero export overhead).
 pub struct Providers {
     /// Resolved trace sampler (no-op export when [`Providers::export_enabled`]
     /// is false).
@@ -190,7 +188,7 @@ pub struct Providers {
     pub resource: ResourceAttrs,
     /// Structured logger handler with trace-context + service injection.
     pub logger: TracingHandler,
-    /// Whether OTLP export is enabled (i.e. `OTLPEndpoint` was non-empty).
+    /// Whether OTLP export is enabled (i.e. the OTLP endpoint was non-empty).
     export_enabled: bool,
     /// Configured shutdown timeout in seconds (`<= 0` → default).
     shutdown_timeout_sec: i32,
@@ -203,11 +201,10 @@ impl Providers {
         self.export_enabled
     }
 
-    /// Flushes pending telemetry and releases resources (Go `Shutdown`).
+    /// Flushes pending telemetry and releases resources.
     ///
-    /// Idempotent and always succeeds in no-op mode (matching the ported
-    /// `TestInit_ShutdownIdempotent`). The timeout mirrors Go: a non-positive
-    /// configured timeout falls back to the default.
+    /// Idempotent and always succeeds in no-op mode. A non-positive configured
+    /// timeout falls back to the default.
     ///
     /// # Errors
     ///
@@ -225,20 +222,13 @@ impl Providers {
 }
 
 /// Error returned by [`Providers::shutdown`] (reserved for export-mode failures).
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("observability shutdown: {0}")]
 pub struct ShutdownError(pub String);
 
-impl std::fmt::Display for ShutdownError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "observability shutdown: {}", self.0)
-    }
-}
-
-impl std::error::Error for ShutdownError {}
-
-/// Initializes tracing, metrics, and structured logging (Go `Init`).
+/// Initializes tracing, metrics, and structured logging.
 ///
-/// When `OTLPEndpoint` is empty, no-op providers are returned with zero export
+/// When the OTLP endpoint is empty, no-op providers are returned with zero export
 /// overhead. The sampler is resolved from config + environment; the logger is
 /// built with the service/env/mode injection handler.
 ///
@@ -277,7 +267,7 @@ pub fn init_with_env(
     })
 }
 
-/// Builds the structured-logging handler (Go `buildLogger`).
+/// Builds the structured-logging handler.
 fn build_logger(cfg: &Config) -> TracingHandler {
     TracingHandler::new(&cfg.service_name, &cfg.environment, cfg.mode)
 }
@@ -287,7 +277,7 @@ mod tests {
     use super::*;
     use crate::config::AppMode;
 
-    /// Port of Go `TestParseOTLPHeaders` (table-driven).
+    /// Mirrors the reference suite's `TestParseOTLPHeaders` (table-driven).
     #[test]
     fn parse_otlp_headers_cases() {
         assert!(parse_otlp_headers("").is_empty());
@@ -312,7 +302,7 @@ mod tests {
         assert!(parse_otlp_headers("invalid").is_empty());
     }
 
-    /// Port of Go `TestInit_NoopWhenNoEndpoint`.
+    /// Mirrors the reference suite's `TestInit_NoopWhenNoEndpoint`.
     #[test]
     fn init_noop_when_no_endpoint() {
         let cfg = Config::default();
@@ -321,7 +311,7 @@ mod tests {
         assert!(providers.shutdown().is_ok());
     }
 
-    /// Port of Go `TestInit_ShutdownIdempotent`.
+    /// Mirrors the reference suite's `TestInit_ShutdownIdempotent`.
     #[test]
     fn init_shutdown_idempotent() {
         let cfg = Config::default();
@@ -330,7 +320,7 @@ mod tests {
         assert!(providers.shutdown().is_ok());
     }
 
-    /// Port of Go `TestBuildResource_IncludesAppMode` (ProbeBuildResource).
+    /// Mirrors the reference suite's `TestBuildResource_IncludesAppMode`.
     #[test]
     fn build_resource_includes_app_mode() {
         let mut cfg = Config::default();
@@ -341,7 +331,7 @@ mod tests {
         assert_eq!(res.get("service.name"), Some("codefang"));
     }
 
-    /// Port of Go `TestInit_WithResourceAttributes`.
+    /// Mirrors the reference suite's `TestInit_WithResourceAttributes`.
     #[test]
     fn build_resource_optional_attrs() {
         let mut cfg = Config::default();
@@ -354,44 +344,44 @@ mod tests {
         assert_eq!(res.get("app.mode"), Some("mcp"));
     }
 
-    // --- Sampler tests (ProbeSamplerSpan) ---
+    // --- Sampler tests ---
 
-    /// Port of Go `TestSampler_AlwaysOn`.
+    /// Mirrors the reference suite's `TestSampler_AlwaysOn`.
     #[test]
     fn sampler_always_on() {
         let s = select_sampler(&Config::default(), Some("always_on"), None);
         assert!(s.samples_root_span());
     }
 
-    /// Port of Go `TestSampler_AlwaysOff`.
+    /// Mirrors the reference suite's `TestSampler_AlwaysOff`.
     #[test]
     fn sampler_always_off() {
         let s = select_sampler(&Config::default(), Some("always_off"), None);
         assert!(!s.samples_root_span());
     }
 
-    /// Port of Go `TestSampler_TraceIDRatio` (ratio 1.0 always samples).
+    /// Mirrors the reference suite's `TestSampler_TraceIDRatio` (ratio 1.0 always samples).
     #[test]
     fn sampler_trace_id_ratio() {
         let s = select_sampler(&Config::default(), Some("traceidratio"), Some("1.0"));
         assert!(s.samples_root_span());
     }
 
-    /// Port of Go `TestSampler_ParentBasedAlwaysOn`.
+    /// Mirrors the reference suite's `TestSampler_ParentBasedAlwaysOn`.
     #[test]
     fn sampler_parentbased_always_on() {
         let s = select_sampler(&Config::default(), Some("parentbased_always_on"), None);
         assert!(s.samples_root_span());
     }
 
-    /// Port of Go `TestSampler_ParentBasedAlwaysOff` (drops root spans).
+    /// Mirrors the reference suite's `TestSampler_ParentBasedAlwaysOff` (drops root spans).
     #[test]
     fn sampler_parentbased_always_off() {
         let s = select_sampler(&Config::default(), Some("parentbased_always_off"), None);
         assert!(!s.samples_root_span());
     }
 
-    /// Port of Go `TestSampler_DebugTraceOverridesEnv`.
+    /// Mirrors the reference suite's `TestSampler_DebugTraceOverridesEnv`.
     #[test]
     fn sampler_debug_trace_overrides_env() {
         let mut cfg = Config::default();
@@ -400,7 +390,7 @@ mod tests {
         assert!(s.samples_root_span());
     }
 
-    /// Port of Go `TestSampler_ConfigSampleRatioFallback`.
+    /// Mirrors the reference suite's `TestSampler_ConfigSampleRatioFallback`.
     #[test]
     fn sampler_config_sample_ratio_fallback() {
         let mut cfg = Config::default();
@@ -409,14 +399,14 @@ mod tests {
         assert!(s.samples_root_span());
     }
 
-    /// Port of Go `TestSampler_DefaultSamples`.
+    /// Mirrors the reference suite's `TestSampler_DefaultSamples`.
     #[test]
     fn sampler_default_samples() {
         let s = select_sampler(&Config::default(), None, None);
         assert!(s.samples_root_span());
     }
 
-    /// Unknown env sampler falls back to parent-based always-on (Go default).
+    /// Unknown env sampler falls back to parent-based always-on.
     #[test]
     fn sampler_unknown_env_default() {
         let s = SamplerKind::from_env("nonsense", "");

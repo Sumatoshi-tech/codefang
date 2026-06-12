@@ -1,9 +1,9 @@
 //! Default configuration values.
 //!
-//! Direct port of `internal/config/defaults.go`. Every `Default*` constant here
-//! mirrors its Go counterpart name-for-name and value-for-value, so a
-//! [`crate::Config`] built from defaults is byte-for-byte equivalent to the Go
-//! struct viper produces from an empty config file.
+//! Every `DEFAULT_*` constant here is pinned to the reference CLI's registered
+//! default, so a [`crate::Config`] built from defaults is equivalent to what
+//! the reference loader produces from an empty config file (compatibility
+//! contract).
 
 // Pipeline default values.
 

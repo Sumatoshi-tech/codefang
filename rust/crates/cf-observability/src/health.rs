@@ -1,21 +1,21 @@
 //! Liveness / readiness health responses.
 //!
-//! Port of `internal/observability/health.go`. Produces the exact response
-//! bodies, status strings, and HTTP status codes the Go handlers emit:
-//! `/healthz` → 200 `{"status":"ok"}`; `/readyz` → 200 `{"status":"ok"}` when
-//! all checks pass (or none given), else 503 `{"status":"unavailable"}`.
+//! Produces the diagnostics-endpoint response bodies, status strings, and HTTP
+//! status codes: `/healthz` → 200 `{"status":"ok"}`; `/readyz` → 200
+//! `{"status":"ok"}` when all checks pass (or none given), else 503
+//! `{"status":"unavailable"}`.
 //!
 //! The handler wiring lives in [`crate::diagnostics`]; this module provides the
 //! pure, fully-testable response builders so the body bytes are verified
-//! directly (Go asserts `body["status"] == "ok"`).
+//! directly.
 
 use std::future::Future;
 use std::pin::Pin;
 
-/// Health status string for success (Go `healthStatusOK`).
+/// Health status string for success.
 pub const HEALTH_STATUS_OK: &str = "ok";
 
-/// Health status string for failure (Go `healthStatusUnavailable`).
+/// Health status string for failure.
 pub const HEALTH_STATUS_UNAVAILABLE: &str = "unavailable";
 
 /// HTTP 200.
@@ -27,8 +27,8 @@ pub const STATUS_SERVICE_UNAVAILABLE: u16 = 503;
 /// Content type of all health responses.
 pub const CONTENT_TYPE_JSON: &str = "application/json";
 
-/// A readiness check (Go `ReadyCheck`): returns `Ok(())` if the subsystem is
-/// ready, or `Err(message)` describing the failure.
+/// A readiness check: returns `Ok(())` if the subsystem is ready, or
+/// `Err(message)` describing the failure.
 ///
 /// Boxed async closure so multiple heterogeneous checks can be stored together.
 pub type ReadyCheck = Box<
@@ -46,14 +46,12 @@ pub struct HttpResponse {
     pub body: Vec<u8>,
 }
 
-/// Serializes a `{"status":<status>}` body exactly as Go's
-/// `json.Marshal(map[string]string{"status": status})` does.
+/// Serializes a compact `{"status":<status>}` body.
 ///
-/// The single-key object has a fixed shape, so `serde_json` reproduces Go's
-/// compact bytes (`{"status":"ok"}`) byte-for-byte; this is an HTTP body, not a
-/// machine report, so cf-gojson is not required (DESIGN §3).
+/// This is an HTTP body, not a machine report, so cf-gojson is not required
+/// (DESIGN §3); the compact no-space form is still kept stable for probes that
+/// match on it.
 fn status_body(status: &str) -> Vec<u8> {
-    // Build manually to guarantee compact, no-space form identical to Go.
     let mut buf = Vec::with_capacity(status.len() + 13);
     buf.extend_from_slice(b"{\"status\":\"");
     buf.extend_from_slice(status.as_bytes());
@@ -61,7 +59,7 @@ fn status_body(status: &str) -> Vec<u8> {
     buf
 }
 
-/// Builds the liveness response (Go `HealthHandler`): always 200 `{"status":"ok"}`.
+/// Builds the liveness response: always 200 `{"status":"ok"}`.
 #[must_use]
 pub fn health_response() -> HttpResponse {
     HttpResponse {
@@ -71,7 +69,7 @@ pub fn health_response() -> HttpResponse {
     }
 }
 
-/// Builds the readiness response (Go `ReadyHandler`).
+/// Builds the readiness response.
 ///
 /// Runs each check in order; the first failure yields a 503
 /// `{"status":"unavailable"}` response (subsequent checks are not run). If all
@@ -106,7 +104,8 @@ mod tests {
         Box::new(|| Box::pin(async { Err("db unreachable".to_string()) }))
     }
 
-    /// Port of Go `TestHealthHandler_ReturnsOK` + `TestHealthHandler_ContentTypeJSON`.
+    /// Mirrors the reference suite's `TestHealthHandler_ReturnsOK` +
+    /// `TestHealthHandler_ContentTypeJSON`.
     #[test]
     fn health_handler_returns_ok() {
         let resp = health_response();
@@ -115,7 +114,7 @@ mod tests {
         assert_eq!(resp.body, br#"{"status":"ok"}"#);
     }
 
-    /// Port of Go `TestReadyHandler_AllChecksPass`.
+    /// Mirrors the reference suite's `TestReadyHandler_AllChecksPass`.
     #[tokio::test]
     async fn ready_handler_all_checks_pass() {
         let checks = vec![pass_check(), pass_check()];
@@ -124,14 +123,15 @@ mod tests {
         assert_eq!(resp.body, br#"{"status":"ok"}"#);
     }
 
-    /// Port of Go `TestReadyHandler_NoChecks`.
+    /// Mirrors the reference suite's `TestReadyHandler_NoChecks`.
     #[tokio::test]
     async fn ready_handler_no_checks() {
         let resp = ready_response(&[]).await;
         assert_eq!(resp.status, 200);
     }
 
-    /// Port of Go `TestReadyHandler_CheckFails` (pass then fail → 503).
+    /// Mirrors the reference suite's `TestReadyHandler_CheckFails` (pass then
+    /// fail → 503).
     #[tokio::test]
     async fn ready_handler_check_fails() {
         let checks = vec![pass_check(), fail_check()];

@@ -8,35 +8,36 @@ repository.workspace = true
 publish = false
 
 # cf-devs — developer activity / per-developer line statistics with
-# HyperLogLog developer-cardinality estimation.
+# HyperLogLog developer-cardinality estimation (analyzer id: history/devs,
+# sequential-only).
 #
-# Ports internal/analyzers/devs (Go id: history/devs, Sequential). The analyzer
-# computes per-developer commit / lines-added / lines-removed / lines-changed
+# Computes per-developer commit / lines-added / lines-removed / lines-changed
 # statistics through time, per-language breakdowns, CHAOSS bus-factor risk,
-# per-tick activity and churn time-series, and an aggregate summary that uses an
-# HLL sketch for total/active developer cardinality. Merge semantics are purely
-# additive and NO wall-clock (time.Now) is read during scoring.
+# per-tick activity and churn time-series, and an aggregate summary that uses
+# an HLL sketch for total/active developer cardinality. Merge semantics are
+# purely additive and NO wall-clock is read during scoring.
 #
-# Report serialization routes exclusively through cf-gojson / cf-goyaml so the
-# machine-format bytes (json/yaml/ndjson/timeseries/compact/bin) match Go's
-# encoding/json + yaml.v3 byte-for-byte. See specs/rust-rewrite/DESIGN.md §2.
+# Report serialization routes exclusively through cf-gojson / cf-goyaml; the
+# machine-format bytes (json/yaml/ndjson/timeseries/compact/bin) are pinned
+# against the reference implementation by rust/tests/compat.
 
 [dependencies]
-# Go encoding/json-byte-compatible encoder (DESIGN §2.2). NEVER serde_json for
-# output. The report types expose `to_go_value()` building a GoValue tree that
-# both the JSON (cf-gojson) and YAML (cf-goyaml) paths consume.
+# Report-format-compatible JSON encoder. NEVER serde_json for output. The
+# report types expose `*_to_go()` builders producing a GoValue tree that both
+# the JSON (cf-gojson) and YAML (cf-goyaml) paths consume.
 cf-gojson = { path = "../cf-gojson" }
-# HyperLogLog cardinality sketch (pkg/alg/hll). p=14 → 16384 registers; the
-# estimate is an integer in machine output so this must be bit-identical to Go.
+# HyperLogLog cardinality sketch. p=14 → 16384 registers; the estimate is an
+# integer in machine output so it must be bit-identical to the reference.
 cf-alg-hll = { path = "../cf-alg-hll" }
-# Mean/stddev/percent helpers (pkg/alg/stats). `to_percent` produces the
-# primary/secondary percentage floats that reach the report.
+# Mean/stddev/percent helpers. `to_percent` produces the primary/secondary
+# percentage floats that reach the report.
 cf-alg-stats = { path = "../cf-alg-stats" }
-# Identity helpers (AuthorMissing sentinel, AuthorMissingName, split_identity).
+# Identity helpers (AUTHOR_MISSING sentinel, AUTHOR_MISSING_NAME,
+# split_identity).
 cf-identity = { path = "../cf-identity" }
-# MetricMeta + risk level/priority enums (pkg/metrics).
+# MetricMeta + risk level/priority enums.
 cf-metrics = { path = "../cf-metrics" }
-# Go sort.Slice (pdqsort) parity for byte-identical tie ordering (busfactor
+# Unstable-sort (pdqsort) parity for byte-identical tie ordering (busfactor
 # risk-priority sort, contributor sort).
 cf-gosort = { path = "../cf-gosort" }
 

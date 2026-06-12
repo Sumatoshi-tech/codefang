@@ -1,21 +1,18 @@
 //! Per-chunk memory telemetry logging.
 //!
-//! Port of Go `internal/streaming/memlog.go`. Go uses `log/slog`; this crate
-//! avoids a hard logging dependency, so [`log_chunk_memory`] writes the
-//! structured fields to any [`std::io::Write`] sink in slog's text format
+//! To avoid a hard logging dependency, [`log_chunk_memory`] writes the
+//! structured fields to any [`std::io::Write`] sink in slog-style text format
 //! (`key=value` pairs). Production builds route this through `tracing` /
-//! `cf-observability`; see the crate todos.
+//! `cf-observability`.
 //!
-//! The derived field values (the integer divisions by [`cf_units`]) reproduce
-//! Go's arithmetic exactly.
+//! The derived field values (the integer divisions by [`cf_units`]) match the
+//! reference implementation's telemetry exactly.
 
 use std::io::{self, Write};
 
 use cf_units::{KIB, MIB};
 
 /// Memory measurements for a single chunk.
-///
-/// Port of Go `streaming.ChunkMemoryLog`.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ChunkMemoryLog {
     /// Zero-based chunk index (logged as `chunk = index + 1`).
@@ -44,8 +41,7 @@ pub const CHUNK_MEMORY_MSG: &str = "streaming: chunk memory";
 /// Emits a structured log entry with per-chunk memory telemetry to `out`.
 ///
 /// The fields, their order, their keys, and their (integer-divided) values
-/// reproduce Go's `slog.InfoContext(ctx, "streaming: chunk memory", ...)` call
-/// exactly:
+/// reproduce the reference logger's "streaming: chunk memory" entry exactly:
 ///
 /// - `chunk` = `chunk_index + 1`
 /// - `heap_before_mib` = `heap_before / MiB`
@@ -90,7 +86,7 @@ pub fn log_chunk_memory<W: Write>(out: &mut W, entry: &ChunkMemoryLog) -> io::Re
 mod tests {
     use super::*;
 
-    // Mirrors Go TestLogChunkMemory_EmitsStructuredFields.
+    // Mirrors reference test TestLogChunkMemory_EmitsStructuredFields.
     #[test]
     fn emits_structured_fields() {
         let mut buf = Vec::new();
@@ -115,7 +111,7 @@ mod tests {
         assert!(output.contains("replanned=false"), "{output}");
     }
 
-    // Mirrors Go TestLogChunkMemory_ReplanTrue.
+    // Mirrors reference test TestLogChunkMemory_ReplanTrue.
     #[test]
     fn replan_true() {
         let mut buf = Vec::new();

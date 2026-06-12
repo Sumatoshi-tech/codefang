@@ -1,16 +1,16 @@
-//! Color themes for plot pages — port of Go `plotpage/theme.go`.
+//! Color themes for plot pages.
 
-/// A color theme for visualizations (Go `plotpage.Theme`).
+/// A color theme for visualizations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Theme {
-    /// The light color theme (Go `ThemeLight`).
+    /// The light color theme.
     Light,
-    /// The dark color theme (Go `ThemeDark`) — the default for plot output.
+    /// The dark color theme — the default for plot output.
     #[default]
     Dark,
 }
 
-/// All theme-specific styling values (Go `plotpage.ThemeConfig`, theme.go:14).
+/// All theme-specific styling values.
 #[derive(Debug, Clone)]
 pub struct ThemeConfig {
     /// Page background color.
@@ -67,7 +67,7 @@ pub struct ThemeConfig {
     pub echarts_theme: &'static str,
 }
 
-/// Semantic chart colors (Go `ChartPalette.Semantic`).
+/// Semantic chart colors.
 #[derive(Debug, Clone)]
 pub struct SemanticColors {
     /// "Good" semantic color.
@@ -78,7 +78,7 @@ pub struct SemanticColors {
     pub bad: &'static str,
 }
 
-/// A consistent chart color palette (Go `plotpage.ChartPalette`).
+/// A consistent chart color palette.
 #[derive(Debug, Clone)]
 pub struct ChartPalette {
     /// Main series colors.
@@ -89,25 +89,25 @@ pub struct ChartPalette {
     pub semantic: SemanticColors,
 }
 
-/// Returns the configuration for a theme (Go `GetThemeConfig`, theme.go:66).
+/// Returns the configuration for a theme.
 #[must_use]
-pub fn get_theme_config(theme: Theme) -> ThemeConfig {
+pub const fn get_theme_config(theme: Theme) -> ThemeConfig {
     match theme {
         Theme::Dark => DARK_THEME,
         Theme::Light => LIGHT_THEME,
     }
 }
 
-/// Returns the chart palette for a theme (Go `GetChartPalette`, theme.go:78).
+/// Returns the chart palette for a theme.
 #[must_use]
-pub fn get_chart_palette(theme: Theme) -> ChartPalette {
+pub const fn get_chart_palette(theme: Theme) -> ChartPalette {
     match theme {
         Theme::Dark => DARK_CHART_PALETTE,
         Theme::Light => LIGHT_CHART_PALETTE,
     }
 }
 
-/// Go `lightTheme` (theme.go:89).
+/// The light theme values.
 const LIGHT_THEME: ThemeConfig = ThemeConfig {
     background: "#fafaf9",
     surface: "#ffffff",
@@ -137,7 +137,7 @@ const LIGHT_THEME: ThemeConfig = ThemeConfig {
     echarts_theme: "",
 };
 
-/// Go `darkTheme` (theme.go:128).
+/// The dark theme values.
 const DARK_THEME: ThemeConfig = ThemeConfig {
     background: "#0c0a09",
     surface: "#1c1917",
@@ -167,7 +167,7 @@ const DARK_THEME: ThemeConfig = ThemeConfig {
     echarts_theme: "",
 };
 
-/// Go `lightChartPalette` (theme.go:167).
+/// The light chart palette.
 const LIGHT_CHART_PALETTE: ChartPalette = ChartPalette {
     primary: [
         "#a16207", "#0369a1", "#4d7c0f", "#7c3aed", "#be185d", "#0891b2", "#c2410c", "#4338ca",
@@ -184,7 +184,7 @@ const LIGHT_CHART_PALETTE: ChartPalette = ChartPalette {
     },
 };
 
-/// Go `darkChartPalette` (theme.go:203).
+/// The dark chart palette.
 const DARK_CHART_PALETTE: ChartPalette = ChartPalette {
     primary: [
         "#fbbf24", "#38bdf8", "#a3e635", "#a78bfa", "#f472b6", "#22d3ee", "#fb923c", "#818cf8",

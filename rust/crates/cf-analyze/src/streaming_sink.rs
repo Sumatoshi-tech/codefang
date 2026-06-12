@@ -1,10 +1,9 @@
 //! NDJSON streaming sink — one JSON line per `TC`.
 //!
-//! Port of `internal/analyzers/analyze/streaming_sink.go`. [`NdjsonLine`] is a
-//! wrapper struct: its fields serialize in declaration order (`hash`, `tick`,
+//! [`NdjsonLine`] is a wrapper struct: its fields serialize in declaration order (`hash`, `tick`,
 //! `author_id`, `timestamp`, `analyzer`, `data`). The timestamp is rendered with
-//! the Go-`RFC3339` emitter (UTC → `Z`) and only when the commit time is
-//! non-zero (streaming_sink.go:46) — matching Go's `tc.Timestamp.IsZero()` guard.
+//! the contract RFC3339 emitter (UTC → `Z`) and only when the commit time is
+//! non-zero (zero timestamps are skipped; report contract).
 
 use std::io::Write;
 use std::sync::Mutex;
@@ -18,7 +17,7 @@ use crate::metadata::format_rfc3339_utc;
 
 /// The JSON structure for one NDJSON output line.
 ///
-/// Mirrors `NDJSONLine` (streaming_sink.go:16). Wrapper struct — field order is
+/// Wrapper struct — field order is
 /// `hash`, `tick`, `author_id`, `timestamp`, `analyzer`, `data`.
 #[derive(Debug, Clone)]
 pub struct NdjsonLine {
@@ -53,9 +52,9 @@ impl NdjsonLine {
 
 /// Writes one NDJSON line per `TC` to a writer.
 ///
-/// Mirrors `StreamingSink` (streaming_sink.go:27). Thread-safe: concurrent
+/// Thread-safe: concurrent
 /// [`write_tc`](StreamingSink::write_tc) calls are serialized via a mutex over
-/// the underlying writer, matching Go's `sync.Mutex` guard. The compact encoder
+/// the underlying writer via a mutex. The compact encoder
 /// (HTML escaping on, trailing `\n` per line) reproduces `json.NewEncoder`.
 pub struct StreamingSink<W: Write> {
     inner: Mutex<W>,
@@ -63,8 +62,7 @@ pub struct StreamingSink<W: Write> {
 }
 
 impl<W: Write> StreamingSink<W> {
-    /// Creates a sink writing to `w`. Mirrors `NewStreamingSink`
-    /// (streaming_sink.go:33).
+    /// Creates a sink writing to `w`.
     pub fn new(w: W) -> Self {
         Self {
             inner: Mutex::new(w),
@@ -74,9 +72,8 @@ impl<W: Write> StreamingSink<W> {
 
     /// Writes one NDJSON line for `tc`; skips TCs with no data.
     ///
-    /// Mirrors `WriteTC` (streaming_sink.go:40): returns early (no output) when
-    /// `tc.data` is `None` (Go's nil `Data`); the timestamp is RFC3339 only when
-    /// the commit time is present.
+    /// Returns early (no output) when `tc.data` is `None`; the timestamp is
+    /// RFC3339 only when the commit time is present.
     ///
     /// # Errors
     /// Returns a [`SinkError`] if writing to the underlying writer fails.
@@ -110,7 +107,7 @@ impl<W: Write> StreamingSink<W> {
     }
 }
 
-/// Formats a [`SystemTime`] as Go's `time.RFC3339` in UTC.
+/// Formats a [`SystemTime`] as contract RFC3339 in UTC.
 ///
 /// Truncates to whole seconds (the streaming sink emits no fractional part) and
 /// renders via [`format_rfc3339_utc`], matching `tc.Timestamp.Format(time.RFC3339)`.

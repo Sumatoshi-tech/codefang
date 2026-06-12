@@ -1,27 +1,26 @@
 //! Run provenance metadata.
 //!
-//! Port of `internal/analyzers/analyze/metadata.go`. Defines [`AnalysisMetadata`]
-//! and [`new_analysis_metadata`].
+//! Defines [`AnalysisMetadata`] and [`new_analysis_metadata`].
 //!
-//! # The `AnalyzedAt = time.Now()` byte-identity hazard
+//! # The `analyzed_at` byte-identity hazard
 //!
-//! Go stamps `AnalyzedAt` with `time.Now().UTC().Format(time.RFC3339)`
-//! (metadata.go:23). Against a live wall clock this makes report bytes
+//! The reference binary stamps `analyzed_at` with the current RFC3339 UTC
+//! time. Against a live wall clock this makes report bytes
 //! non-deterministic, defeating the project's byte-identity goal
 //! (DESIGN §2.8). This port therefore reads the time from an **injectable
 //! clock** which honors the `CODEFANG_NOW` / `SOURCE_DATE_EPOCH` environment
-//! overrides used by the golden harness, and formats it via a Go-compatible
-//! RFC3339 formatter (chrono's formatter differs on `Z` vs `+00:00` and on
-//! fractional-second trimming, so we format the fixed-width second-precision
-//! form ourselves).
+//! overrides used by the golden harness, and formats it via the contract
+//! RFC3339 formatter (third-party formatters differ on `Z` vs `+00:00` and on
+//! fractional-second trimming, so the fixed-width second-precision form is
+//! formatted here directly).
 
 use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Provenance information for a codefang run.
 ///
-/// Port of the Go `AnalysisMetadata` struct. Field declaration order and JSON
-/// (`json:"..."`) / YAML (`yaml:"..."`) tags are reproduced exactly:
+/// Run metadata stamped into reports. Field declaration order and JSON
+/// (`json:"..."`) / YAML (`yaml:"..."`) tags follow the report contract:
 /// `repo_path`, `repo_name`, `analyzed_at`, `codefang_version`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AnalysisMetadata {
@@ -35,18 +34,18 @@ pub struct AnalysisMetadata {
     pub codefang_version: String,
 }
 
-/// An injectable wall clock. The default ([`SystemClock`]) mirrors Go
+/// An injectable wall clock. The default ([`SystemClock`]) reads
 /// `time.Now().UTC().Format(time.RFC3339)`; tests/golden runs substitute a fixed
 /// clock so the `analyzed_at` envelope field is reproducible (DESIGN §2.8).
 pub trait Clock {
-    /// Returns the current time as Go-compatible RFC3339 UTC
+    /// Returns the current time as contract RFC3339 UTC
     /// (`YYYY-MM-DDTHH:MM:SSZ`).
     fn now_rfc3339_utc(&self) -> String;
 }
 
 /// The production [`Clock`]: reads the resolved current time (honoring the
 /// pinned clock and `CODEFANG_NOW`/`SOURCE_DATE_EPOCH` overrides) and formats it
-/// as Go-compatible RFC3339 UTC.
+/// as contract RFC3339 UTC.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SystemClock;
 
@@ -61,7 +60,7 @@ impl AnalysisMetadata {
     /// [`Clock`]. Equivalent to [`new_analysis_metadata`] but with the time
     /// source injected (used by tests/golden runs for determinism).
     pub fn with_clock(repo_path: &str, clock: &dyn Clock) -> Self {
-        AnalysisMetadata {
+        Self {
             repo_path: repo_path.to_string(),
             repo_name: base_name(repo_path),
             analyzed_at: clock.now_rfc3339_utc(),
@@ -84,12 +83,12 @@ impl AnalysisMetadata {
     }
 }
 
-/// Creates metadata for the given repository path. Port of Go
-/// `NewAnalysisMetadata`.
+/// Creates metadata for the given repository path.
 ///
 /// `repo_name` is the final path component (`filepath.Base`), `analyzed_at` is
-/// the current clock time in Go-compatible RFC3339 UTC, and `codefang_version`
+/// the current clock time in contract RFC3339 UTC, and `codefang_version`
 /// is [`cf_version::VERSION`].
+#[must_use] 
 pub fn new_analysis_metadata(repo_path: &str) -> AnalysisMetadata {
     AnalysisMetadata {
         repo_path: repo_path.to_string(),
@@ -99,7 +98,7 @@ pub fn new_analysis_metadata(repo_path: &str) -> AnalysisMetadata {
     }
 }
 
-/// Equivalent of Go `filepath.Base` for the cases relevant here (returns the
+/// Path base-name helper for the cases relevant here (returns the
 /// final path element; `.` for empty input).
 fn base_name(path: &str) -> String {
     if path.is_empty() {
@@ -121,7 +120,7 @@ fn base_name(path: &str) -> String {
 static FIXED_NOW: RwLock<Option<i64>> = RwLock::new(None);
 
 /// Pins the clock to `unix_secs` and returns a restore guard. Dropping the
-/// guard restores the previous setting (mirrors Go's `defer restore()`).
+/// guard restores the previous setting on drop.
 #[must_use = "dropping the guard restores the previous clock"]
 pub fn set_fixed_now(unix_secs: i64) -> ClockRestore {
     let mut g = FIXED_NOW.write().expect("clock lock poisoned");
@@ -177,7 +176,7 @@ fn parse_env_time(v: &str) -> Option<i64> {
 
 /// Days from the proleptic-Gregorian civil date to the Unix epoch. Used by both
 /// the formatter and parser. Algorithm from Howard Hinnant's `days_from_civil`.
-fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+const fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = if y >= 0 { y } else { y - 399 } / 400;
     let yoe = y - era * 400;
@@ -187,7 +186,7 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
 }
 
 /// Inverse of [`days_from_civil`] — civil date from days since the Unix epoch.
-fn civil_from_days(z: i64) -> (i64, i64, i64) {
+const fn civil_from_days(z: i64) -> (i64, i64, i64) {
     let z = z + 719468;
     let era = if z >= 0 { z } else { z - 146096 } / 146097;
     let doe = z - era * 146097;
@@ -200,11 +199,12 @@ fn civil_from_days(z: i64) -> (i64, i64, i64) {
     (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
-/// Formats Unix seconds as Go-compatible RFC3339 UTC: `YYYY-MM-DDTHH:MM:SSZ`.
+/// Formats Unix seconds as contract RFC3339 UTC: `YYYY-MM-DDTHH:MM:SSZ`.
 ///
-/// Matches Go `time.Time.UTC().Format(time.RFC3339)`: zero-padded fields, `T`
-/// separator, and a literal `Z` zone (Go uses `Z` for UTC, not `+00:00`). No
+/// RFC3339 contract format: zero-padded fields, `T`
+/// separator, and a literal `Z` zone for UTC (never `+00:00`). No
 /// fractional seconds are emitted (RFC3339, second precision).
+#[must_use] 
 pub fn format_rfc3339_utc(unix_secs: i64) -> String {
     let days = unix_secs.div_euclid(86400);
     let secs_of_day = unix_secs.rem_euclid(86400);
@@ -244,7 +244,7 @@ mod tests {
     // Serialize tests that mutate the global pinned clock.
     static CLOCK_GUARD: Mutex<()> = Mutex::new(());
 
-    // Port of TestNewAnalysisMetadata.
+    // Mirrors reference test TestNewAnalysisMetadata.
     #[test]
     fn new_analysis_metadata_fields() {
         let _g = CLOCK_GUARD.lock().unwrap();
@@ -264,7 +264,7 @@ mod tests {
         assert_eq!(base_name(""), ".");
     }
 
-    // RFC3339 formatting parity with Go's time.RFC3339 (Z zone, no fraction).
+    // RFC3339 formatting parity with the reference binary (Z zone, no fraction).
     #[test]
     fn rfc3339_format_epoch() {
         assert_eq!(format_rfc3339_utc(0), "1970-01-01T00:00:00Z");

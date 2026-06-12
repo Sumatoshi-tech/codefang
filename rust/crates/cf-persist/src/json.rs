@@ -1,30 +1,31 @@
-//! JSON codec — byte-compatible with Go's `encoding/json` `Encoder`.
+//! JSON codec emitting the pinned report-format byte layout.
 //!
-//! The Go `JSONCodec` writes state with `json.NewEncoder(w)` and, when an indent
-//! string is configured, `encoder.SetIndent("", indent)`. That carries four
-//! behaviours this port reproduces exactly (see DESIGN.md §2.1):
+//! Four rules define that layout (reference-implementation `encoding/json`
+//! semantics; see DESIGN.md §2.1):
 //!
 //! 1. **Map-key ordering** — object keys are sorted by raw UTF-8 byte order.
-//! 2. **HTML escaping ON** — `<`, `>`, `&` become `<`/`>`/`&`, and
-//!    `U+2028`/`U+2029` become ` `/` `.
-//! 3. **Go float formatting** — `strconv.AppendFloat(b, f, 'g', -1, 64)` rules:
-//!    exponential when `exp < -4 || exp >= 21`, `e±NN` exponent with sign and ≥2
-//!    digits, integer-valued floats rendered without a decimal point.
-//! 4. **Trailing newline + compact/indent semantics** — `Encoder.Encode` always
-//!    appends exactly one `\n`; compact emits `{"a":1}` (no space after `:`),
-//!    indent emits `{\n  "a": 1\n}` (space after `:`) with empty containers
+//! 2. **HTML escaping ON** — `<`, `>`, `&` are escaped, and so are the
+//!    `U+2028`/`U+2029` separators.
+//! 3. **Report-format float rendering** — shortest-round-trip `'g'`-style
+//!    rules: exponential when `exp < -4 || exp >= 21`, `e±NN` exponent with
+//!    sign and ≥2 digits, integer-valued floats rendered without a decimal
+//!    point.
+//! 4. **Trailing newline + compact/indent semantics** — exactly one `\n` is
+//!    always appended; compact emits `{"a":1}` (no space after `:`), indent
+//!    emits `{\n  "a": 1\n}` (space after `:`) with empty containers
 //!    collapsed to `{}` / `[]`.
 //!
 //! # Relationship to `cf-gojson`
 //!
-//! DESIGN.md §1 routes every JSON emitter through the tier-0 `cf-gojson` crate.
-//! `cf-gojson` is not yet implemented, so this module carries a self-contained
-//! encoder over [`serde_json::Value`] that implements the same four rules. When
-//! `cf-gojson` lands, [`encode_go_json`] should delegate to its
-//! `Encoder { indent, escape_html: true, trailing_newline: true }` and this
-//! module's `go_json` helpers retire. Persist on-disk state is never
-//! user-visible report output, but keeping the bytes Go-compatible means any
-//! checkpoint that *is* inspected matches the Go reference exactly.
+//! DESIGN.md §1 routes every JSON emitter through the tier-0 `cf-gojson`
+//! crate. This module predates the bridge and carries a self-contained encoder
+//! over [`serde_json::Value`] that implements the same four rules. Once
+//! bridged, [`encode_go_json`] should delegate to
+//! `cf_gojson::Encoder { indent, escape_html: true, trailing_newline: true }`
+//! and this module's helpers retire. Persist on-disk state is never
+//! user-visible report output, but keeping the bytes in the pinned layout
+//! means any checkpoint that *is* inspected diffs cleanly against the
+//! reference binary's.
 
 use std::io::{Read, Write};
 
@@ -35,18 +36,18 @@ use serde_json::Value;
 use crate::error::PersistError;
 use crate::Codec;
 
-/// Default indentation for pretty-printed JSON (`defaultIndent` in Go: two spaces).
+/// Default indentation for pretty-printed JSON: two spaces.
 pub const DEFAULT_INDENT: &str = "  ";
 
-/// File extension for JSON state files (`jsonExtension` in Go).
+/// File extension for JSON state files.
 pub const JSON_EXTENSION: &str = ".json";
 
 /// JSON codec with optional indentation.
 ///
-/// Mirrors Go's `persist.JSONCodec{Indent string}`: an empty `indent` means
-/// compact JSON, any non-empty `indent` enables pretty-printing with that string
-/// as one indentation level. Output is byte-compatible with Go's `encoding/json`
-/// `Encoder` (HTML escaping on, trailing newline, map keys byte-sorted).
+/// An empty `indent` means compact JSON; any non-empty `indent` enables
+/// pretty-printing with that string as one indentation level. Output follows
+/// the pinned report-format layout (HTML escaping on, trailing newline, map
+/// keys byte-sorted).
 #[derive(Debug, Clone, Default)]
 pub struct JsonCodec {
     /// Indentation string. Empty = compact JSON; non-empty = pretty-printed.
@@ -55,11 +56,9 @@ pub struct JsonCodec {
 
 impl JsonCodec {
     /// Creates a JSON codec with pretty-printing (two-space indent).
-    ///
-    /// Equivalent to Go's `NewJSONCodec()`.
     #[must_use]
     pub fn new() -> Self {
-        JsonCodec {
+        Self {
             indent: DEFAULT_INDENT.to_string(),
         }
     }
@@ -67,7 +66,7 @@ impl JsonCodec {
     /// Creates a JSON codec with an explicit indent string (empty = compact).
     #[must_use]
     pub fn with_indent(indent: impl Into<String>) -> Self {
-        JsonCodec {
+        Self {
             indent: indent.into(),
         }
     }
@@ -75,9 +74,9 @@ impl JsonCodec {
 
 impl Codec for JsonCodec {
     fn encode<W: Write, T: Serialize>(&self, mut w: W, state: &T) -> Result<(), PersistError> {
-        // Build the data model through serde, then render with the Go-compatible
-        // encoder. serde_json::to_value cannot fail to *render*; it only fails if
-        // the type cannot be represented (mirroring Go's json.Marshal error).
+        // Build the data model through serde, then render with the
+        // report-format encoder. serde_json::to_value cannot fail to *render*;
+        // it only fails if the type cannot be represented.
         let value = serde_json::to_value(state).map_err(PersistError::JsonEncode)?;
         let bytes = encode_go_json(&value, &self.indent);
         w.write_all(&bytes).map_err(PersistError::Io)
@@ -98,10 +97,10 @@ impl Codec for JsonCodec {
     }
 }
 
-/// Encodes a [`Value`] to bytes that match Go's `encoding/json` `Encoder`.
+/// Encodes a [`Value`] to bytes in the pinned report-format layout.
 ///
-/// `indent` empty selects compact mode; otherwise it is used as one indentation
-/// level. Exactly one trailing `\n` is appended (Go's `Encoder.Encode`).
+/// `indent` empty selects compact mode; otherwise it is used as one
+/// indentation level. Exactly one trailing `\n` is appended.
 #[must_use]
 pub fn encode_go_json(value: &Value, indent: &str) -> Vec<u8> {
     let mut out = Vec::new();
@@ -146,7 +145,7 @@ fn write_compact(out: &mut Vec<u8>, value: &Value) {
     }
 }
 
-/// Writes a value with Go-style indentation (one space after `:`, empty
+/// Writes a value with report-format indentation (one space after `:`, empty
 /// containers collapsed to `{}` / `[]`).
 fn write_indented(out: &mut Vec<u8>, value: &Value, indent: &str, depth: usize) {
     match value {
@@ -192,14 +191,15 @@ fn push_indent(out: &mut Vec<u8>, indent: &str, depth: usize) {
     }
 }
 
-/// Returns the object's keys sorted by raw UTF-8 byte order (Go's map-key rule).
+/// Returns the object's keys sorted by raw UTF-8 byte order (map-key ordering
+/// contract).
 fn sorted_keys(map: &serde_json::Map<String, Value>) -> Vec<&String> {
     let mut keys: Vec<&String> = map.keys().collect();
     keys.sort_unstable_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
     keys
 }
 
-/// Writes a `serde_json::Number` using Go's `encoding/json` numeric rules.
+/// Writes a `serde_json::Number` using the report-format numeric rules.
 ///
 /// Integers (those that round-trip through `i64`/`u64`) are written verbatim.
 /// Anything else is a float and goes through [`go_float`].
@@ -219,15 +219,17 @@ fn write_number(out: &mut Vec<u8>, n: &serde_json::Number) {
     }
 }
 
-/// Formats an `f64` the way Go's `encoding/json` does
-/// (`strconv.AppendFloat(b, f, 'g', -1, 64)`).
+/// Formats an `f64` in the report-format float layout (shortest-round-trip
+/// `%g`-style rendering; reference-implementation behavior pinned by the
+/// differential gate).
 ///
 /// Steps:
-/// 1. Non-finite values are invalid in Go JSON; this returns `"null"` defensively
-///    (serde_json never yields NaN/Inf, so this branch is unreachable in practice).
-/// 2. Obtain the shortest round-trip decimal from `ryu` (same unique digit
-///    sequence Go's `strconv` produces).
-/// 3. Re-render with Go's `'g'` rules: exponential when `exp < -4 || exp >= 21`,
+/// 1. Non-finite values are invalid in the report format; this returns
+///    `"null"` defensively (serde_json never yields NaN/Inf, so this branch is
+///    unreachable in practice).
+/// 2. Obtain the shortest round-trip decimal from `ryu` (the same unique digit
+///    sequence the reference formatter produces).
+/// 3. Re-render with the `'g'` rules: exponential when `exp < -4 || exp >= 21`,
 ///    `e±NN` exponent (sign + ≥2 digits), integer-valued floats without a `.`.
 #[must_use]
 pub fn go_float(f: f64) -> String {
@@ -235,7 +237,7 @@ pub fn go_float(f: f64) -> String {
         return "null".to_string();
     }
     if f == 0.0 {
-        // Preserve the sign of zero, matching Go (`-0` stays `-0`).
+        // Preserve the sign of zero (`-0` stays `-0`; report-format contract).
         return if f.is_sign_negative() {
             "-0".to_string()
         } else {
@@ -247,20 +249,20 @@ pub fn go_float(f: f64) -> String {
     let abs = f.abs();
 
     // ryu gives the shortest round-trip representation; parse out its digits and
-    // decimal exponent so we can re-render in Go's exact style.
+    // decimal exponent so we can re-render in the exact pinned style.
     let mut ryu_buf = ryu::Buffer::new();
     let ryu_str = ryu_buf.format_finite(abs);
     let (digits, exp10) = parse_ryu(ryu_str);
 
     // `exp10` is the power of ten of the first significant digit, i.e. the value
-    // equals 0.<digits> * 10^(exp10+1) reframed as <d0>.<rest> * 10^exp10.
-    // Go switches to exponential form when exp10 < -4 || exp10 >= 21.
+    // equals 0.<digits> * 10^(exp10+1) re-expressed as <d0>.<rest> * 10^exp10.
+    // The format switches to exponential form when exp10 < -4 || exp10 >= 21.
     let mut s = String::new();
     if negative {
         s.push('-');
     }
 
-    if exp10 < -4 || exp10 >= 21 {
+    if !(-4..21).contains(&exp10) {
         render_exponential(&mut s, &digits, exp10);
     } else {
         render_fixed(&mut s, &digits, exp10);
@@ -315,7 +317,7 @@ fn parse_ryu(s: &str) -> (Vec<u8>, i32) {
 }
 
 /// Renders fixed-point notation for a value whose leading digit has weight
-/// `exp10` (Go's `'f'` branch of `'g'`).
+/// `exp10` (the `'f'` branch of `'g'`).
 fn render_fixed(s: &mut String, digits: &[u8], exp10: i32) {
     if exp10 >= 0 {
         let int_len = (exp10 + 1) as usize;
@@ -327,7 +329,7 @@ fn render_fixed(s: &mut String, digits: &[u8], exp10: i32) {
             for _ in 0..(int_len - digits.len()) {
                 s.push('0');
             }
-            // No fractional part, no decimal point (Go: float64(1.0) -> "1").
+            // No fractional part, no decimal point (1.0 renders as "1").
         } else {
             for &d in &digits[..int_len] {
                 s.push(d as char);
@@ -349,7 +351,7 @@ fn render_fixed(s: &mut String, digits: &[u8], exp10: i32) {
     }
 }
 
-/// Renders exponential notation `d.dddde±NN` (Go's `'e'` branch of `'g'`).
+/// Renders exponential notation `d.dddde±NN` (the `'e'` branch of `'g'`).
 fn render_exponential(s: &mut String, digits: &[u8], exp10: i32) {
     s.push(digits[0] as char);
     if digits.len() > 1 {
@@ -365,7 +367,7 @@ fn render_exponential(s: &mut String, digits: &[u8], exp10: i32) {
         s.push('+');
     }
     let mag = exp10.unsigned_abs();
-    // At least two exponent digits (Go: "1e+21", "1.5e-05").
+    // At least two exponent digits ("1e+21", "1.5e-05").
     if mag < 10 {
         s.push('0');
     }
@@ -373,11 +375,10 @@ fn render_exponential(s: &mut String, digits: &[u8], exp10: i32) {
     s.push_str(buf.format(mag));
 }
 
-/// Writes a JSON string with Go's `encodeState.string` escaping (HTML on).
+/// Writes a JSON string with report-format escaping (HTML escaping on).
 ///
 /// Escapes `"`, `\`, the C0 control range (as `\u00XX` with `\n \r \t`
-/// shortcuts), and — because Go never calls `SetEscapeHTML(false)` — `<`, `>`,
-/// `&`, `U+2028`, and `U+2029`.
+/// shortcuts), and the HTML-significant `<`, `>`, `&`, `U+2028`, and `U+2029`.
 fn write_go_string(out: &mut Vec<u8>, s: &str) {
     out.push(b'"');
     for ch in s.chars() {
@@ -387,7 +388,7 @@ fn write_go_string(out: &mut Vec<u8>, s: &str) {
             '\n' => out.extend_from_slice(b"\\n"),
             '\r' => out.extend_from_slice(b"\\r"),
             '\t' => out.extend_from_slice(b"\\t"),
-            // HTML-significant characters Go escapes by default.
+            // HTML-significant characters (escaping-on contract).
             '<' => out.extend_from_slice(b"\\u003c"),
             '>' => out.extend_from_slice(b"\\u003e"),
             '&' => out.extend_from_slice(b"\\u0026"),
@@ -410,7 +411,7 @@ fn write_go_string(out: &mut Vec<u8>, s: &str) {
 }
 
 /// Returns the lowercase ASCII hex digit for a nibble in `0..=15`.
-fn hex_digit(nibble: u8) -> u8 {
+const fn hex_digit(nibble: u8) -> u8 {
     match nibble {
         0..=9 => b'0' + nibble,
         _ => b'a' + (nibble - 10),
@@ -491,7 +492,7 @@ mod tests {
         assert_eq!(bytes, b"42\n");
     }
 
-    // ---- Go float formatting -------------------------------------------------
+    // ---- report-format float rendering ---------------------------------------
 
     #[test]
     fn integer_valued_float_has_no_decimal_point() {
@@ -508,7 +509,7 @@ mod tests {
 
     #[test]
     fn exponential_threshold_at_1e21() {
-        // 1e20 stays fixed; 1e21 switches to exponential (Go's 21 threshold).
+        // 1e20 stays fixed; 1e21 switches to exponential (the 21 threshold).
         assert_eq!(go_float(1e20), "100000000000000000000");
         assert_eq!(go_float(1e21), "1e+21");
     }

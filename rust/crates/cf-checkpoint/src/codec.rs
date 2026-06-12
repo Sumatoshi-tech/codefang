@@ -1,34 +1,29 @@
-//! Serialization codecs and atomic state persistence.
-//!
-//! Ported from Go's `pkg/persist` (re-exported by `internal/checkpoint/codec.go`
-//! and `persister.go`). The Go package defines a small `Codec` interface plus
-//! `SaveState` / `LoadState` free functions and a generic `Persister[T]`.
+//! Serialization codecs and atomic state persistence: a small [`Codec`] trait
+//! plus [`save_state`] / [`load_state`] free functions and a generic
+//! [`Persister`].
 //!
 //! # Relationship to `cf-persist`
 //!
-//! The design (§1) places these codecs in a shared `cf-persist` crate that
-//! routes JSON output through `cf-gojson`. That crate exists but is not yet a
-//! buildable workspace member, so per the port rules this module defines the
-//! minimal codec surface checkpointing needs. The [`Codec`] trait below is
-//! exactly the interface that crate must satisfy; once it compiles this module
-//! collapses to a thin re-export of `cf_persist::{Codec, JsonCodec, GobCodec,
-//! save_state, load_state, Persister}` with no behavior change.
+//! The design (§1) places these codecs in the shared `cf-persist` crate, which
+//! carries its own equivalent surface. This module keeps a local copy with
+//! checkpoint-specific error wrapping; the two should be kept in lockstep
+//! until this crate depends on `cf-persist` directly, at which point this
+//! module collapses to a thin re-export with no behavior change.
 //!
 //! # Byte-identity of the JSON metadata
 //!
-//! Go writes checkpoint metadata with `json.NewEncoder(w)` + `SetIndent("","  ")`
-//! (`persist.JSONCodec`). That encoder:
+//! Checkpoint metadata is written in the pinned report-format JSON layout:
 //!
 //! * HTML-escapes `<`, `>`, `&` (and `U+2028`/`U+2029`),
 //! * indents nested values by two spaces with one space after each `:`,
 //! * appends **exactly one** trailing `\n`.
 //!
-//! [`JsonCodec`] reproduces all three via a `serde_json` [`Formatter`] that
-//! applies Go's escaping rules (the same `GoCompatFormatter` strategy used by
-//! the `cf-persist` crate), so a `checkpoint.json` produced by the Rust build is
-//! byte-identical to one produced by Go for the same metadata. The wall-clock
-//! `created_at` field is injected by the caller and pinned in goldens
-//! (DESIGN §2.8).
+//! [`JsonCodec`] reproduces all three via a `serde_json` [`Formatter`]
+//! (`ReportEscapeFormatter`) that applies the same escaping rules as the
+//! `cf-persist` JSON writer, so a `checkpoint.json` produced by this build
+//! diffs cleanly against the reference binary's for the same metadata.
+//! The wall-clock `created_at` field is injected by the caller and pinned in
+//! goldens (DESIGN §2.8).
 
 use crate::error::{CheckpointError, Result};
 use serde::de::DeserializeOwned;
@@ -37,44 +32,39 @@ use serde_json::ser::{CompactFormatter, Formatter, PrettyFormatter};
 use std::io::{self, Read, Write};
 use std::path::Path;
 
-/// Default two-space indentation, matching Go's `NewJSONCodec` /
-/// `json.MarshalIndent(v, "", "  ")`.
+/// Default two-space indentation for pretty-printed JSON.
 const DEFAULT_INDENT: &str = "  ";
 
 /// A serialization codec for analyzer / checkpoint state.
 ///
-/// Ported from Go's `persist.Codec`:
-///
-/// ```go
-/// type Codec interface {
-///     Encode(w io.Writer, v any) error
-///     Decode(r io.Reader, v any) error
-///     Extension() string
-/// }
-/// ```
-///
-/// In Rust the value type is a generic parameter rather than `any`.
+/// The value type is a generic parameter resolved at each call site.
 pub trait Codec {
     /// Encodes `value` to the writer.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CheckpointError::Codec`] if the value cannot be encoded or
+    /// the writer fails.
     fn encode<W: Write, T: Serialize>(&self, writer: W, value: &T) -> Result<()>;
 
     /// Decodes a value of type `T` from the reader.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CheckpointError::Codec`] if the reader does not contain a
+    /// valid encoding of `T`.
     fn decode<R: Read, T: DeserializeOwned>(&self, reader: R) -> Result<T>;
 
     /// Returns the canonical file extension for this codec (including the dot).
     fn extension(&self) -> &'static str;
 }
 
-/// JSON codec matching Go's `persist.JSONCodec`.
-///
-/// ```go
-/// type JSONCodec struct { Indent string }
-/// ```
+/// JSON codec emitting the pinned report-format byte layout.
 ///
 /// When [`indent`](JsonCodec::indent) is empty the output is compact; otherwise
-/// the given string is used per nesting level. Output is always Go-`encoding/json`
-/// byte-compatible: HTML escaping on, one space after `:` in pretty mode, and
-/// exactly one trailing newline (matching `json.Encoder.Encode`).
+/// the given string is used per nesting level. Output always follows the
+/// compatibility contract: HTML escaping on, one space after `:` in pretty
+/// mode, and exactly one trailing newline.
 #[derive(Debug, Clone, Default)]
 pub struct JsonCodec {
     /// Indent string; empty means compact output.
@@ -82,7 +72,7 @@ pub struct JsonCodec {
 }
 
 impl JsonCodec {
-    /// Creates a JSON codec with two-space pretty-printing (Go's `NewJSONCodec`).
+    /// Creates a JSON codec with two-space pretty-printing.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -91,10 +81,8 @@ impl JsonCodec {
     }
 
     /// Creates a compact JSON codec with no indentation.
-    ///
-    /// Mirrors the test helper `NewCompactJSONCodec` in `codec_test.go`.
     #[must_use]
-    pub fn compact() -> Self {
+    pub const fn compact() -> Self {
         Self {
             indent: String::new(),
         }
@@ -102,6 +90,10 @@ impl JsonCodec {
 
     /// Serializes `value` to a byte vector using this codec's rules. Exposed so
     /// callers (and tests) can inspect the exact bytes without a writer.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CheckpointError::Codec`] if the value cannot be encoded.
     pub fn to_vec<T: Serialize>(&self, value: &T) -> Result<Vec<u8>> {
         let mut buf = Vec::new();
         self.encode(&mut buf, value)?;
@@ -113,20 +105,21 @@ impl Codec for JsonCodec {
     fn encode<W: Write, T: Serialize>(&self, mut writer: W, value: &T) -> Result<()> {
         let mut buf = Vec::with_capacity(128);
         if self.indent.is_empty() {
-            let formatter = GoCompatFormatter::new(CompactFormatter);
+            let formatter = ReportEscapeFormatter::new(CompactFormatter);
             let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
             value
                 .serialize(&mut ser)
                 .map_err(|e| CheckpointError::Codec(format!("json encode: {e}")))?;
         } else {
             let pretty = PrettyFormatter::with_indent(self.indent.as_bytes());
-            let formatter = GoCompatFormatter::new(pretty);
+            let formatter = ReportEscapeFormatter::new(pretty);
             let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
             value
                 .serialize(&mut ser)
                 .map_err(|e| CheckpointError::Codec(format!("json encode: {e}")))?;
         }
-        // json.Encoder.Encode always appends exactly one newline.
+        // The encoder always appends exactly one trailing newline
+        // (report-format contract).
         buf.push(b'\n');
         writer.write_all(&buf)?;
         Ok(())
@@ -144,20 +137,20 @@ impl Codec for JsonCodec {
     }
 }
 
-/// Rust-native binary codec standing in for Go's `persist.GobCodec`.
+/// Rust-native binary codec for per-analyzer state.
 ///
-/// Per DESIGN §3 the gob wire format is Go-specific and never user-visible, so
-/// it is **not** reproduced byte-for-byte. This codec uses `bincode` for the
-/// same role: compact, internal-only state written and read back by the same
-/// build. Its [`extension`](Codec::extension) is still `.gob` to keep on-disk
-/// file naming aligned with the Go layout.
+/// Per DESIGN §3 this state is internal-only and never user-visible, so no
+/// cross-implementation wire format is reproduced; `bincode` provides a
+/// compact encoding written and read back by the same build. Its
+/// [`extension`](Codec::extension) stays `.gob` to keep on-disk file naming
+/// stable across the rewrite.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct GobCodec;
 
 impl GobCodec {
-    /// Creates a new binary codec (Go's `NewGobCodec`).
+    /// Creates a new binary codec.
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self
     }
 }
@@ -182,12 +175,17 @@ impl Codec for GobCodec {
 
 /// Saves `value` to `dir/basename.ext` using `codec`, creating `dir` if needed.
 ///
-/// Ported from Go's `persist.SaveState`. The write is **atomic**: data is first
-/// written to `dir/basename.ext.tmp`, then renamed over the destination. On a
-/// mid-write failure the temp file is removed and the destination is left
-/// untouched. (Go's `SaveState` writes directly via `os.Create`; this port
-/// hardens it with a temp-then-rename so a crash during the checkpoint write
-/// cannot corrupt an existing checkpoint — the whole point of the subsystem.)
+/// The write is **atomic**: data is first written to `dir/basename.ext.tmp`,
+/// then renamed over the destination. On a mid-write failure the temp file is
+/// removed and the destination is left untouched, so a crash during the
+/// checkpoint write cannot corrupt an existing checkpoint — the whole point of
+/// the subsystem. (This is deliberately stricter than the reference
+/// implementation, which writes the destination directly.)
+///
+/// # Errors
+///
+/// Returns [`CheckpointError::Codec`] if the directory or temp file cannot be
+/// created, encoding fails, or the rename fails.
 pub fn save_state<C: Codec, T: Serialize>(
     dir: &Path,
     basename: &str,
@@ -223,7 +221,9 @@ pub fn save_state<C: Codec, T: Serialize>(
 
 /// Loads a value of type `T` from `dir/basename.ext` using `codec`.
 ///
-/// Ported from Go's `persist.LoadState`.
+/// # Errors
+///
+/// Returns [`CheckpointError::Codec`] if the file cannot be opened or decoded.
 pub fn load_state<C: Codec, T: DeserializeOwned>(
     dir: &Path,
     basename: &str,
@@ -234,11 +234,10 @@ pub fn load_state<C: Codec, T: DeserializeOwned>(
     codec.decode(file)
 }
 
-/// Handles saving and loading typed state, parameterized by codec and value type.
+/// Handles saving and loading typed state, parameterized by codec.
 ///
-/// Ported from Go's generic `persist.Persister[T]`. The basename and codec are
-/// fixed at construction; [`save`](Persister::save) / [`load`](Persister::load)
-/// take the directory.
+/// The basename and codec are fixed at construction;
+/// [`save`](Persister::save) / [`load`](Persister::load) take the directory.
 #[derive(Debug, Clone)]
 pub struct Persister<C: Codec> {
     basename: String,
@@ -246,7 +245,7 @@ pub struct Persister<C: Codec> {
 }
 
 impl<C: Codec> Persister<C> {
-    /// Creates a persister with the given basename and codec (Go's `NewPersister`).
+    /// Creates a persister with the given basename and codec.
     pub fn new(basename: impl Into<String>, codec: C) -> Self {
         Self {
             basename: basename.into(),
@@ -255,52 +254,60 @@ impl<C: Codec> Persister<C> {
     }
 
     /// Persists `state` to `dir`.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from [`save_state`].
     pub fn save<T: Serialize>(&self, dir: &Path, state: &T) -> Result<()> {
         save_state(dir, &self.basename, &self.codec, state)
     }
 
     /// Reads state of type `T` from `dir`.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from [`load_state`].
     pub fn load<T: DeserializeOwned>(&self, dir: &Path) -> Result<T> {
         load_state(dir, &self.basename, &self.codec)
     }
 }
 
-/// Wraps an I/O error with the same `op: error` context Go attaches via
-/// `fmt.Errorf("op: %w", err)`.
+/// Wraps an I/O error with `op: ` context (error-string contract).
 fn io_ctx(op: &str, e: std::io::Error) -> CheckpointError {
     CheckpointError::Codec(format!("{op}: {e}"))
 }
 
-/// A `serde_json` [`Formatter`] that applies Go's `encoding/json` escaping rules.
+/// A `serde_json` [`Formatter`] that applies the report-format escaping rules.
 ///
 /// It wraps any inner formatter (e.g. [`CompactFormatter`] or
 /// [`PrettyFormatter`]) and only customizes how string *contents* are written,
 /// so structural layout (indentation, separators) is delegated to the inner
 /// formatter. Within string contents it additionally escapes `<`, `>`, `&`,
-/// `U+2028` and `U+2029`, exactly as Go does with `SetEscapeHTML(true)`.
+/// `U+2028` and `U+2029` (HTML-escaping contract, pinned by the differential
+/// gate).
 ///
-/// This mirrors `cf_persist::json::GoCompatFormatter`; the two should be kept in
-/// lockstep until this crate depends on `cf-persist` directly.
+/// The escaping rules match `cf-persist`'s JSON writer; the two should be kept
+/// in lockstep until this crate depends on `cf-persist` directly.
 #[derive(Debug, Clone)]
-struct GoCompatFormatter<F> {
+struct ReportEscapeFormatter<F> {
     inner: F,
 }
 
-impl<F> GoCompatFormatter<F> {
-    fn new(inner: F) -> Self {
+impl<F> ReportEscapeFormatter<F> {
+    const fn new(inner: F) -> Self {
         Self { inner }
     }
 }
 
-impl<F: Formatter> Formatter for GoCompatFormatter<F> {
+impl<F: Formatter> Formatter for ReportEscapeFormatter<F> {
     fn write_string_fragment<W>(&mut self, writer: &mut W, fragment: &str) -> io::Result<()>
     where
         W: ?Sized + io::Write,
     {
         // serde_json hands us runs of characters it considers "safe" (no control
-        // chars, quotes or backslashes). Go additionally escapes the HTML
-        // metacharacters and the U+2028 / U+2029 separators, so we re-scan the
-        // fragment and split on those.
+        // chars, quotes or backslashes). The report format additionally escapes
+        // the HTML metacharacters and the U+2028 / U+2029 separators, so we
+        // re-scan the fragment and split on those.
         let bytes = fragment.as_bytes();
         let mut start = 0;
         let mut i = 0;
@@ -312,7 +319,7 @@ impl<F: Formatter> Formatter for GoCompatFormatter<F> {
                         self.inner
                             .write_string_fragment(writer, &fragment[start..i])?;
                     }
-                    write_u4_escape(writer, b as u16)?;
+                    write_u4_escape(writer, u16::from(b))?;
                     i += 1;
                     start = i;
                 }
@@ -474,7 +481,7 @@ impl<F: Formatter> Formatter for GoCompatFormatter<F> {
     }
 }
 
-/// Writes a `\uXXXX` escape for the given code unit, lowercase-hex, as Go does.
+/// Writes a `\uXXXX` escape for the given code unit, lowercase-hex.
 fn write_u4_escape<W>(writer: &mut W, code: u16) -> io::Result<()>
 where
     W: ?Sized + io::Write,
@@ -498,7 +505,7 @@ mod tests {
     use std::collections::BTreeMap;
     use std::io::Cursor;
 
-    // Mirrors codec_test.go's `testState`.
+    // Mirrors the reference suite's `testState`.
     #[derive(Debug, Serialize, Deserialize, PartialEq)]
     struct TestState {
         name: String,
@@ -506,7 +513,7 @@ mod tests {
         values: BTreeMap<String, i64>,
     }
 
-    // Ported from TestJSONCodec_RoundTrip.
+    // Mirrors TestJSONCodec_RoundTrip.
     #[test]
     fn json_codec_round_trip() {
         let codec = JsonCodec::new();
@@ -528,13 +535,13 @@ mod tests {
         assert_eq!(decoded.values.len(), original.values.len());
     }
 
-    // Ported from TestJSONCodec_Extension.
+    // Mirrors TestJSONCodec_Extension.
     #[test]
     fn json_codec_extension() {
         assert_eq!(JsonCodec::new().extension(), ".json");
     }
 
-    // Ported from TestCompactJSONCodec_NoIndent.
+    // Mirrors TestCompactJSONCodec_NoIndent.
     #[test]
     fn compact_json_codec_no_indent() {
         let codec = JsonCodec::compact();
@@ -553,7 +560,7 @@ mod tests {
         );
     }
 
-    // Ported from TestGobCodec_RoundTrip.
+    // Mirrors TestGobCodec_RoundTrip.
     #[test]
     fn gob_codec_round_trip() {
         let codec = GobCodec::new();
@@ -572,7 +579,7 @@ mod tests {
         assert_eq!(decoded.count, original.count);
     }
 
-    // Ported from TestGobCodec_Extension.
+    // Mirrors TestGobCodec_Extension.
     #[test]
     fn gob_codec_extension() {
         assert_eq!(GobCodec::new().extension(), ".gob");

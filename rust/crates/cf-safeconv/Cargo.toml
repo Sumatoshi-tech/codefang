@@ -1,6 +1,6 @@
 [package]
 name = "cf-safeconv"
-description = "Overflow-checked numeric and type conversions (Rust port of Go pkg/safeconv)"
+description = "Overflow-checked numeric conversions and dynamic numeric extraction for report values"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

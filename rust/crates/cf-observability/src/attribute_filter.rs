@@ -1,25 +1,24 @@
 //! Span-attribute allow-list filter (PII / high-cardinality stripping).
 //!
-//! Port of `internal/observability/attribute_filter.go`. Enforces an allow-list
-//! so PII (`user.*`, `email`, `request.body`, `response.body`) and unknown
-//! high-cardinality keys never reach the exporter. The allow/block tables and
-//! the [`is_attribute_allowed`] decision logic match the Go source exactly.
+//! Enforces an allow-list so PII (`user.*`, `email`, `request.body`,
+//! `response.body`) and unknown high-cardinality keys never reach the
+//! exporter. The allow/block tables and the [`is_attribute_allowed`] decision
+//! logic are a fixed telemetry policy — extend the tables deliberately, never
+//! loosen them casually.
 //!
 //! # SpanProcessor wiring
 //!
-//! Go implements this as an `sdktrace.SpanProcessor` that wraps a delegate and,
-//! in `OnEnd`, exposes a `filteredSpan` view returning only allowed attributes.
-//! The OTel-Rust SDK exposes `SpanData.attributes` to processors but does not
-//! offer the same read-only "filtered view" hook, so the port keeps the
-//! load-bearing, fully-tested decision function ([`is_attribute_allowed`]) plus
-//! a [`AttributeFilter`] processor wrapper that applies it in `on_end` by
-//! retaining only allowed key/values before delegating. See crate todos.
+//! The OTel-Rust SDK exposes `SpanData.attributes` to processors but offers no
+//! read-only "filtered view" hook on span end, so this module keeps the
+//! load-bearing, fully-tested decision function ([`is_attribute_allowed`])
+//! plus an [`AttributeFilter`] wrapper that applies it by retaining only
+//! allowed key/values before delegating. See crate todos.
 
-/// Attribute key prefixes that pass through the filter (Go `allowedPrefixes`).
+/// Attribute key prefixes that pass through the filter.
 ///
 /// A key is allowed if it starts with one of these. Some entries (`cache`,
-/// `worker_index`, …) are exact keys without a trailing dot; they match by
-/// prefix OR exact equality, exactly as Go does.
+/// `worker_index`, …) are exact keys without a trailing dot; a prefix match
+/// covers exact equality too.
 pub const ALLOWED_PREFIXES: &[&str] = &[
     "codefang.",
     "error.",
@@ -41,18 +40,18 @@ pub const ALLOWED_PREFIXES: &[&str] = &[
     "misses",
 ];
 
-/// Attribute key prefixes that are always stripped (Go `blockedPrefixes`).
+/// Attribute key prefixes that are always stripped.
 pub const BLOCKED_PREFIXES: &[&str] = &["user."];
 
-/// Exact attribute keys that are always stripped (Go `blockedKeys`).
+/// Exact attribute keys that are always stripped.
 pub const BLOCKED_KEYS: &[&str] = &["email", "request.body", "response.body"];
 
 /// Returns whether an attribute `key` is allowed through the filter.
 ///
-/// Port of Go `(*attributeFilter).isAllowed`, including ordering:
+/// Decision order:
 /// 1. exact blocked keys → denied;
 /// 2. blocked prefixes → denied;
-/// 3. allowed prefixes (prefix match OR exact match) → allowed;
+/// 3. allowed prefixes → allowed;
 /// 4. the OTel semantic key `"error"` → allowed;
 /// 5. otherwise denied.
 #[must_use]
@@ -60,31 +59,17 @@ pub fn is_attribute_allowed(key: &str) -> bool {
     if BLOCKED_KEYS.contains(&key) {
         return false;
     }
-
-    for prefix in BLOCKED_PREFIXES {
-        if key.starts_with(prefix) {
-            return false;
-        }
+    if BLOCKED_PREFIXES.iter().any(|p| key.starts_with(p)) {
+        return false;
     }
-
-    for prefix in ALLOWED_PREFIXES {
-        if key.starts_with(prefix) {
-            return true;
-        }
-        if key == *prefix {
-            return true;
-        }
-    }
-
-    // Allow OTel semantic convention key "error".
-    if key == "error" {
+    if ALLOWED_PREFIXES.iter().any(|p| key.starts_with(p)) {
         return true;
     }
-
-    false
+    // Allow the OTel semantic convention key "error".
+    key == "error"
 }
 
-/// Sink for blocked-attribute warnings (Go's optional dev-mode `*slog.Logger`).
+/// Sink for blocked-attribute warnings (an optional dev-mode logger).
 ///
 /// When set, [`AttributeFilter`] reports each stripped key. The default
 /// implementation discards; tests use a collecting implementation.
@@ -95,23 +80,21 @@ pub trait FilterWarner: Send + Sync {
 
 /// A span-attribute filter that strips blocked/unknown keys before forwarding.
 ///
-/// Port of Go `attributeFilter`. Construct with [`AttributeFilter::new`]; apply
-/// to a collected attribute set with [`AttributeFilter::retain_allowed`].
+/// Construct with [`AttributeFilter::new`]; apply to a collected attribute set
+/// with [`AttributeFilter::retain_allowed`].
 pub struct AttributeFilter {
     warner: Option<Box<dyn FilterWarner>>,
 }
 
 impl AttributeFilter {
-    /// Creates a filter (Go `NewAttributeFilter`). `warner` is the optional
-    /// dev-mode logger; pass `None` to silence warnings.
+    /// Creates a filter. `warner` is the optional dev-mode logger; pass `None`
+    /// to silence warnings.
     #[must_use]
     pub fn new(warner: Option<Box<dyn FilterWarner>>) -> Self {
-        AttributeFilter { warner }
+        Self { warner }
     }
 
-    /// Returns true if `key` is allowed, warning on the way out when blocked.
-    ///
-    /// Mirrors Go's `isAllowed`, which calls `warn(key)` on every denial path.
+    /// Returns true if `key` is allowed, warning on every denial.
     #[must_use]
     pub fn is_allowed(&self, key: &str) -> bool {
         let allowed = is_attribute_allowed(key);
@@ -126,7 +109,8 @@ impl AttributeFilter {
     /// Retains only allowed attributes from `attrs`, in original order.
     ///
     /// `attrs` is `(key, value)` pairs; the value type is generic so this works
-    /// with any attribute representation. Equivalent to Go `filteredSpan.Attributes`.
+    /// with any attribute representation.
+    #[must_use]
     pub fn retain_allowed<V>(&self, attrs: Vec<(String, V)>) -> Vec<(String, V)> {
         attrs
             .into_iter()
@@ -152,7 +136,7 @@ mod tests {
         }
     }
 
-    /// Port of Go `TestAttributeFilter_AllowsKnownKeys`.
+    /// Mirrors the reference suite's `TestAttributeFilter_AllowsKnownKeys`.
     #[test]
     fn allows_known_keys() {
         let f = AttributeFilter::new(None);
@@ -169,7 +153,7 @@ mod tests {
         assert!(kept.contains("chunk.size"));
     }
 
-    /// Port of Go `TestAttributeFilter_BlocksPII`.
+    /// Mirrors the reference suite's `TestAttributeFilter_BlocksPII`.
     #[test]
     fn blocks_pii() {
         let f = AttributeFilter::new(None);
@@ -194,7 +178,7 @@ mod tests {
         assert!(kept.contains("error.type"));
     }
 
-    /// Port of Go `TestAttributeFilter_WarnsInDevMode`.
+    /// Mirrors the reference suite's `TestAttributeFilter_WarnsInDevMode`.
     #[test]
     fn warns_in_dev_mode() {
         let keys = Arc::new(Mutex::new(Vec::new()));
@@ -207,7 +191,7 @@ mod tests {
         assert!(logged.iter().any(|k| k == "user.secret"));
     }
 
-    /// Port of Go `TestAttributeFilter_PassesUnknownAllowedPrefixes`.
+    /// Mirrors the reference suite's `TestAttributeFilter_PassesUnknownAllowedPrefixes`.
     #[test]
     fn passes_unknown_allowed_prefixes() {
         let f = AttributeFilter::new(None);
@@ -227,7 +211,7 @@ mod tests {
 
     #[test]
     fn bare_error_key_allowed() {
-        // Go explicitly allows the bare "error" semantic key.
+        // The bare "error" semantic key is explicitly allowed.
         assert!(is_attribute_allowed("error"));
     }
 }

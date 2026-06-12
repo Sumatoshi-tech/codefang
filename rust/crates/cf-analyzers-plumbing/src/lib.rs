@@ -1,50 +1,48 @@
 //! cf-analyzers-plumbing: analyzer-level git/UAST data providers.
 //!
-//! Port of the Go package `internal/analyzers/plumbing`. These providers sit
-//! beneath the history analyzers and supply the shared git/UAST facts the rest
-//! of the pipeline consumes:
+//! These providers sit beneath the history analyzers and supply the shared
+//! git/UAST facts the rest of the pipeline consumes:
 //!
-//! | Provider | Output | Go source |
-//! |----------|--------|-----------|
-//! | [`tree_diff::TreeDiff`] | `changes` | `tree_diff.go` |
-//! | [`blob_cache::BlobCache`] | `blob_cache` | `blob_cache.go` |
-//! | [`file_diff::FileDiff`] | `file_diff` | `file_diff.go` |
-//! | [`ticks::TicksSinceStart`] | `tick` | `ticks.go` + `ticks_anomaly.go` |
-//! | [`identity_detector::IdentityDetector`] | `author` | `identity.go` |
-//! | [`languages_detection::LanguagesDetection`] | `languages` | `languages.go` |
-//! | [`uast_changes::UASTChanges`] | `uast_changes` | `uast.go` |
+//! | Provider | Output |
+//! |----------|--------|
+//! | [`tree_diff::TreeDiff`] | `changes` |
+//! | [`blob_cache::BlobCache`] | `blob_cache` |
+//! | [`file_diff::FileDiff`] | `file_diff` |
+//! | [`ticks::TicksSinceStart`] | `tick` |
+//! | [`identity_detector::IdentityDetector`] | `author` |
+//! | [`languages_detection::LanguagesDetection`] | `languages` |
+//! | [`uast_changes::UASTChanges`] | `uast_changes` |
 //!
 //! # Behavioral fidelity
 //!
 //! These providers emit intermediate facts consumed by downstream analyzers,
-//! which own the machine-format serialization that must be byte-identical to Go.
-//! The plumbing layer's job is to compute those facts identically:
+//! which own the machine-format serialization whose bytes are pinned against
+//! the reference implementation by `rust/tests/compat`. The plumbing layer's
+//! job is to compute those facts identically:
 //!
-//! * [`ticks::TicksSinceStart`] reproduces the
-//!   `FloorTime`-seeded origin, committer-time sanitization window
-//!   ([`ticks_anomaly`]), and the monotonic `max(tick, previousTick)` clamp —
-//!   the byte-identity hazard called out in the brief. Its only wall-clock read
-//!   (`time.Now().Add(maxClockSkew)`) goes through an injectable [`clock::Clock`]
-//!   per DESIGN §2.8.
-//! * [`file_diff::FileDiff`] reproduces the Modify-only scope, the two
-//!   fast paths, the binary guard, and the `len(src)`/`len(dst)` LOC counts; the
-//!   actual line diff is delegated to an injected
-//!   [`file_diff::LineDiffer`] (a faithful `sergi/go-diff` port).
-//! * [`languages_detection::LanguagesDetection`] ports the
-//!   extension fast-path table verbatim and delegates content analysis to an
-//!   injected [`languages_detection::EnryClassifier`] that must
-//!   carry go-enry's data tables (DESIGN §2.6).
-//! * [`blob_cache::BlobCache`] reproduces the cross-commit
-//!   previous-cache reuse and empty-placeholder-on-read-failure semantics.
+//! * [`ticks::TicksSinceStart`] implements the floored tick origin, the
+//!   committer-time sanitization window ([`ticks_anomaly`]), and the monotonic
+//!   `max(tick, previous_tick)` clamp — a byte-identity hazard. Its only
+//!   wall-clock read (now + max clock skew) goes through an injectable
+//!   [`clock::Clock`] per DESIGN §2.8.
+//! * [`file_diff::FileDiff`] implements the Modify-only scope, the two fast
+//!   paths, the binary guard, and the encoded-line LOC counts; the actual
+//!   line diff is delegated to an injected [`file_diff::LineDiffer`] (the
+//!   byte-faithful engine is `cf-godiff`).
+//! * [`languages_detection::LanguagesDetection`] carries the frozen extension
+//!   fast-path table and delegates content analysis to an injected
+//!   [`languages_detection::EnryClassifier`] that must carry the enry data
+//!   tables (DESIGN §2.6).
+//! * [`blob_cache::BlobCache`] implements the cross-commit previous-cache
+//!   reuse and empty-placeholder-on-read-failure semantics.
 //!
-//! # Dependency boundaries (port rule 5)
+//! # Dependency boundaries
 //!
-//! `cf-framework`, `cf-uast`, `cf-gitlib`, `cf-pathfilter`, and the go-compat
-//! serialization crates were stubs at port time, so the
-//! [`analyzer::Analyzer`] trait, the git model ([`git_model`]), the
-//! UAST [`Parser`]/[`PathFilter`] surface ([`uast_iface`]), and the diff/enry
-//! engines are defined locally and injected. They should collapse into
-//! re-exports of the canonical crates once those exist; see the crate `todos`.
+//! The [`analyzer::Analyzer`] trait, the git model ([`git_model`]), the UAST
+//! [`Parser`]/[`PathFilter`] surface ([`uast_iface`]), and the diff/enry
+//! engines are defined locally and injected, keeping this crate decoupled
+//! from the heavier framework/UAST/git crates. They should collapse into
+//! re-exports of the canonical crates as those stabilize.
 
 pub mod analyzer;
 pub mod blob_cache;

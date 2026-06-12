@@ -1,17 +1,21 @@
-//! Faithful port of Go's `sort.Slice` (pattern-defeating quicksort, `pdqsort`).
+//! Unstable comparator sort (pattern-defeating quicksort, `pdqsort`).
 //!
-//! `sort.Slice` is **not stable**: equal elements may be reordered. To reproduce
-//! the byte-identical `function_complexity` / `high_risk_functions` ordering of
-//! the Go static complexity report we must replicate the exact permutation Go's
-//! `pdqsort_func` produces, including its tie handling. This is a direct port of
-//! `$GOROOT/src/sort/zsortfunc.go` (the `lessSwap` variant `sort.Slice` uses) and
-//! the `xorshift` / `nextPowerOfTwo` helpers from `sort.go`.
+//! This sort is **not stable**: equal elements may be reordered. Several report
+//! surfaces (e.g. the static complexity report's `function_complexity` /
+//! `high_risk_functions` orderings) expose the exact output permutation —
+//! including its tie handling — so the algorithm here is part of the report
+//! compatibility contract and is frozen: pdqsort with these exact cutoffs,
+//! pivot selection, and `xorshift` pattern-breaking reproduces the reference
+//! implementation's permutation bit-for-bit.
 //!
-//! Usage: `go_sort_slice(&mut v, |a, b| a.key > b.key)` sorts `v` in place with
-//! the same algorithm and the same `less(i, j)` semantics as
-//! `sort.Slice(v, func(i, j int) bool { ... })`.
+//! Compatibility: output ordering is pinned against the reference binary by
+//! `rust/tests/compat`; do not swap in `slice::sort_unstable` or alter the
+//! constants.
+//!
+//! Usage: `go_sort_slice(&mut v, |a, b| a.key > b.key)` sorts `v` in place,
+//! where `less(&a, &b)` answers "must `a` sort before `b`?".
 
-/// `bits.Len(uint(x))` — number of bits required to represent `x` (0 for 0).
+/// Number of bits required to represent `x` (0 for 0).
 fn bit_len(x: u64) -> u32 {
     64 - x.leading_zeros()
 }
@@ -25,8 +29,8 @@ enum Hint {
     Decreasing,
 }
 
-/// Sorts `data` in place using Go's `sort.Slice` algorithm with the comparator
-/// `less(&a, &b) == data.Less(i, j)`.
+/// Sorts `data` in place with the contract-frozen pdqsort using comparator
+/// `less` (`less(&a, &b)` true when `a` must sort before `b`).
 pub fn go_sort_slice<T, F>(data: &mut [T], less: F)
 where
     F: Fn(&T, &T) -> bool,
@@ -68,13 +72,16 @@ where
             hint = Hint::Increasing;
         }
 
-        if was_balanced && was_partitioned && hint == Hint::Increasing {
-            if partial_insertion_sort(data, a, b, less) {
-                return;
-            }
+        if was_balanced
+            && was_partitioned
+            && hint == Hint::Increasing
+            && partial_insertion_sort(data, a, b, less)
+        {
+            return;
         }
 
-        // a > 0 && !data.Less(a-1, pivot)
+        // The element left of the range is >= the pivot, so the pivot is the
+        // minimum of the range: split off the run equal to it.
         if a > 0 && !less(&data[a - 1], &data[pivot]) {
             let mid = partition_equal(data, a, b, pivot, less);
             a = mid;
@@ -272,7 +279,8 @@ fn break_patterns<T>(data: &mut [T], a: usize, b: usize) {
 
         let base = a + (length / 4) * 2;
         for idx in (base - 1)..=(base + 1) {
-            // random.Next()
+            // One xorshift step of the deterministic PRNG (seeded with the
+            // range length, so the permutation is reproducible).
             random ^= random << 13;
             random ^= random >> 7;
             random ^= random << 17;
@@ -285,7 +293,7 @@ fn break_patterns<T>(data: &mut [T], a: usize, b: usize) {
     }
 }
 
-fn choose_pivot<T, F>(data: &mut [T], a: usize, b: usize, less: &F) -> (usize, Hint)
+fn choose_pivot<T, F>(data: &[T], a: usize, b: usize, less: &F) -> (usize, Hint)
 where
     F: Fn(&T, &T) -> bool,
 {
@@ -315,7 +323,7 @@ where
     }
 }
 
-fn order2<T, F>(data: &mut [T], a: usize, b: usize, swaps: &mut i32, less: &F) -> (usize, usize)
+fn order2<T, F>(data: &[T], a: usize, b: usize, swaps: &mut i32, less: &F) -> (usize, usize)
 where
     F: Fn(&T, &T) -> bool,
 {
@@ -328,7 +336,7 @@ where
 }
 
 fn median<T, F>(
-    data: &mut [T],
+    data: &[T],
     a: usize,
     b: usize,
     c: usize,
@@ -345,7 +353,7 @@ where
     b
 }
 
-fn median_adjacent<T, F>(data: &mut [T], a: usize, swaps: &mut i32, less: &F) -> usize
+fn median_adjacent<T, F>(data: &[T], a: usize, swaps: &mut i32, less: &F) -> usize
 where
     F: Fn(&T, &T) -> bool,
 {

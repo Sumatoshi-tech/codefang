@@ -1,7 +1,6 @@
 //! The checkpoint [`Manager`], coordinating checkpoints across analyzers.
 //!
-//! Ported from `internal/checkpoint/manager.go`. The manager owns the on-disk
-//! layout:
+//! The manager owns the on-disk layout:
 //!
 //! ```text
 //! <base_dir>/<repo_hash>/
@@ -22,8 +21,7 @@ use crate::state::{Metadata, StreamingState};
 
 /// Current checkpoint metadata format version.
 ///
-/// Bumped from 1 to 2 when aggregator spill state was added (Go's
-/// `MetadataVersion`).
+/// Bumped from 1 to 2 when aggregator spill state was added.
 pub const METADATA_VERSION: i64 = 2;
 
 /// File basename for checkpoint metadata (without extension); the file is
@@ -34,13 +32,9 @@ const METADATA_BASENAME: &str = "checkpoint";
 const WEEK_SECONDS: u64 = 7 * 24 * 60 * 60;
 
 /// Default maximum checkpoint age before it is considered stale: one week.
-///
-/// Mirrors Go's `DefaultMaxAge = 7 * 24 * time.Hour`.
 pub const DEFAULT_MAX_AGE: Duration = Duration::from_secs(WEEK_SECONDS);
 
 /// Default maximum total checkpoint size: 1 GiB.
-///
-/// Mirrors Go's `DefaultMaxSize = 1 << 30`.
 pub const DEFAULT_MAX_SIZE: i64 = 1 << 30;
 
 /// Directory permissions for checkpoints (`0o750`), applied on Unix.
@@ -49,9 +43,8 @@ const DIR_PERM: u32 = 0o750;
 
 /// Returns the default checkpoint directory: `~/.codefang/checkpoints`.
 ///
-/// Ported from Go's `DefaultDir`. If the user's home directory cannot be
-/// resolved, the base falls back to `.` (current directory), matching the Go
-/// fallback `home = "."`.
+/// If the user's home directory cannot be resolved, the base falls back to
+/// `.` (current directory).
 #[must_use]
 pub fn default_dir() -> PathBuf {
     let home = home_dir().unwrap_or_else(|| PathBuf::from("."));
@@ -60,26 +53,27 @@ pub fn default_dir() -> PathBuf {
 
 /// Computes a short hash of the repository path for use as a directory name.
 ///
-/// Ported from Go's `RepoHash`: SHA-256 of the path bytes, hex-encoding the
-/// first 8 bytes (16 hex characters). The output is byte-identical to the Go
-/// implementation for the same input path.
+/// SHA-256 of the path bytes, hex-encoding the first 8 bytes (16 lowercase hex
+/// characters). The derivation is part of the on-disk layout contract and is
+/// locked by a known-answer test below.
 #[must_use]
 pub fn repo_hash(repo_path: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
     let digest = Sha256::digest(repo_path.as_bytes());
     // First 8 bytes -> 16 hex chars.
     let mut out = String::with_capacity(16);
-    for byte in &digest[..8] {
-        out.push_str(&format!("{byte:02x}"));
+    for &byte in &digest[..8] {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
     }
     out
 }
 
 /// Coordinates checkpoints across analyzers for one repository.
 ///
-/// Ported from Go's `checkpoint.Manager`. Construct with [`Manager::new`]; the
-/// retention fields ([`max_age`](Manager::max_age),
-/// [`max_size`](Manager::max_size)) are initialized to the defaults and are
-/// publicly mutable, matching the Go exported struct fields.
+/// Construct with [`Manager::new`]; the retention fields
+/// ([`max_age`](Manager::max_age), [`max_size`](Manager::max_size)) are
+/// initialized to the defaults and are publicly mutable.
 #[derive(Debug, Clone)]
 pub struct Manager {
     /// Base directory containing one subdirectory per repository hash.
@@ -93,7 +87,7 @@ pub struct Manager {
 }
 
 impl Manager {
-    /// Creates a new checkpoint manager (Go's `NewManager`).
+    /// Creates a new checkpoint manager.
     ///
     /// Retention defaults to [`DEFAULT_MAX_AGE`] / [`DEFAULT_MAX_SIZE`].
     pub fn new(base_dir: impl Into<PathBuf>, repo_hash: impl Into<String>) -> Self {
@@ -121,8 +115,8 @@ impl Manager {
 
     /// Returns `true` if a checkpoint metadata file exists.
     ///
-    /// Ported from Go's `Exists`, which is a plain `os.Stat` on the metadata
-    /// path (it does not validate the contents).
+    /// A plain existence check on the metadata path; it does not validate the
+    /// contents.
     #[must_use]
     pub fn exists(&self) -> bool {
         self.metadata_path().exists()
@@ -130,8 +124,12 @@ impl Manager {
 
     /// Removes the checkpoint for the current repository.
     ///
-    /// Ported from Go's `Clear`. Returns `Ok(())` (no error) when the directory
-    /// does not exist, matching `os.IsNotExist` handling.
+    /// Returns `Ok(())` (no error) when the directory does not exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`CheckpointError`] if the directory cannot be inspected or
+    /// removed.
     pub fn clear(&self) -> Result<()> {
         let cp_dir = self.checkpoint_dir();
         match std::fs::metadata(&cp_dir) {
@@ -146,15 +144,19 @@ impl Manager {
 
     /// Creates a checkpoint for all checkpointable analyzers.
     ///
-    /// Ported from Go's `Save`. For each analyzer in `checkpointables` a
-    /// directory `analyzer_<i>` is created and the analyzer's
-    /// [`save_checkpoint`](Checkpointable::save_checkpoint) is invoked, then the
-    /// [`Metadata`] is written atomically as `checkpoint.json`.
+    /// For each analyzer in `checkpointables` a directory `analyzer_<i>` is
+    /// created and the analyzer's
+    /// [`save_checkpoint`](Checkpointable::save_checkpoint) is invoked, then
+    /// the [`Metadata`] is written atomically as `checkpoint.json`.
     ///
-    /// `created_at` is supplied by the caller so the wall clock can be pinned in
-    /// tests/goldens (DESIGN §2.8); the Go code stamps this with
-    /// `time.Now().UTC().Format(time.RFC3339)`. Use [`Manager::save_now`] for
-    /// the production behavior.
+    /// `created_at` is supplied by the caller so the wall clock can be pinned
+    /// in tests/goldens (DESIGN §2.8); use [`Manager::save_now`] for the
+    /// production behavior (current UTC time, RFC3339).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`CheckpointError`] if a directory cannot be created, an
+    /// analyzer fails to save, or the metadata write fails.
     pub fn save(
         &self,
         checkpointables: &mut [&mut dyn Checkpointable],
@@ -184,8 +186,8 @@ impl Manager {
             created_at,
             analyzers: analyzer_names.to_vec(),
             streaming_state: state,
-            // Go initializes an empty (non-nil) map here; an empty BTreeMap
-            // serializes to `{}` exactly as Go's `make(map[string]string)` does.
+            // An empty map serializes to `{}` (not null) — metadata-layout
+            // contract.
             checksums: std::collections::BTreeMap::new(),
         };
 
@@ -194,10 +196,14 @@ impl Manager {
         Ok(())
     }
 
-    /// Convenience wrapper over [`Manager::save`] that stamps `created_at` with
-    /// the current UTC time formatted as RFC3339, matching Go's production
-    /// `Save` exactly. Prefer [`Manager::save`] with an injected timestamp in
-    /// tests so output is deterministic.
+    /// Convenience wrapper over [`Manager::save`] that stamps `created_at`
+    /// with the current UTC time formatted as RFC3339. Prefer
+    /// [`Manager::save`] with an injected timestamp in tests so output is
+    /// deterministic.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from [`Manager::save`].
     pub fn save_now(
         &self,
         checkpointables: &mut [&mut dyn Checkpointable],
@@ -216,7 +222,10 @@ impl Manager {
 
     /// Loads the checkpoint metadata.
     ///
-    /// Ported from Go's `LoadMetadata`.
+    /// # Errors
+    ///
+    /// Returns [`CheckpointError::Codec`] if the metadata file cannot be read
+    /// or parsed.
     pub fn load_metadata(&self) -> Result<Metadata> {
         codec::load_state(&self.checkpoint_dir(), METADATA_BASENAME, &JsonCodec::new())
             .map_err(|e| CheckpointError::Codec(format!("load metadata: {e}")))
@@ -225,9 +234,14 @@ impl Manager {
     /// Restores state for all checkpointable analyzers and returns the saved
     /// [`StreamingState`].
     ///
-    /// Ported from Go's `Load`. Loads metadata first, then calls
+    /// Loads metadata first, then calls
     /// [`load_checkpoint`](Checkpointable::load_checkpoint) on each analyzer
     /// from its `analyzer_<i>` directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`CheckpointError`] if the metadata or any analyzer state
+    /// cannot be restored.
     pub fn load(&self, checkpointables: &mut [&mut dyn Checkpointable]) -> Result<StreamingState> {
         let meta = self.load_metadata()?;
         let cp_dir = self.checkpoint_dir();
@@ -244,12 +258,14 @@ impl Manager {
 
     /// Checks whether the stored checkpoint is valid for the given parameters.
     ///
-    /// Ported from Go's `Validate`. Returns:
-    /// * [`CheckpointError::VersionMismatch`] if the stored version differs from
-    ///   [`METADATA_VERSION`],
+    /// # Errors
+    ///
+    /// * [`CheckpointError::VersionMismatch`] if the stored version differs
+    ///   from [`METADATA_VERSION`],
     /// * [`CheckpointError::RepoPathMismatch`] if `repo_path` differs,
     /// * [`CheckpointError::AnalyzerMismatch`] if `analyzer_names` differs
-    ///   (order-sensitive, like Go's `slices.Equal`).
+    ///   (order-sensitive),
+    /// * any [`Manager::load_metadata`] error.
     pub fn validate(&self, repo_path: &str, analyzer_names: &[String]) -> Result<()> {
         let meta = self.load_metadata()?;
 
@@ -278,8 +294,7 @@ impl Manager {
     }
 }
 
-/// Creates a directory and all parents with `0o750` permissions on Unix,
-/// matching Go's `os.MkdirAll(dir, 0o750)`.
+/// Creates a directory and all parents with `0o750` permissions on Unix.
 fn create_dir_all_perm(dir: &Path) -> std::io::Result<()> {
     #[cfg(unix)]
     {
@@ -293,10 +308,8 @@ fn create_dir_all_perm(dir: &Path) -> std::io::Result<()> {
     }
 }
 
-/// Returns the user's home directory, or `None` if it cannot be resolved.
-///
-/// Reproduces Go's `os.UserHomeDir` for the platforms this crate targets
-/// without an extra dependency: `$HOME` on Unix, `%USERPROFILE%` on Windows.
+/// Returns the user's home directory, or `None` if it cannot be resolved:
+/// `$HOME` on Unix, `%USERPROFILE%` on Windows (no extra dependency needed).
 fn home_dir() -> Option<PathBuf> {
     #[cfg(windows)]
     {
@@ -312,12 +325,12 @@ fn home_dir() -> Option<PathBuf> {
     }
 }
 
-/// Formats the current system time as an RFC3339 UTC string (`...Z`), matching
-/// Go's `time.Now().UTC().Format(time.RFC3339)` at second precision.
+/// Formats the current system time as an RFC3339 UTC string (`...Z`) at
+/// second precision.
 ///
-/// Implemented without `chrono` (DESIGN §2.8 cautions against its formatter for
-/// byte-identity). For deterministic output prefer [`Manager::save`] with an
-/// injected timestamp; this helper backs the production default only.
+/// Implemented without `chrono` (DESIGN §2.8 cautions against its formatter
+/// for byte-identity). For deterministic output prefer [`Manager::save`] with
+/// an injected timestamp; this helper backs the production default only.
 fn now_rfc3339_utc() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -325,9 +338,9 @@ fn now_rfc3339_utc() -> String {
     format_unix_rfc3339(now.as_secs() as i64)
 }
 
-/// Converts a Unix timestamp (seconds) to an RFC3339 UTC string with `Z` suffix
-/// and no fractional part, e.g. `2026-02-05T12:00:00Z`. This is the civil-time
-/// conversion (proleptic Gregorian) Go's `time` package uses.
+/// Converts a Unix timestamp (seconds) to an RFC3339 UTC string with `Z`
+/// suffix and no fractional part, e.g. `2026-02-05T12:00:00Z` (civil-time
+/// conversion on the proleptic Gregorian calendar).
 fn format_unix_rfc3339(secs: i64) -> String {
     let total_days = secs.div_euclid(86_400);
     let rem = secs.rem_euclid(86_400);
@@ -341,11 +354,11 @@ fn format_unix_rfc3339(secs: i64) -> String {
 /// Converts a day-index relative to the Unix epoch into a `(year, month, day)`
 /// civil date using Howard Hinnant's well-known algorithm (proleptic Gregorian
 /// calendar).
-fn civil_from_days(z: i64) -> (i64, u32, u32) {
+const fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let z = z + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = z - era * 146_097; // [0, 146096]
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365; // [0, 399]
+    let doe = z - era * 146_097; // [0, 146_096]
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365; // [0, 399]
     let y = yoe + era * 400;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
     let mp = (5 * doy + 2) / 153; // [0, 11]
@@ -365,10 +378,10 @@ mod tests {
     const FIXED_TIME: &str = "2026-02-05T12:00:00Z";
 
     fn names(items: &[&str]) -> Vec<String> {
-        items.iter().map(|s| s.to_string()).collect()
+        items.iter().map(ToString::to_string).collect()
     }
 
-    // Mirrors manager_test.go's `mockCheckpointable`.
+    // Mirrors the reference suite's `mockCheckpointable`.
     struct MockCheckpointable {
         data: RefCell<String>,
     }
@@ -398,7 +411,7 @@ mod tests {
         }
     }
 
-    // Ported from TestManager_New.
+    // Mirrors TestManager_New.
     #[test]
     fn manager_new() {
         let dir = tempfile::tempdir().unwrap();
@@ -409,7 +422,7 @@ mod tests {
         assert_eq!(m.max_size, DEFAULT_MAX_SIZE);
     }
 
-    // Ported from TestManager_CheckpointDir.
+    // Mirrors TestManager_CheckpointDir.
     #[test]
     fn manager_checkpoint_dir() {
         let dir = tempfile::tempdir().unwrap();
@@ -417,7 +430,7 @@ mod tests {
         assert_eq!(m.checkpoint_dir(), dir.path().join("abc123"));
     }
 
-    // Ported from TestManager_MetadataPath.
+    // Mirrors TestManager_MetadataPath.
     #[test]
     fn manager_metadata_path() {
         let dir = tempfile::tempdir().unwrap();
@@ -428,7 +441,7 @@ mod tests {
         );
     }
 
-    // Ported from TestManager_Exists_NoCheckpoint.
+    // Mirrors TestManager_Exists_NoCheckpoint.
     #[test]
     fn manager_exists_no_checkpoint() {
         let dir = tempfile::tempdir().unwrap();
@@ -436,7 +449,7 @@ mod tests {
         assert!(!m.exists());
     }
 
-    // Ported from TestManager_Exists_WithCheckpoint.
+    // Mirrors TestManager_Exists_WithCheckpoint.
     #[test]
     fn manager_exists_with_checkpoint() {
         let dir = tempfile::tempdir().unwrap();
@@ -446,7 +459,7 @@ mod tests {
         assert!(m.exists());
     }
 
-    // Ported from TestManager_Clear.
+    // Mirrors TestManager_Clear.
     #[test]
     fn manager_clear() {
         let dir = tempfile::tempdir().unwrap();
@@ -458,7 +471,7 @@ mod tests {
         assert!(!m.exists());
     }
 
-    // Ported from TestManager_Clear_NonExistent.
+    // Mirrors TestManager_Clear_NonExistent.
     #[test]
     fn manager_clear_non_existent() {
         let dir = tempfile::tempdir().unwrap();
@@ -466,7 +479,7 @@ mod tests {
         assert!(m.clear().is_ok());
     }
 
-    // Ported from TestManager_SaveLoad_Metadata.
+    // Mirrors TestManager_SaveLoad_Metadata.
     #[test]
     fn manager_save_load_metadata() {
         let dir = tempfile::tempdir().unwrap();
@@ -502,7 +515,7 @@ mod tests {
         );
     }
 
-    // Ported from TestManager_SaveLoad_Checkpointables.
+    // Mirrors TestManager_SaveLoad_Checkpointables.
     #[test]
     fn manager_save_load_checkpointables() {
         let dir = tempfile::tempdir().unwrap();
@@ -530,14 +543,14 @@ mod tests {
         assert_eq!(loaded_state.processed_commits, state.processed_commits);
     }
 
-    // Ported from TestManager_DefaultValues.
+    // Mirrors TestManager_DefaultValues.
     #[test]
     fn manager_default_values() {
         assert_eq!(DEFAULT_MAX_AGE, Duration::from_secs(WEEK_SECONDS));
         assert_eq!(DEFAULT_MAX_SIZE, 1 << 30);
     }
 
-    // Ported from TestManager_Validate_Success.
+    // Mirrors TestManager_Validate_Success.
     #[test]
     fn manager_validate_success() {
         let dir = tempfile::tempdir().unwrap();
@@ -559,7 +572,7 @@ mod tests {
         assert!(m.validate("/path/to/repo", &names(&["burndown"])).is_ok());
     }
 
-    // Ported from TestManager_Validate_WrongRepo.
+    // Mirrors TestManager_Validate_WrongRepo.
     #[test]
     fn manager_validate_wrong_repo() {
         let dir = tempfile::tempdir().unwrap();
@@ -578,7 +591,7 @@ mod tests {
         assert!(matches!(err, CheckpointError::RepoPathMismatch { .. }));
     }
 
-    // Ported from TestManager_Validate_WrongAnalyzers.
+    // Mirrors TestManager_Validate_WrongAnalyzers.
     #[test]
     fn manager_validate_wrong_analyzers() {
         let dir = tempfile::tempdir().unwrap();
@@ -595,7 +608,7 @@ mod tests {
         assert!(matches!(err, CheckpointError::AnalyzerMismatch { .. }));
     }
 
-    // Ported from TestManager_Validate_NoCheckpoint.
+    // Mirrors TestManager_Validate_NoCheckpoint.
     #[test]
     fn manager_validate_no_checkpoint() {
         let dir = tempfile::tempdir().unwrap();
@@ -603,7 +616,7 @@ mod tests {
         assert!(m.validate("/path/to/repo", &names(&["burndown"])).is_err());
     }
 
-    // Ported from TestDefaultDir.
+    // Mirrors TestDefaultDir.
     #[test]
     fn default_dir_contains_codefang_checkpoints() {
         let dir = default_dir();
@@ -612,7 +625,7 @@ mod tests {
         assert!(s.contains("checkpoints"));
     }
 
-    // Ported from TestRepoHash.
+    // Mirrors TestRepoHash.
     #[test]
     fn repo_hash_is_16_chars_and_stable() {
         let hash = repo_hash("/path/to/repo");
@@ -622,15 +635,15 @@ mod tests {
     }
 
     #[test]
-    fn repo_hash_matches_go_sha256_first8_bytes() {
-        // Independently compute the expected value the way Go does:
+    fn repo_hash_known_answer() {
+        // Independently computed expected value:
         // hex(sha256("/path/to/repo")[:8]).
         let full = Sha256::digest(b"/path/to/repo");
         let expected: String = full[..8].iter().map(|b| format!("{b:02x}")).collect();
         assert_eq!(repo_hash("/path/to/repo"), expected);
     }
 
-    // Ported from TestManager_Validate_OldVersion.
+    // Mirrors TestManager_Validate_OldVersion.
     #[test]
     fn manager_validate_old_version() {
         let dir = tempfile::tempdir().unwrap();
@@ -642,7 +655,7 @@ mod tests {
         assert!(matches!(err, CheckpointError::VersionMismatch { .. }));
     }
 
-    // Ported from TestManager_SaveLoad_AggregatorSpills.
+    // Mirrors TestManager_SaveLoad_AggregatorSpills.
     #[test]
     fn manager_save_load_aggregator_spills() {
         let dir = tempfile::tempdir().unwrap();
@@ -685,7 +698,7 @@ mod tests {
         assert_eq!(spills[2].count, 1);
     }
 
-    // Ported from TestManager_Save_ErrorOnMkdir.
+    // Mirrors TestManager_Save_ErrorOnMkdir.
     #[test]
     fn manager_save_error_on_mkdir() {
         let dir = tempfile::tempdir().unwrap();

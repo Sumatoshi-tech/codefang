@@ -8,11 +8,10 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-# Byte-size multipliers (Go pkg/units parity): KiB/MiB/GiB constants used by
-# the cost-model constants and both solvers.
+# KiB/MiB/GiB byte-size multipliers used by the cost-model constants and both
+# solvers.
 cf-units = { path = "../cf-units" }
-# CoordinatorConfig is the solver's output type (Go internal/framework). The
-# solver is the BudgetSolver callback that cf-framework's
-# build_config_from_params accepts (Go run.go:1410
-# framework.BuildConfigFromParams(params, budget.SolveForBudget)).
+# CoordinatorConfig is the solver's output type; solve_for_budget is the
+# budget-solver callback that cf-framework's build_config_from_params accepts.
 cf-framework = { path = "../cf-framework" }
+thiserror = "1"

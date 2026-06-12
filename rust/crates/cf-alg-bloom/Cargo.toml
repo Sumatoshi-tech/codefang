@@ -1,17 +1,14 @@
-# cf-alg-bloom — Rust port of Go package pkg/alg/bloom.
+# cf-alg-bloom — space-efficient probabilistic set-membership filter (Bloom
+# filter) using the Kirsch–Mitzenmacher (2006) double-hashing technique over an
+# FNV-128a kernel.
 #
-# A space-efficient probabilistic set-membership filter (Bloom filter) using the
-# Kirsch–Mitzenmacher (2006) double-hashing technique over an FNV-128a kernel.
-#
-# This crate is INTERNAL behavior only: per DESIGN.md the bloom filter is used by
-# alg/lru, analyze, cohesion and couples as a membership pre-filter and never
-# appears in any MACHINE-format report. It therefore does NOT depend on the
-# cf-gojson / cf-goyaml byte-compat serialization crates. Its MarshalBinary /
-# UnmarshalBinary on-the-wire layout is reproduced byte-for-byte from the Go
-# implementation (big-endian header + words) for any cross-boundary persisted
-# state, but is not user-visible serialization.
-#
-# Pure std; zero external crates.
+# This crate is INTERNAL behavior only: per DESIGN.md the bloom filter is used
+# by cf-alg-lru, analyze, cohesion and couples as a membership pre-filter and
+# never appears in any MACHINE-format report. It therefore does NOT depend on
+# the cf-gojson / cf-goyaml byte-compat serialization crates. Its to_binary /
+# from_binary on-the-wire layout (big-endian header + words) is a frozen
+# compatibility contract for any cross-boundary persisted state, but is not
+# user-visible serialization.
 [package]
 name = "cf-alg-bloom"
 version.workspace = true
@@ -25,5 +22,6 @@ publish.workspace = true
 unsafe_code = "forbid"
 
 [dependencies]
+thiserror = "1"
 
 [dev-dependencies]

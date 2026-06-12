@@ -1,58 +1,56 @@
 //! System / process memory metrics.
 //!
-//! Port of `internal/observability/sysmetrics.go`.
-//!
-//! The Linux `/proc` parsing ([`read_rss_bytes`], [`read_smaps_rollup`]) is a
-//! faithful, behavior-identical port — same files, same prefixes, same kB→bytes
-//! conversion, same zero-on-error fallback.
+//! The Linux `/proc` parsing ([`read_rss_bytes`], [`read_smaps_rollup`]) reads
+//! the standard files with kB→bytes conversion and a zero-on-error fallback.
 //!
 //! The [`HeapSnapshot`] runtime fields (`heap_inuse`, `heap_alloc`,
-//! `heap_objects`, `stack_inuse`, `next_gc`, `sys`, `num_gc`, `goroutines`) are
-//! Go-runtime concepts (`runtime.MemStats`, `runtime.NumGoroutine`) with no
-//! stable Rust equivalent. These are NOT part of any machine report (DESIGN §3),
-//! so [`take_heap_snapshot`] populates what the OS exposes (RSS + timestamp) and
-//! leaves the Go-runtime-only fields at their documented fallback. See crate todos.
+//! `heap_objects`, `stack_inuse`, `next_gc`, `sys`, `num_gc`, `goroutines`)
+//! come from a managed-runtime memory-stats surface with no stable equivalent
+//! here. They are NOT part of any machine report (DESIGN §3), so
+//! [`take_heap_snapshot`] populates what the OS exposes (RSS + timestamp) and
+//! leaves the runtime-only fields at their documented fallback. See crate
+//! todos.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Bytes per kB in `/proc/self/smaps_rollup` values (Go `bytesPerKB`).
+/// Bytes per kB in `/proc/self/smaps_rollup` values.
 const BYTES_PER_KB: i64 = 1024;
 
-/// Minimum fields required from `/proc/self/statm` to read RSS (Go `statmMinFields`).
+/// Minimum fields required from `/proc/self/statm` to read RSS.
 const STATM_MIN_FIELDS: usize = 2;
 
-/// Process memory stats at a point in time (Go `HeapSnapshot`).
+/// Process memory stats at a point in time.
 ///
-/// Field names mirror the Go struct. Go-runtime-only fields (see module docs)
-/// default to zero on platforms/runtimes that do not expose them.
+/// Runtime-only fields (see module docs) default to zero on platforms/runtimes
+/// that do not expose them.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HeapSnapshot {
-    /// Bytes in in-use heap spans (Go-runtime only; 0 if unavailable).
+    /// Bytes in in-use heap spans (managed-runtime only; 0 if unavailable).
     pub heap_inuse: i64,
-    /// Bytes of allocated heap objects (Go-runtime only; 0 if unavailable).
+    /// Bytes of allocated heap objects (managed-runtime only; 0 if unavailable).
     pub heap_alloc: i64,
-    /// Live heap object count (Go-runtime only; 0 if unavailable).
+    /// Live heap object count (managed-runtime only; 0 if unavailable).
     pub heap_objects: i64,
-    /// Stack memory in use (Go-runtime only; 0 if unavailable).
+    /// Stack memory in use (managed-runtime only; 0 if unavailable).
     pub stack_inuse: i64,
-    /// Target heap size for the next GC cycle (Go-runtime only; 0 if unavailable).
+    /// Target heap size for the next GC cycle (managed-runtime only; 0 if unavailable).
     pub next_gc: i64,
-    /// Total bytes obtained from the OS by the runtime (Go-runtime only).
+    /// Total bytes obtained from the OS by the runtime (managed-runtime only).
     pub sys: i64,
-    /// Resident set size (Go + native memory), from `/proc/self/statm`.
+    /// Resident set size (heap + native memory), from `/proc/self/statm`.
     pub rss: i64,
-    /// Completed GC cycles (Go-runtime only; 0 if unavailable).
+    /// Completed GC cycles (managed-runtime only; 0 if unavailable).
     pub num_gc: u32,
-    /// Number of goroutines (Go-runtime only; 0 if unavailable).
+    /// Number of goroutines (managed-runtime only; 0 if unavailable).
     pub goroutines: i32,
     /// Capture time in Unix nanoseconds.
     pub taken_at_ns: i64,
 }
 
-/// Captures a [`HeapSnapshot`] (Go `TakeHeapSnapshot`).
+/// Captures a [`HeapSnapshot`].
 ///
-/// Reads OS-exposed RSS and the current timestamp. Go-runtime-only fields are
-/// left at zero (see module docs); `sys` is set to `rss` so the Go invariant
+/// Reads OS-exposed RSS and the current timestamp. Runtime-only fields are
+/// left at zero (see module docs); `sys` is set to `rss` so the invariant
 /// `sys >= heap_inuse` (heap_inuse is 0 here) still holds.
 #[must_use]
 pub fn take_heap_snapshot() -> HeapSnapshot {
@@ -65,7 +63,7 @@ pub fn take_heap_snapshot() -> HeapSnapshot {
     }
 }
 
-/// Parsed `/proc/self/smaps_rollup` data (Go `SmapsRollup`).
+/// Parsed `/proc/self/smaps_rollup` data.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SmapsRollup {
     /// Resident set size (bytes).
@@ -86,18 +84,16 @@ pub struct SmapsRollup {
     pub private_dirty: i64,
 }
 
-/// Reads and parses `/proc/self/smaps_rollup` (Go `ReadSmapsRollup`).
+/// Reads and parses `/proc/self/smaps_rollup`.
 ///
 /// Returns a zero [`SmapsRollup`] on non-Linux platforms or on any error.
 #[must_use]
 pub fn read_smaps_rollup() -> SmapsRollup {
-    let content = match std::fs::read_to_string("/proc/self/smaps_rollup") {
-        Ok(c) => c,
-        Err(_) => return SmapsRollup::default(),
+    let Ok(content) = std::fs::read_to_string("/proc/self/smaps_rollup") else {
+        return SmapsRollup::default();
     };
 
     let mut s = SmapsRollup::default();
-    // (prefix, setter) pairs in the same order as the Go targets slice.
     for line in content.lines() {
         if let Some(v) = parse_smaps_kb(line, "Rss:") {
             s.rss = v;
@@ -122,8 +118,8 @@ pub fn read_smaps_rollup() -> SmapsRollup {
 
 /// Extracts a kB value from a smaps line like `"Rss:   1234 kB"`.
 ///
-/// Port of Go `parseSmapsKB`. Returns the value in bytes, or `None` if the line
-/// does not match the prefix or the number does not parse.
+/// Returns the value in bytes, or `None` if the line does not match the prefix
+/// or the number does not parse.
 fn parse_smaps_kb(line: &str, prefix: &str) -> Option<i64> {
     let after = line.strip_prefix(prefix)?;
     let trimmed = after.trim();
@@ -132,15 +128,14 @@ fn parse_smaps_kb(line: &str, prefix: &str) -> Option<i64> {
     Some(v * BYTES_PER_KB)
 }
 
-/// Reads the process RSS from `/proc/self/statm` (Go `ReadRSSBytes`).
+/// Reads the process RSS from `/proc/self/statm`.
 ///
 /// Returns 0 on non-Linux platforms or on error. Field index 1 is resident
 /// pages, multiplied by the OS page size.
 #[must_use]
 pub fn read_rss_bytes() -> i64 {
-    let data = match std::fs::read_to_string("/proc/self/statm") {
-        Ok(d) => d,
-        Err(_) => return 0,
+    let Ok(data) = std::fs::read_to_string("/proc/self/statm") else {
+        return 0;
     };
 
     let fields: Vec<&str> = data.split_whitespace().collect();
@@ -148,22 +143,21 @@ pub fn read_rss_bytes() -> i64 {
         return 0;
     }
 
-    let pages: i64 = match fields[1].parse() {
-        Ok(p) => p,
-        Err(_) => return 0,
+    let Ok(pages) = fields[1].parse::<i64>() else {
+        return 0;
     };
 
     pages * page_size()
 }
 
-/// Returns the OS memory page size in bytes (Go `os.Getpagesize`).
-fn page_size() -> i64 {
+/// Returns the OS memory page size in bytes.
+const fn page_size() -> i64 {
     // 4 KiB is the page size on all Linux targets codefang runs on; this value
     // only scales the RSS reported on Linux (zero on other platforms anyway).
     4096
 }
 
-/// Current time as Unix nanoseconds (Go `time.Now().UnixNano()`).
+/// Current time as Unix nanoseconds.
 fn now_unix_nanos() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -175,7 +169,7 @@ fn now_unix_nanos() -> i64 {
 mod tests {
     use super::*;
 
-    /// Port of Go `TestTakeHeapSnapshot_TimestampIsRecent`.
+    /// Mirrors the reference suite's `TestTakeHeapSnapshot_TimestampIsRecent`.
     #[test]
     fn timestamp_is_recent() {
         let snap = take_heap_snapshot();
@@ -184,7 +178,7 @@ mod tests {
         assert!(snap.taken_at_ns > MIN_TIMESTAMP);
     }
 
-    /// Port of Go `TestReadRSSBytes_NonNegative`.
+    /// Mirrors the reference suite's `TestReadRSSBytes_NonNegative`.
     #[test]
     fn read_rss_bytes_non_negative() {
         let rss = read_rss_bytes();
@@ -193,7 +187,7 @@ mod tests {
         assert!(rss > 0, "RSS should be positive on Linux");
     }
 
-    /// Port of Go `TestReadSmapsRollup_NonNegative`.
+    /// Mirrors the reference suite's `TestReadSmapsRollup_NonNegative`.
     #[test]
     fn read_smaps_rollup_non_negative() {
         let smaps = read_smaps_rollup();
@@ -207,8 +201,8 @@ mod tests {
         let _ = smaps;
     }
 
-    /// Port of Go `TestTakeHeapSnapshot_SysIncludesRuntime` invariant
-    /// (`sys >= heap_inuse`).
+    /// Mirrors the reference suite's `TestTakeHeapSnapshot_SysIncludesRuntime`
+    /// invariant (`sys >= heap_inuse`).
     #[test]
     fn sys_ge_heap_inuse() {
         let snap = take_heap_snapshot();

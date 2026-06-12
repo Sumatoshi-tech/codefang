@@ -4,16 +4,6 @@ use crate::error::Result;
 
 /// Optional interface for analyzers that support checkpointing.
 ///
-/// Ported from Go's `checkpoint.Checkpointable`:
-///
-/// ```go
-/// type Checkpointable interface {
-///     SaveCheckpoint(dir string) error
-///     LoadCheckpoint(dir string) error
-///     CheckpointSize() int64
-/// }
-/// ```
-///
 /// An analyzer that implements this trait can have its state snapshotted to a
 /// directory by the [`Manager`](crate::Manager) and restored later for crash
 /// recovery / incremental resume. The on-disk layout written by
@@ -25,10 +15,18 @@ pub trait Checkpointable {
     ///
     /// `dir` is guaranteed to exist when the manager calls this. The
     /// implementor chooses its own file names within `dir`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`crate::CheckpointError`] if the state cannot be written.
     fn save_checkpoint(&self, dir: &std::path::Path) -> Result<()>;
 
     /// Restores analyzer state from `dir`, previously written by
     /// [`save_checkpoint`](Checkpointable::save_checkpoint).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`crate::CheckpointError`] if the state cannot be read back.
     fn load_checkpoint(&mut self, dir: &std::path::Path) -> Result<()>;
 
     /// Returns the estimated size of the checkpoint in bytes.
@@ -40,7 +38,7 @@ mod tests {
     use super::*;
     use std::path::Path;
 
-    // Mirrors checkpointable_test.go's `mockCheckpointable`.
+    // Mirrors the reference suite's `mockCheckpointable`.
     struct MockCheckpointable {
         data: String,
     }
@@ -62,7 +60,7 @@ mod tests {
         }
     }
 
-    // Ported from TestCheckpointable_Interface (compile-time trait object check).
+    // Mirrors TestCheckpointable_Interface (compile-time trait object check).
     #[test]
     fn implements_checkpointable() {
         let m = MockCheckpointable {
@@ -71,7 +69,7 @@ mod tests {
         let _: &dyn Checkpointable = &m;
     }
 
-    // Ported from TestCheckpointable_SaveLoad.
+    // Mirrors TestCheckpointable_SaveLoad.
     #[test]
     fn save_load_round_trip() {
         let dir = tempfile::tempdir().unwrap();
@@ -87,7 +85,7 @@ mod tests {
         assert_eq!(original.data, restored.data);
     }
 
-    // Ported from TestCheckpointable_Size.
+    // Mirrors TestCheckpointable_Size.
     #[test]
     fn size_reports_byte_length() {
         let m = MockCheckpointable {

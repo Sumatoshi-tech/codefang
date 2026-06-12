@@ -22,8 +22,8 @@ fn main() {
     let mut kept = 0;
     for n in names {
         let ex = exclude(n, None, &opts);
-        println!("{} excluded={}", n, ex);
+        println!("{n} excluded={ex}");
         if !ex { kept += 1; }
     }
-    println!("KEPT = {}", kept);
+    println!("KEPT = {kept}");
 }

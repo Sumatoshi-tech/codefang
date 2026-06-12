@@ -392,7 +392,7 @@ impl Ema {
     /// Mirrors Go's `NewEMA`. The value starts at `0` and is uninitialized
     /// until the first [`update`](Ema::update).
     #[must_use]
-    pub fn new(alpha: f64) -> Self {
+    pub const fn new(alpha: f64) -> Self {
         Self {
             alpha,
             value: 0.0,

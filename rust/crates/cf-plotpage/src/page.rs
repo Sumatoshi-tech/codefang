@@ -1,11 +1,11 @@
-//! Page model + HTML renderer — port of Go `plotpage/plotpage.go`.
+//! Page model + HTML renderer for `--format plot` output.
 
 use crate::components::Renderable;
 use crate::echarts::ChartIdGen;
-use crate::templates::{render_header, render_page, render_section, HeaderData, SCRIPTS_HTML};
+use crate::templates::{render_header, render_page, render_section, HeaderData, PageShell, SCRIPTS_HTML};
 use crate::theme::{get_theme_config, Theme};
 
-/// Chart dimensions and grid margins (Go `plotpage.Style`).
+/// Chart dimensions and grid margins.
 #[derive(Debug, Clone)]
 pub struct Style {
     /// Chart width.
@@ -23,9 +23,9 @@ pub struct Style {
 }
 
 impl Default for Style {
-    /// Go `plotpage.DefaultStyle`.
+    /// The standard chart style.
     fn default() -> Self {
-        Style {
+        Self {
             width: "100%".to_string(),
             height: "500px".to_string(),
             grid_left: "5%".to_string(),
@@ -36,16 +36,16 @@ impl Default for Style {
     }
 }
 
-/// Interpretive guidance for a chart section (Go `plotpage.Hint`).
+/// Interpretive guidance for a chart section.
 #[derive(Debug, Clone, Default)]
 pub struct Hint {
     /// Hint heading (escaped on render).
     pub title: String,
-    /// Hint bullet items — raw HTML, exactly like Go's `template.HTML` items.
+    /// Hint bullet items — raw HTML (pre-trusted `template.HTML` slots).
     pub items: Vec<String>,
 }
 
-/// A chart section within a page (Go `plotpage.Section`).
+/// A chart section within a page.
 pub struct Section {
     /// Section title (escaped).
     pub title: String,
@@ -61,7 +61,7 @@ impl Section {
     /// Convenience constructor for a chart-only section.
     #[must_use]
     pub fn new(title: &str, subtitle: &str, chart: Box<dyn Renderable>, hint: Hint) -> Self {
-        Section {
+        Self {
             title: title.to_string(),
             subtitle: subtitle.to_string(),
             hint,
@@ -70,7 +70,7 @@ impl Section {
     }
 }
 
-/// A complete visualization page (Go `plotpage.Page`).
+/// A complete visualization page.
 pub struct Page {
     /// Page title.
     pub title: String,
@@ -82,8 +82,8 @@ pub struct Page {
     pub project_subtitle: String,
     /// Whether the theme-toggle button is shown.
     pub show_theme_toggle: bool,
-    /// Chart style defaults (kept for Go parity; rendering reads the charts'
-    /// own sizes).
+    /// Chart style defaults (kept for interface parity; rendering reads the
+    /// charts' own sizes).
     pub style: Style,
     /// Color theme.
     pub theme: Theme,
@@ -92,10 +92,10 @@ pub struct Page {
 }
 
 impl Page {
-    /// New page with Go `plotpage.NewPage` defaults.
+    /// New page with the standard defaults.
     #[must_use]
     pub fn new(title: &str, description: &str) -> Self {
-        Page {
+        Self {
             title: title.to_string(),
             description: description.to_string(),
             project_name: "Codefang".to_string(),
@@ -107,28 +107,27 @@ impl Page {
         }
     }
 
-    /// Appends sections (Go `Page.Add`).
+    /// Appends sections.
     pub fn add(&mut self, sections: Vec<Section>) {
         self.sections.extend(sections);
     }
 
-    /// Renders the page as HTML (Go `Page.Render` via `HTMLRenderer`).
+    /// Renders the page as HTML via the default [`HtmlRenderer`].
     #[must_use]
     pub fn render(&self) -> String {
         HtmlRenderer::default().render(self)
     }
 }
 
-/// Renders pages as HTML (Go `plotpage.HTMLRenderer`).
+/// Renders pages as HTML.
 #[derive(Default)]
 pub struct HtmlRenderer {
-    /// Extra CSS appended into the page `<style>` (Go `ExtraCSS`,
-    /// `template.CSS` — raw).
+    /// Extra CSS appended into the page `<style>` (raw `template.CSS` slot).
     pub extra_css: String,
 }
 
 impl HtmlRenderer {
-    /// Renders the page (Go `HTMLRenderer.Render`, plotpage.go:107).
+    /// Renders the page.
     #[must_use]
     pub fn render(&self, page: &Page) -> String {
         let theme_config = get_theme_config(page.theme);
@@ -141,8 +140,9 @@ impl HtmlRenderer {
             show_theme_toggle: page.show_theme_toggle,
         });
 
-        // One deterministic chart-ID sequence per page render (Go draws random
-        // IDs at chart construction; sequence order is identical).
+        // One deterministic chart-ID sequence per page render (the reference
+        // renderer draws random IDs at chart construction; sequence order is
+        // identical).
         let mut ids = ChartIdGen::new();
         let mut sections_html = String::new();
         for section in &page.sections {
@@ -161,21 +161,20 @@ impl HtmlRenderer {
 
         let dark_class = if page.theme == Theme::Dark { "dark" } else { "" };
 
-        render_page(
-            &page.title,
-            &page.project_name,
+        render_page(&PageShell {
+            title: &page.title,
+            project_name: &page.project_name,
             dark_class,
-            &theme_config,
-            &self.extra_css,
-            &header,
-            &sections_html,
-            SCRIPTS_HTML,
-        )
+            theme: &theme_config,
+            extra_css: &self.extra_css,
+            header: &header,
+            content: &sections_html,
+            scripts: SCRIPTS_HTML,
+        })
     }
 }
 
-/// Renders a standalone analyzer page with default settings (Go
-/// `plotpage.RenderAnalyzerPage`).
+/// Renders a standalone analyzer page with default settings.
 #[must_use]
 pub fn render_analyzer_page(title: &str, description: &str, sections: Vec<Section>) -> String {
     let mut page = Page::new(title, description);
@@ -208,10 +207,10 @@ mod tests {
     }
 
     #[test]
-    fn page_shell_matches_go_template_invariants() {
+    fn page_shell_matches_template_invariants() {
         let html = one_chart_page().render();
-        // The html/template-transformed literals (verified against the live
-        // Go binary's plot output).
+        // The html/template-transformed literals (verified against the
+        // reference binary's plot output).
         assert!(html.starts_with("<!doctype html>\n<html class=\"dark\">\n"));
         // CSS comment replaced by one space: 21-space line inside <style>.
         assert!(html.contains("; }\n                     \n                    .tab-panel .container,"));

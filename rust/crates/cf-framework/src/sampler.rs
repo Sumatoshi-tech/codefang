@@ -1,18 +1,15 @@
-//! Periodic pipeline metrics sampler — port of the configuration and
-//! deterministic helpers of `internal/framework/sampler.go`.
+//! Periodic pipeline metrics sampler: configuration and deterministic
+//! helpers.
 //!
-//! The Go `PipelineSampler` periodically logs memory + pipeline metrics during
+//! A [`PipelineSampler`] periodically logs memory + pipeline metrics during
 //! chunk processing and captures `t0`/`t1` heap profiles. The live sampling
-//! loop reads `observability.TakeHeapSnapshot` / `ReadSmapsRollup` (not yet
-//! ported) and writes pprof profiles, so the running loop is a behavior-only
-//! path (no machine-output bytes). What is ported here is everything that is
-//! deterministic and testable without those dependencies:
+//! loop is a behavior-only path (no machine-output bytes); the deterministic
+//! pieces live here:
 //!
 //! - [`SamplerConfig`] (the public config surface),
 //! - the default [`SAMPLER_INTERVAL`],
 //! - the once-only `t1` capture guard ([`PipelineSampler::capture_t1`]),
-//! - the profile-path format string ([`profile_path`]) — byte-identical to Go's
-//!   `fmt.Sprintf("%s/heap_%s_chunk%d.pb.gz", dir, label, chunk)`.
+//! - the profile-path format string ([`profile_path`]).
 //!
 //! The injected logging/profile sink is the [`SamplerSink`] trait so a binary
 //! can wire in the real observability backend; the default sink is a no-op.
@@ -22,17 +19,15 @@ use std::time::Duration;
 
 use crate::stage_metrics::StageMetrics;
 
-/// Default polling interval for the pipeline sampler. Mirrors Go
-/// `samplerInterval` (2 seconds).
+/// Default polling interval for the pipeline sampler (2 seconds).
 pub const SAMPLER_INTERVAL: Duration = Duration::from_secs(2);
 
-/// Divisor for displaying values in thousands. Mirrors Go `kilo`.
+/// Divisor for displaying values in thousands.
 pub const KILO: i64 = 1000;
 
-/// Configures the pipeline sampler. Mirrors Go `framework.SamplerConfig`
-/// (the `Logger`/`Metrics` handles become the injected [`SamplerSink`] and a
-/// borrowed [`StageMetrics`]).
-#[derive(Debug, Clone)]
+/// Configures the pipeline sampler. The logging/metrics handles are the
+/// injected [`SamplerSink`] and a shared [`StageMetrics`].
+#[derive(Debug, Clone, Default)]
 pub struct SamplerConfig {
     /// Directory for heap-profile dumps. Empty disables profile capture.
     pub dump_dir: String,
@@ -46,23 +41,10 @@ pub struct SamplerConfig {
     pub interval: Duration,
 }
 
-impl Default for SamplerConfig {
-    fn default() -> Self {
-        Self {
-            dump_dir: String::new(),
-            chunk_index: 0,
-            mem_budget: 0,
-            profile_at_rss: 0,
-            interval: Duration::ZERO,
-        }
-    }
-}
-
 /// Sink for sampler side effects (structured log lines + profile writes).
 ///
 /// The default [`NoopSink`] discards everything; a binary supplies a real
-/// implementation backed by `tracing` + a pprof writer for behavioral parity
-/// with the Go sampler.
+/// implementation backed by `tracing` + a pprof writer for live sampling.
 pub trait SamplerSink {
     /// Write the `t0`/`t1`/tick log+profile for a given label. `chunk_index` is
     /// 0-based.
@@ -77,11 +59,11 @@ impl SamplerSink for NoopSink {
     fn capture_profile(&self, _dump_dir: &str, _label: &str, _chunk_index: i64) {}
 }
 
-/// Periodically captures pipeline metrics. Mirrors Go `framework.PipelineSampler`.
+/// Periodically captures pipeline metrics.
 ///
-/// The `t1_captured` guard reproduces Go's `atomic.Bool` + `CompareAndSwap`
-/// contract so that at most one `t1` capture wins across the sampler loop and
-/// any concurrent [`capture_t1`](Self::capture_t1) caller.
+/// The `t1_captured` compare-and-swap guard guarantees that at most one `t1`
+/// capture wins across the sampler loop and any concurrent
+/// [`capture_t1`](Self::capture_t1) caller.
 pub struct PipelineSampler {
     metrics: std::sync::Arc<StageMetrics>,
     interval: Duration,
@@ -95,8 +77,8 @@ pub struct PipelineSampler {
 }
 
 impl PipelineSampler {
-    /// Creates a sampler. The `interval` falls back to [`SAMPLER_INTERVAL`] when
-    /// zero, matching Go's `NewPipelineSampler`.
+    /// Creates a sampler. The `interval` falls back to [`SAMPLER_INTERVAL`]
+    /// when zero.
     #[must_use]
     pub fn new(cfg: SamplerConfig, metrics: std::sync::Arc<StageMetrics>) -> Self {
         let interval = if cfg.interval.is_zero() {
@@ -117,7 +99,7 @@ impl PipelineSampler {
 
     /// The effective polling interval.
     #[must_use]
-    pub fn interval(&self) -> Duration {
+    pub const fn interval(&self) -> Duration {
         self.interval
     }
 
@@ -127,8 +109,8 @@ impl PipelineSampler {
         &self.metrics
     }
 
-    /// Captures the `t0` profile via the sink (no-op when `dump_dir` is empty).
-    /// Mirrors the `Start` pre-step `if s.dumpDir != "" { s.captureProfile("t0") }`.
+    /// Captures the `t0` profile via the sink (no-op when `dump_dir` is
+    /// empty); the start-of-loop pre-step.
     pub fn capture_t0<S: SamplerSink>(&self, sink: &S) {
         if self.dump_dir.is_empty() {
             return;
@@ -138,7 +120,7 @@ impl PipelineSampler {
 
     /// Forces capture of the `t1` (peak) profile, exactly once. Safe to call
     /// concurrently with an automatic capture; the CAS guarantees a single
-    /// winner. Mirrors Go `CaptureT1`.
+    /// winner.
     pub fn capture_t1<S: SamplerSink>(&self, sink: &S) {
         if self.dump_dir.is_empty() {
             return;
@@ -160,8 +142,8 @@ impl PipelineSampler {
     }
 }
 
-/// Formats a heap-profile path. Byte-identical to Go's
-/// `fmt.Sprintf("%s/heap_%s_chunk%d.pb.gz", dir, label, chunk)`.
+/// Formats a heap-profile path: `<dir>/heap_<label>_chunk<index>.pb.gz`
+/// (a stable on-disk naming scheme; pinned by tests).
 #[must_use]
 pub fn profile_path(dir: &str, label: &str, chunk_index: i64) -> String {
     format!("{dir}/heap_{label}_chunk{chunk_index}.pb.gz")
@@ -173,7 +155,7 @@ mod tests {
     use std::sync::Arc;
 
     #[test]
-    fn profile_path_matches_go_format() {
+    fn profile_path_matches_reference_format() {
         assert_eq!(
             profile_path("/tmp/dumps", "t0", 3),
             "/tmp/dumps/heap_t0_chunk3.pb.gz"

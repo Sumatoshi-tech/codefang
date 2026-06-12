@@ -1,23 +1,21 @@
-//! Commit-to-tick aggregation and report parsing.
+//! Commit-to-tick aggregation, report parsing, and merge helpers.
 //!
-//! Ports the `AggregateCommitsToTicks` / `ParseTickData*` family from
-//! `internal/analyzers/devs/metrics.go` plus the merge helpers from
-//! `analyzer.go`. All merges are additive and clock-free.
+//! All merges are additive and clock-free.
 
 use std::collections::BTreeMap;
 
 use crate::metrics::TickData;
 use crate::model::{CommitDevData, DevTick, LineStats};
 
-/// One hour in nanoseconds (`time.Hour`).
+/// One hour in nanoseconds.
 const NANOS_PER_HOUR: i64 = 3_600_000_000_000;
-/// Hours per day (`defaultTickHours`).
+/// Hours per day.
 const DEFAULT_TICK_HOURS: i64 = 24;
 
 /// Builds per-tick / per-developer data from per-commit data grouped by the
-/// `commits_by_tick` mapping (`AggregateCommitsToTicks`).
+/// `commits_by_tick` mapping.
 ///
-/// Returns an empty map when either input is empty (Go returns `nil`).
+/// Returns an empty map when either input is empty.
 #[must_use]
 pub fn aggregate_commits_to_ticks(
     commit_dev_data: &BTreeMap<String, CommitDevData>,
@@ -39,8 +37,8 @@ pub fn aggregate_commits_to_ticks(
     result
 }
 
-/// Merges commit-level dev data into per-author [`DevTick`] entries for a single
-/// tick (`aggregateDevTickFromCommits`).
+/// Merges commit-level dev data into per-author [`DevTick`] entries for a
+/// single tick.
 fn aggregate_dev_tick_from_commits(
     hashes: &[String],
     commit_dev_data: &BTreeMap<String, CommitDevData>,
@@ -67,11 +65,10 @@ fn aggregate_dev_tick_from_commits(
     dev_ticks
 }
 
-/// Resolves the tick size from a possibly-zero configured value, mirroring
-/// `parseTickSize`'s default (`defaultTickHours * time.Hour`) for non-positive
-/// inputs.
+/// Resolves the tick size from a possibly-zero configured value, defaulting
+/// to 24 hours for non-positive inputs.
 #[must_use]
-pub fn resolve_tick_size(tick_size: i64) -> i64 {
+pub const fn resolve_tick_size(tick_size: i64) -> i64 {
     if tick_size > 0 {
         tick_size
     } else {
@@ -79,8 +76,8 @@ pub fn resolve_tick_size(tick_size: i64) -> i64 {
     }
 }
 
-/// Builds [`TickData`] from raw inputs, applying the same aggregation +
-/// tick-size default as `ParseTickDataWithPrecision`.
+/// Builds [`TickData`] from raw inputs, applying the standard aggregation and
+/// tick-size default.
 #[must_use]
 pub fn parse_tick_data(
     commit_dev_data: &BTreeMap<String, CommitDevData>,
@@ -105,10 +102,9 @@ pub fn parse_tick_data(
 /// Builds [`TickData`] from raw inputs together with per-tick time bounds.
 ///
 /// Same aggregation + tick-size default as [`parse_tick_data`], plus the
-/// `tick → (start,end)` bounds that `ParseTickDataWithPrecision` copies from
-/// the report's `tick_bounds` key. `tick_bounds` values are the already
-/// Go-`time.RFC3339`-formatted strings (`""` == Go zero time → omitted by the
-/// `start_time,omitempty` / `end_time,omitempty` JSON tags).
+/// `tick → (start,end)` bounds copied from the report's `tick_bounds` key.
+/// `tick_bounds` values are already-RFC3339-formatted strings (`""` == unset
+/// time → omitted from activity/churn records).
 #[must_use]
 pub fn parse_tick_data_with_bounds(
     commit_dev_data: &BTreeMap<String, CommitDevData>,
@@ -122,8 +118,7 @@ pub fn parse_tick_data_with_bounds(
     td
 }
 
-/// Additively merges two `tick → CommitDevData` maps (`mergeState` /
-/// `mergeCommitDevData`).
+/// Additively merges two `commit hash → CommitDevData` maps.
 pub fn merge_dev_data(
     existing: &mut BTreeMap<String, CommitDevData>,
     incoming: &BTreeMap<String, CommitDevData>,
@@ -139,10 +134,10 @@ pub fn merge_dev_data(
 }
 
 /// Accumulates per-commit line stats from per-change stats keyed by blob hash,
-/// resolving each blob's language (`Analyzer.accumulateLineStats`).
+/// resolving each blob's language.
 ///
 /// `changes` is `(blob_hash, LineStats)`; `languages` maps `blob_hash → lang`.
-/// This is the clock-free scoring path used during `Consume`.
+/// This is the clock-free scoring path used while consuming commits.
 pub fn accumulate_line_stats(
     cdd: &mut CommitDevData,
     changes: &[(String, LineStats)],

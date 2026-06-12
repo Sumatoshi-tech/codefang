@@ -1,7 +1,6 @@
 //! Streaming / windowed aggregation over commit history.
 //!
-//! Port of the Go package `internal/streaming`. Provides memory-bounded chunked
-//! execution with analyzer hibernation:
+//! Provides memory-bounded chunked execution with analyzer hibernation:
 //!
 //! - [`Planner`] / [`AdaptivePlanner`] — compute chunk boundaries from a memory
 //!   budget and adaptively re-plan based on observed per-commit growth.
@@ -20,10 +19,10 @@
 //!
 //! # Determinism
 //!
-//! All planning arithmetic is pure integer math on `i64` (Go `int`/`int64`), so
-//! results are identical across platforms. No report serialization happens in
-//! this crate — it produces plans and telemetry, not machine-format output —
-//! so the shared `cf-gojson` / `cf-goyaml` encoders are not needed here.
+//! All planning arithmetic is pure integer math on `i64`, so results are
+//! identical across platforms. No report serialization happens in this crate —
+//! it produces plans and telemetry, not machine-format output — so the shared
+//! `cf-gojson` / `cf-goyaml` encoders are not needed here.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

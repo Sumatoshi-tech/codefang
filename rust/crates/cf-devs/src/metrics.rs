@@ -1,8 +1,7 @@
 //! Metric computation for the devs analyzer.
 //!
-//! Faithful port of `internal/analyzers/devs/metrics.go`. All map iteration that
-//! feeds an ordered result is done over sorted keys so output is deterministic
-//! (Go uses `sort.Slice` / `mapx.SortedKeys`); no wall-clock is consulted.
+//! All map iteration that feeds an ordered result is done over sorted keys so
+//! output is deterministic; no wall-clock is consulted.
 
 use std::collections::BTreeMap;
 
@@ -13,34 +12,34 @@ use crate::model::{
     DeveloperData, DevTick, LanguageData, LanguageStatsEntry, LineStats,
 };
 
-/// HyperLogLog precision for developer cardinality (Go `hllPrecision = 14`).
+/// `HyperLogLog` precision for developer cardinality.
 /// p=14 → 16384 registers, ~0.8% standard error.
 pub const HLL_PRECISION: u8 = 14;
 
-/// CHAOSS contribution-coverage threshold (Go `busFactorThreshold = 0.5`).
+/// CHAOSS contribution-coverage threshold.
 pub const BUS_FACTOR_THRESHOLD: f64 = 0.5;
 
-/// Risk threshold: CRITICAL (Go `ThresholdCritical = 90.0`).
+/// Risk threshold: CRITICAL.
 pub const THRESHOLD_CRITICAL: f64 = 90.0;
-/// Risk threshold: HIGH (Go `ThresholdHigh = 80.0`).
+/// Risk threshold: HIGH.
 pub const THRESHOLD_HIGH: f64 = 80.0;
-/// Risk threshold: MEDIUM (Go `ThresholdMedium = 60.0`).
+/// Risk threshold: MEDIUM.
 pub const THRESHOLD_MEDIUM: f64 = 60.0;
 
-/// Fallback "recent" fraction of the analysis period (Go `ActiveThresholdRatio`).
+/// Fallback "recent" fraction of the analysis period.
 pub const ACTIVE_THRESHOLD_RATIO: f64 = 0.7;
-/// Time-based active-developer window in days (Go `DefaultActiveDays = 90`).
+/// Time-based active-developer window in days.
 pub const DEFAULT_ACTIVE_DAYS: i64 = 90;
-/// Hours per day used in tick math (Go `defaultTickHours = 24`).
+/// Hours per day used in tick math.
 pub const DEFAULT_TICK_HOURS: i64 = 24;
 
-/// One hour expressed in nanoseconds, matching Go's `time.Hour`.
+/// One hour expressed in nanoseconds.
 const NANOS_PER_HOUR: i64 = 3_600_000_000_000;
 
-/// Configurable thresholds for devs metric computation (`MetricOptions`).
+/// Configurable thresholds for devs metric computation.
 ///
-/// Zero-valued fields mean "use the package-level default" exactly as Go does
-/// (the analyzer stores configured overrides as zero when unset).
+/// Zero-valued fields mean "use the crate-level default" (the analyzer stores
+/// configured overrides as zero when unset).
 #[derive(Debug, Clone, Copy)]
 pub struct MetricOptions {
     /// Bus-factor coverage threshold (fraction).
@@ -60,9 +59,8 @@ pub struct MetricOptions {
 }
 
 impl Default for MetricOptions {
-    /// Mirrors `DefaultMetricOptions()`.
     fn default() -> Self {
-        MetricOptions {
+        Self {
             bus_factor_threshold: BUS_FACTOR_THRESHOLD,
             risk_threshold_critical: THRESHOLD_CRITICAL,
             risk_threshold_high: THRESHOLD_HIGH,
@@ -74,8 +72,8 @@ impl Default for MetricOptions {
     }
 }
 
-/// Parsed input for metric computation (`TickData`), already aggregated to
-/// per-tick / per-developer granularity.
+/// Parsed input for metric computation, already aggregated to per-tick /
+/// per-developer granularity.
 #[derive(Debug, Clone, Default)]
 pub struct TickData {
     /// `tick → (dev id → DevTick)`.
@@ -84,56 +82,41 @@ pub struct TickData {
     pub names: Vec<String>,
     /// Tick size in nanoseconds (`time.Duration`).
     pub tick_size: i64,
-    /// `tick → (start_time, end_time)` already formatted as Go
-    /// `time.RFC3339` strings (empty string == Go zero time, i.e. omit).
+    /// `tick → (start_time, end_time)` already formatted as RFC3339 strings
+    /// (empty string == zero/unset time, i.e. omit).
     ///
-    /// Port of `TickData.TickBounds map[int]analyze.TickBounds` combined with
-    /// `TickBounds.FormatStartTime/FormatEndTime` (the metrics layer only ever
-    /// reads the formatted strings). When a tick has no entry, activity/churn
-    /// emit no `start_time`/`end_time` (their `omitempty` JSON tags), exactly
-    /// as Go does when `input.TickBounds[tick]` is absent.
+    /// The metrics layer only ever reads the pre-formatted strings. When a
+    /// tick has no entry, activity/churn emit no `start_time`/`end_time`
+    /// (those report fields are omit-when-empty).
     pub tick_bounds: BTreeMap<i64, TickBounds>,
 }
 
-/// Pre-formatted time boundaries of a single tick (port of
-/// `analyze.TickBounds` *after* `FormatStartTime`/`FormatEndTime`).
+/// Pre-formatted time boundaries of a single tick.
 ///
-/// Each field holds the Go `time.RFC3339` rendering of the corresponding
-/// `time.Time`, or the empty string when that time was the Go zero value
-/// (`FormatStartTime`/`FormatEndTime` return `""` for a zero time, which the
-/// `start_time,omitempty` / `end_time,omitempty` JSON tags then drop).
+/// Each field holds the RFC3339 rendering of the corresponding instant, or
+/// the empty string when that time was unset (an empty string is dropped from
+/// the report via the omit-when-empty rule).
 #[derive(Debug, Clone, Default)]
 pub struct TickBounds {
-    /// Formatted start time (`FormatStartTime`), or `""` for a zero time.
+    /// Formatted start time, or `""` for an unset time.
     pub start_time: String,
-    /// Formatted end time (`FormatEndTime`), or `""` for a zero time.
+    /// Formatted end time, or `""` for an unset time.
     pub end_time: String,
 }
 
-/// Converts a developer id to the deterministic byte slice HLL hashes
-/// (Go `devIDBytes` = `strconv.AppendInt(nil, id, 10)` = decimal ASCII).
+/// Converts a developer id to the deterministic byte slice the HLL sketch
+/// hashes (decimal ASCII; part of the cardinality-estimate contract).
 #[must_use]
 pub fn dev_id_bytes(id: i64) -> Vec<u8> {
     id.to_string().into_bytes()
 }
 
-/// Resolves the absolute value of a float (helper used in accuracy tests).
-#[must_use]
-fn abs64(x: f64) -> f64 {
-    if x < 0.0 {
-        -x
-    } else {
-        x
-    }
-}
-
-/// Computes per-developer statistics (`DevelopersMetric.Compute`).
+/// Computes per-developer statistics.
 ///
 /// Aggregates across all ticks, finalizes net lines + sorted languages, then
-/// sorts developers by commit count descending. Go's `sort.Slice` is not stable;
-/// to keep deterministic byte output we break ties by developer id ascending,
-/// which matches the Go reference for the disjoint-key inputs exercised in the
-/// golden manifest (see DESIGN §6 / todos).
+/// sorts developers by commit count descending. Ties are broken by developer
+/// id ascending for deterministic byte output, which matches the reference
+/// binary for the disjoint-key inputs exercised in the golden manifest.
 #[must_use]
 pub fn compute_developers(input: &TickData) -> Vec<DeveloperData> {
     // dev id → (developer accumulator, internal per-language map).
@@ -191,8 +174,8 @@ pub fn compute_developers(input: &TickData) -> Vec<DeveloperData> {
     result
 }
 
-/// Converts an internal per-language map into a sorted `Vec`
-/// (`DeveloperData.finalizeLanguages`). Empty language name → `"Other"`.
+/// Converts an internal per-language map into a sorted `Vec`.
+/// Empty language name → `"Other"`.
 fn finalize_languages(lang_map: &BTreeMap<String, LineStats>) -> Vec<LanguageStatsEntry> {
     if lang_map.is_empty() {
         return Vec::new();
@@ -219,7 +202,7 @@ fn finalize_languages(lang_map: &BTreeMap<String, LineStats>) -> Vec<LanguageSta
     out
 }
 
-/// Computes per-language statistics (`LanguagesMetric.Compute`).
+/// Computes per-language statistics.
 ///
 /// Sorted by total lines descending; ties broken by name ascending for
 /// determinism.
@@ -252,7 +235,7 @@ pub fn compute_languages(developers: &[DeveloperData]) -> Vec<LanguageData> {
     result
 }
 
-/// Input for bus-factor computation (`BusFactorInput`).
+/// Input for bus-factor computation.
 pub struct BusFactorInput<'a> {
     /// Per-language data.
     pub languages: &'a [LanguageData],
@@ -260,11 +243,13 @@ pub struct BusFactorInput<'a> {
     pub names: &'a [String],
 }
 
-/// Computes bus-factor risk per language (`BusFactorMetric.ComputeWithOptions`).
+/// Computes bus-factor risk per language.
 ///
-/// Sorted by risk priority ascending (CRITICAL first). Ties broken by language
-/// name ascending for determinism.
+/// Sorted by risk priority ascending (CRITICAL first); see the tie-handling
+/// notes inline (the sort is intentionally unstable to match the reference
+/// binary's permutation).
 #[must_use]
+#[allow(clippy::cast_precision_loss)] // contractual float math on line counts
 pub fn compute_bus_factor(input: &BusFactorInput, opts: &MetricOptions) -> Vec<BusFactorData> {
     let mut result: Vec<BusFactorData> = Vec::with_capacity(input.languages.len());
 
@@ -273,11 +258,11 @@ pub fn compute_bus_factor(input: &BusFactorInput, opts: &MetricOptions) -> Vec<B
             continue;
         }
 
-        // (id, lines) sorted descending by lines via Go sort.Slice (pdqsort,
-        // unstable). The contributor input order is the BTreeMap id-ascending
-        // order (deterministic; a correctness improvement over Go's random map
-        // iteration, which only affects the order of equal-line contributors —
-        // and Go's output is itself nondeterministic on such ties).
+        // (id, lines) sorted descending by lines via the unstable pdqsort port
+        // (reference-implementation behavior, pinned by the differential gate).
+        // The contributor input order is the BTreeMap id-ascending order
+        // (deterministic; this only affects the order of equal-line
+        // contributors, where the reference binary is itself nondeterministic).
         let mut contribs: Vec<(i64, i64)> =
             ld.contributors.iter().map(|(&id, &lines)| (id, lines)).collect();
         cf_gosort::go_sort_slice(&mut contribs, |a, b| a.1 > b.1);
@@ -325,9 +310,9 @@ pub fn compute_bus_factor(input: &BusFactorInput, opts: &MetricOptions) -> Vec<B
         result.push(bf);
     }
 
-    // Go: sort.Slice(result, byRiskPriority) — an UNSTABLE pdqsort keyed ONLY on
-    // risk priority (no secondary key). The exact tie permutation (equal-priority
-    // runs) is reproduced via the Go-`sort.Slice` port over the same input order
+    // An UNSTABLE pdqsort keyed ONLY on risk priority (no secondary key).
+    // The exact tie permutation (equal-priority runs) reproduces the reference
+    // binary by running the same unstable sort over the same input order
     // (the `input.languages` slice order, total_lines desc).
     cf_gosort::go_sort_slice(&mut result, |a, b| {
         let pa = cf_metrics::risk_priority(&cf_metrics::RiskLevel::from(a.risk_level.as_str()));
@@ -338,8 +323,9 @@ pub fn compute_bus_factor(input: &BusFactorInput, opts: &MetricOptions) -> Vec<B
 }
 
 /// Smallest number of (descending-sorted) contributors covering at least
-/// `threshold` of `total` (`computeBusFactorFromSortedWithThreshold`).
+/// `threshold` of `total`.
 #[must_use]
+#[allow(clippy::cast_precision_loss)] // contractual float math on line counts
 pub fn compute_bus_factor_from_sorted(sorted: &[i64], total: i64, threshold: f64) -> i64 {
     if total == 0 || sorted.is_empty() {
         return 0;
@@ -358,7 +344,7 @@ pub fn compute_bus_factor_from_sorted(sorted: &[i64], total: i64, threshold: f64
     i64::try_from(sorted.len()).unwrap_or(i64::MAX)
 }
 
-/// Computes per-tick activity time series (`ActivityMetric.Compute`).
+/// Computes the per-tick activity time series.
 ///
 /// Ordered by tick ascending; developers within a tick ordered by id ascending.
 #[must_use]
@@ -380,8 +366,8 @@ pub fn compute_activity(input: &TickData) -> Vec<ActivityData> {
         }
 
         if let Some(bounds) = input.tick_bounds.get(&tick) {
-            ad.start_time = bounds.start_time.clone();
-            ad.end_time = bounds.end_time.clone();
+            ad.start_time.clone_from(&bounds.start_time);
+            ad.end_time.clone_from(&bounds.end_time);
         }
 
         result.push(ad);
@@ -390,7 +376,7 @@ pub fn compute_activity(input: &TickData) -> Vec<ActivityData> {
     result
 }
 
-/// Computes per-tick churn time series (`ChurnMetric.Compute`).
+/// Computes the per-tick churn time series.
 ///
 /// Ordered by tick ascending.
 #[must_use]
@@ -411,8 +397,8 @@ pub fn compute_churn(input: &TickData) -> Vec<ChurnData> {
         cd.net = cd.added - cd.removed;
 
         if let Some(bounds) = input.tick_bounds.get(&tick) {
-            cd.start_time = bounds.start_time.clone();
-            cd.end_time = bounds.end_time.clone();
+            cd.start_time.clone_from(&bounds.start_time);
+            cd.end_time.clone_from(&bounds.end_time);
         }
 
         result.push(cd);
@@ -421,7 +407,7 @@ pub fn compute_churn(input: &TickData) -> Vec<ChurnData> {
     result
 }
 
-/// Input for aggregate computation (`AggregateInput`).
+/// Input for aggregate computation.
 pub struct AggregateInput<'a> {
     /// Per-developer data.
     pub developers: &'a [DeveloperData],
@@ -433,7 +419,7 @@ pub struct AggregateInput<'a> {
     pub tick_size: i64,
 }
 
-/// Computes aggregate summary statistics (`AggregateMetric.ComputeWithOptions`).
+/// Computes aggregate summary statistics.
 #[must_use]
 pub fn compute_aggregate(input: &AggregateInput, opts: &MetricOptions) -> AggregateData {
     let mut agg = AggregateData {
@@ -455,7 +441,7 @@ pub fn compute_aggregate(input: &AggregateInput, opts: &MetricOptions) -> Aggreg
     }
 
     if !input.ticks.is_empty() {
-        // Sorted keys → last is max tick (Go `mapx.SortedKeys`).
+        // Sorted keys → last is max tick.
         let max_tick = *input.ticks.keys().next_back().unwrap_or(&0);
         agg.analysis_period_ticks = max_tick;
 
@@ -483,9 +469,8 @@ pub fn compute_aggregate(input: &AggregateInput, opts: &MetricOptions) -> Aggreg
     agg
 }
 
-/// Builds an HLL sketch over all developer ids
-/// (`buildTotalDevSketchWithPrecision`). Returns `None` for empty input,
-/// matching Go (no sketch → estimate stays 0).
+/// Builds an HLL sketch over all developer ids. Returns `None` for empty
+/// input (no sketch → estimate stays 0).
 fn build_total_dev_sketch(developers: &[DeveloperData], precision: u8) -> Option<Sketch> {
     if developers.is_empty() {
         return None;
@@ -498,9 +483,8 @@ fn build_total_dev_sketch(developers: &[DeveloperData], precision: u8) -> Option
     Some(sketch)
 }
 
-/// Builds an HLL sketch over active developer ids
-/// (`buildActiveDevSketchWithPrecision`). Unlike the total sketch this is built
-/// even when no tick qualifies (Go returns a non-nil empty sketch → estimate 0).
+/// Builds an HLL sketch over active developer ids. Unlike the total sketch
+/// this is built even when no tick qualifies (an empty sketch → estimate 0).
 fn build_active_dev_sketch(
     ticks: &BTreeMap<i64, BTreeMap<i64, DevTick>>,
     threshold: i64,
@@ -517,14 +501,16 @@ fn build_active_dev_sketch(
     Some(sketch)
 }
 
-/// Returns the active-window tick threshold (`computeActiveThresholdWithOptions`).
+/// Returns the active-window tick threshold.
 #[must_use]
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+// The ratio fallback's truncating float→int round-trip is part of the
+// reference-implementation behavior (pinned by the differential gate).
 pub fn compute_active_threshold(max_tick: i64, tick_size: i64, opts: &MetricOptions) -> i64 {
     if tick_size > 0 {
         let active_days = opts.default_active_days;
-        // time.Duration(activeDays) * defaultTickHours * time.Hour
         let active_duration = active_days * DEFAULT_TICK_HOURS * NANOS_PER_HOUR;
-        let ticks_for_active = active_duration / tick_size; // integer division (Go int())
+        let ticks_for_active = active_duration / tick_size; // integer division
         let threshold = max_tick - ticks_for_active;
         if threshold < 0 {
             return 0;
@@ -532,11 +518,11 @@ pub fn compute_active_threshold(max_tick: i64, tick_size: i64, opts: &MetricOpti
         return threshold;
     }
 
-    // Ratio fallback: int(float64(maxTick) * ratio) truncates toward zero.
+    // Ratio fallback: the float product truncates toward zero.
     (max_tick as f64 * opts.active_threshold_ratio) as i64
 }
 
-/// Computes the project-wide bus factor (`computeProjectBusFactorWithThreshold`).
+/// Computes the project-wide bus factor.
 #[must_use]
 pub fn compute_project_bus_factor(developers: &[DeveloperData], threshold: f64) -> i64 {
     if developers.is_empty() {
@@ -545,7 +531,7 @@ pub fn compute_project_bus_factor(developers: &[DeveloperData], threshold: f64) 
 
     let mut contribs: Vec<i64> = developers.iter().map(|d| d.added + d.removed).collect();
     let total: i64 = contribs.iter().sum();
-    // Descending sort (Go sorts contribution amounts only).
+    // Descending sort over contribution amounts only.
     contribs.sort_by(|a, b| b.cmp(a));
 
     compute_bus_factor_from_sorted(&contribs, total, threshold)
@@ -553,15 +539,17 @@ pub fn compute_project_bus_factor(developers: &[DeveloperData], threshold: f64) 
 
 /// Resolves an HLL estimate's relative error against an exact count (test util).
 #[must_use]
+#[allow(clippy::cast_precision_loss)] // test utility; counts are small
 pub fn relative_error(estimated: u64, exact: u64) -> f64 {
-    abs64(estimated as f64 - exact as f64) / exact as f64
+    (estimated as f64 - exact as f64).abs() / exact as f64
 }
 
-/// Resolves a developer's display name and email (`devNameAndEmail`).
+/// Resolves a developer's display name and email.
 ///
-/// `AuthorMissing` → `(AuthorMissingName, "")`; in-range id → split identity;
-/// out-of-range id → `("dev_<id>", "")`.
+/// `AUTHOR_MISSING` → `(AUTHOR_MISSING_NAME, "")`; in-range id → split
+/// identity; out-of-range id → `("dev_<id>", "")`.
 #[must_use]
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // 0 <= id < len checked
 pub fn dev_name_and_email(id: i64, names: &[String]) -> (String, String) {
     if id == i64::from(cf_identity::AUTHOR_MISSING) {
         return (cf_identity::AUTHOR_MISSING_NAME.to_string(), String::new());
@@ -574,7 +562,7 @@ pub fn dev_name_and_email(id: i64, names: &[String]) -> (String, String) {
     (format!("dev_{id}"), String::new())
 }
 
-/// Runs all devs metrics in dependency order (`ComputeAllMetricsWithOptions`).
+/// Runs all devs metrics in dependency order.
 #[must_use]
 pub fn compute_all_metrics(input: &TickData, opts: &MetricOptions) -> ComputedMetrics {
     let developers = compute_developers(input);

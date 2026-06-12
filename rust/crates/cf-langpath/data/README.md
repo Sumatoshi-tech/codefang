@@ -2,9 +2,9 @@
 
 This is a verbatim, machine-extracted snapshot of the three Linguist data tables
 that `github.com/src-d/enry/v2 v2.1.0` generates and embeds in its `data`
-package. It is the **same** data the Go `codefang` binary links, vendored here so
-`cf-langpath`'s language→glob classification is byte-for-byte identical
-(DESIGN §2.6, port rule 7). Nothing in this file is hand-written.
+package. It is the **same** data the reference `codefang` binary links, vendored
+here so `cf-langpath`'s language→glob classification is byte-for-byte identical
+(DESIGN §2.6). Nothing in this file is hand-written.
 
 ## Tables captured
 

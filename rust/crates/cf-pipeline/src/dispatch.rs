@@ -1,14 +1,12 @@
-//! Dispatch-strategy alias (`dispatch.go`).
+//! Dispatch-strategy alias.
 
 use crate::context::Ctx;
 
 /// Sends a request to a worker pool.
 ///
-/// In Go this is `DispatchFunc[Req] func(ctx context.Context, req Req) error`.
-/// The worker channel is captured in the closure, keeping the dispatch strategy
-/// decoupled from request semantics. The `Box<dyn Fn ...>` form lets callers
-/// store heterogeneous dispatch closures behind a single type, mirroring how Go
-/// passes a `DispatchFunc` value around.
+/// The worker channel is captured in the closure, keeping the dispatch
+/// strategy decoupled from request semantics. The `Box<dyn Fn ...>` form lets
+/// callers store heterogeneous dispatch closures behind a single type.
 pub type DispatchFunc<Req> =
     Box<dyn Fn(&Ctx, Req) -> Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync>;
 

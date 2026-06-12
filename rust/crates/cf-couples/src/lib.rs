@@ -1,8 +1,8 @@
 //! `cf-couples` — file/developer co-change coupling analysis.
 //!
-//! Port of the Go package `internal/analyzers/couples` (analyzer id
-//! `history/couples`, non-sequential / parallelizable). From the commit history
-//! it derives two co-occurrence ("coupling") matrices and per-file ownership:
+//! Implements the `history/couples` analyzer (non-sequential /
+//! parallelizable). From the commit history it derives two co-occurrence
+//! ("coupling") matrices and per-file ownership:
 //!
 //! - **File coupling** — how often a pair of files changed in the same commit
 //!   ([`matrix::compute_files_matrix`], [`metrics::compute_file_coupling`]).
@@ -19,17 +19,16 @@
 //!
 //! ## Determinism and byte-identity
 //!
-//! All index assignment flows from byte-sorted name lists ([`sort.Strings`]
-//! semantics), so the matrices, sequences, and report are reproducible.
-//! Per-commit author-file maps only ever store a count of `1` and accumulate
-//! additively, so map iteration order is irrelevant to the result. The HLL
-//! sketch is the bit-identical reimplementation from `pkg/alg/hll`.
+//! All index assignment flows from byte-sorted name lists, so the matrices,
+//! sequences, and report are reproducible. Per-commit author-file maps only
+//! ever store a count of `1` and accumulate additively, so map iteration
+//! order is irrelevant to the result. The HLL sketch ([`cf_alg_hll`]) is
+//! bit-identical to the reference implementation.
 //!
 //! Machine-format report bytes (json/yaml/ndjson/timeseries/compact/bin) are
-//! produced via [`cf_gojson`] in [`report`]; this crate never uses `serde_json`
-//! for output. See `specs/rust-rewrite/DESIGN.md` §2.
-//!
-//! [`sort.Strings`]: https://pkg.go.dev/sort#Strings
+//! produced via [`cf_gojson`] in [`report`]; this crate never uses
+//! `serde_json` for output. Compatibility: output bytes are pinned against
+//! the reference implementation by `rust/tests/compat`.
 
 #![forbid(unsafe_code)]
 
@@ -41,7 +40,7 @@ pub mod report_section;
 pub mod store;
 pub mod tc;
 
-/// Analyzer descriptor constants (`history.go` `Descriptor`).
+/// Analyzer descriptor constants.
 pub mod descriptor {
     /// Analyzer id.
     pub const ID: &str = "history/couples";
@@ -50,13 +49,13 @@ pub mod descriptor {
 the pair of files appeared in the same commit or pair of developers committed to the same file.";
     /// The analyzer is NOT sequential-only (it can be parallelized).
     pub const SEQUENTIAL: bool = false;
-    /// Analyzer name (`Name()`).
+    /// Analyzer name.
     pub const NAME: &str = "Couples";
-    /// CLI flag (`Flag()`).
+    /// CLI flag.
     pub const FLAG: &str = "couples";
 }
 
-/// Configuration option keys (`history.go` `ConfigCouples*`).
+/// Configuration option keys.
 pub mod config {
     pub const COUPLING_THRESHOLD_HIGH: &str = "Couples.CouplingThresholdHigh";
     pub const OWNERSHIP_FEW_THRESHOLD: &str = "Couples.OwnershipFewThreshold";
@@ -67,14 +66,14 @@ pub mod config {
     pub const MIN_EDGE_WEIGHT: &str = "Couples.MinEdgeWeight";
 }
 
-/// Maximum number of files in a commit to consider for coupling analysis
-/// (Go: `CouplesMaximumMeaningfulContextSize`). Larger changesets are bulk
-/// operations (vendor updates, mass renames, formatting) that produce noise.
+/// Maximum number of files in a commit to consider for coupling analysis.
+/// Larger changesets are bulk operations (vendor updates, mass renames,
+/// formatting) that produce noise.
 pub const COUPLES_MAXIMUM_MEANINGFUL_CONTEXT_SIZE: usize = 200;
 
-/// Splits an identity string `"name|email"` into its components
-/// (Go: `identity.SplitIdentity`). Thin re-export over [`cf_identity`] so the
-/// crate's metric code can call `crate::split_identity`.
+/// Splits an identity string `"name|email"` into its components.
+/// Thin re-export over [`cf_identity`] so the crate's metric code can call
+/// `crate::split_identity`.
 #[must_use]
 pub fn split_identity(s: &str) -> (String, String) {
     cf_identity::split_identity(s)

@@ -6,6 +6,6 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "Unit/quantity helpers (binary size multipliers) ported from Go pkg/units."
+description = "Unit/quantity helpers (binary size multipliers: KiB, MiB, GiB)."
 
 [dependencies]

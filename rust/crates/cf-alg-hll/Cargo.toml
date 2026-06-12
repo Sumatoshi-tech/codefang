@@ -1,18 +1,16 @@
-# cf-alg-hll — Rust port of Go package pkg/alg/hll.
-#
-# A HyperLogLog cardinality estimator with LogLog-Beta bias correction
-# (Qin et al. 2016). Used by the couples and devs analyzers to count distinct
-# items (developers, files, tokens) in fixed memory.
+# cf-alg-hll — HyperLogLog cardinality estimator with LogLog-Beta bias
+# correction (Qin et al. 2016). Used by the couples and devs analyzers to count
+# distinct items (developers, files, tokens) in fixed memory.
 #
 # This crate is INTERNAL numeric behavior: per DESIGN.md §2.6 ("Sketch/hash
-# determinism") its estimates are reproduced bit-identically from the Go
-# implementation because they appear in MACHINE-format reports whose byte
-# identity is the project goal. The hashing kernel is the shared, bit-identical
-# cf-alg-hashutil (FNV-1a -> Mix64), so the same byte input maps to the same
-# register exactly as in Go. This crate emits no report serialization itself, so
-# it does NOT depend on cf-gojson / cf-goyaml. Its MarshalBinary/UnmarshalBinary
-# state codec ([precision][registers]) is reproduced byte-for-byte for any
-# cross-boundary persisted state but is not user-visible output.
+# determinism") its estimates are a frozen contract because they appear in
+# MACHINE-format reports pinned by the differential gate (rust/tests/compat).
+# The hashing kernel is the shared cf-alg-hashutil (FNV-1a -> Mix64), so the
+# same byte input always maps to the same register. This crate emits no report
+# serialization itself, so it does NOT depend on cf-gojson / cf-goyaml. Its
+# marshal_binary/unmarshal_binary state codec ([precision][registers]) is
+# frozen for any cross-boundary persisted state but is not user-visible
+# output.
 [package]
 name = "cf-alg-hll"
 version.workspace = true
@@ -21,10 +19,11 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "HyperLogLog cardinality estimator (LogLog-Beta). Port of the Go pkg/alg/hll package. Estimates are bit-identical to Go for byte-identity of machine reports."
+description = "HyperLogLog cardinality estimator (LogLog-Beta). Estimates are bit-stable: they feed machine reports pinned by the differential gate."
 
 [lints.rust]
 unsafe_code = "forbid"
 
 [dependencies]
 cf-alg-hashutil = { path = "../cf-alg-hashutil" }
+thiserror = "1"

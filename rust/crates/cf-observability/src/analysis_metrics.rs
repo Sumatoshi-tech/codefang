@@ -1,8 +1,8 @@
 //! Analysis-specific metrics (commits, chunks, cache hits/misses).
 //!
-//! Port of `internal/observability/analysis_metrics.go`. Instrument names,
-//! units, descriptions, and the `cache` attribute values (`"blob"` / `"diff"`)
-//! match the Go source exactly.
+//! Instrument names, units, descriptions, and the `cache` attribute values
+//! (`"blob"` / `"diff"`) are part of the telemetry contract — dashboards and
+//! alerts key on them, so they must not change.
 
 use std::time::Duration;
 
@@ -11,17 +11,17 @@ use opentelemetry::KeyValue;
 
 use crate::metric_builder::{build_metrics, MetricBuildError};
 
-// Instrument names (Go consts).
+// Instrument names (telemetry contract).
 const METRIC_COMMITS_TOTAL: &str = "codefang.analysis.commits.total";
 const METRIC_CHUNKS_TOTAL: &str = "codefang.analysis.chunks.total";
 const METRIC_CHUNK_DURATION: &str = "codefang.analysis.chunk.duration.seconds";
 const METRIC_CACHE_HITS_TOTAL: &str = "codefang.analysis.cache.hits.total";
 const METRIC_CACHE_MISSES_TOTAL: &str = "codefang.analysis.cache.misses.total";
 
-/// Attribute key partitioning cache metrics by cache type (Go `attrCache`).
+/// Attribute key partitioning cache metrics by cache type.
 const ATTR_CACHE: &str = "cache";
 
-/// OTel instruments for analysis-specific metrics (Go `AnalysisMetrics`).
+/// OTel instruments for analysis-specific metrics.
 pub struct AnalysisMetrics {
     commits_total: Counter<u64>,
     chunks_total: Counter<u64>,
@@ -30,8 +30,7 @@ pub struct AnalysisMetrics {
     cache_misses: Counter<u64>,
 }
 
-/// Statistics for a single streaming run, decoupled from framework types
-/// (Go `AnalysisStats`).
+/// Statistics for a single streaming run, decoupled from framework types.
 #[derive(Debug, Clone, Default)]
 pub struct AnalysisStats {
     /// Number of commits analyzed.
@@ -51,13 +50,13 @@ pub struct AnalysisStats {
 }
 
 impl AnalysisMetrics {
-    /// Creates analysis metric instruments (Go `NewAnalysisMetrics`).
+    /// Creates the analysis metric instruments.
     ///
     /// # Errors
     ///
     /// Returns the first instrument-build error.
     pub fn new(meter: &Meter) -> Result<Self, MetricBuildError> {
-        build_metrics(meter, |b| AnalysisMetrics {
+        build_metrics(meter, |b| Self {
             commits_total: b
                 .meter
                 .u64_counter(METRIC_COMMITS_TOTAL)
@@ -96,11 +95,10 @@ impl AnalysisMetrics {
 
     /// Records analysis statistics for a completed streaming run.
     ///
-    /// Port of Go `RecordRun`. The Go method is a no-op on a nil receiver; the
-    /// Rust analogue is [`AnalysisMetrics::record_run_opt`] for the `Option`
-    /// case. Counters mirror Go: commits/chunks as totals, one histogram
-    /// observation per chunk duration, and blob/diff cache hit/miss counters
-    /// tagged with `cache=blob` / `cache=diff`.
+    /// Emits commits/chunks as counter totals, one histogram observation per
+    /// chunk duration, and blob/diff cache hit/miss counters tagged with
+    /// `cache=blob` / `cache=diff`. For callers holding an optional recorder,
+    /// use [`AnalysisMetrics::record_run_opt`].
     pub fn record_run(&self, stats: &AnalysisStats) {
         self.commits_total.add(saturating_u64(stats.commits), &[]);
         self.chunks_total.add(saturating_u64(i64::from(stats.chunks)), &[]);
@@ -120,19 +118,17 @@ impl AnalysisMetrics {
             .add(saturating_u64(stats.diff_cache_misses), &diff_attrs);
     }
 
-    /// `Option`-aware variant of [`AnalysisMetrics::record_run`].
-    ///
-    /// Reproduces the Go "safe to call on a nil receiver (no-op)" behavior:
-    /// `None` is a no-op, `Some(m)` delegates to [`AnalysisMetrics::record_run`].
-    pub fn record_run_opt(this: Option<&AnalysisMetrics>, stats: &AnalysisStats) {
+    /// `Option`-aware variant of [`AnalysisMetrics::record_run`]: `None` is a
+    /// no-op, `Some(m)` delegates to [`AnalysisMetrics::record_run`].
+    pub fn record_run_opt(this: Option<&Self>, stats: &AnalysisStats) {
         if let Some(m) = this {
             m.record_run(stats);
         }
     }
 }
 
-/// Converts a signed Go count to the unsigned counter delta the OTel Rust API
-/// expects, clamping negatives to 0 (Go counters never receive negatives here).
+/// Converts a signed count to the unsigned counter delta the OTel API expects,
+/// clamping negatives to 0 (these counters never legitimately go negative).
 fn saturating_u64(v: i64) -> u64 {
     u64::try_from(v).unwrap_or(0)
 }
@@ -146,14 +142,15 @@ mod tests {
         NoopMeterProvider::new().meter("test")
     }
 
-    /// Port of Go `TestNewAnalysisMetrics`.
+    /// Mirrors the reference suite's `TestNewAnalysisMetrics`.
     #[test]
     fn new_analysis_metrics() {
         let am = AnalysisMetrics::new(&noop_meter());
         assert!(am.is_ok());
     }
 
-    /// Port of Go `TestAnalysisMetrics_RecordRun` (does not panic; 3 durations).
+    /// Mirrors the reference suite's `TestAnalysisMetrics_RecordRun` (does not
+    /// panic; 3 durations).
     #[test]
     fn record_run() {
         let am = AnalysisMetrics::new(&noop_meter()).unwrap();
@@ -172,7 +169,7 @@ mod tests {
         });
     }
 
-    /// Port of Go `TestAnalysisMetrics_RecordRun_NilReceiver`.
+    /// Mirrors the reference suite's `TestAnalysisMetrics_RecordRun_NilReceiver`.
     #[test]
     fn record_run_nil_receiver() {
         let none: Option<&AnalysisMetrics> = None;
@@ -187,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn metric_names_match_go() {
+    fn metric_names_match_contract() {
         assert_eq!(METRIC_COMMITS_TOTAL, "codefang.analysis.commits.total");
         assert_eq!(METRIC_CHUNKS_TOTAL, "codefang.analysis.chunks.total");
         assert_eq!(METRIC_CHUNK_DURATION, "codefang.analysis.chunk.duration.seconds");

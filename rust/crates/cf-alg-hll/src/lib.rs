@@ -9,24 +9,19 @@
 //! Qin et al. (2016), which provides accurate estimates across all cardinality
 //! ranges without the piecewise linear interpolation tables of HLL++.
 //!
-//! Faithful port of the Go `pkg/alg/hll` package
-//! (`github.com/Sumatoshi-tech/codefang`). The estimator is deterministic given
-//! the same sequence of [`Sketch::add`] calls, and the cardinality estimate is
-//! **bit-identical** to the Go implementation: the same FNV-1a + Mix64 hash
-//! kernel ([`cf_alg_hashutil`]) selects the same register, the same LogLog-Beta
-//! polynomial and `alpha` constants are applied, and the final estimate is
-//! rounded with the same round-half-away-from-zero rule (`f64::round`, matching
-//! Go's `math.Round`) before truncation to `u64`. This matters because sketch
-//! estimates appear in machine-format reports whose byte identity is the project
-//! goal (see `specs/rust-rewrite/DESIGN.md` §2.6).
+//! The estimator is deterministic given the same sequence of [`Sketch::add`]
+//! calls, and the cardinality estimate is a frozen compatibility contract: the
+//! FNV-1a + Mix64 hash kernel ([`cf_alg_hashutil`]) selects the register, the
+//! LogLog-Beta polynomial and `alpha` constants are fixed, and the final
+//! estimate is rounded half away from zero (`f64::round`) before truncation to
+//! `u64`. Sketch estimates appear in machine-format reports whose bytes are
+//! pinned against the reference implementation by `rust/tests/compat`.
 //!
 //! # Thread safety
 //!
-//! The Go `Sketch` carries a `sync.RWMutex` so concurrent `Add`/`Count` are
-//! safe. In Rust, shared mutation is expressed through the type system rather
-//! than an internal lock: [`Sketch`] is `Send + Sync` for read-only sharing, and
-//! callers that need concurrent mutation wrap it in `Mutex`/`RwLock`. The
-//! register update logic and estimate math are otherwise identical to Go.
+//! Shared mutation is expressed through the type system rather than an
+//! internal lock: [`Sketch`] is `Send + Sync` for read-only sharing, and
+//! callers that need concurrent mutation wrap it in `Mutex`/`RwLock`.
 //!
 //! # Examples
 //!
@@ -43,9 +38,6 @@
 //! ```
 
 #![forbid(unsafe_code)]
-
-use std::error::Error;
-use std::fmt;
 
 use cf_alg_hashutil::{fnv64a, mix64};
 
@@ -91,37 +83,23 @@ const BETA_C7: f64 = 0.00042419;
 
 /// Errors returned by [`Sketch`] constructors and operations.
 ///
-/// The [`fmt::Display`] strings are reproduced byte-for-byte from the Go
-/// package's sentinel errors (`hll.ErrPrecisionOutOfRange`,
-/// `hll.ErrPrecisionMismatch`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The [`Display`](std::fmt::Display) strings are part of the CLI/log
+/// compatibility contract and must not change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum HllError {
-    /// Precision was not in `[4, 18]`. Mirrors
-    /// `"hll: precision must be in [4, 18]"`.
+    /// Precision was not in `[4, 18]`.
+    #[error("hll: precision must be in [4, 18]")]
     PrecisionOutOfRange,
-    /// Attempted to merge sketches with different precisions. Mirrors
-    /// `"hll: cannot merge sketches with different precisions"`.
+    /// Attempted to merge sketches with different precisions.
+    #[error("hll: cannot merge sketches with different precisions")]
     PrecisionMismatch,
 }
-
-impl fmt::Display for HllError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            HllError::PrecisionOutOfRange => write!(f, "hll: precision must be in [4, 18]"),
-            HllError::PrecisionMismatch => {
-                write!(f, "hll: cannot merge sketches with different precisions")
-            }
-        }
-    }
-}
-
-impl Error for HllError {}
 
 /// A HyperLogLog cardinality estimator.
 ///
 /// Allocates `2^precision` single-byte registers and updates them with the
 /// observed leading-zero rank of each hashed element. See the [crate]
-/// documentation for the byte-identity contract with the Go implementation.
+/// documentation for the byte-identity contract.
 #[derive(Debug, Clone)]
 pub struct Sketch {
     registers: Vec<u8>,
@@ -137,13 +115,13 @@ impl Sketch {
     /// # Errors
     ///
     /// Returns [`HllError::PrecisionOutOfRange`] when `precision` is outside
-    /// `[4, 18]`, mirroring Go's `hll.New`.
+    /// `[4, 18]`.
     pub fn new(precision: u8) -> Result<Self, HllError> {
-        if precision < MIN_PRECISION || precision > MAX_PRECISION {
+        if !(MIN_PRECISION..=MAX_PRECISION).contains(&precision) {
             return Err(HllError::PrecisionOutOfRange);
         }
         let reg_count = 1usize << precision;
-        Ok(Sketch {
+        Ok(Self {
             registers: vec![0u8; reg_count],
             precision,
         })
@@ -153,7 +131,7 @@ impl Sketch {
     /// appropriate register with the observed number of leading zeros.
     ///
     /// Hashing uses FNV-1a followed by the Mix64 finalizer (via
-    /// [`cf_alg_hashutil`]), bit-identical to Go's `hash64`.
+    /// [`cf_alg_hashutil`]); the kernel is frozen.
     pub fn add(&mut self, data: &[u8]) {
         let hash_val = hash64(data);
         let idx = (hash_val >> (HASH_BITS - self.precision)) as usize;
@@ -165,8 +143,8 @@ impl Sketch {
         let mask: u64 = (1u64 << remaining) - 1;
         let w = hash_val & mask;
 
-        // bits.Len64(w): number of bits required to represent w (0 for w == 0).
-        let len64 = (64 - w.leading_zeros()) as u8; // 0 when w == 0
+        // Number of bits required to represent w (0 for w == 0).
+        let len64 = (64 - w.leading_zeros()) as u8;
         let rho = (remaining as u8 - len64) + 1;
 
         if rho > self.registers[idx] {
@@ -179,8 +157,9 @@ impl Sketch {
     /// Uses the LogLog-Beta formula
     /// `alpha * m * (m - ez) / (beta(ez) + sum)`, where `ez` is the number of
     /// zero registers and `sum` is the harmonic sum of `2^-M[j]`. The result is
-    /// `math.Round`-equivalent (round half away from zero) and truncated to
-    /// `u64`, exactly as in Go.
+    /// rounded half away from zero and truncated to `u64` (frozen rounding
+    /// rule).
+    #[must_use]
     pub fn count(&self) -> u64 {
         let reg_count = (1usize << self.precision) as f64;
         let zeros = count_zero_registers(&self.registers) as f64;
@@ -194,10 +173,13 @@ impl Sketch {
         let beta_val = beta_correction(zeros);
         let estimate = alpha_m * reg_count * (reg_count - zeros) / (beta_val + harmonic_sum);
 
-        // Go: uint64(math.Round(estimate)). f64::round rounds half away from
-        // zero, matching math.Round; the cast then truncates toward zero (the
-        // value is already an integer-valued f64 after rounding).
-        estimate.round() as u64
+        // Round half away from zero, then truncate (the value is already an
+        // integer-valued f64 after rounding). This rounding rule is part of
+        // the report compatibility contract.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        {
+            estimate.round() as u64
+        }
     }
 
     /// Combines another sketch into this one by taking the element-wise maximum
@@ -206,7 +188,7 @@ impl Sketch {
     /// # Errors
     ///
     /// Returns [`HllError::PrecisionMismatch`] if the precisions differ.
-    pub fn merge(&mut self, other: &Sketch) -> Result<(), HllError> {
+    pub fn merge(&mut self, other: &Self) -> Result<(), HllError> {
         if self.precision != other.precision {
             return Err(HllError::PrecisionMismatch);
         }
@@ -227,29 +209,29 @@ impl Sketch {
 
     /// Returns a deep copy of the sketch.
     ///
-    /// Provided to mirror Go's `Clone`; idiomatic Rust callers may also use the
-    /// derived [`Clone`] implementation, which is equivalent.
+    /// Equivalent to the derived [`Clone`] implementation; retained for API
+    /// stability.
     #[must_use]
-    pub fn clone_sketch(&self) -> Sketch {
+    pub fn clone_sketch(&self) -> Self {
         self.clone()
     }
 
     /// Returns the configured precision of the sketch.
     #[must_use]
-    pub fn precision(&self) -> u8 {
+    pub const fn precision(&self) -> u8 {
         self.precision
     }
 
     /// Returns the number of registers (`2^p`).
     #[must_use]
-    pub fn register_count(&self) -> usize {
+    pub const fn register_count(&self) -> usize {
         1usize << self.precision
     }
 
     /// Serializes the sketch state into a byte vector.
     ///
-    /// The format is `[precision:1][registers:m]`. Not part of the Go package's
-    /// public surface; provided for cross-boundary persisted state.
+    /// The format is `[precision:1][registers:m]`; provided for cross-boundary
+    /// persisted state.
     #[must_use]
     pub fn marshal_binary(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(1 + self.registers.len());
@@ -265,19 +247,19 @@ impl Sketch {
     ///
     /// Returns [`HllError::PrecisionOutOfRange`] if the encoded precision is
     /// outside `[4, 18]` or the payload length is inconsistent with it.
-    pub fn unmarshal_binary(data: &[u8]) -> Result<Sketch, HllError> {
+    pub fn unmarshal_binary(data: &[u8]) -> Result<Self, HllError> {
         if data.is_empty() {
             return Err(HllError::PrecisionOutOfRange);
         }
         let precision = data[0];
-        if precision < MIN_PRECISION || precision > MAX_PRECISION {
+        if !(MIN_PRECISION..=MAX_PRECISION).contains(&precision) {
             return Err(HllError::PrecisionOutOfRange);
         }
         let reg_count = 1usize << precision;
         if data.len() != 1 + reg_count {
             return Err(HllError::PrecisionOutOfRange);
         }
-        Ok(Sketch {
+        Ok(Self {
             registers: data[1..].to_vec(),
             precision,
         })
@@ -293,8 +275,8 @@ fn count_zero_registers(registers: &[u8]) -> usize {
 fn compute_harmonic_sum(registers: &[u8]) -> f64 {
     let mut sum = 0.0f64;
     for &val in registers {
-        // Go uses math.Exp2(-float64(val)); exp2 keeps bit-identical results.
-        sum += (-(f64::from(val))).exp2();
+        // exp2 (not powf) keeps the estimate bit-reproducible.
+        sum += (-f64::from(val)).exp2();
     }
     sum
 }
@@ -340,7 +322,7 @@ fn beta_correction(zero_count: f64) -> f64 {
 ///
 /// The finalizer ensures good avalanche across all bit positions, which is
 /// critical for HyperLogLog where both the high bits (register index) and the
-/// low bits (leading zeros) must be well distributed. Mirrors Go's `hash64`.
+/// low bits (leading zeros) must be well distributed.
 fn hash64(data: &[u8]) -> u64 {
     mix64(fnv64a(data))
 }
@@ -368,12 +350,11 @@ mod tests {
     const CARD_N10K: usize = 10_000;
     const CARD_N100K: usize = 100_000;
 
-    /// Mirrors the Go test helper `uint64ToBytes` (8-byte big-endian).
+    /// Converts a `u64` to an 8-byte big-endian array.
     fn uint64_to_bytes(v: u64) -> [u8; 8] {
         v.to_be_bytes()
     }
 
-    // Ported from TestNew_Parameters.
     #[test]
     fn test_new_parameters() {
         let cases = [
@@ -388,7 +369,6 @@ mod tests {
         }
     }
 
-    // Ported from TestNew_EdgeCases.
     #[test]
     fn test_new_edge_cases() {
         assert_eq!(
@@ -408,14 +388,12 @@ mod tests {
         );
     }
 
-    // Ported from TestCount_EmptySketch.
     #[test]
     fn test_count_empty_sketch() {
         let sk = Sketch::new(DEFAULT_PRECISION).unwrap();
         assert_eq!(sk.count(), 0);
     }
 
-    // Ported from TestAdd_Count_SingleElement.
     #[test]
     fn test_add_count_single_element() {
         let mut sk = Sketch::new(DEFAULT_PRECISION).unwrap();
@@ -425,7 +403,6 @@ mod tests {
         assert!(count <= 2, "count={count}, want <= 2");
     }
 
-    // Ported from TestAdd_Count_DuplicateElements.
     #[test]
     fn test_add_count_duplicate_elements() {
         let mut sk = Sketch::new(DEFAULT_PRECISION).unwrap();
@@ -440,9 +417,8 @@ mod tests {
         );
     }
 
-    // Ported from TestAccuracy_Ranges (subset up to 100K to keep the unit test
-    // fast; the larger 1M/10M ranges are exercised by the Go suite and the
-    // golden harness).
+    // Accuracy across cardinality ranges (subset up to 100K to keep the unit
+    // test fast; larger ranges are exercised by the differential harness).
     #[test]
     fn test_accuracy_ranges() {
         for &n in &[100usize, CARD_N1K, CARD_N10K, CARD_N100K] {
@@ -460,7 +436,6 @@ mod tests {
         }
     }
 
-    // Ported from TestDeterminism.
     #[test]
     fn test_determinism() {
         let mut sk1 = Sketch::new(DEFAULT_PRECISION).unwrap();
@@ -473,7 +448,6 @@ mod tests {
         assert_eq!(sk1.count(), sk2.count());
     }
 
-    // Ported from TestMerge_DisjointSets.
     #[test]
     fn test_merge_disjoint_sets() {
         let mut sk1 = Sketch::new(DEFAULT_PRECISION).unwrap();
@@ -495,7 +469,6 @@ mod tests {
         );
     }
 
-    // Ported from TestMerge_OverlappingSets.
     #[test]
     fn test_merge_overlapping_sets() {
         let mut sk1 = Sketch::new(DEFAULT_PRECISION).unwrap();
@@ -517,7 +490,6 @@ mod tests {
         );
     }
 
-    // Ported from TestMerge_PrecisionMismatch.
     #[test]
     fn test_merge_precision_mismatch() {
         let mut sk1 = Sketch::new(DEFAULT_PRECISION).unwrap();
@@ -528,7 +500,6 @@ mod tests {
         );
     }
 
-    // Ported from TestMerge_EmptySketch.
     #[test]
     fn test_merge_empty_sketch() {
         let mut sk1 = Sketch::new(DEFAULT_PRECISION).unwrap();
@@ -541,8 +512,8 @@ mod tests {
         assert_eq!(count_before, sk1.count());
     }
 
-    // Ported from TestNilData: must not panic on empty data, and a single
-    // (empty) element yields count >= 1.
+    // Must not panic on empty data; a single (empty) element yields
+    // count >= 1.
     #[test]
     fn test_nil_data() {
         let mut sk = Sketch::new(DEFAULT_PRECISION).unwrap();
@@ -550,7 +521,6 @@ mod tests {
         assert!(sk.count() >= 1);
     }
 
-    // Ported from TestReset.
     #[test]
     fn test_reset() {
         let mut sk = Sketch::new(DEFAULT_PRECISION).unwrap();
@@ -563,7 +533,6 @@ mod tests {
         assert_eq!(sk.precision(), DEFAULT_PRECISION);
     }
 
-    // Ported from TestClone.
     #[test]
     fn test_clone() {
         let mut sk = Sketch::new(DEFAULT_PRECISION).unwrap();
@@ -586,14 +555,13 @@ mod tests {
         );
     }
 
-    // Ported from TestMemoryUsage_P14.
     #[test]
     fn test_memory_usage_p14() {
         let sk = Sketch::new(DEFAULT_PRECISION).unwrap();
         assert_eq!(sk.register_count(), REGISTERS_P14);
     }
 
-    // Ported from TestEmptySliceData: empty slice behaves identically to nil.
+    // The empty slice is a regular, hashable element.
     #[test]
     fn test_empty_slice_data() {
         let mut sk = Sketch::new(DEFAULT_PRECISION).unwrap();
@@ -601,7 +569,7 @@ mod tests {
         assert!(sk.count() >= 1);
     }
 
-    // Extra: alpha constants spot-check (mirrors Go's `alpha`).
+    // Alpha constants spot-check.
     #[test]
     fn test_alpha_constants() {
         assert_eq!(alpha(4), ALPHA_P4);
@@ -614,7 +582,7 @@ mod tests {
         );
     }
 
-    // Extra: binary state round-trip and error cases.
+    // Binary state round-trip and error cases.
     #[test]
     fn test_marshal_unmarshal_round_trip() {
         let mut sk = Sketch::new(DEFAULT_PRECISION).unwrap();
@@ -638,7 +606,7 @@ mod tests {
         assert!(Sketch::unmarshal_binary(&[14, 0, 0, 0]).is_err());
     }
 
-    // Extra: hash kernel parity guard. hash64 == mix64(fnv64a(data)).
+    // Hash kernel parity guard: hash64 == mix64(fnv64a(data)).
     #[test]
     fn test_hash64_kernel() {
         let data = b"developer@example.com";

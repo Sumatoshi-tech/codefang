@@ -1,18 +1,18 @@
 //! Output format constants and validation.
 //!
-//! Faithful port of `internal/analyzers/analyze/formats.go`. The `bin`→`binary`
+//! Output-format constants and validation. The `bin`→`binary`
 //! alias and the exact `unsupported format: <fmt>` wording are byte-identity
 //! relevant (they appear in CLI error output), so they are reproduced verbatim.
 
 /// Error raised when a requested output format is not supported.
 ///
-/// Mirrors the Go `fmt.Errorf("%w: %s", ErrUnsupportedFormat, format)` wording
-/// (`formats.go`). The `Display` impl reproduces `unsupported format: <fmt>`
+/// The `Display` impl reproduces `unsupported format: <fmt>` (CLI error
+/// contract)
 /// byte-for-byte (it appears in CLI error output).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FormatError {
     /// The format string is not in the supported set. Carries the original
-    /// (un-normalized) format string, matching Go's `%s` argument.
+    /// (un-normalized) format string, exactly as supplied.
     Unsupported {
         /// The offending format string, verbatim as supplied.
         format: String,
@@ -29,29 +29,30 @@ impl std::fmt::Display for FormatError {
 
 impl std::error::Error for FormatError {}
 
-/// `bin` — short CLI alias for binary output. Go `FormatBinAlias`.
+/// `bin` — short CLI alias for binary output.
 pub const FORMAT_BIN_ALIAS: &str = "bin";
-/// `binary` — the canonical binary (CFB1) format. Go `FormatBinary`.
+/// `binary` — the canonical binary (CFB1) format.
 pub const FORMAT_BINARY: &str = "binary";
-/// `json` — indented JSON. Go `FormatJSON`.
+/// `json` — indented JSON.
 pub const FORMAT_JSON: &str = "json";
-/// `yaml` — yaml.v3 output. Go `FormatYAML`.
+/// `yaml` — yaml.v3 output.
 pub const FORMAT_YAML: &str = "yaml";
-/// `plot` — HTML plot output. Go `FormatPlot`.
+/// `plot` — HTML plot output.
 pub const FORMAT_PLOT: &str = "plot";
-/// `text` — human-readable CLI output. Go `FormatText`.
+/// `text` — human-readable CLI output.
 pub const FORMAT_TEXT: &str = "text";
-/// `compact` — single-line-per-analyzer static output. Go `FormatCompact`.
+/// `compact` — single-line-per-analyzer static output.
 pub const FORMAT_COMPACT: &str = "compact";
-/// `timeseries` — merged time-series JSON array. Go `FormatTimeSeries`.
+/// `timeseries` — merged time-series JSON array.
 pub const FORMAT_TIMESERIES: &str = "timeseries";
-/// `ndjson` — one JSON line per TC. Go `FormatNDJSON`.
+/// `ndjson` — one JSON line per TC.
 pub const FORMAT_NDJSON: &str = "ndjson";
-/// `timeseries+ndjson` — merged timeseries as NDJSON. Go `FormatTimeSeriesNDJSON`.
+/// `timeseries+ndjson` — merged timeseries as NDJSON.
 pub const FORMAT_TIMESERIES_NDJSON: &str = "timeseries+ndjson";
 
-/// Canonicalizes a user-provided output format string. Port of Go
+/// Canonicalizes a user-provided output format string.
 /// `NormalizeFormat`: lower-cased, trimmed, with the `bin`→`binary` alias.
+#[must_use] 
 pub fn normalize_format(format: &str) -> String {
     let normalized = format.trim().to_lowercase();
     if normalized == FORMAT_BIN_ALIAS {
@@ -60,9 +61,10 @@ pub fn normalize_format(format: &str) -> String {
     normalized
 }
 
-/// Returns the canonical formats supported by all analyzers. Port of Go
+/// Returns the canonical formats supported by all analyzers.
 /// `UniversalFormats` (order preserved for parity).
-pub fn universal_formats() -> [&'static str; 7] {
+#[must_use] 
+pub const fn universal_formats() -> [&'static str; 7] {
     [
         FORMAT_JSON,
         FORMAT_YAML,
@@ -74,9 +76,9 @@ pub fn universal_formats() -> [&'static str; 7] {
     ]
 }
 
-/// Returns the formats supported by static analyzers. Port of Go
-/// `staticOutputFormats`.
-pub fn static_output_formats() -> [&'static str; 6] {
+/// Returns the formats supported by static analyzers.
+#[must_use] 
+pub const fn static_output_formats() -> [&'static str; 6] {
     [
         FORMAT_TEXT,
         FORMAT_COMPACT,
@@ -87,10 +89,9 @@ pub fn static_output_formats() -> [&'static str; 6] {
     ]
 }
 
-/// Validates `format` against the provided support list. Port of Go
-/// `ValidateFormat`. Returns the normalized format or
+/// Validates `format` against the provided support list. Returns the normalized format or
 /// [`AnalyzeError::UnsupportedFormat`] carrying the **original** (un-normalized)
-/// format string, matching Go's `fmt.Errorf("%w: %s", ..., format)`.
+/// format string (CLI error contract).
 pub fn validate_format(format: &str, supported: &[&str]) -> Result<String, FormatError> {
     let normalized = normalize_format(format);
     for candidate in supported {
@@ -103,8 +104,7 @@ pub fn validate_format(format: &str, supported: &[&str]) -> Result<String, Forma
     })
 }
 
-/// Validates `format` against the universal contract. Port of Go
-/// `ValidateUniversalFormat`.
+/// Validates `format` against the universal contract.
 pub fn validate_universal_format(format: &str) -> Result<String, FormatError> {
     let normalized = normalize_format(format);
     if universal_formats().contains(&normalized.as_str()) {
@@ -119,7 +119,7 @@ pub fn validate_universal_format(format: &str) -> Result<String, FormatError> {
 mod tests {
     use super::*;
 
-    // Port of TestNormalizeFormat.
+    // Mirrors reference test TestNormalizeFormat.
     #[test]
     fn normalize() {
         assert_eq!(normalize_format("bin"), FORMAT_BINARY);
@@ -129,7 +129,7 @@ mod tests {
         assert_eq!(normalize_format("TimeSeries"), "timeseries");
     }
 
-    // Port of TestValidateFormat.
+    // Mirrors reference test TestValidateFormat.
     #[test]
     fn validate_format_valid_and_invalid() {
         assert!(validate_format("json", &["json", "yaml"]).is_ok());
@@ -137,7 +137,7 @@ mod tests {
         assert!(matches!(err, FormatError::Unsupported { .. }));
     }
 
-    // Port of TestValidateUniversalFormat.
+    // Mirrors reference test TestValidateUniversalFormat.
     #[test]
     fn validate_universal() {
         for f in ["json", "yaml", "plot", "binary", "timeseries", "ndjson", "text"] {

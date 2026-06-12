@@ -1,8 +1,7 @@
 //! MCP (Model Context Protocol) server exposing Codefang analysis as tools.
 //!
-//! This is the Rust port of the Go `internal/mcp` package. It implements an MCP
-//! server over stdio transport that registers three tools an AI agent can
-//! discover and invoke:
+//! Implements an MCP server over stdio transport that registers three tools an
+//! AI agent can discover and invoke:
 //!
 //! - [`TOOL_NAME_ANALYZE`](tools::TOOL_NAME_ANALYZE) (`codefang_analyze`) —
 //!   static code analysis of inline source (complexity, cohesion, halstead,
@@ -16,8 +15,7 @@
 //!
 //! # Not shipped by default
 //!
-//! The Go `mcp` command carries a `//go:build ignore` constraint and is *not*
-//! wired into the `codefang` binary. We reproduce that exactly: everything below
+//! The MCP server is *not* wired into the `codefang` binary: everything below
 //! lives behind the non-default Cargo feature **`mcp`**. With the feature off the
 //! crate compiles to an empty shell, so the default workspace build never pulls
 //! the MCP/async machinery in and `cf-commands` must opt in explicitly. See
@@ -25,13 +23,13 @@
 //!
 //! # Byte-identity discipline
 //!
-//! Tool results are serialized through the Go-compatible encoder in [`gojson`]
-//! (the same `GoValue`/`GoMap` model `cf-uast-node` uses; it will migrate to the
-//! shared `cf-gojson` crate when that lands — DESIGN rule 5). The Go handlers
-//! used `json.MarshalIndent(value, "", "  ")`, which indents with two spaces,
-//! escapes HTML (`<`, `>`, `&`, `U+2028`, `U+2029`), and appends **no** trailing
-//! newline; [`result::ToolResult::json`] reproduces that exactly. The report
-//! payload never goes through `serde_json`. See `DESIGN.md` §2.3.
+//! Tool results are serialized through the report-compatible encoder in
+//! [`gojson`] (the same `GoValue`/`GoMap` model `cf-uast-node` uses; it will
+//! migrate to the shared `cf-gojson` crate when that lands — DESIGN rule 5).
+//! The tool-output contract is the reference encoder's two-space-indent
+//! profile: HTML escapes (`<`, `>`, `&`, `U+2028`, `U+2029`) and **no**
+//! trailing newline; [`result::ToolResult::json`] reproduces that exactly. The
+//! report payload never goes through `serde_json`. See `DESIGN.md` §2.3.
 //!
 //! # serde scope
 //!
@@ -46,7 +44,6 @@
 //
 // When the `mcp` feature is disabled the crate exposes nothing of substance, so
 // the default workspace build does not depend on serde/serde_json/transport.
-// This mirrors the Go `//go:build ignore` on the mcp command.
 // ---------------------------------------------------------------------------
 #[cfg(not(feature = "mcp"))]
 mod disabled {

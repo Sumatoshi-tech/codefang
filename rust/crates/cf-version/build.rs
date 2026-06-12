@@ -1,21 +1,17 @@
-//! Build-time injection of version metadata, the Rust analogue of Go's ldflags
-//! `-X github.com/.../pkg/version.Version=...` mechanism.
+//! Build-time injection of version metadata.
 //!
-//! Go injects three strings at link time (`Version`, `Commit`, `Date`) and falls
-//! back to compile-time defaults (`dev` / `none` / `unknown`) when they are not
-//! supplied. We reproduce that exactly: the build script reads environment
-//! variables and re-exports them as `cargo:rustc-env` values that the library
-//! picks up with `env!`. When an env var is absent the library's `option_env!`
-//! fallback yields the Go default, so a plain `cargo build` with no env produces
-//! `dev` / `none` / `unknown` — byte-identical to a Go build with no ldflags.
+//! The build script reads environment variables and re-exports them as
+//! `cargo:rustc-env` values that the library picks up with `option_env!`.
+//! When an env var is absent the library falls back to the frozen defaults,
+//! so a plain `cargo build` with no env produces `dev` / `none` / `unknown`.
 //!
 //! Recognized inputs (first non-empty wins per field):
 //!   Version: `CF_VERSION`, then `GIT_VERSION`
 //!   Commit:  `CF_COMMIT`,  then `GIT_COMMIT`
 //!   Date:    `CF_DATE`,    then `SOURCE_DATE_EPOCH` (epoch seconds -> RFC3339 UTC)
 //!
-//! `SOURCE_DATE_EPOCH` support makes `built:` reproducible (per DESIGN.md §2.8):
-//! goldens pin it so the printed `built` date is stable on both Go and Rust sides.
+//! `SOURCE_DATE_EPOCH` support makes `built:` reproducible (per DESIGN.md
+//! §2.8): goldens pin it so the printed `built` date is stable.
 
 use std::env;
 
@@ -67,9 +63,8 @@ fn main() {
     }
 }
 
-/// Format a Unix epoch (seconds, UTC) as an RFC3339 timestamp with a `Z` zone,
-/// matching Go's `time.Unix(e,0).UTC().Format(time.RFC3339)` rendering used for
-/// build dates. No fractional seconds (RFC3339, not RFC3339Nano).
+/// Format a Unix epoch (seconds, UTC) as an RFC3339 timestamp with a `Z`
+/// zone, the frozen rendering used for build dates. No fractional seconds.
 fn rfc3339_utc_from_epoch(epoch: i64) -> String {
     let days = epoch.div_euclid(SECS_PER_DAY);
     let secs_of_day = epoch.rem_euclid(SECS_PER_DAY);

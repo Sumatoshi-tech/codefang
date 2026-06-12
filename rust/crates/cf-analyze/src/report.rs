@@ -1,12 +1,12 @@
 //! The core [`Report`] type.
 //!
-//! In Go this is `type Report = map[string]any` (analyzer.go:26). The dominant
-//! ordering rule for every machine format is therefore Go's `map[string]X`
+//! A report is a dynamic string-keyed map. The dominant
+//! ordering rule for every machine format is therefore the contract's map-key
 //! byte-sorted key ordering, which [`cf_gojson::GoMap`] reproduces. We model a
 //! `Report` as a **map-origin** [`GoMap`] so that, on encode, keys are sorted
-//! by `key.as_bytes()` exactly as Go does.
+//! by `key.as_bytes()` exactly as the report contract requires.
 //!
-//! Helper accessors that mirror the Go free functions
+//! Helper accessors mirror the reference free functions
 //! (`ReportFunctionList`, `ReportFunctionListWithFallback`) operate over the
 //! same value model.
 
@@ -14,29 +14,32 @@ use cf_gojson::{GoMap, GoValue};
 
 /// Analysis output: a string-keyed map of arbitrary JSON values.
 ///
-/// Port of the Go `Report = map[string]any` alias. Backed by a map-origin
+/// A dynamic string-keyed report map. Backed by a map-origin
 /// [`GoMap`] so machine-format serialization byte-sorts keys like Go.
 pub type Report = GoMap;
 
 /// Creates an empty report (map-origin, keys byte-sorted on encode).
+#[must_use] 
 pub fn new_report() -> Report {
     GoMap::new_map()
 }
 
 /// Returns a reference to the value stored under `key`, if present.
+#[must_use] 
 pub fn report_get<'a>(report: &'a Report, key: &str) -> Option<&'a GoValue> {
     report.entries().iter().find(|(k, _)| k == key).map(|(_, v)| v)
 }
 
 /// Extracts a list of objects from a report key.
 ///
-/// Port of Go `ReportFunctionList`. Handles the JSON-decoded `[]any` slice
+/// Handles the JSON-decoded `[]any` slice
 /// case: an array value whose elements are objects yields those objects.
 ///
-/// The Go version additionally special-cases the `TypedCollection` wrapper and
+/// The full dispatch additionally special-cases the `TypedCollection` wrapper and
 /// a directly-typed `[]map[string]any`; those typed cases collapse to the same
 /// array-of-objects representation here because [`GoValue`] is the post-decode
 /// model. Returns `None` when the key is absent or holds no object elements.
+#[must_use] 
 pub fn report_function_list<'a>(report: &'a Report, key: &str) -> Option<Vec<&'a GoMap>> {
     let val = report_get(report, key)?;
     let arr = match val {
@@ -57,7 +60,8 @@ pub fn report_function_list<'a>(report: &'a Report, key: &str) -> Option<Vec<&'a
 }
 
 /// Extracts a function list trying `primary_key` first, then `fallback_key`.
-/// Port of Go `ReportFunctionListWithFallback`.
+///
+#[must_use] 
 pub fn report_function_list_with_fallback<'a>(
     report: &'a Report,
     primary_key: &str,

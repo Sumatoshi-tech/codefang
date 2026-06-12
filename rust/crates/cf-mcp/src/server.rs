@@ -1,20 +1,15 @@
 //! MCP server wiring.
 //!
-//! Ports `internal/mcp/server.go`: the `ServerDeps` injectable dependencies, the
-//! `Server` wrapper, tool registration, `ListToolNames`, `Run` (stdio) /
-//! `RunWithTransport`, and the `withMetrics` / `withTracing` handler decorators.
+//! The [`ServerDeps`] injectable dependencies, the [`Server`] wrapper, tool
+//! registration, sorted tool-name listing, the stdio/transport entry points,
+//! and the metrics / tracing handler decorators.
 //!
 //! ## Observability boundary
 //!
-//! The Go `ServerDeps` carries `*slog.Logger`, `*observability.REDMetrics`, and
-//! an OTel `trace.Tracer`. `cf-observability` is a bare scaffold at port time, so
-//! rather than depend on it, the metrics/tracing hooks are taken behind the small
-//! [`Metrics`] / [`Tracer`] traits defined here (rewrite rule 5). `cf-commands`
-//! wires the real recorder/tracer once `cf-observability` lands; with `None` the
-//! decorators are no-ops, exactly like the Go nil-checks in `withMetrics` /
-//! `withTracing`.
-//!
-//! The server name/version constants and the expected tool count match Go.
+//! Rather than depend on `cf-observability` directly, the metrics/tracing
+//! hooks are taken behind the small [`Metrics`] / [`Tracer`] traits defined
+//! here (DESIGN rule 5). `cf-commands` wires the real recorder/tracer; with
+//! `None` the decorators are no-ops.
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -29,19 +24,20 @@ use crate::tools_analyze::handle_analyze;
 use crate::tools_history::handle_history;
 use crate::tools_uast::handle_uast_parse;
 
-/// MCP server implementation name. Go `serverName`.
+/// MCP server implementation name.
 pub const SERVER_NAME: &str = "codefang";
-/// MCP server implementation version. Go `serverVersion`.
+/// MCP server implementation version.
 pub const SERVER_VERSION: &str = "1.0.0";
-/// Expected number of registered tools. Go `toolCount`.
+/// Expected number of registered tools.
 pub const TOOL_COUNT: usize = 3;
 
-/// Prefix for MCP tool span names and metric keys. Go `mcpSpanPrefix`.
+/// Prefix for MCP tool span names and metric keys.
 pub const MCP_SPAN_PREFIX: &str = "mcp.";
-/// Metadata key for `trace_id` in MCP tool responses. Go `traceIDMetaKey`.
+/// Metadata key for `trace_id` in MCP tool responses.
 pub const TRACE_ID_META_KEY: &str = "trace_id";
 
-/// Tool description constants, ported verbatim from `server.go`.
+/// Tool description constants (tool-contract wording; agents see these in
+/// `tools/list`).
 pub mod descriptions {
     /// Description of the `codefang_analyze` tool.
     pub const ANALYZE: &str = "Analyze source code for quality metrics \
@@ -58,48 +54,40 @@ Returns a JSON representation of the AST structure.";
 Accepts a repository path and optional parameters.";
 }
 
-/// RED-metrics recorder hook. Mirrors the subset of
-/// `observability.REDMetrics` the Go `withMetrics` decorator uses.
+/// RED-metrics recorder hook — the subset of `cf-observability`'s RED metrics
+/// the per-tool decorator needs.
 pub trait Metrics: Send + Sync {
     /// Increments the in-flight gauge for `key`, returning a guard whose drop
-    /// decrements it. Mirrors `metrics.TrackInflight(ctx, key)` + the deferred
-    /// `decInflight()`.
+    /// decrements it.
     fn track_inflight(&self, key: &str) -> Box<dyn InflightGuard>;
 
     /// Records a completed request with `status` (`"ok"`/`"error"`) and its
-    /// duration. Mirrors `metrics.RecordRequest(ctx, key, status, dur)`.
+    /// duration.
     fn record_request(&self, key: &str, status: &str, dur: Duration);
 }
 
 /// Guard returned by [`Metrics::track_inflight`]; dropping it decrements the
-/// gauge (Go `defer decInflight()`).
+/// gauge.
 pub trait InflightGuard {}
 
-/// Tracing hook. Mirrors the subset of an OTel `trace.Tracer` the Go
-/// `withTracing` decorator uses.
+/// Tracing hook — the subset of an OTel tracer the per-tool decorator needs.
 pub trait Tracer: Send + Sync {
-    /// Starts a server span named `name` for tool `tool`, returning a span guard.
-    /// Mirrors `tracer.Start(ctx, name, WithSpanKind(Server),
-    /// WithAttributes("mcp.tool", tool))`.
+    /// Starts a server span named `name` carrying an `mcp.tool = <tool>`
+    /// attribute, returning a span guard.
     fn start_span(&self, name: &str, tool: &str) -> Box<dyn Span>;
 }
 
-/// A started span. Dropping it ends the span (Go `defer span.End()`).
+/// A started span. Dropping it ends the span.
 pub trait Span {
-    /// Whether this span is sampled. Mirrors `span.SpanContext().IsSampled()`.
+    /// Whether this span is sampled.
     fn is_sampled(&self) -> bool;
-    /// The trace id rendered as a hex string. Mirrors
-    /// `span.SpanContext().TraceID().String()`.
+    /// The trace id rendered as a hex string.
     fn trace_id(&self) -> String;
 }
 
-/// Injectable dependencies for the MCP server.
-///
-/// Mirrors Go `ServerDeps` (`Logger`, `Metrics`, `Tracer`) and additionally
-/// carries the analysis providers that, on the Go side, were package-level
-/// functions (`uast.NewParser`, `analyze.NewFactory`, `executeHistory`). All
-/// fields are optional; a missing provider means the corresponding tool returns
-/// an error result.
+/// Injectable dependencies for the MCP server: the observability hooks plus
+/// the analysis providers. All fields are optional; a missing provider means
+/// the corresponding tool returns an error result.
 #[derive(Default)]
 pub struct ServerDeps {
     /// Optional RED metrics recorder. `None` disables per-tool metrics.
@@ -128,22 +116,20 @@ impl std::fmt::Debug for ServerDeps {
 
 /// MCP server wrapping the tool registry and dependencies.
 ///
-/// Ports Go `Server`. Holds the registered tool names (under a lock, like the Go
-/// `sync.RWMutex`) plus the deps. The wire transport is created lazily in
-/// [`Server::run`] / [`Server::run_with_transport`] (see [`crate::transport`]).
+/// Holds the registered tool names (under a lock) plus the deps. The wire
+/// transport is created lazily in [`Server::run`] /
+/// [`Server::run_with_transport`] (see [`crate::transport`]).
 pub struct Server {
     pub(crate) deps: ServerDeps,
     tools: Mutex<Vec<String>>,
 }
 
 impl Server {
-    /// Creates a new server with all Codefang tools registered.
-    ///
-    /// Reproduces Go `NewServer`: registers analyze/uast/history (in that order)
-    /// and tracks the tool names.
+    /// Creates a new server with all Codefang tools registered
+    /// (analyze/uast/history, in that order).
     #[must_use]
     pub fn new(deps: ServerDeps) -> Self {
-        let srv = Server {
+        let srv = Self {
             deps,
             tools: Mutex::new(Vec::with_capacity(TOOL_COUNT)),
         };
@@ -151,7 +137,7 @@ impl Server {
         srv
     }
 
-    /// Registers all tools, in Go's order: analyze, uast, history.
+    /// Registers all tools, in their fixed order: analyze, uast, history.
     fn register_tools(&self) {
         self.track_tool(TOOL_NAME_ANALYZE);
         self.track_tool(TOOL_NAME_UAST);
@@ -165,10 +151,12 @@ impl Server {
             .push(name.to_string());
     }
 
-    /// Returns the sorted names of all registered tools.
-    ///
-    /// Reproduces Go `ListToolNames` (copy + `sort.Strings`), yielding
+    /// Returns the sorted names of all registered tools:
     /// `codefang_analyze, codefang_history, uast_parse`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal tools lock is poisoned.
     #[must_use]
     pub fn list_tool_names(&self) -> Vec<String> {
         let mut names = self.tools.lock().expect("tools lock poisoned").clone();
@@ -179,11 +167,10 @@ impl Server {
     /// Dispatches a `codefang_analyze` call through the metrics/tracing
     /// decorators.
     ///
-    /// Input validation always runs first (Go `handleAnalyze` validates before
-    /// touching the parser/factory, which on the Go side are always present).
-    /// Only when validation passes and a backend is missing does this return the
-    /// `run analyzers: no static analysis provider configured` error — preserving
-    /// the Go ordering of observable errors.
+    /// Input validation always runs first; only when validation passes and a
+    /// backend is missing does this return the
+    /// `run analyzers: no static analysis provider configured` error. This
+    /// preserves the contract ordering of observable errors.
     #[must_use]
     pub fn dispatch_analyze(&self, input: &AnalyzeInput) -> (ToolResult, ToolOutput) {
         self.decorate(TOOL_NAME_ANALYZE, || {
@@ -207,8 +194,7 @@ impl Server {
 
     /// Dispatches a `uast_parse` call.
     ///
-    /// Validates the input first (Go `handleUASTParse` order), then requires a
-    /// parser.
+    /// Validates the input first, then requires a parser.
     #[must_use]
     pub fn dispatch_uast(&self, input: &UastParseInput) -> (ToolResult, ToolOutput) {
         self.decorate(TOOL_NAME_UAST, || {
@@ -227,8 +213,7 @@ impl Server {
 
     /// Dispatches a `codefang_history` call.
     ///
-    /// Validates the repository path first (Go `handleHistory` order), then
-    /// requires a history provider.
+    /// Validates the repository path first, then requires a history provider.
     #[must_use]
     pub fn dispatch_history(&self, input: &HistoryInput) -> (ToolResult, ToolOutput) {
         self.decorate(TOOL_NAME_HISTORY, || {
@@ -248,10 +233,7 @@ impl Server {
         })
     }
 
-    /// Applies the `withMetrics` + `withTracing` decoration around a handler call.
-    ///
-    /// Reproduces the Go middleware composition
-    /// `withMetrics(metrics, name, withTracing(tracer, name, handler))`:
+    /// Applies the metrics + tracing decoration around a handler call:
     /// - metrics: tracks inflight and records a request with status `ok`/`error`
     ///   keyed by `mcp.<tool>`;
     /// - tracing: opens a server span `mcp.<tool>`; when sampled, appends a
@@ -291,7 +273,8 @@ impl Server {
             let status = if result.is_error { "error" } else { "ok" };
             m.record_request(&metric_key, status, start.elapsed());
         }
-        // `_inflight` and `span` drop here (Go `defer decInflight()` / `span.End()`).
+        // `_inflight` and `span` drop here, decrementing the gauge and ending
+        // the span.
 
         (result, output)
     }
@@ -323,7 +306,7 @@ mod tests {
     }
 
     #[test]
-    fn server_constants_match_go() {
+    fn server_constants_match_contract() {
         assert_eq!(SERVER_NAME, "codefang");
         assert_eq!(SERVER_VERSION, "1.0.0");
         assert_eq!(TOOL_COUNT, 3);
@@ -332,7 +315,7 @@ mod tests {
     }
 
     #[test]
-    fn descriptions_match_go() {
+    fn descriptions_match_contract() {
         assert!(descriptions::ANALYZE.starts_with("Analyze source code for quality metrics"));
         assert!(descriptions::UAST.contains("Universal Abstract Syntax Tree"));
         assert!(descriptions::HISTORY.contains("Analyze Git repository history for trends"));

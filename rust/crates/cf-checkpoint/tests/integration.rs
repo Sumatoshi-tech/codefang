@@ -1,9 +1,9 @@
 //! Integration tests for crash/resume scenarios.
 //!
-//! Ported from `internal/checkpoint/integration_test.go`. These exercise the
-//! public crate surface (`Manager` + `Checkpointable`) the way an analyzer
-//! framework would: process some commits, snapshot, simulate a crash with a
-//! fresh analyzer instance, validate + restore, then resume.
+//! These mirror the reference suite and exercise the public crate surface
+//! (`Manager` + `Checkpointable`) the way an analyzer framework would: process
+//! some commits, snapshot, simulate a crash with a fresh analyzer instance,
+//! validate + restore, then resume.
 
 use std::cell::RefCell;
 use std::path::Path;
@@ -14,11 +14,11 @@ const TEST_REPO_PATH: &str = "/test/repo";
 const FIXED_TIME: &str = "2026-02-05T12:00:00Z";
 
 fn names(items: &[&str]) -> Vec<String> {
-    items.iter().map(|s| s.to_string()).collect()
+    items.iter().map(ToString::to_string).collect()
 }
 
-/// Mirrors integration_test.go's `mockAnalyzer`: persists its process log as raw
-/// bytes (one byte per processed commit index).
+/// Mirrors the reference suite's `mockAnalyzer`: persists its process log as
+/// raw bytes (one byte per processed commit index).
 struct MockAnalyzer {
     name: String,
     counter: RefCell<i64>,
@@ -60,7 +60,7 @@ impl Checkpointable for MockAnalyzer {
     }
 }
 
-// Ported from TestCheckpoint_CrashAndResume.
+// Mirrors TestCheckpoint_CrashAndResume.
 #[test]
 fn crash_and_resume() {
     let dir = tempfile::tempdir().unwrap();
@@ -115,7 +115,7 @@ fn crash_and_resume() {
     }
 }
 
-// Ported from TestCheckpoint_ResumeWithMismatchedRepo.
+// Mirrors TestCheckpoint_ResumeWithMismatchedRepo.
 #[test]
 fn resume_with_mismatched_repo() {
     let dir = tempfile::tempdir().unwrap();
@@ -140,7 +140,7 @@ fn resume_with_mismatched_repo() {
     assert!(matches!(err, CheckpointError::RepoPathMismatch { .. }));
 }
 
-// Ported from TestCheckpoint_ResumeWithMismatchedAnalyzers.
+// Mirrors TestCheckpoint_ResumeWithMismatchedAnalyzers.
 #[test]
 fn resume_with_mismatched_analyzers() {
     let dir = tempfile::tempdir().unwrap();
@@ -163,7 +163,7 @@ fn resume_with_mismatched_analyzers() {
     assert!(matches!(err, CheckpointError::AnalyzerMismatch { .. }));
 }
 
-// Ported from TestCheckpoint_ClearAfterCompletion.
+// Mirrors TestCheckpoint_ClearAfterCompletion.
 #[test]
 fn clear_after_completion() {
     let dir = tempfile::tempdir().unwrap();
@@ -187,7 +187,7 @@ fn clear_after_completion() {
     assert!(!mgr.exists());
 }
 
-// Ported from TestCheckpoint_MultipleAnalyzers.
+// Mirrors TestCheckpoint_MultipleAnalyzers.
 #[test]
 fn multiple_analyzers() {
     let dir = tempfile::tempdir().unwrap();

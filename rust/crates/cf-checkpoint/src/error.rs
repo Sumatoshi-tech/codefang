@@ -1,31 +1,19 @@
 //! Error types for the checkpoint subsystem.
 //!
-//! The Go package exposes three sentinel errors used with `errors.Is` for
-//! checkpoint validation (`manager.go`):
-//!
-//! ```go
-//! var (
-//!     ErrRepoPathMismatch = errors.New("repo path mismatch")
-//!     ErrAnalyzerMismatch = errors.New("analyzer mismatch")
-//!     ErrVersionMismatch  = errors.New("checkpoint version mismatch")
-//! )
-//! ```
-//!
-//! In Rust these become dedicated variants of [`CheckpointError`]. The
-//! `Display` text of the base sentinels matches the Go strings byte-for-byte so
-//! that callers comparing message prefixes (and the golden CLI harness) stay
-//! aligned; the validation variants additionally carry the wrapped detail Go
-//! appends via `fmt.Errorf("%w: ...")`.
-
-use std::fmt;
+//! Checkpoint validation distinguishes three sentinel conditions — repo path
+//! mismatch, analyzer mismatch, and version mismatch — as dedicated variants of
+//! [`CheckpointError`]. The `Display` text of the base sentinels is part of the
+//! CLI compatibility contract (callers compare message prefixes, and the golden
+//! CLI harness pins them); the validation variants additionally carry the
+//! wrapped detail appended after `: `.
 
 /// Result alias for checkpoint operations.
 pub type Result<T> = std::result::Result<T, CheckpointError>;
 
 /// Errors produced by the checkpoint subsystem.
 ///
-/// The three `*Mismatch` variants correspond to the Go sentinel errors and can
-/// be matched directly (the Rust equivalent of `errors.Is`):
+/// The three `*Mismatch` variants are sentinel conditions and can be matched
+/// directly:
 ///
 /// ```
 /// use cf_checkpoint::CheckpointError;
@@ -33,13 +21,14 @@ pub type Result<T> = std::result::Result<T, CheckpointError>;
 ///     matches!(e, CheckpointError::RepoPathMismatch { .. })
 /// }
 /// ```
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum CheckpointError {
     /// The checkpoint was created for a different repository path.
     ///
-    /// Mirrors `ErrRepoPathMismatch` ("repo path mismatch"). `want` is the path
-    /// recorded in the checkpoint metadata, `got` the path the caller supplied,
-    /// reproducing Go's `%w: checkpoint has %q, got %q`.
+    /// Sentinel "repo path mismatch". `want` is the path recorded in the
+    /// checkpoint metadata, `got` the path the caller supplied. The quoted
+    /// rendering (`{:?}`) matches the reference wording for ASCII paths.
+    #[error("repo path mismatch: checkpoint has {want:?}, got {got:?}")]
     RepoPathMismatch {
         /// Repository path stored in the checkpoint.
         want: String,
@@ -49,8 +38,13 @@ pub enum CheckpointError {
 
     /// The checkpoint was created for a different analyzer set.
     ///
-    /// Mirrors `ErrAnalyzerMismatch` ("analyzer mismatch"), reproducing Go's
-    /// `%w: checkpoint has %v, got %v`.
+    /// Sentinel "analyzer mismatch". The lists render space-separated in
+    /// square brackets (see [`format_string_list`]).
+    #[error(
+        "analyzer mismatch: checkpoint has {}, got {}",
+        format_string_list(.want),
+        format_string_list(.got)
+    )]
     AnalyzerMismatch {
         /// Analyzer list stored in the checkpoint.
         want: Vec<String>,
@@ -60,8 +54,8 @@ pub enum CheckpointError {
 
     /// The checkpoint metadata version does not match the current format.
     ///
-    /// Mirrors `ErrVersionMismatch` ("checkpoint version mismatch"),
-    /// reproducing Go's `%w: checkpoint has v%d, current is v%d`.
+    /// Sentinel "checkpoint version mismatch".
+    #[error("checkpoint version mismatch: checkpoint has v{found}, current is v{current}")]
     VersionMismatch {
         /// Version recorded in the checkpoint.
         found: i64,
@@ -70,72 +64,33 @@ pub enum CheckpointError {
     },
 
     /// An I/O error occurred (mkdir, open, read, write, rename, remove).
-    Io(std::io::Error),
+    #[error("{0}")]
+    Io(#[from] std::io::Error),
 
     /// A serialization / deserialization error occurred in a [`crate::Codec`].
+    #[error("{0}")]
     Codec(String),
 }
 
 impl CheckpointError {
-    /// Returns the base sentinel message for the validation variants, matching
-    /// the Go `errors.New(...)` strings exactly. Useful for prefix comparisons
-    /// and for asserting which sentinel fired without inspecting the suffix.
-    pub fn sentinel_message(&self) -> Option<&'static str> {
+    /// Returns the base sentinel message for the validation variants. Useful
+    /// for prefix comparisons and for asserting which sentinel fired without
+    /// inspecting the suffix.
+    #[must_use]
+    pub const fn sentinel_message(&self) -> Option<&'static str> {
         match self {
-            CheckpointError::RepoPathMismatch { .. } => Some("repo path mismatch"),
-            CheckpointError::AnalyzerMismatch { .. } => Some("analyzer mismatch"),
-            CheckpointError::VersionMismatch { .. } => Some("checkpoint version mismatch"),
+            Self::RepoPathMismatch { .. } => Some("repo path mismatch"),
+            Self::AnalyzerMismatch { .. } => Some("analyzer mismatch"),
+            Self::VersionMismatch { .. } => Some("checkpoint version mismatch"),
             _ => None,
         }
     }
 }
 
-impl fmt::Display for CheckpointError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            // Go: fmt.Errorf("%w: checkpoint has %q, got %q", ErrRepoPathMismatch, want, got)
-            // Go's %q quotes Go-style; for ASCII paths this matches Rust's {:?}.
-            CheckpointError::RepoPathMismatch { want, got } => write!(
-                f,
-                "repo path mismatch: checkpoint has {want:?}, got {got:?}"
-            ),
-            // Go: fmt.Errorf("%w: checkpoint has %v, got %v", ErrAnalyzerMismatch, want, got)
-            CheckpointError::AnalyzerMismatch { want, got } => write!(
-                f,
-                "analyzer mismatch: checkpoint has {}, got {}",
-                format_go_slice(want),
-                format_go_slice(got)
-            ),
-            // Go: fmt.Errorf("%w: checkpoint has v%d, current is v%d", ErrVersionMismatch, found, current)
-            CheckpointError::VersionMismatch { found, current } => write!(
-                f,
-                "checkpoint version mismatch: checkpoint has v{found}, current is v{current}"
-            ),
-            CheckpointError::Io(e) => write!(f, "{e}"),
-            CheckpointError::Codec(msg) => write!(f, "{msg}"),
-        }
-    }
-}
-
-impl std::error::Error for CheckpointError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            CheckpointError::Io(e) => Some(e),
-            _ => None,
-        }
-    }
-}
-
-impl From<std::io::Error> for CheckpointError {
-    fn from(e: std::io::Error) -> Self {
-        CheckpointError::Io(e)
-    }
-}
-
-/// Formats a string slice the way Go's `%v` renders a `[]string`:
-/// space-separated, wrapped in square brackets, with no quoting of elements.
-/// For example `["a", "b"]` becomes `[a b]`.
-fn format_go_slice(items: &[String]) -> String {
+/// Formats a string list as space-separated items wrapped in square brackets,
+/// with no quoting of elements — e.g. `["a", "b"]` becomes `[a b]`. This exact
+/// rendering is part of the error-message compatibility contract.
+fn format_string_list(items: &[String]) -> String {
     let mut out = String::from("[");
     for (i, s) in items.iter().enumerate() {
         if i > 0 {
@@ -162,7 +117,7 @@ mod tests {
     }
 
     #[test]
-    fn analyzer_mismatch_renders_go_slice() {
+    fn analyzer_mismatch_renders_bracketed_list() {
         let e = CheckpointError::AnalyzerMismatch {
             want: vec!["burndown".into()],
             got: vec!["devs".into()],
@@ -188,9 +143,9 @@ mod tests {
     }
 
     #[test]
-    fn format_go_slice_matches_go_v_verb() {
-        assert_eq!(format_go_slice(&[]), "[]");
-        assert_eq!(format_go_slice(&["x".into()]), "[x]");
-        assert_eq!(format_go_slice(&["a".into(), "b".into()]), "[a b]");
+    fn format_string_list_layout() {
+        assert_eq!(format_string_list(&[]), "[]");
+        assert_eq!(format_string_list(&["x".into()]), "[x]");
+        assert_eq!(format_string_list(&["a".into(), "b".into()]), "[a b]");
     }
 }

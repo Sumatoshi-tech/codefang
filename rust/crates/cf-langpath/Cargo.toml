@@ -8,6 +8,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-# enry tokenizer regexes. Go `regexp` and Rust `regex` are both RE2-derived
-# (leftmost-first, lazy `*?` supported), so the tokenization passes match.
+# enry tokenizer regexes. enry's regexp engine and Rust `regex` are both
+# RE2-derived (leftmost-first, lazy `*?` supported), so the tokenization
+# passes match.
 regex = "1"

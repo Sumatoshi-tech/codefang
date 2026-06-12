@@ -1,27 +1,26 @@
-//! Go `encoding/json` byte-parity marshaller over [`GoValue`].
+//! The report-format JSON encoder over [`GoValue`].
 //!
-//! This is the keystone the whole report layer routes through. It reproduces Go's
-//! `encoding/json` defaults exactly so machine-format report bytes match the Go
-//! binary byte-for-byte (see `specs/rust-rewrite/DESIGN.md` §2):
+//! This is the keystone the whole report layer routes through. Its encoding
+//! rules are a frozen byte contract, pinned against the reference
+//! implementation by `rust/tests/compat` (see `specs/rust-rewrite/DESIGN.md`
+//! §2):
 //!
-//! * **HTML escaping ON** — `<`, `>`, `&` become `<`, `>`, `&`,
-//!   and `U+2028`/`U+2029` become ` `/` `, matching `json.Marshal`'s
-//!   default (and `json.Encoder` without `SetEscapeHTML(false)`).
+//! * **HTML escaping ON** by default — `<`, `>`, `&` encode as `\u003c`,
+//!   `\u003e`, `\u0026`, and `U+2028`/`U+2029` as `\u2028`/`\u2029`.
 //! * **map keys byte-sorted**, struct fields in declaration order — decided by
 //!   [`GoMap::encode_order`] via the value's [`crate::MapOrigin`].
-//! * **floats** via [`crate::ftoa::format_json_float`] (Go's `encoding/json`
-//!   float encoder), never Rust's `Display`.
+//! * **floats** via [`crate::ftoa::format_json_float`] (the contract float
+//!   layout), never Rust's `Display`.
 //! * **compact** output ([`marshal`]) has no insignificant whitespace.
-//! * **indented** output ([`marshal_indent`]) mirrors
-//!   `json.Encoder.SetIndent("", "  ")` (two-space indent, `": "` after keys,
-//!   one element per line).
+//! * **indented** output ([`marshal_indent`]) uses a two-space indent, `": "`
+//!   after keys, and one element per line.
 //!
 //! Two entry styles are provided:
 //!
-//! * free functions [`marshal`] / [`marshal_indent`] (and `to_vec` aliases) for
-//!   the `json.Marshal` shape — compact/indented, **no** trailing newline; and
-//! * the [`Encoder`] builder for the `json.NewEncoder` shape — configurable
-//!   indent and an optional trailing `\n` (which `Encoder.Encode` appends).
+//! * free functions [`marshal`] / [`marshal_indent`] (and `to_vec` aliases) —
+//!   compact/indented, **no** trailing newline; and
+//! * the [`Encoder`] builder — configurable indent and an optional trailing
+//!   `\n` (the streaming one-value-per-line shape).
 //!
 //! [`GoMap`]: crate::value::GoMap
 //! [`GoMap::encode_order`]: crate::value::GoMap::encode_order
@@ -29,10 +28,10 @@
 use crate::ftoa::format_json_float;
 use crate::value::GoValue;
 
-/// The two-space indent unit Go's `SetIndent("", "  ")` uses by default.
+/// The contract's default two-space indent unit.
 const DEFAULT_INDENT: &str = "  ";
 
-/// Encodes `value` as compact Go-JSON bytes (mirrors `json.Marshal`).
+/// Encodes `value` as compact report-contract JSON bytes.
 ///
 /// No insignificant whitespace, HTML escaping on, no trailing newline.
 #[must_use]
@@ -48,11 +47,10 @@ pub fn to_vec(value: &GoValue) -> Vec<u8> {
     marshal(value)
 }
 
-/// Encodes `value` as two-space-indented Go-JSON bytes.
+/// Encodes `value` as two-space-indented report-contract JSON bytes.
 ///
-/// Mirrors `json.Encoder` with `SetIndent("", "  ")` **except** for the trailing
-/// newline: this function emits none, so callers add the newline where the
-/// golden expects it (or use [`Encoder::indented`] with
+/// No trailing newline is emitted; callers add one where the report surface
+/// expects it (or use [`Encoder::indented`] with
 /// [`Encoder::with_trailing_newline`]).
 #[must_use]
 pub fn marshal_indent(value: &GoValue) -> Vec<u8> {
@@ -67,33 +65,33 @@ pub fn to_vec_indent(value: &GoValue) -> Vec<u8> {
     marshal_indent(value)
 }
 
-/// Formats `f` exactly as Go's `encoding/json` encodes a JSON number.
+/// Formats `f` as a report-contract JSON number.
 ///
 /// Re-exported convenience wrapper around [`crate::ftoa::format_json_float`];
-/// this is the function the golden harness fuzzes against Go.
+/// this is the function the golden harness fuzzes against the reference
+/// implementation.
 #[must_use]
 pub fn go_float(f: f64) -> String {
     format_json_float(f)
 }
 
-/// Owned, builder-style Go-JSON encoder mirroring `encoding/json`'s `Encoder`.
+/// Owned, builder-style report-contract JSON encoder.
 ///
 /// Construct with one of the named constructors and (optionally)
 /// [`with_trailing_newline`](Encoder::with_trailing_newline), then call
 /// [`encode`](Encoder::encode) / [`encode_to_vec`](Encoder::encode_to_vec) /
 /// [`encode_to_string`](Encoder::encode_to_string). HTML escaping defaults to
-/// on (Go's default); [`with_html_escaping`](Encoder::with_html_escaping)
-/// mirrors `Encoder.SetEscapeHTML(false)`, which go-echarts'
-/// `BaseConfiguration.JSONNotEscaped` (charts/base.go:115) uses for the chart
-/// `option_*` JSON embedded in `--format plot` pages. Every other machine-format
-/// report path keeps the default.
+/// on (the contract default); [`with_html_escaping`](Encoder::with_html_escaping)
+/// turns it off for the one surface that requires it — the chart `option_*`
+/// JSON embedded in `--format plot` pages. Every other machine-format report
+/// path keeps the default.
 ///
-/// | constructor | shape | indent | trailing `\n` |
-/// | --- | --- | --- | --- |
-/// | [`marshal`](Encoder::marshal) | `json.Marshal` | none | no |
-/// | [`compact`](Encoder::compact) | compact | none | no |
-/// | [`encoder`](Encoder::encoder) | `json.NewEncoder` | none | **yes** |
-/// | [`indented`](Encoder::indented) | `SetIndent("","…")` | given | no |
+/// | constructor | indent | trailing `\n` |
+/// | --- | --- | --- |
+/// | [`marshal`](Encoder::marshal) | none | no |
+/// | [`compact`](Encoder::compact) | none | no |
+/// | [`encoder`](Encoder::encoder) | none | **yes** |
+/// | [`indented`](Encoder::indented) | given | no |
 #[derive(Debug, Clone)]
 pub struct Encoder {
     indent: Option<String>,
@@ -112,7 +110,7 @@ impl Default for Encoder {
 }
 
 impl Encoder {
-    /// Compact encoder with no trailing newline — the `json.Marshal` shape.
+    /// Compact encoder with no trailing newline — the plain-marshal shape.
     #[must_use]
     pub fn marshal() -> Self {
         Encoder::default()
@@ -127,8 +125,11 @@ impl Encoder {
         Encoder::default()
     }
 
-    /// Compact encoder that appends a trailing `\n` — the `json.NewEncoder`
-    /// shape (`Encoder.Encode` writes one newline per value).
+    /// Compact encoder that appends a trailing `\n` — the streaming shape
+    /// (one newline per encoded value).
+    // The name is established public API across the workspace; renaming it
+    // would break consumers for zero benefit.
+    #[allow(clippy::self_named_constructors)]
     #[must_use]
     pub fn encoder() -> Self {
         Encoder {
@@ -138,8 +139,8 @@ impl Encoder {
         }
     }
 
-    /// Indented encoder using `indent` as the per-level unit (`"  "` reproduces
-    /// `SetIndent("", "  ")`). No trailing newline unless
+    /// Indented encoder using `indent` as the per-level unit (`"  "` is the
+    /// contract's two-space form). No trailing newline unless
     /// [`with_trailing_newline`](Encoder::with_trailing_newline) is set.
     #[must_use]
     pub fn indented(indent: &str) -> Self {
@@ -157,10 +158,9 @@ impl Encoder {
         self
     }
 
-    /// Returns a copy of this encoder with HTML escaping set — the analogue of
-    /// Go `json.Encoder.SetEscapeHTML`. With escaping off, `<`, `>`, and `&`
-    /// are written verbatim; everything else (including the unconditional
-    /// `U+2028`/`U+2029` escapes) is unchanged, exactly as in `encoding/json`.
+    /// Returns a copy of this encoder with HTML escaping set. With escaping
+    /// off, `<`, `>`, and `&` are written verbatim; everything else (including
+    /// the unconditional `U+2028`/`U+2029` escapes) is unchanged.
     #[must_use]
     pub fn with_html_escaping(mut self, on: bool) -> Self {
         self.html_escape = on;
@@ -190,11 +190,11 @@ impl Encoder {
     /// Encodes `value` to a `String` (output is always valid UTF-8).
     #[must_use]
     pub fn encode_to_string(&self, value: &GoValue) -> String {
-        String::from_utf8(self.encode(value)).expect("Go-JSON output is valid UTF-8")
+        String::from_utf8(self.encode(value)).expect("encoder output is valid UTF-8")
     }
 }
 
-/// Writes `value` to `out` in compact form (HTML escaping on — Go's default).
+/// Writes `value` to `out` in compact form (HTML escaping on — the contract default).
 fn write_compact(out: &mut Vec<u8>, value: &GoValue) {
     write_compact_opts(out, value, true);
 }
@@ -202,8 +202,8 @@ fn write_compact(out: &mut Vec<u8>, value: &GoValue) {
 /// Writes `value` to `out` in compact form with the given HTML-escaping mode.
 fn write_compact_opts(out: &mut Vec<u8>, value: &GoValue, escape_html: bool) {
     match value {
-        // A nil slice marshals as `null` in `encoding/json` (the YAML encoder
-        // renders it `[]` instead).
+        // A nil slice marshals as `null` in JSON (the YAML encoder renders
+        // `[]` instead).
         GoValue::Null | GoValue::NilSlice => out.extend_from_slice(b"null"),
         GoValue::Bool(true) => out.extend_from_slice(b"true"),
         GoValue::Bool(false) => out.extend_from_slice(b"false"),
@@ -245,10 +245,10 @@ fn write_indent(out: &mut Vec<u8>, unit: &str, depth: usize) {
 
 /// Writes `value` to `out` indented with `unit`, current nesting `depth`.
 ///
-/// Matches Go's indented encoder: empty objects/arrays stay `{}`/`[]` on one
-/// line; non-empty containers put one element per line, a `": "` separator after
-/// object keys, and the closing bracket at the parent indent. Scalars are
-/// identical to the compact form.
+/// Contract layout: empty objects/arrays stay `{}`/`[]` on one line; non-empty
+/// containers put one element per line, a `": "` separator after object keys,
+/// and the closing bracket at the parent indent. Scalars are identical to the
+/// compact form.
 fn write_indented(out: &mut Vec<u8>, value: &GoValue, unit: &str, depth: usize) {
     write_indented_opts(out, value, unit, depth, true);
 }
@@ -289,30 +289,30 @@ fn write_indented_opts(out: &mut Vec<u8>, value: &GoValue, unit: &str, depth: us
     }
 }
 
-/// Writes `s` as a Go `encoding/json` quoted string with HTML escaping on.
+/// Writes `s` as a contract-quoted JSON string with HTML escaping on.
 ///
-/// Byte-for-byte reproduction of `encoding/json`'s `encodeState.string` with the
-/// default `escapeHTML=true`:
+/// Byte-for-byte reproduction of the reference string encoder with its default
+/// HTML-escaping mode:
 ///
 /// * `"` → `\"`, `\` → `\\`;
 /// * `\n` → `\n`, `\r` → `\r`, `\t` → `\t`;
-/// * `<` → `<`, `>` → `>`, `&` → `&` (HTML safety);
-/// * other control bytes `< 0x20` → `\u00xx` (lowercase hex), so `\b`/`\f`
-///   become ``/`` exactly as Go emits them (Go uses **no** `\b`/`\f`
-///   shortcuts);
-/// * `U+2028`/`U+2029` → ` `/` ` (the JS line/paragraph separators Go
-///   escapes for the same browser-safety reason).
+/// * `0x08`/`0x0c` → the short escapes `\b`/`\f` (verified against the
+///   reference binary);
+/// * `<` → `\u003c`, `>` → `\u003e`, `&` → `\u0026` (HTML safety);
+/// * every other control byte `< 0x20` → `\u00xx` (lowercase hex);
+/// * `U+2028`/`U+2029` → `\u2028`/`\u2029` (the JS line/paragraph separators,
+///   escaped for the same browser-safety reason).
 ///
-/// Rust `&str` is always valid UTF-8, so Go's invalid-rune `�` path is
-/// unreachable here.
+/// Rust `&str` is always valid UTF-8, so the reference encoder's invalid-rune
+/// replacement path is unreachable here.
 pub fn write_go_json_string(out: &mut Vec<u8>, s: &str) {
     write_go_json_string_opts(out, s, true);
 }
 
 /// [`write_go_json_string`] with the HTML-escaping mode threaded through —
-/// `escape_html=false` mirrors `json.Encoder.SetEscapeHTML(false)`: `<`, `>`,
-/// and `&` pass through verbatim while every other escape (including the
-/// unconditional `U+2028`/`U+2029` pair) is unchanged.
+/// with `escape_html=false`, `<`, `>`, and `&` pass through verbatim while
+/// every other escape (including the unconditional `U+2028`/`U+2029` pair) is
+/// unchanged.
 pub fn write_go_json_string_opts(out: &mut Vec<u8>, s: &str, escape_html: bool) {
     out.push(b'"');
     let bytes = s.as_bytes();
@@ -324,8 +324,9 @@ pub fn write_go_json_string_opts(out: &mut Vec<u8>, s: &str, escape_html: bool) 
             '\n' => (Some(b"\\n"), 1),
             '\r' => (Some(b"\\r"), 1),
             '\t' => (Some(b"\\t"), 1),
-            // Go's encoding/json emits the short escapes \b (0x08) and \f (0x0c),
-            // not the generic  /  forms (verified against json.Marshal).
+            // The contract uses the short escapes \b (0x08) and \f (0x0c) here,
+            // not the generic \u00xx forms (verified against the reference
+            // binary).
             '\u{0008}' => (Some(b"\\b"), 1),
             '\u{000c}' => (Some(b"\\f"), 1),
             '<' if escape_html => (Some(b"\\u003c"), 1),
@@ -386,7 +387,7 @@ mod tests {
 
     #[test]
     fn html_and_special_escaping_matches_go() {
-        // Go HTML-escapes <, >, & to < > & by default.
+        // <, >, & HTML-escape to \u003c \u003e \u0026 by default.
         assert_eq!(
             st(marshal(&GoValue::Str("a<b>c&d".into()))),
             r#""a\u003cb\u003ec\u0026d""#
@@ -394,11 +395,11 @@ mod tests {
         assert_eq!(st(marshal(&GoValue::Str("\"q\"".into()))), r#""\"q\"""#);
         assert_eq!(st(marshal(&GoValue::Str("a\\b".into()))), r#""a\\b""#);
         assert_eq!(st(marshal(&GoValue::Str("x\ny\tz".into()))), r#""x\ny\tz""#);
-        // 0x08 and 0x0c use the short escapes \b and \f (Go json.Marshal).
+        // 0x08 and 0x0c use the short escapes \b and \f (contract behavior).
         assert_eq!(st(marshal(&GoValue::Str("\u{0008}\u{000c}".into()))), r#""\b\f""#);
         // line/paragraph separators.
         assert_eq!(st(marshal(&GoValue::Str("\u{2028}\u{2029}".into()))), r#""\u2028\u2029""#);
-        // forward slash is NOT escaped by Go.
+        // forward slash is NOT escaped.
         assert_eq!(st(marshal(&GoValue::Str("a/b".into()))), r#""a/b""#);
     }
 
@@ -427,14 +428,14 @@ mod tests {
 
     #[test]
     fn nil_slice_marshals_as_null() {
-        // `encoding/json` writes a nil slice as `null` (the YAML encoder writes
-        // `[]`); an initialized-but-empty slice stays `[]` in both.
+        // JSON writes a nil slice as `null` (the YAML encoder writes `[]`);
+        // an initialized-but-empty slice stays `[]` in both.
         assert_eq!(st(marshal(&GoValue::NilSlice)), "null");
         assert_eq!(st(marshal_indent(&GoValue::NilSlice)), "null");
     }
 
     #[test]
-    fn indent_matches_go_two_space() {
+    fn indent_matches_contract_two_space() {
         let mut inner = GoMap::new(MapOrigin::Map);
         inner.push("x", GoValue::Int(1));
         inner.push("y", GoValue::Int(2));

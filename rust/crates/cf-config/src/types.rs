@@ -1,30 +1,29 @@
 //! Configuration model and validation.
 //!
-//! Direct port of `internal/config/config.go`. Field names, the YAML/`mapstructure`
-//! keys, the validation order, and the sentinel-error messages all mirror the Go
-//! source so behavior is reproduced exactly.
+//! Field names, the YAML keys, the validation order, and the sentinel-error
+//! messages are all frozen (CLI compatibility contract).
 
 use serde::Deserialize;
 use std::fmt;
 
-/// Upper bound for the sentiment gap value (`sentimentGapMax`).
+/// Upper bound for the sentiment gap value.
 const SENTIMENT_GAP_MAX: f64 = 1.0;
-/// Upper bound for ratio values, 0.0 to 1.0 (`ratioMax`).
+/// Upper bound for ratio values, 0.0 to 1.0.
 const RATIO_MAX: f64 = 1.0;
-/// Upper bound for percentage values, 0 to 100 (`percentMax`).
+/// Upper bound for percentage values, 0 to 100.
 const PERCENT_MAX: f64 = 100.0;
-/// Minimum valid HLL precision (`minHLLPrecision`).
+/// Minimum valid HLL precision.
 const MIN_HLL_PRECISION: i64 = 4;
-/// Maximum valid HLL precision (`maxHLLPrecision`).
+/// Maximum valid HLL precision.
 const MAX_HLL_PRECISION: i64 = 18;
-/// Minimum valid sliding window for anomaly detection (`minAnomalyWindowSize`).
+/// Minimum valid sliding window for anomaly detection.
 const MIN_ANOMALY_WINDOW_SIZE: i64 = 2;
 
 /// Sentinel errors returned by [`Config::validate`].
 ///
-/// Each variant maps one-to-one to a Go `Err*` sentinel in `config.go`; the
-/// [`fmt::Display`] text is byte-identical to the Go `errors.New` message so any
-/// downstream wrapping (`validate config: <msg>`) matches.
+/// The [`fmt::Display`] text of each variant is part of the CLI compatibility
+/// contract, so any downstream wrapping (`validate config: <msg>`) matches the
+/// reference binary byte-for-byte.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ConfigError {
@@ -109,7 +108,7 @@ pub enum ConfigError {
 }
 
 impl ConfigError {
-    /// Returns the byte-identical Go sentinel message for this error.
+    /// Returns the frozen sentinel message for this error.
     #[must_use]
     pub const fn message(self) -> &'static str {
         match self {
@@ -198,11 +197,12 @@ impl fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
-/// Top-level configuration for codefang (port of Go `Config`).
+/// Top-level configuration for codefang.
 ///
-/// `serde(default)` makes every absent YAML key fall back to the Rust field
-/// default, mirroring how viper merges a partial file over registered defaults.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+/// `serde(default)` makes every absent YAML key fall back to the field
+/// default, merging a partial file over the registered defaults (reference
+/// loader behavior).
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct Config {
     /// Analyzer IDs or glob patterns selected for the run.
@@ -215,8 +215,8 @@ pub struct Config {
     pub checkpoint: CheckpointConfig,
 }
 
-/// Pipeline resource knobs (port of Go `PipelineConfig`).
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+/// Pipeline resource knobs.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct PipelineConfig {
     /// Worker count.
@@ -294,8 +294,8 @@ pub struct PipelineConfig {
     pub diff_job_buffer_multiplier: i64,
 }
 
-/// Per-analyzer history configuration (port of Go `HistoryConfig`).
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+/// Per-analyzer history configuration.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct HistoryConfig {
     /// Burndown analyzer settings.
@@ -320,7 +320,7 @@ pub struct HistoryConfig {
     pub clones: ClonesConfig,
 }
 
-/// Temporal anomaly detection settings (port of Go `AnomalyConfig`).
+/// Temporal anomaly detection settings.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct AnomalyConfig {
@@ -330,8 +330,8 @@ pub struct AnomalyConfig {
     pub window_size: i64,
 }
 
-/// Burndown analyzer settings (port of Go `BurndownConfig`).
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+/// Burndown analyzer settings.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct BurndownConfig {
     /// Time-bucket granularity in days.
@@ -354,8 +354,8 @@ pub struct BurndownConfig {
     pub goroutines: i64,
 }
 
-/// Couples analyzer settings (port of Go `CouplesConfig`).
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+/// Couples analyzer settings.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct CouplesConfig {
     /// High coupling threshold.
@@ -374,7 +374,7 @@ pub struct CouplesConfig {
     pub min_edge_weight: i64,
 }
 
-/// Devs analyzer settings (port of Go `DevsConfig`).
+/// Devs analyzer settings.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct DevsConfig {
@@ -398,8 +398,8 @@ pub struct DevsConfig {
     pub hll_precision: i64,
 }
 
-/// File-history analyzer settings (port of Go `FileHistoryConfig`).
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+/// File-history analyzer settings.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct FileHistoryConfig {
     /// Critical hotspot threshold.
@@ -410,8 +410,8 @@ pub struct FileHistoryConfig {
     pub hotspot_threshold_medium: i64,
 }
 
-/// Imports analyzer settings (port of Go `ImportsConfig`).
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+/// Imports analyzer settings.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct ImportsConfig {
     /// Goroutine count.
@@ -422,7 +422,7 @@ pub struct ImportsConfig {
     pub max_dependency_risk_rows: i64,
 }
 
-/// Sentiment analyzer settings (port of Go `SentimentConfig`).
+/// Sentiment analyzer settings.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct SentimentConfig {
@@ -445,8 +445,8 @@ pub struct SentimentConfig {
     pub low_sentiment_risk_thresh: f64,
 }
 
-/// Shotness analyzer settings (port of Go `ShotnessConfig`).
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+/// Shotness analyzer settings.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct ShotnessConfig {
     /// Structural selection DSL.
@@ -455,21 +455,21 @@ pub struct ShotnessConfig {
     pub dsl_name: String,
 }
 
-/// Typos analyzer settings (port of Go `TyposConfig`).
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+/// Typos analyzer settings.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct TyposConfig {
     /// Maximum edit distance.
     pub max_distance: i64,
 }
 
-/// Clones analyzer settings (port of Go `ClonesConfig`).
+/// Clones analyzer settings.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct ClonesConfig {
     /// Maximum clone pairs.
     pub max_clone_pairs: i64,
-    /// Number of MinHash hashes.
+    /// Number of `MinHash` hashes.
     pub num_hashes: i64,
     /// Number of LSH bands.
     pub num_bands: i64,
@@ -491,8 +491,8 @@ pub struct ClonesConfig {
     pub threshold_pairs_red: i64,
 }
 
-/// Checkpoint settings (port of Go `CheckpointConfig`).
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+/// Checkpoint settings.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct CheckpointConfig {
     /// Checkpointing enabled.
@@ -508,8 +508,8 @@ pub struct CheckpointConfig {
 impl Config {
     /// Validates configuration invariants and returns the first error found.
     ///
-    /// Ports `Config.Validate`: pipeline checks first, then history. The
-    /// zero-value config is valid (Go's `Config{}.Validate()` returns nil)
+    /// Pipeline checks run first, then history; the order is frozen because
+    /// only the FIRST violation is reported. The zero-value config is valid
     /// because every bound is `< 0` (or a `!= 0 && out-of-range` guard).
     ///
     /// # Errors
@@ -519,7 +519,7 @@ impl Config {
         self.validate_history()
     }
 
-    fn validate_pipeline(&self) -> Result<(), ConfigError> {
+    const fn validate_pipeline(&self) -> Result<(), ConfigError> {
         let p = &self.pipeline;
         let pct_max = PERCENT_MAX as i64;
         if p.workers < 0 {
@@ -597,7 +597,7 @@ impl Config {
         Ok(())
     }
 
-    fn validate_couples(&self) -> Result<(), ConfigError> {
+    const fn validate_couples(&self) -> Result<(), ConfigError> {
         let cp = &self.history.couples;
         if cp.coupling_threshold_high < 0 {
             return Err(ConfigError::InvalidCouplingThreshold);
@@ -644,7 +644,7 @@ impl Config {
         Ok(())
     }
 
-    fn validate_file_history(&self) -> Result<(), ConfigError> {
+    const fn validate_file_history(&self) -> Result<(), ConfigError> {
         let fh = &self.history.file_history;
         if fh.hotspot_threshold_critical < 0 {
             return Err(ConfigError::InvalidHotspotThresholdCritical);
@@ -679,23 +679,12 @@ impl Config {
 // ---------------------------------------------------------------------------
 // Default impls
 //
-// These reproduce the values viper registers via SetDefault in loader.go, i.e.
-// the config that results from an empty .codefang.yaml. Note this is NOT the Go
-// zero value: the zero value (`Config{}`) is obtained with `Config::zero()`.
+// These reproduce the registered defaults, i.e. the config that results from
+// an empty .codefang.yaml. Note this is NOT the all-zero value, which is
+// obtained with `Config::zero()`.
 // ---------------------------------------------------------------------------
 
 use crate::defaults::*;
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            analyzers: Vec::new(),
-            pipeline: PipelineConfig::default(),
-            history: HistoryConfig::default(),
-            checkpoint: CheckpointConfig::default(),
-        }
-    }
-}
 
 impl Default for PipelineConfig {
     fn default() -> Self {
@@ -708,8 +697,8 @@ impl Default for PipelineConfig {
             commit_batch_size: DEFAULT_PIPELINE_COMMIT_BATCH_SIZE,
             gogc: DEFAULT_PIPELINE_GOGC,
             ballast_size: DEFAULT_PIPELINE_BALLAST_SIZE.to_owned(),
-            // memory_limit and worker_timeout have no SetDefault in loader.go,
-            // so viper leaves them as the Go zero value (empty string).
+            // memory_limit and worker_timeout have no registered default and
+            // stay at the zero value (empty string).
             memory_limit: String::new(),
             worker_timeout: String::new(),
             uast_spill_threshold: DEFAULT_PIPELINE_UAST_SPILL_THRESHOLD,
@@ -738,23 +727,6 @@ impl Default for PipelineConfig {
             malloc_trim_interval: DEFAULT_PIPELINE_MALLOC_TRIM_INTERVAL,
             static_memory_limit_ratio: DEFAULT_PIPELINE_STATIC_MEMORY_LIMIT_RATIO,
             diff_job_buffer_multiplier: DEFAULT_PIPELINE_DIFF_JOB_BUFFER_MULTIPLIER,
-        }
-    }
-}
-
-impl Default for HistoryConfig {
-    fn default() -> Self {
-        Self {
-            burndown: BurndownConfig::default(),
-            couples: CouplesConfig::default(),
-            devs: DevsConfig::default(),
-            file_history: FileHistoryConfig::default(),
-            imports: ImportsConfig::default(),
-            sentiment: SentimentConfig::default(),
-            shotness: ShotnessConfig::default(),
-            typos: TyposConfig::default(),
-            anomaly: AnomalyConfig::default(),
-            clones: ClonesConfig::default(),
         }
     }
 }

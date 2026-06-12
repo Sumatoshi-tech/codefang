@@ -1,10 +1,8 @@
 //! Cross-commit LRU cache for git blob data.
 //!
-//! Faithful Rust port of the Go `internal/cache/lru.go` (`LRUBlobCache`). It
-//! wraps the generic [`cf_alg_lru::Cache`] configured with size-based capacity, an
-//! FNV-128a Bloom pre-filter, sampled cost-based eviction, and blob cloning on
-//! insertion — exactly the four functional options the Go constructor passes to
-//! `lru.New`.
+//! [`LruBlobCache`] wraps the generic [`cf_alg_lru::Cache`] configured with
+//! size-based capacity, an FNV-128a Bloom pre-filter, sampled cost-based
+//! eviction, and blob cloning on insertion.
 
 use std::collections::HashMap;
 
@@ -12,37 +10,34 @@ use cf_alg_lru::Cache;
 
 use crate::gitlib::{CachedBlob, GitHash};
 
-/// Statistics snapshot type (Go `LRUStats = lru.Stats`).
+/// Statistics snapshot type (alias of the generic LRU's stats).
 pub type LruStats = cf_alg_lru::Stats;
 
-/// Default maximum memory size for the LRU blob cache, 256 MB
-/// (Go `DefaultLRUCacheSize`).
+/// Default maximum memory size for the LRU blob cache, 256 MB.
 pub const DEFAULT_LRU_CACHE_SIZE: i64 = 256 * 1024 * 1024;
 
-/// Bytes per kilobyte for eviction-cost normalization (Go `bytesPerKB`).
+/// Bytes per kilobyte for eviction-cost normalization.
 const BYTES_PER_KB: f64 = 1024.0;
 
-/// Estimated average blob size in bytes for Bloom-filter sizing
-/// (Go `averageBlobSizeEstimate`). Typical source files are ~4 KB.
+/// Estimated average blob size in bytes for Bloom-filter sizing.
+/// Typical source files are ~4 KB.
 const AVERAGE_BLOB_SIZE_ESTIMATE: i64 = 4096;
 
-/// Minimum expected element count for the Bloom filter (Go `minBloomElements`).
+/// Minimum expected element count for the Bloom filter.
 const MIN_BLOOM_ELEMENTS: usize = 64;
 
-/// Number of LRU candidates sampled for size-aware eviction
-/// (Go `evictionSampleSize`).
+/// Number of LRU candidates sampled for size-aware eviction.
 const EVICTION_SAMPLE_SIZE: i64 = 5;
 
-/// Returns the data length of a cached blob as `i64` (Go `blobSize`).
+/// Returns the data length of a cached blob as `i64`.
 ///
-/// Go's `blobSize` guards a nil blob (`return 0`); here a non-existent blob is
-/// represented by the absence of an entry, and a present [`CachedBlob`] always
-/// reports its `data` length.
+/// A non-existent blob is represented by the absence of an entry, so a present
+/// [`CachedBlob`] always reports its `data` length.
 fn blob_size(blob: &CachedBlob) -> i64 {
     blob.data.len() as i64
 }
 
-/// Computes the cost of evicting an entry (Go `evictionCost`).
+/// Computes the cost of evicting an entry.
 ///
 /// Higher cost = less desirable to evict; cost = `accessCount / sizeKB`, so
 /// large, rarely-accessed items are evicted first. `sizeKB` is clamped to `>= 1`.
@@ -59,7 +54,7 @@ fn eviction_cost(access_count: i64, size_bytes: i64) -> f64 {
     access_count as f64 / size_kb
 }
 
-/// A cross-commit LRU cache for blob data (Go `cache.LRUBlobCache`).
+/// A cross-commit LRU cache for blob data.
 ///
 /// Tracks memory usage and evicts least-recently-used entries when the limit is
 /// exceeded; a Bloom pre-filter short-circuits `get`/`get_multi` lookups for
@@ -69,12 +64,10 @@ pub struct LruBlobCache {
 }
 
 impl LruBlobCache {
-    /// Creates a new LRU blob cache with `max_size` bytes of capacity
-    /// (Go `NewLRUBlobCache`).
+    /// Creates a new LRU blob cache with `max_size` bytes of capacity.
     ///
     /// A non-positive `max_size` falls back to [`DEFAULT_LRU_CACHE_SIZE`]. The
-    /// Bloom filter is sized for `max(max_size / 4096, 64)` expected elements,
-    /// matching `max(uint(maxSize/averageBlobSizeEstimate), minBloomElements)`.
+    /// Bloom filter is sized for `max(max_size / 4096, 64)` expected elements.
     #[must_use]
     pub fn new(max_size: i64) -> Self {
         let max_size = if max_size <= 0 {
@@ -96,7 +89,7 @@ impl LruBlobCache {
         Self { cache }
     }
 
-    /// Retrieves a blob, returning `None` if absent (Go `Get`).
+    /// Retrieves a blob, returning `None` if absent.
     ///
     /// Uses the Bloom filter to skip lock acquisition for definite misses.
     #[must_use]
@@ -104,19 +97,17 @@ impl LruBlobCache {
         self.cache.get(hash)
     }
 
-    /// Adds a blob to the cache (Go `Put`).
+    /// Adds a blob to the cache; passing `None` is a no-op.
     ///
-    /// A `nil` blob in Go is a no-op; here that maps to passing `None`.
     /// Oversize blobs (larger than the whole cache) are silently skipped by the
-    /// underlying LRU, exactly as in Go.
+    /// underlying LRU.
     pub fn put(&self, hash: GitHash, blob: Option<CachedBlob>) {
         if let Some(b) = blob {
             self.cache.put(hash, b);
         }
     }
 
-    /// Retrieves multiple blobs, returning found pairs and missing hashes
-    /// (Go `GetMulti`).
+    /// Retrieves multiple blobs, returning found pairs and missing hashes.
     #[must_use]
     pub fn get_multi(
         &self,
@@ -125,37 +116,37 @@ impl LruBlobCache {
         self.cache.get_multi(hashes)
     }
 
-    /// Adds multiple blobs to the cache (Go `PutMulti`).
+    /// Adds multiple blobs to the cache.
     pub fn put_multi(&self, blobs: HashMap<GitHash, CachedBlob>) {
         self.cache.put_multi(blobs);
     }
 
-    /// Adds multiple blobs without cloning (Go `PutMultiOwned`).
+    /// Adds multiple blobs without cloning.
     ///
     /// The caller guarantees the blobs are exclusively owned heap copies.
     pub fn put_multi_owned(&self, blobs: HashMap<GitHash, CachedBlob>) {
         self.cache.put_multi_owned(blobs);
     }
 
-    /// Returns cache statistics (Go `Stats`).
+    /// Returns cache statistics.
     #[must_use]
     pub fn stats(&self) -> LruStats {
         self.cache.stats()
     }
 
-    /// Returns the total cache hit count (Go `CacheHits`).
+    /// Returns the total cache hit count.
     #[must_use]
     pub fn cache_hits(&self) -> i64 {
         self.cache.cache_hits()
     }
 
-    /// Returns the total cache miss count (Go `CacheMisses`).
+    /// Returns the total cache miss count.
     #[must_use]
     pub fn cache_misses(&self) -> i64 {
         self.cache.cache_misses()
     }
 
-    /// Removes all entries and resets the Bloom filter (Go `Clear`).
+    /// Removes all entries and resets the Bloom filter.
     pub fn clear(&self) {
         self.cache.clear();
     }
@@ -213,7 +204,7 @@ mod tests {
 
         // Re-access h2 so h1 becomes LRU.
         let _ = c.get(&h2);
-        c.put(h3, Some(blob.clone()));
+        c.put(h3, Some(blob));
 
         assert!(c.get(&h1).is_none(), "hash1 should be evicted");
         assert!(c.get(&h2).is_some(), "hash2 should still be in cache");

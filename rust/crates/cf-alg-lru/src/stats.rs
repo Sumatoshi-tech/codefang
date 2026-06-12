@@ -1,6 +1,4 @@
-//! Cache performance metrics.
-//!
-//! Rust port of the Go `stats.go` file: the [`Stats`] snapshot struct, its
+//! Cache performance metrics: the [`Stats`] snapshot struct, its
 //! [`Stats::hit_rate`] derivation, and the [`Cache::stats`],
 //! [`Cache::cache_hits`], and [`Cache::cache_misses`] accessors.
 
@@ -11,10 +9,8 @@ use crate::Cache;
 
 /// A snapshot of cache performance metrics.
 ///
-/// Mirrors Go's `Stats` struct field-for-field. Field types match the Go
-/// counterparts (`int64` → [`i64`], `int` → [`i64`] for the entry count to
-/// avoid platform-width ambiguity; the values are always small and
-/// non-negative).
+/// All counters are [`i64`] (including the entry count, to avoid
+/// platform-width ambiguity); the values are always small and non-negative.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Stats {
     /// Total number of cache hits.
@@ -36,8 +32,7 @@ pub struct Stats {
 impl Stats {
     /// Returns the cache hit rate as a fraction in `[0.0, 1.0]`.
     ///
-    /// Returns `0.0` when there have been no lookups. Mirrors Go's
-    /// `Stats.HitRate`.
+    /// Returns `0.0` when there have been no lookups.
     #[must_use]
     pub fn hit_rate(&self) -> f64 {
         let total = self.hits + self.misses;
@@ -53,7 +48,7 @@ impl<K, V> Cache<K, V>
 where
     K: Eq + Hash + Clone,
 {
-    /// Returns current cache statistics. Mirrors Go's `Stats`.
+    /// Returns current cache statistics.
     #[must_use]
     pub fn stats(&self) -> Stats {
         let inner = self.read_inner_for_stats();
@@ -69,15 +64,13 @@ where
         }
     }
 
-    /// Returns the total cache hit count (atomic, lock-free). Mirrors Go's
-    /// `CacheHits`.
+    /// Returns the total cache hit count (atomic, lock-free).
     #[must_use]
     pub fn cache_hits(&self) -> i64 {
         self.hits_atomic().load(Ordering::Relaxed)
     }
 
-    /// Returns the total cache miss count (atomic, lock-free). Mirrors Go's
-    /// `CacheMisses`.
+    /// Returns the total cache miss count (atomic, lock-free).
     #[must_use]
     pub fn cache_misses(&self) -> i64 {
         self.misses_atomic().load(Ordering::Relaxed)

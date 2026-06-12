@@ -1,128 +1,79 @@
-//! Canonical Go-compatible JSON writer (`WriteJSON`).
+//! The canonical report JSON writer.
 //!
-//! Port of Go `pkg/textutil/textutil.go`'s `WriteJSON`, the canonical report
-//! JSON writer used across codefang. Per `specs/rust-rewrite/DESIGN.md`
-//! (§1.1, §2, §3.2 row "json"), report serialization MUST route through the
-//! shared Go-byte-compatible encoder — never raw `serde_json` — so
-//! MACHINE-format report bytes stay byte-identical with the Go implementation.
+//! Per `specs/rust-rewrite/DESIGN.md` (§1.1, §2, §3.2 row "json"), report
+//! serialization MUST route through the shared contract encoder — never raw
+//! `serde_json` — so machine-format report bytes stay pinned (differential
+//! gate: `rust/tests/compat`).
 //!
-//! The shared encoder is the tier-0 crate [`cf_gojson`]. This module is a thin,
-//! faithful wrapper selecting the [`cf_gojson::Encoder`] configuration that
-//! matches the Go `WriteJSON` call site exactly.
+//! The shared encoder is the tier-0 crate [`cf_gojson`]. This module is a
+//! thin wrapper selecting the [`cf_gojson::Encoder`] configuration every
+//! report JSON surface uses.
 //!
-//! # Encoding rules (reproduced from Go `encoding/json`)
+//! # Encoding rules (report contract)
 //!
-//! `WriteJSON` mirrors `json.NewEncoder(w)` + (optionally)
-//! `enc.SetIndent("", "  ")` + `enc.Encode(v)`:
-//!
-//! - HTML escaping is **enabled** (`<`, `>`, `&` and U+2028 / U+2029 escaped) —
-//!   this is `cf_gojson`'s only (Go-default) mode.
+//! - HTML escaping is **enabled** (`<`, `>`, `&` and U+2028 / U+2029 escaped).
 //! - When `pretty` is `true`, output is indented with two spaces and a single
 //!   space follows each `:`; empty containers collapse to `{}` / `[]`.
-//! - A trailing newline is always written (`Encoder.Encode` appends one `\n`).
+//! - A trailing newline is always written (one value per line).
 //!
 //! # The error path
 //!
-//! Go's `WriteJSON` returns `error` because `json.Encoder.Encode` can fail —
-//! most relevantly on a non-finite float (`NaN`/`±Inf`), which `encoding/json`
-//! rejects with `json: unsupported value`. `cf_gojson`'s encoder is infallible
-//! and assumes finite floats (its float formatter is documented as requiring
-//! finite input), so this wrapper performs the same validity check Go's encoder
-//! does *before* encoding, preserving the fallible `Result` signature and the
-//! `IsBinary`-adjacent test parity (`TestWriteJSON_ErrorOnUnsupportedType`).
+//! The contract rejects non-finite floats (`NaN`/`±Inf`) with the
+//! `json: unsupported value` error. [`cf_gojson`]'s encoder is infallible and
+//! assumes finite floats (its float formatter requires finite input), so this
+//! wrapper performs that validity check *before* encoding, preserving the
+//! fallible `Result` signature.
 
 use std::io::Write;
 
 use cf_gojson::{Encoder, GoValue};
 
 /// Two-space indentation string used for pretty-printed JSON output.
-///
-/// Port of the Go `jsonIndent` constant.
 pub const JSON_INDENT: &str = "  ";
 
 /// Error returned by [`write_json`] / [`marshal_json`].
 ///
-/// Mirrors the single `error` return of Go `WriteJSON`, distinguishing
-/// encoding failures (non-finite floats, which Go's `encoding/json` rejects)
-/// from writer I/O failures.
-#[derive(Debug)]
+/// Distinguishes encoding failures (non-finite floats, which the report
+/// contract rejects) from writer I/O failures. The `"encode JSON: "` prefix
+/// is part of the CLI error contract; keep the wording stable.
+#[derive(Debug, thiserror::Error)]
 pub enum JsonError {
-    /// The value could not be encoded to Go-compatible JSON.
+    /// The value could not be encoded to report-contract JSON.
     ///
-    /// Carries the offending non-finite float, matching the only unsupported
-    /// value `cf_gojson`'s value model can represent (Go's `encoding/json`
-    /// raises `json: unsupported value` for the same input).
-    Encode(EncodeError),
+    /// Carries the offending non-finite float — the only unsupported value
+    /// the [`cf_gojson::GoValue`] model can represent.
+    #[error("encode JSON: {0}")]
+    Encode(#[from] EncodeError),
     /// Writing the encoded bytes to the destination writer failed.
-    Io(std::io::Error),
+    #[error("encode JSON: {0}")]
+    Io(#[from] std::io::Error),
 }
 
-/// An encoding failure analogous to Go's `json: unsupported value`.
+/// An encoding failure on an unsupported value.
 ///
-/// The only value kind in [`cf_gojson::GoValue`] that Go's `encoding/json`
-/// refuses is a non-finite float (`NaN` / `±Inf`).
-#[derive(Debug, Clone, PartialEq)]
+/// The wording (`json: unsupported value: …`) is part of the CLI error
+/// contract; keep it stable.
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum EncodeError {
     /// A non-finite float (`NaN` or infinity) was encountered.
+    #[error("json: unsupported value: {0}")]
     UnsupportedFloat(f64),
-}
-
-impl std::fmt::Display for EncodeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            // Wording mirrors Go's "json: unsupported value: <float>".
-            EncodeError::UnsupportedFloat(v) => write!(f, "json: unsupported value: {v}"),
-        }
-    }
-}
-
-impl std::error::Error for EncodeError {}
-
-impl std::fmt::Display for JsonError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            // Matches Go's "encode JSON: %w" wrapping wording.
-            JsonError::Encode(e) => write!(f, "encode JSON: {e}"),
-            JsonError::Io(e) => write!(f, "encode JSON: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for JsonError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            JsonError::Encode(e) => Some(e),
-            JsonError::Io(e) => Some(e),
-        }
-    }
-}
-
-impl From<EncodeError> for JsonError {
-    fn from(e: EncodeError) -> Self {
-        JsonError::Encode(e)
-    }
-}
-
-impl From<std::io::Error> for JsonError {
-    fn from(e: std::io::Error) -> Self {
-        JsonError::Io(e)
-    }
 }
 
 /// Encodes `v` as JSON to `w` using the canonical codefang encoding.
 ///
-/// Port of Go `WriteJSON`. If `pretty` is `true`, output is indented with two
-/// spaces. HTML escaping is enabled and a trailing newline is always written.
-/// All encoding is performed by [`cf_gojson::Encoder`] so the bytes are
-/// byte-identical with Go `json.Encoder`.
+/// If `pretty` is `true`, output is indented with two spaces. HTML escaping is
+/// enabled and a trailing newline is always written. All encoding is performed
+/// by [`cf_gojson::Encoder`], the contract encoder.
 ///
 /// This is the single source of truth for JSON report serialization in
 /// `cf-textutil` so report bytes are identical across every call site.
 ///
 /// # Errors
 ///
-/// Returns [`JsonError::Encode`] if `v` contains a non-finite float (Go's
-/// `encoding/json` rejects these) and [`JsonError::Io`] if writing to `w` fails.
+/// Returns [`JsonError::Encode`] if `v` contains a non-finite float (the
+/// report contract rejects these) and [`JsonError::Io`] if writing to `w`
+/// fails.
 ///
 /// # Examples
 ///
@@ -162,18 +113,17 @@ pub fn write_json<W: Write>(mut w: W, v: &GoValue, pretty: bool) -> Result<(), J
 /// assert_eq!(marshal_json(&GoValue::Map(m), false).unwrap(), b"{\"a\":1}\n");
 /// ```
 pub fn marshal_json(v: &GoValue, pretty: bool) -> Result<Vec<u8>, JsonError> {
-    // Reproduce Go's `Encoder.Encode` failure on non-finite floats before
-    // handing the value to `cf_gojson` (whose float formatter assumes finite
-    // input). Go rejects the *whole* encode if any value is NaN/±Inf.
+    // Reject non-finite floats before handing the value to `cf_gojson` (whose
+    // float formatter assumes finite input). The *whole* encode fails if any
+    // value is NaN/±Inf (report contract).
     if let Some(bad) = find_non_finite_float(v) {
         return Err(JsonError::Encode(EncodeError::UnsupportedFloat(bad)));
     }
 
-    // Configure cf-gojson to match Go's `json.NewEncoder` call site in
-    // `pkg/textutil`:
-    //   - HTML escaping on   (cf-gojson's only, Go-default mode)
-    //   - trailing newline   (Encoder.Encode always appends one '\n')
-    //   - indent = "  " when pretty (SetIndent("", "  ")), else compact.
+    // The contract encoder configuration:
+    //   - HTML escaping on   (the default mode)
+    //   - trailing newline   (always appended)
+    //   - indent = "  " when pretty, else compact.
     let enc = if pretty {
         Encoder::indented(JSON_INDENT).with_trailing_newline(true)
     } else {
@@ -182,8 +132,8 @@ pub fn marshal_json(v: &GoValue, pretty: bool) -> Result<Vec<u8>, JsonError> {
     Ok(enc.encode(v))
 }
 
-/// Walks `v` and returns the first non-finite float (`NaN`/`±Inf`) it contains,
-/// if any. Mirrors the value `encoding/json` would reject.
+/// Walks `v` and returns the first non-finite float (`NaN`/`±Inf`) it
+/// contains, if any — the value the report contract rejects.
 fn find_non_finite_float(v: &GoValue) -> Option<f64> {
     match v {
         GoValue::Float(f) if !f.is_finite() => Some(*f),
@@ -204,7 +154,7 @@ mod tests {
         GoValue::Map(m)
     }
 
-    // Ported from Go TestWriteJSON_PrettyOutput.
+    // Reference suite: TestWriteJSON_PrettyOutput.
     #[test]
     fn test_write_json_pretty_output() {
         let mut buf = Vec::new();
@@ -212,7 +162,7 @@ mod tests {
         assert_eq!(String::from_utf8(buf).unwrap(), "{\n  \"a\": 1\n}\n");
     }
 
-    // Ported from Go TestWriteJSON_CompactOutput.
+    // Reference suite: TestWriteJSON_CompactOutput.
     #[test]
     fn test_write_json_compact_output() {
         let mut buf = Vec::new();
@@ -220,9 +170,9 @@ mod tests {
         assert_eq!(String::from_utf8(buf).unwrap(), "{\"a\":1}\n");
     }
 
-    // Ported from Go TestWriteJSON_ErrorOnUnsupportedType.
-    // Go errors on channels; the closest representable analogue in the value
-    // model is a non-finite float, which Go's encoding/json also rejects.
+    // Reference suite: TestWriteJSON_ErrorOnUnsupportedType (which uses an
+    // unencodable value; the closest representable analogue in this value
+    // model is a non-finite float, which the contract also rejects).
     #[test]
     fn test_write_json_error_on_unsupported_value() {
         let mut buf = Vec::new();
@@ -251,7 +201,7 @@ mod tests {
 
     #[test]
     fn test_write_json_html_escaping_enabled() {
-        // <, >, & must be \u-escaped (Go default HTML escaping).
+        // <, >, & must be \u-escaped (default HTML escaping).
         let mut m = GoMap::new_struct();
         m.push("k", GoValue::Str("<a>&".into()));
         let v = GoValue::Map(m);
@@ -262,7 +212,7 @@ mod tests {
         assert!(s.ends_with('\n'), "missing trailing newline: {s:?}");
     }
 
-    // Map-origin objects byte-sort their keys, exactly like Go's map encoder.
+    // Map-origin objects byte-sort their keys (report-contract key order).
     #[test]
     fn test_write_json_map_keys_byte_sorted() {
         let mut m = GoMap::new_map();

@@ -11,34 +11,26 @@
 //!
 //! # Byte-identity
 //!
-//! This is a faithful, **bit-identical** port of the Go package
-//! `pkg/alg/cms` (`github.com/Sumatoshi-tech/codefang`). The column indices,
-//! per-row seeds and resulting frequency estimates produced here must match the
-//! Go implementation exactly, because those estimates flow into the Halstead
-//! analyzer's machine-format reports whose byte-identity is the project goal
-//! (see `specs/rust-rewrite/DESIGN.md` §2.6: "Sketch/hash determinism ... a
-//! faithful reimplementation of `cf-alg-hashutil` (Splitmix64, Mix64, fixed
-//! seeds), **bit-identical**, not a dependency swap").
-//!
-//! The hash machinery (`mix64`, `generate_seeds`, `fnv64a`) is provided by the
-//! [`cf_alg_hashutil`] crate, itself a bit-identical port of
-//! `pkg/alg/internal/hashutil`.
+//! The column indices, per-row seeds and resulting frequency estimates are a
+//! frozen compatibility contract: they flow into the Halstead analyzer's
+//! machine-format reports, whose bytes are pinned against the reference
+//! implementation by `rust/tests/compat`. The hash machinery (`mix64`,
+//! `generate_seeds`, `fnv64a`) is provided by the [`cf_alg_hashutil`] crate,
+//! whose fixed seeds and finalizers are part of the same contract.
 //!
 //! # Thread safety
 //!
-//! The Go [`Sketch`] is thread-safe via a `sync.RWMutex`. Here, all mutable
-//! state lives behind a [`std::sync::RwLock`], so a [`Sketch`] can be shared
-//! across threads (`Send + Sync`) and concurrently mutated through `&self`,
-//! exactly like the Go type. `Add` takes a write lock; `Count`/`TotalCount`
-//! take read locks.
+//! All mutable state lives behind a [`std::sync::RwLock`], so a [`Sketch`] can
+//! be shared across threads (`Send + Sync`) and concurrently mutated through
+//! `&self`. [`Sketch::add`] takes a write lock; [`Sketch::count`] and
+//! [`Sketch::total_count`] take read locks.
 //!
 //! # Wrapping arithmetic
 //!
-//! Counter and total accumulation use `i64` and `wrapping_add` to match Go's
-//! two's-complement `int64` overflow semantics (Go wraps; Rust panics in debug
-//! and wraps in release, so `wrapping_add` guarantees identical behavior in
-//! every build profile). In practice counts stay far below the overflow point,
-//! but the wrapping keeps parity at the edge.
+//! Counter and total accumulation use `i64` and `wrapping_add`: overflow wraps
+//! in two's complement in every build profile (reference-implementation
+//! behavior). In practice counts stay far below the overflow point, but the
+//! wrapping keeps the contract exact at the edge.
 //!
 //! # Examples
 //!
@@ -63,40 +55,24 @@ use cf_alg_hashutil::{fnv64a, generate_seeds, mix64};
 
 /// Errors returned by [`Sketch::new`].
 ///
-/// Mirrors the package-level `ErrInvalidEpsilon` / `ErrInvalidDelta` sentinels
-/// in Go. The [`Display`](core::fmt::Display) strings are byte-identical to the
-/// Go `errors.New` messages so any surfaced error text matches.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The [`Display`](core::fmt::Display) strings are part of the CLI/log
+/// compatibility contract and must not change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
     /// `epsilon` was not positive.
-    ///
-    /// Mirrors `cms.ErrInvalidEpsilon` (`"cms: epsilon must be positive"`).
+    #[error("cms: epsilon must be positive")]
     InvalidEpsilon,
 
     /// `delta` was not in the open interval `(0, 1)`.
-    ///
-    /// Mirrors `cms.ErrInvalidDelta`
-    /// (`"cms: delta must be in the open interval (0, 1)"`).
+    #[error("cms: delta must be in the open interval (0, 1)")]
     InvalidDelta,
 }
 
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let msg = match self {
-            Error::InvalidEpsilon => "cms: epsilon must be positive",
-            Error::InvalidDelta => "cms: delta must be in the open interval (0, 1)",
-        };
-        f.write_str(msg)
-    }
-}
-
-impl std::error::Error for Error {}
-
 /// Mutable state of a [`Sketch`], guarded by a single [`RwLock`].
 ///
-/// Grouping `counters` and `total_count` under one lock reproduces Go's single
-/// `sync.RWMutex` guarding both fields: a writer sees a consistent snapshot and
-/// `TotalCount` reflects exactly the additions visible in `counters`.
+/// Grouping `counters` and `total_count` under one lock keeps them consistent:
+/// a reader sees a snapshot where `total_count` reflects exactly the additions
+/// visible in `counters`.
 #[derive(Debug)]
 struct State {
     /// Flattened 2D array: `depth` rows by `width` columns, row-major.
@@ -107,9 +83,9 @@ struct State {
 
 /// A thread-safe Count-Min Sketch for frequency estimation.
 ///
-/// Mirrors the Go `cms.Sketch`. Construct with [`Sketch::new`] from desired
-/// error bounds; mutate with [`Sketch::add`]; query with [`Sketch::count`] and
-/// [`Sketch::total_count`]; clear with [`Sketch::reset`].
+/// Construct with [`Sketch::new`] from desired error bounds; mutate with
+/// [`Sketch::add`]; query with [`Sketch::count`] and [`Sketch::total_count`];
+/// clear with [`Sketch::reset`].
 #[derive(Debug)]
 pub struct Sketch {
     /// Per-row seeds for independent hashing (one seed per row).
@@ -129,8 +105,7 @@ impl Sketch {
     /// bounds.
     ///
     /// `width = ceil(e / epsilon)`, `depth = ceil(ln(1 / delta))`, where `e` is
-    /// Euler's number and `ln` the natural logarithm — matching Go's
-    /// `math.Ceil(math.E / epsilon)` and `math.Ceil(math.Log(1 / delta))`.
+    /// Euler's number and `ln` the natural logarithm.
     ///
     /// # Errors
     ///
@@ -154,13 +129,14 @@ impl Sketch {
             return Err(Error::InvalidDelta);
         }
 
-        // Match Go's uint(math.Ceil(...)) conversion. Go truncates the f64
-        // toward zero when converting to uint; ceil has already made the value
-        // a non-negative whole number, so `as usize` reproduces it exactly.
+        // The f64-to-usize conversion truncates toward zero; ceil has already
+        // made the value a non-negative whole number, so `as usize` is exact.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let width = (std::f64::consts::E / epsilon).ceil() as usize;
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let depth = (1.0_f64 / delta).ln().ceil() as usize;
 
-        // CMS-style seeds use the Mix64 finalizer (cf. Go: GenerateSeeds(depth, Mix64)).
+        // CMS-style seeds use the Mix64 finalizer over the fixed seed schedule.
         let seeds = generate_seeds(depth, mix64);
 
         Ok(Self {
@@ -175,31 +151,24 @@ impl Sketch {
     }
 
     /// Returns the number of columns in the sketch.
-    ///
-    /// Mirrors `Sketch.Width()`.
     #[inline]
     #[must_use]
-    pub fn width(&self) -> usize {
+    pub const fn width(&self) -> usize {
         self.width
     }
 
     /// Returns the number of rows (hash functions) in the sketch.
-    ///
-    /// Mirrors `Sketch.Depth()`.
     #[inline]
     #[must_use]
-    pub fn depth(&self) -> usize {
+    pub const fn depth(&self) -> usize {
         self.depth
     }
 
     /// Increments the counter for `key` by `count`.
     ///
-    /// A `count` of zero is a no-op (it does not even touch the total),
-    /// matching Go. Negative counts are permitted (as in Go's `int64`
-    /// parameter), though Count-Min's non-underestimation guarantee only holds
-    /// for positive-only additions.
-    ///
-    /// Mirrors `Sketch.Add(key, count)`.
+    /// A `count` of zero is a no-op (it does not even touch the total).
+    /// Negative counts are permitted, though Count-Min's non-underestimation
+    /// guarantee only holds for positive-only additions.
     ///
     /// # Panics
     ///
@@ -226,8 +195,6 @@ impl Sketch {
     /// For positive-only additions, the estimate is always `>=` the true count.
     /// The estimate is the minimum counter across all rows.
     ///
-    /// Mirrors `Sketch.Count(key)`.
-    ///
     /// # Panics
     ///
     /// Panics only if the internal lock is poisoned.
@@ -235,8 +202,7 @@ impl Sketch {
     pub fn count(&self, key: &[u8]) -> i64 {
         let st = self.state.read().expect("cms: lock poisoned");
 
-        // Start from i64::MAX so the first row always lowers it, mirroring Go's
-        // `minVal := int64(math.MaxInt64)`.
+        // Start from i64::MAX so the first row always lowers it.
         let mut min_val = i64::MAX;
 
         for row in 0..self.depth {
@@ -253,8 +219,6 @@ impl Sketch {
 
     /// Returns the sum of all counts added to the sketch.
     ///
-    /// Mirrors `Sketch.TotalCount()`.
-    ///
     /// # Panics
     ///
     /// Panics only if the internal lock is poisoned.
@@ -264,8 +228,6 @@ impl Sketch {
     }
 
     /// Clears all counters and the total count without reallocation.
-    ///
-    /// Mirrors `Sketch.Reset()`.
     ///
     /// # Panics
     ///
@@ -282,10 +244,9 @@ impl Sketch {
 
     /// Computes the column index for the given `row` and `key`.
     ///
-    /// Reproduces Go's `hashKey` exactly: write the row seed as an 8-byte
-    /// **little-endian** prefix (Go: `binary.LittleEndian.PutUint64`), then the
-    /// key bytes, hash the concatenation with FNV-1a/64, and reduce modulo
-    /// `width`.
+    /// Frozen hashing scheme: the row seed forms an 8-byte **little-endian**
+    /// prefix, followed by the key bytes; the concatenation is hashed with
+    /// FNV-1a/64 and reduced modulo `width`.
     #[inline]
     fn hash_key(&self, row: usize, key: &[u8]) -> usize {
         // Seed as 8-byte little-endian prefix for per-row independence.
@@ -297,9 +258,8 @@ impl Sketch {
         let mut h = fnv64a(&seed_buf);
         h = fnv64a_continue(h, key);
 
-        // Go computes `uint(h.Sum64()) % s.width`. On the 64-bit targets
-        // codefang runs on, Go's `uint` is 64-bit, so this is the full 64-bit
-        // hash reduced modulo width.
+        // The full 64-bit hash reduced modulo width (contract: the reduction
+        // happens in 64-bit space).
         (h % self.width as u64) as usize
     }
 }
@@ -307,12 +267,12 @@ impl Sketch {
 /// Continues an in-progress FNV-1a/64 hash over additional bytes.
 ///
 /// FNV-1a has no finalization step and no length framing, so feeding bytes in
-/// two passes (`fnv64a(prefix)` then `fnv64a_continue(h, rest)`) yields the same
-/// 64-bit value as hashing the concatenation `prefix || rest` in one pass —
-/// which is what Go's `h.Write(seedBuf); h.Write(key)` does.
+/// two passes (`fnv64a(prefix)` then `fnv64a_continue(h, rest)`) yields the
+/// same 64-bit value as hashing the concatenation `prefix || rest` in one
+/// pass.
 #[inline]
 fn fnv64a_continue(mut h: u64, data: &[u8]) -> u64 {
-    /// FNV-1a 64-bit prime (matches Go's `hash/fnv` `prime64`).
+    /// FNV-1a 64-bit prime (canonical constant).
     const FNV64A_PRIME: u64 = 0x0000_0100_0000_01b3;
 
     for &b in data {
@@ -343,31 +303,26 @@ mod tests {
     const LOOSE_DEPTH: usize = 5;
 
     // Concurrency test parameters.
-    const CONC_GOROUTINES: usize = 100;
-    const CONC_OPS_PER_G: usize = 1000;
+    const CONC_THREADS: usize = 100;
+    const CONC_OPS_PER_THREAD: usize = 1000;
 
     // Overestimation test parameters.
     const OVEREST_N: usize = 10_000;
     const OVEREST_FREQ: i64 = 100;
 
-    /// Converts a `u64` to an 8-byte big-endian slice.
+    /// Converts a `u64` to an 8-byte big-endian array.
     ///
-    /// Ported from the Go test helper `uint64ToBytes`, which uses
-    /// `binary.BigEndian.PutUint64`. (Note: this is the *key* encoding used by
-    /// the tests; it is independent of the little-endian *seed* encoding inside
-    /// `hash_key`.)
+    /// (This is the *key* encoding used by the tests; it is independent of the
+    /// little-endian *seed* encoding inside `hash_key`.)
     fn u64_to_bytes(v: u64) -> [u8; 8] {
         v.to_be_bytes()
     }
 
     /// Generates a deterministic test key from a prefix and index.
-    ///
-    /// Ported from the Go test helper `testKey` (`fmt.Appendf(nil, "%s-%d", ...)`).
     fn test_key(prefix: &str, idx: usize) -> Vec<u8> {
         format!("{prefix}-{idx}").into_bytes()
     }
 
-    // Ported from TestNew_Parameters.
     #[test]
     fn new_parameters() {
         let cases = [
@@ -381,7 +336,6 @@ mod tests {
         }
     }
 
-    // Ported from TestNew_EdgeCases.
     #[test]
     fn new_edge_cases() {
         assert_eq!(Sketch::new(0.0, STANDARD_DELTA).unwrap_err(), Error::InvalidEpsilon);
@@ -392,9 +346,9 @@ mod tests {
         assert_eq!(Sketch::new(STANDARD_EPSILON, 1.5).unwrap_err(), Error::InvalidDelta);
     }
 
-    // The error Display strings must match Go's errors.New text byte-for-byte.
+    // The error Display strings are frozen (CLI/log compatibility contract).
     #[test]
-    fn error_messages_match_go() {
+    fn error_messages_are_frozen() {
         assert_eq!(Error::InvalidEpsilon.to_string(), "cms: epsilon must be positive");
         assert_eq!(
             Error::InvalidDelta.to_string(),
@@ -402,7 +356,6 @@ mod tests {
         );
     }
 
-    // Ported from TestAdd_Count_SingleKey.
     #[test]
     fn add_count_single_key() {
         let sk = Sketch::new(LOOSE_EPSILON, LOOSE_DELTA).unwrap();
@@ -412,7 +365,6 @@ mod tests {
         assert!(sk.count(key) >= add_count, "CMS count must be >= true count");
     }
 
-    // Ported from TestAdd_Count_MultipleKeys.
     #[test]
     fn add_count_multiple_keys() {
         let sk = Sketch::new(LOOSE_EPSILON, LOOSE_DELTA).unwrap();
@@ -434,7 +386,6 @@ mod tests {
         }
     }
 
-    // Ported from TestCount_NeverAdded.
     #[test]
     fn count_never_added() {
         let sk = Sketch::new(LOOSE_EPSILON, LOOSE_DELTA).unwrap();
@@ -442,7 +393,6 @@ mod tests {
         assert!(sk.count(b"never-added") >= 0, "count of absent key must be >= 0");
     }
 
-    // Ported from TestOverestimation_Bounded.
     #[test]
     fn overestimation_bounded() {
         let sk = Sketch::new(STANDARD_EPSILON, STANDARD_DELTA).unwrap();
@@ -473,7 +423,6 @@ mod tests {
         );
     }
 
-    // Ported from TestAdd_ZeroCount.
     #[test]
     fn add_zero_count() {
         let sk = Sketch::new(LOOSE_EPSILON, LOOSE_DELTA).unwrap();
@@ -482,8 +431,7 @@ mod tests {
         assert_eq!(sk.count(b"key"), 0);
     }
 
-    // Ported from TestNilKey: the Rust equivalent of a Go nil key is an empty
-    // slice; it must not panic.
+    // The empty-slice key must hash like any other key and must not panic.
     #[test]
     fn nil_key() {
         let sk = Sketch::new(LOOSE_EPSILON, LOOSE_DELTA).unwrap();
@@ -491,7 +439,6 @@ mod tests {
         assert!(sk.count(&[]) >= 5);
     }
 
-    // Ported from TestEmptySliceKey.
     #[test]
     fn empty_slice_key() {
         let sk = Sketch::new(LOOSE_EPSILON, LOOSE_DELTA).unwrap();
@@ -499,7 +446,6 @@ mod tests {
         assert!(sk.count(&[]) >= 3);
     }
 
-    // Ported from TestReset.
     #[test]
     fn reset() {
         let sk = Sketch::new(LOOSE_EPSILON, LOOSE_DELTA).unwrap();
@@ -513,7 +459,6 @@ mod tests {
         assert_eq!(sk.total_count(), 0);
     }
 
-    // Ported from TestTotalCount.
     #[test]
     fn total_count() {
         let sk = Sketch::new(LOOSE_EPSILON, LOOSE_DELTA).unwrap();
@@ -524,8 +469,8 @@ mod tests {
         assert_eq!(sk.total_count(), 35);
     }
 
-    // Ported from TestDeterminism: two independently constructed sketches use
-    // the same fixed seeds, so estimates must match exactly.
+    // Two independently constructed sketches use the same fixed seeds, so
+    // estimates must match exactly.
     #[test]
     fn determinism() {
         let sk1 = Sketch::new(LOOSE_EPSILON, LOOSE_DELTA).unwrap();
@@ -541,17 +486,17 @@ mod tests {
         }
     }
 
-    // Ported from TestConcurrent_AddCount: many threads add disjoint keys
-    // concurrently while reading; the total must be exact.
+    // Many threads add disjoint keys concurrently while reading; the total
+    // must be exact.
     #[test]
     fn concurrent_add_count() {
         let sk = Arc::new(Sketch::new(LOOSE_EPSILON, LOOSE_DELTA).unwrap());
-        let mut handles = Vec::with_capacity(CONC_GOROUTINES);
-        for g in 0..CONC_GOROUTINES {
+        let mut handles = Vec::with_capacity(CONC_THREADS);
+        for g in 0..CONC_THREADS {
             let sk = Arc::clone(&sk);
             handles.push(thread::spawn(move || {
-                for i in 0..CONC_OPS_PER_G {
-                    let key = u64_to_bytes((g * CONC_OPS_PER_G + i) as u64);
+                for i in 0..CONC_OPS_PER_THREAD {
+                    let key = u64_to_bytes((g * CONC_OPS_PER_THREAD + i) as u64);
                     sk.add(&key, 1);
                 }
                 // Read while others are writing.
@@ -561,11 +506,11 @@ mod tests {
         for h in handles {
             h.join().expect("thread panicked");
         }
-        let expected_total = (CONC_GOROUTINES * CONC_OPS_PER_G) as i64;
+        let expected_total = (CONC_THREADS * CONC_OPS_PER_THREAD) as i64;
         assert_eq!(sk.total_count(), expected_total);
     }
 
-    // Ported from TestMemoryUsage: the counter array sizing is width*depth.
+    // The counter array sizing is width*depth.
     #[test]
     fn memory_usage() {
         let sk = Sketch::new(STANDARD_EPSILON, STANDARD_DELTA).unwrap();
@@ -576,7 +521,6 @@ mod tests {
         assert_eq!(expected_bytes, 2719 * 7 * 8);
     }
 
-    // Ported from TestMultipleAddsAccumulate.
     #[test]
     fn multiple_adds_accumulate() {
         let sk = Sketch::new(LOOSE_EPSILON, LOOSE_DELTA).unwrap();

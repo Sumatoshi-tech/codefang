@@ -1,57 +1,68 @@
 //! `TreeDiff` provider.
 //!
-//! Port of `internal/analyzers/plumbing/tree_diff.go`.
-//!
 //! Produces the `"changes"` fact: the list of file changes between the current
 //! commit's tree and the previously seen commit's tree. For the first commit
-//! every file is reported as an insert (Go's `treeForFirstCommit`).
+//! every file is reported as an insert.
 
 use crate::analyzer::{dep, Analyzer, AnalyzerError, ValueMap};
 use crate::git_model::{Change, ChangeEntry, Changes, Hash};
 
 /// Source of trees and tree diffs, decoupling the provider from libgit2.
 ///
-/// In Go these are `commit.Tree()`, `object.DiffTree(prev, cur)` and a
-/// `TreeWalker` over the first commit's tree. Modelling them as a trait keeps
-/// the diff state machine (previous-tree tracking, first-commit handling)
-/// testable without a real repository and avoids storing non-`Send` libgit2
-/// handles in the provider.
+/// Modelling these as a trait keeps the diff state machine (previous-tree
+/// tracking, first-commit handling) testable without a real repository and
+/// avoids storing non-`Send` libgit2 handles in the provider.
 pub trait TreeSource {
-    /// The tree id of a commit (Go's `commit.Tree()`), used as the
-    /// previous-tree key between commits.
+    /// The tree id of a commit, used as the previous-tree key between commits.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`AnalyzerError`] when the commit or its tree cannot be
+    /// resolved.
     fn commit_tree(&self, commit_hash: Hash) -> Result<Hash, AnalyzerError>;
 
-    /// Diff two trees into [`Changes`] (Go's `object.DiffTree`).
+    /// Diff two trees into [`Changes`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`AnalyzerError`] when either tree cannot be loaded or the
+    /// diff fails.
     fn diff_trees(&self, old_tree: Hash, new_tree: Hash) -> Result<Changes, AnalyzerError>;
 
-    /// Every file in a tree as an insert change (Go's `treeForFirstCommit`).
+    /// Every file in a tree as an insert change (the first-commit case).
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`AnalyzerError`] when the tree cannot be loaded or walked.
     fn tree_inserts(&self, tree: Hash) -> Result<Changes, AnalyzerError>;
 }
 
-/// `TreeDiff` provider, mirroring Go's `TreeDiff`.
+/// `TreeDiff` provider.
 ///
-/// Unlike the Go version (which reads `deps["commit"]` of type
-/// `*object.Commit`), the dependency map here carries the commit hash under
-/// `"commit_hash"`; the tree resolution is delegated to the [`TreeSource`].
+/// The dependency map carries the commit hash under `"commit_hash"`; the
+/// tree resolution is delegated to the [`TreeSource`].
 pub struct TreeDiff<S: TreeSource> {
     source: S,
     previous_tree: Option<Hash>,
 }
 
 impl<S: TreeSource> TreeDiff<S> {
-    /// Construct a `TreeDiff` over the given tree source, mirroring Go's
-    /// `NewTreeDiff` (which starts with no previous tree).
-    pub fn new(source: S) -> Self {
-        TreeDiff {
+    /// Construct a `TreeDiff` over the given tree source (starts with no
+    /// previous tree).
+    pub const fn new(source: S) -> Self {
+        Self {
             source,
             previous_tree: None,
         }
     }
 
-    /// Compute the changes for a commit, advancing the previous-tree state.
+    /// Compute the changes for a commit, advancing the previous-tree state:
+    /// diff against the previous tree if present, otherwise treat every file
+    /// as an insert; then remember the current tree.
     ///
-    /// Mirrors Go's `Consume`: diff against the previous tree if present,
-    /// otherwise treat every file as an insert; then remember the current tree.
+    /// # Errors
+    ///
+    /// Propagates [`TreeSource`] failures.
     pub fn changes_for(&mut self, commit_hash: Hash) -> Result<Changes, AnalyzerError> {
         let tree = self.source.commit_tree(commit_hash)?;
         let diff = match self.previous_tree {
@@ -92,8 +103,9 @@ pub struct GitTreeSource<'r> {
 
 impl<'r> GitTreeSource<'r> {
     /// Wrap a borrowed repository as a tree source.
-    pub fn new(repo: &'r git2::Repository) -> Self {
-        GitTreeSource { repo }
+    #[must_use]
+    pub const fn new(repo: &'r git2::Repository) -> Self {
+        Self { repo }
     }
 
     fn tree_of(&self, commit_hash: Hash) -> Result<git2::Tree<'r>, AnalyzerError> {
@@ -122,8 +134,8 @@ impl TreeSource for GitTreeSource<'_> {
 
         let mut changes: Changes = Vec::new();
         for delta in diff.deltas() {
-            // Only file blobs participate in the Go diff (TreeWalker skips
-            // non-file modes); libgit2 deltas are per-file already.
+            // Only file blobs participate in the diff; libgit2 deltas are
+            // per-file already.
             let old_file = delta.old_file();
             let new_file = delta.new_file();
             let from = ChangeEntry {
@@ -140,8 +152,8 @@ impl TreeSource for GitTreeSource<'_> {
                     .unwrap_or_default(),
                 hash: oid_or_zero(new_file.id()),
             };
-            // Skip pure-rename/copy entries with no content side, matching the
-            // file-oriented changes Go produces.
+            // Skip pure-rename/copy entries with no content side, keeping
+            // the changes file-oriented.
             if from.name.is_empty() && to.name.is_empty() {
                 continue;
             }
@@ -191,8 +203,8 @@ mod tests {
         Hash(b)
     }
 
-    /// Scripted tree source: commit_hash -> tree_hash, and a queue of diffs to
-    /// hand back for successive `diff_trees` calls.
+    /// Scripted tree source: `commit_hash` -> `tree_hash`, and a queue of
+    /// diffs to hand back for successive `diff_trees` calls.
     struct FakeSource {
         diffs: RefCell<Vec<Changes>>,
         inserts: Changes,
@@ -235,7 +247,7 @@ mod tests {
         assert_eq!(c2, later);
     }
 
-    // Port of TestTreeDiff_Name / _Provides / _Requires.
+    // Mirrors reference tests TestTreeDiff_Name / _Provides / _Requires.
     #[test]
     fn provider_metadata() {
         let src = FakeSource {

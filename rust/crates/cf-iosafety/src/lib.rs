@@ -1,142 +1,98 @@
 //! Defensive file-reading and terminal-output utilities for user-supplied
 //! paths and strings.
 //!
-//! This crate is a behavior-exact port of the Go package `pkg/iosafety`. It is
-//! used by the `uast` library and the `uast` command to safely resolve and read
-//! files named by untrusted input, and to sanitize arbitrary strings before
-//! they are written to a terminal.
+//! Used by the `uast` library and the `uast` command to safely resolve and
+//! read files named by untrusted input, and to sanitize arbitrary strings
+//! before they are written to a terminal.
 //!
-//! # Behavioral parity with Go
+//! # Behavior
 //!
-//! - [`resolve_path`] mirrors Go's `ResolvePath`: it rejects empty/whitespace
-//!   paths and paths containing a NUL byte, performs **lexical** path cleaning
-//!   and absolutization (matching Go's `filepath.Clean` / `filepath.Abs`, which
-//!   do *not* resolve symlinks), then `stat`s the result and rejects
-//!   directories. Crucially it does **not** call [`std::fs::canonicalize`],
-//!   because that would resolve symlinks and diverge from Go.
-//! - [`read_file`] mirrors Go's `ReadFile`: resolve then read, returning the
-//!   content together with the resolved absolute path.
-//! - [`sanitize_for_terminal`] mirrors Go's `SanitizeForTerminal`: it applies
-//!   Go's `html.EscapeString` and then replaces `\n`, `\r`, `\t` with spaces and
-//!   drops all other control characters.
+//! - [`resolve_path`] rejects empty/whitespace paths and paths containing a
+//!   NUL byte, performs **lexical** path cleaning and absolutization (which
+//!   deliberately does *not* resolve symlinks), then `stat`s the result and
+//!   rejects directories. Crucially it does **not** call
+//!   [`std::fs::canonicalize`], because that would resolve symlinks and
+//!   change observable behavior.
+//! - [`read_file`] resolves then reads, returning the content together with
+//!   the resolved absolute path.
+//! - [`sanitize_for_terminal`] applies HTML escaping and then replaces `\n`,
+//!   `\r`, `\t` with spaces and drops all other control characters.
 //!
-//! Terminal output is a cosmetic (non-binding) machine target per the rewrite
-//! design, but [`sanitize_for_terminal`] still reproduces Go's escaping
-//! byte-for-byte so callers that compare against Go output stay aligned. The
-//! crate emits no machine-format report bytes, so it does not route through the
-//! shared `cf-gojson` / `cf-goyaml` serialization crates.
+//! Terminal output is a cosmetic (non-binding) machine target per the design,
+//! but [`sanitize_for_terminal`] keeps its escaping byte-exact
+//! (reference-implementation behavior) so callers comparing terminal output
+//! stay aligned. The crate emits no machine-format report bytes, so it does
+//! not route through the shared `cf-gojson` / `cf-goyaml` serialization
+//! crates.
 
-use std::error::Error;
-use std::fmt;
 use std::path::{Path, PathBuf};
 
 /// Errors that [`resolve_path`] and [`read_file`] can return.
 ///
-/// The variants mirror Go's sentinel errors (`ErrEmptyPath`,
-/// `ErrPathContainsNUL`, `ErrDirectoryPath`) plus the wrapped I/O errors that Go
-/// surfaces via `fmt.Errorf(... %w ...)`. The `Display` strings reproduce Go's
-/// error wording so messages stay aligned across the port.
-#[derive(Debug)]
+/// The `Display` strings are part of the CLI/log compatibility contract and
+/// must not change.
+#[derive(Debug, thiserror::Error)]
 pub enum IoSafetyError {
     /// The supplied path was empty or contained only whitespace.
-    ///
-    /// Mirrors Go's `ErrEmptyPath` (`"path is empty"`).
+    #[error("path is empty")]
     EmptyPath,
     /// The supplied path contained a NUL byte.
     ///
-    /// Mirrors Go's `ErrPathContainsNUL` (`"path contains NUL byte"`). The
-    /// stored `String` is the offending path, rendered with Go `%q` quoting in
-    /// the `Display` impl.
+    /// The stored `String` is the offending path, rendered double-quoted with
+    /// escapes in the `Display` output.
+    #[error("path contains NUL byte: {}", quote(.0))]
     PathContainsNul(String),
     /// The resolved path pointed to a directory.
     ///
-    /// Mirrors Go's `ErrDirectoryPath` (`"path points to a directory"`). The
-    /// stored `String` is the resolved absolute path.
+    /// The stored `String` is the resolved absolute path.
+    #[error("path points to a directory: {0}")]
     DirectoryPath(String),
     /// Computing the absolute path failed.
-    ///
-    /// Mirrors Go's `resolve absolute path for %q: %w` wrap.
+    #[error("resolve absolute path for {}: {source}", quote(path))]
     ResolveAbsolute {
         /// The original (uncleaned) path argument.
         path: String,
         /// The underlying error.
+        #[source]
         source: std::io::Error,
     },
     /// `stat`ing the resolved path failed (e.g. it does not exist).
-    ///
-    /// Mirrors Go's `stat %s: %w` wrap.
+    #[error("stat {path}: {source}")]
     Stat {
         /// The resolved absolute path that was `stat`ed.
         path: String,
         /// The underlying error.
+        #[source]
         source: std::io::Error,
     },
     /// Reading the resolved file failed.
-    ///
-    /// Mirrors Go's `read %s: %w` wrap.
+    #[error("read {path}: {source}")]
     Read {
         /// The resolved absolute path that was read.
         path: String,
         /// The underlying error.
+        #[source]
         source: std::io::Error,
     },
 }
 
 impl IoSafetyError {
-    /// Returns `true` if this error is (or wraps) the empty-path sentinel.
-    ///
-    /// Equivalent to Go's `errors.Is(err, ErrEmptyPath)`.
+    /// Returns `true` if this error is the empty-path variant.
     #[must_use]
-    pub fn is_empty_path(&self) -> bool {
-        matches!(self, IoSafetyError::EmptyPath)
+    pub const fn is_empty_path(&self) -> bool {
+        matches!(self, Self::EmptyPath)
     }
 
-    /// Returns `true` if this error is (or wraps) the NUL-byte sentinel.
-    ///
-    /// Equivalent to Go's `errors.Is(err, ErrPathContainsNUL)`.
+    /// Returns `true` if this error is the NUL-byte variant.
     #[must_use]
-    pub fn is_path_contains_nul(&self) -> bool {
-        matches!(self, IoSafetyError::PathContainsNul(_))
+    pub const fn is_path_contains_nul(&self) -> bool {
+        matches!(self, Self::PathContainsNul(_))
     }
 
-    /// Returns `true` if this error is (or wraps) the directory sentinel.
-    ///
-    /// Equivalent to Go's `errors.Is(err, ErrDirectoryPath)`.
+    /// Returns `true` if this error is the directory variant.
     #[must_use]
-    pub fn is_directory_path(&self) -> bool {
-        matches!(self, IoSafetyError::DirectoryPath(_))
-    }
-}
-
-impl fmt::Display for IoSafetyError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            IoSafetyError::EmptyPath => write!(f, "path is empty"),
-            IoSafetyError::PathContainsNul(path) => {
-                // Go: fmt.Errorf("%w: %q", ErrPathContainsNUL, path)
-                write!(f, "path contains NUL byte: {}", go_quote(path))
-            }
-            IoSafetyError::DirectoryPath(path) => {
-                // Go: fmt.Errorf("%w: %s", ErrDirectoryPath, absPath)
-                write!(f, "path points to a directory: {path}")
-            }
-            IoSafetyError::ResolveAbsolute { path, source } => {
-                write!(f, "resolve absolute path for {}: {source}", go_quote(path))
-            }
-            IoSafetyError::Stat { path, source } => write!(f, "stat {path}: {source}"),
-            IoSafetyError::Read { path, source } => write!(f, "read {path}: {source}"),
-        }
-    }
-}
-
-impl Error for IoSafetyError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            IoSafetyError::ResolveAbsolute { source, .. }
-            | IoSafetyError::Stat { source, .. }
-            | IoSafetyError::Read { source, .. } => Some(source),
-            _ => None,
-        }
+    pub const fn is_directory_path(&self) -> bool {
+        matches!(self, Self::DirectoryPath(_))
     }
 }
 
@@ -144,11 +100,9 @@ impl Error for IoSafetyError {
 ///
 /// Returns the file content together with the resolved absolute path.
 ///
-/// This is the Rust port of Go's `ReadFile`. It delegates validation and
-/// resolution to [`resolve_path`] and then reads the file. Resolution errors
-/// are returned as-is (the inner sentinel is preserved, so
-/// [`IoSafetyError::is_empty_path`] etc. still report correctly), matching Go's
-/// `resolve path %q: %w` chain semantics.
+/// Delegates validation and resolution to [`resolve_path`] and then reads the
+/// file. Resolution errors are returned as-is (the inner variant is preserved,
+/// so [`IoSafetyError::is_empty_path`] etc. still report correctly).
 ///
 /// # Errors
 ///
@@ -180,11 +134,10 @@ pub fn read_file<P: AsRef<Path>>(path: P) -> Result<(Vec<u8>, PathBuf), IoSafety
 /// a `stat`-check. Returns an error for empty paths, NUL bytes, directories, or
 /// `stat` failures.
 ///
-/// This is the Rust port of Go's `ResolvePath`. The cleaning and absolutization
-/// are **purely lexical** — matching Go's `filepath.Clean` and `filepath.Abs` —
-/// so `a/b/../c` collapses to `a/c` without touching the filesystem and symlinks
-/// are *not* resolved. (Using [`std::fs::canonicalize`] here would diverge from
-/// Go.)
+/// The cleaning and absolutization are **purely lexical** — `a/b/../c`
+/// collapses to `a/c` without touching the filesystem and symlinks are *not*
+/// resolved. (Using [`std::fs::canonicalize`] here would resolve symlinks and
+/// change observable behavior.)
 ///
 /// # Errors
 ///
@@ -225,16 +178,15 @@ pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<PathBuf, IoSafetyError> {
 
 /// Strips control characters and HTML-escapes the input.
 ///
-/// Newlines (`\n`), carriage returns (`\r`), and tabs (`\t`) are replaced with a
-/// single space; all other control characters are removed. HTML escaping is
-/// applied first, matching Go's `html.EscapeString`.
+/// Newlines (`\n`), carriage returns (`\r`), and tabs (`\t`) are replaced
+/// with a single space; all other control characters are removed. HTML
+/// escaping is applied first.
 ///
-/// This is the Rust port of Go's `SanitizeForTerminal`. Because HTML escaping
-/// runs before the control-character pass and only ever emits ASCII letters,
-/// digits, and the punctuation `&#;`, the two passes do not interact
-/// destructively: an HTML-escaped string never contains control characters
-/// introduced by escaping, so the control pass only affects characters that were
-/// already present in the input.
+/// Because HTML escaping runs before the control-character pass and only ever
+/// emits ASCII letters, digits, and the punctuation `&#;`, the two passes do
+/// not interact destructively: an HTML-escaped string never contains control
+/// characters introduced by escaping, so the control pass only affects
+/// characters that were already present in the input.
 ///
 /// # Examples
 ///
@@ -250,7 +202,7 @@ pub fn sanitize_for_terminal(input: &str) -> String {
     for ch in escaped.chars() {
         match ch {
             '\n' | '\r' | '\t' => out.push(' '),
-            c if is_go_control(c) => {} // dropped (Go's strings.Map returns -1)
+            c if is_control_cc(c) => {} // dropped
             c => out.push(c),
         }
     }
@@ -258,16 +210,14 @@ pub fn sanitize_for_terminal(input: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Internal helpers (ports of Go stdlib semantics)
+// Internal helpers (frozen escaping/cleaning semantics)
 // ---------------------------------------------------------------------------
 
-/// Reproduces Go's `html.EscapeString`.
+/// Minimal HTML escaping (frozen contract).
 ///
-/// Go's `html.EscapeString` escapes exactly five characters: `&` → `&amp;`,
-/// `'` → `&#39;`, `<` → `&lt;`, `>` → `&gt;`, `"` → `&#34;`. Go's underlying
-/// replacer processes `&` first, so literal `&` is always turned into `&amp;`
-/// (already-escaped entities get double-escaped); emitting `&amp;` for every
-/// literal `&` reproduces that.
+/// Escapes exactly five characters: `&` → `&amp;`, `'` → `&#39;`, `<` →
+/// `&lt;`, `>` → `&gt;`, `"` → `&#34;`. Every literal `&` becomes `&amp;`, so
+/// already-escaped entities get double-escaped — this is deliberate.
 fn html_escape_string(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     for ch in input.chars() {
@@ -283,21 +233,17 @@ fn html_escape_string(input: &str) -> String {
     out
 }
 
-/// Reports whether `r` is a control character per Go's `unicode.IsControl`.
-///
-/// Go's `unicode.IsControl` returns true for code points in the Unicode `Cc`
-/// category, i.e. `U+0000..=U+001F` and `U+007F..=U+009F`.
-fn is_go_control(r: char) -> bool {
+/// Reports whether `r` is a control character (Unicode `Cc` category, i.e.
+/// `U+0000..=U+001F` and `U+007F..=U+009F`).
+fn is_control_cc(r: char) -> bool {
     let c = r as u32;
     c <= 0x1F || (0x7F..=0x9F).contains(&c)
 }
 
-/// Renders a string with Go `%q` double-quoted, escaped formatting.
-///
-/// Used to reproduce Go error wording such as
-/// `path contains NUL byte: "file\x00name"`. This covers the escapes that appear
-/// in the iosafety error paths (notably NUL → `\x00`).
-fn go_quote(s: &str) -> String {
+/// Renders a string double-quoted with escapes (frozen error-message
+/// formatting, e.g. `path contains NUL byte: "file\x00name"`). Covers the
+/// escapes that appear in the iosafety error paths (notably NUL → `\x00`).
+fn quote(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
     for ch in s.chars() {
@@ -321,8 +267,7 @@ fn go_quote(s: &str) -> String {
     out
 }
 
-/// Lexically cleans a path, reproducing Go's `path/filepath.Clean` for the
-/// host separator on Unix (`/`).
+/// Lexically cleans a path for the Unix separator (`/`).
 ///
 /// Implements the classic Lexical File Name Simplification: repeatedly collapse
 /// multiple slashes into one, eliminate `.` path elements, and eliminate `..`
@@ -401,12 +346,12 @@ fn clean(path: &str) -> String {
     String::from_utf8(out).unwrap_or_else(|_| ".".to_string())
 }
 
-/// Lexically absolutizes a path, reproducing Go's `path/filepath.Abs`.
+/// Lexically absolutizes a path.
 ///
 /// If the path is not already absolute, the current working directory is
 /// prepended (via `current_dir`) and the join is lexically [`clean`]ed. If the
 /// path is already absolute it is simply cleaned. No filesystem traversal or
-/// symlink resolution occurs (matching Go).
+/// symlink resolution occurs.
 fn abs(path: &str) -> Result<String, std::io::Error> {
     if Path::new(path).is_absolute() {
         return Ok(clean(path));
@@ -486,8 +431,8 @@ mod tests {
         let dirty = dir.path().join("subdir").join("..").join("test.txt");
         let resolved = resolve_path(&dirty).unwrap();
 
-        // Lexical clean must already match Go's filepath.Clean: the ".." must
-        // have collapsed "subdir/..".
+        // The lexical clean must be idempotent and the ".." must have
+        // collapsed "subdir/..".
         let resolved_str = resolved.to_string_lossy();
         assert_eq!(clean(&resolved_str), resolved_str.as_ref());
         assert!(!resolved_str.contains(".."));
@@ -570,11 +515,11 @@ mod tests {
         assert!(sanitize_for_terminal("").is_empty());
     }
 
-    // -- exact-output regression tests (byte-level parity with Go) --------
+    // -- exact-output regression tests (byte-level parity contract) -------
 
     #[test]
-    fn html_escape_matches_go() {
-        // Go html.EscapeString escapes exactly these five runes.
+    fn html_escape_exact() {
+        // The escaper handles exactly these five characters.
         assert_eq!(html_escape_string("&"), "&amp;");
         assert_eq!(html_escape_string("'"), "&#39;");
         assert_eq!(html_escape_string("<"), "&lt;");
@@ -595,11 +540,12 @@ mod tests {
         );
     }
 
-    // -- lexical clean parity (filepath.Clean) ----------------------------
+    // -- lexical clean parity ----------------------------------------------
 
     #[test]
-    fn clean_matches_go_filepath_clean() {
-        // Cases lifted from Go's path/filepath clean test table (Unix subset).
+    fn clean_lexical_simplification_table() {
+        // Cases lifted from the reference implementation's lexical-clean test
+        // table (Unix subset).
         assert_eq!(clean(""), ".");
         assert_eq!(clean("abc"), "abc");
         assert_eq!(clean("abc/def"), "abc/def");
@@ -639,7 +585,7 @@ mod tests {
     }
 
     #[test]
-    fn go_quote_nul() {
-        assert_eq!(go_quote("file\0name"), "\"file\\x00name\"");
+    fn quote_nul() {
+        assert_eq!(quote("file\0name"), "\"file\\x00name\"");
     }
 }

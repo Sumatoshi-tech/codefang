@@ -1,9 +1,8 @@
 //! `IdentityDetector` provider.
 //!
-//! Port of `internal/analyzers/plumbing/identity.go`.
-//!
-//! Maps a commit author to a canonical person id. Two matching modes mirror
-//! the Go code:
+//! Maps a commit author to a canonical person id. Person ids and the reversed
+//! people dictionary flow into report output (pinned by the differential
+//! gate). Two matching modes:
 //! * **loose** (default): an author is identified by *either* their lowercased
 //!   email or lowercased name; the two are unified into one id;
 //! * **exact**: the whole `"name <email>"` signature (lowercased) is the key.
@@ -20,27 +19,25 @@ use std::path::Path;
 use crate::analyzer::{dep, Analyzer, AnalyzerError, ValueMap};
 use crate::git_model::{Commit, Signature};
 
-/// Sentinel id for a missing author, mirroring Go's
-/// `identity.AuthorMissing = (1 << 18) - 1`.
+/// Sentinel id for a missing author (report contract).
 pub const AUTHOR_MISSING: i64 = (1 << 18) - 1;
 
-/// Display name for a missing author, mirroring Go's
-/// `identity.AuthorMissingName = "<unknown>"`.
+/// Display name for a missing author (report contract).
 pub const AUTHOR_MISSING_NAME: &str = "<unknown>";
 
-/// `IdentityDetector` provider, mirroring Go's `IdentityDetector`.
+/// `IdentityDetector` provider.
 #[derive(Debug, Clone, Default)]
 pub struct IdentityDetector {
-    /// Identity-string -> person id (Go's `PeopleDict`). Keys are lowercased.
+    /// Identity-string -> person id. Keys are lowercased.
     pub people_dict: HashMap<String, i64>,
-    /// One display entry per person id (Go's `ReversedPeopleDict`).
+    /// One display entry per person id.
     pub reversed_people_dict: Vec<String>,
-    /// Person id of the last consumed commit (Go's `AuthorID`).
+    /// Person id of the last consumed commit.
     pub author_id: i64,
-    /// Disable separate name/email matching (Go's `ExactSignatures`).
+    /// Disable separate name/email matching (match whole signatures).
     pub exact_signatures: bool,
 
-    // Incremental-build state (Go's `incremental*` fields).
+    // Incremental-build state.
     incremental_emails: HashMap<i64, Vec<String>>,
     incremental_names: HashMap<i64, Vec<String>>,
     incremental_size: i64,
@@ -48,16 +45,16 @@ pub struct IdentityDetector {
 }
 
 impl IdentityDetector {
-    /// Construct an empty detector in incremental (non-finalized) mode,
-    /// mirroring Go's `Initialize` when no dictionary is preset.
+    /// Construct an empty detector in incremental (non-finalized) mode.
+    #[must_use]
     pub fn new() -> Self {
-        IdentityDetector::default()
+        Self::default()
     }
 
-    /// Construct from a preset dictionary, mirroring Go's `Initialize` when
-    /// `PeopleDict != nil` (the dictionary is treated as finalized).
+    /// Construct from a preset dictionary (treated as finalized).
+    #[must_use]
     pub fn from_dict(people_dict: HashMap<String, i64>, reversed_people_dict: Vec<String>) -> Self {
-        IdentityDetector {
+        Self {
             people_dict,
             reversed_people_dict,
             dict_finalized: true,
@@ -65,7 +62,7 @@ impl IdentityDetector {
         }
     }
 
-    /// Resolve the author id for a commit, mirroring Go's `Consume`.
+    /// Resolve the author id for a commit.
     ///
     /// Updates [`author_id`](IdentityDetector::author_id) and returns it.
     pub fn consume_signature(&mut self, signature: &Signature) -> i64 {
@@ -83,8 +80,7 @@ impl IdentityDetector {
         author_id
     }
 
-    /// Find or register an author by exact signature, mirroring
-    /// `lookupExactSignature`.
+    /// Find or register an author by exact signature.
     fn lookup_exact_signature(&mut self, signature: &Signature) -> (i64, bool) {
         let sig = format!("{} <{}>", signature.name, signature.email).to_lowercase();
         if let Some(&id) = self.people_dict.get(&sig) {
@@ -99,8 +95,7 @@ impl IdentityDetector {
         (0, false)
     }
 
-    /// Find or register an author by loose signature, mirroring
-    /// `lookupLooseSignature`.
+    /// Find or register an author by loose signature.
     fn lookup_loose_signature(&mut self, signature: &Signature) -> (i64, bool) {
         let email = signature.email.to_lowercase();
         let name = signature.name.to_lowercase();
@@ -119,8 +114,7 @@ impl IdentityDetector {
         (0, false)
     }
 
-    /// Register an email/name pair, unifying them under one id, mirroring the
-    /// free function `registerLooseIdentity`.
+    /// Register an email/name pair, unifying them under one id.
     fn register_loose_identity(&mut self, email: &str, name: &str) {
         if let Some(&id) = self.people_dict.get(email) {
             if !self.people_dict.contains_key(name) {
@@ -142,12 +136,16 @@ impl IdentityDetector {
         self.incremental_size += 1;
     }
 
-    /// Load a people dictionary from a file, mirroring Go's `LoadPeopleDict`.
+    /// Load a people dictionary from a file.
     ///
     /// Each non-empty line lists `|`-separated identity tokens for one person;
     /// every token (lowercased) maps to that person's index, and the first
     /// token is the reverse-dict entry. A trailing [`AUTHOR_MISSING_NAME`]
-    /// entry is appended, exactly as Go does.
+    /// entry is appended (reference-implementation behavior).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file cannot be opened or read.
     pub fn load_people_dict<P: AsRef<Path>>(&mut self, path: P) -> Result<(), AnalyzerError> {
         let file = File::open(path)?;
         let reader = BufReader::new(file);
@@ -156,9 +154,10 @@ impl IdentityDetector {
         for (size, line) in reader.lines().enumerate() {
             let line = line?;
             let size = size as i64;
-            // Go uses bufio.Scanner which strips the trailing newline only;
-            // it does NOT trim other whitespace, and processes every line
-            // (including blank ones). Mirror that: split on '|' directly.
+            // Lines are processed verbatim: only the trailing newline is
+            // stripped, other whitespace is NOT trimmed, and blank lines are
+            // processed too (reference-implementation behavior). Split on '|'
+            // directly.
             let ids: Vec<&str> = line.split('|').collect();
             for id in &ids {
                 dict.insert(id.to_lowercase(), size);
@@ -172,8 +171,8 @@ impl IdentityDetector {
         Ok(())
     }
 
-    /// Build the dictionary from a list of commits ahead of time, mirroring
-    /// Go's `GeneratePeopleDict` (dispatching on `ExactSignatures`).
+    /// Build the dictionary from a list of commits ahead of time
+    /// (dispatching on [`exact_signatures`](Self::exact_signatures)).
     pub fn generate_people_dict(&mut self, commits: &[Commit]) {
         if self.exact_signatures {
             self.generate_exact_dict(commits);
@@ -195,7 +194,7 @@ impl IdentityDetector {
         }
         let mut reverse = vec![String::new(); size as usize];
         for (key, &val) in &dict {
-            reverse[val as usize] = key.clone();
+            reverse[val as usize].clone_from(key);
         }
         self.people_dict = dict;
         self.reversed_people_dict = reverse;
@@ -225,8 +224,7 @@ impl IdentityDetector {
     }
 
     /// Build [`reversed_people_dict`](IdentityDetector::reversed_people_dict)
-    /// from the incrementally-collected names/emails, mirroring Go's
-    /// `FinalizeDict`.
+    /// from the incrementally-collected names/emails.
     ///
     /// No-op when the dictionary is already finalized (e.g. loaded from a file
     /// or preset). For loose matching the reverse entry is
@@ -241,7 +239,7 @@ impl IdentityDetector {
         if self.exact_signatures {
             for (key, &val) in &self.people_dict {
                 if val >= 0 && (val as usize) < reverse.len() {
-                    reverse[val as usize] = key.clone();
+                    reverse[val as usize].clone_from(key);
                 }
             }
         } else {
@@ -257,8 +255,9 @@ impl IdentityDetector {
         self.dict_finalized = true;
     }
 
-    /// Author id of the last consumed commit, mirroring Go's `GetAuthorID`.
-    pub fn get_author_id(&self) -> i64 {
+    /// Author id of the last consumed commit.
+    #[must_use]
+    pub const fn get_author_id(&self) -> i64 {
         self.author_id
     }
 }
@@ -332,7 +331,7 @@ mod tests {
         );
     }
 
-    // Port of LoadPeopleDict behavior from identity.go.
+    // Mirrors the reference suite's LoadPeopleDict expectations.
     #[test]
     fn load_people_dict_appends_unknown_sentinel() {
         let content = "John Doe|john@example.com\nJane Smith|jane@example.com\n";

@@ -1,9 +1,8 @@
 //! `cf-checkpoint` — incremental-analysis checkpoint/restore for crash recovery.
 //!
-//! Port of the Go `internal/checkpoint` package. Used by the analysis framework
-//! and by the burndown / couples analyzers to snapshot streaming progress so a
-//! long-running analysis can resume after a crash or interruption instead of
-//! re-scanning the whole repository.
+//! Used by the analysis framework and by the burndown / couples analyzers to
+//! snapshot streaming progress so a long-running analysis can resume after a
+//! crash or interruption instead of re-scanning the whole repository.
 //!
 //! # Model
 //!
@@ -25,12 +24,13 @@
 //!
 //! # Serialization (DESIGN §3)
 //!
-//! * Checkpoint **metadata** is JSON, written Go-`encoding/json`-byte-compatibly
+//! * Checkpoint **metadata** is JSON in the pinned report-format byte layout
 //!   (HTML escaping on, two-space indent, one trailing newline) via
-//!   [`JsonCodec`] so `checkpoint.json` diffs cleanly against the Go build.
-//! * Per-analyzer binary state uses [`GobCodec`] — a Rust-native `bincode` codec
-//!   standing in for Go's `encoding/gob` (the gob wire format is Go-specific and
-//!   never user-visible, so it is intentionally not reproduced).
+//!   [`JsonCodec`], so `checkpoint.json` diffs cleanly against the reference
+//!   binary's output.
+//! * Per-analyzer binary state uses [`GobCodec`] — a Rust-native `bincode`
+//!   codec (this state is internal-only and never user-visible, so no
+//!   cross-implementation wire format is reproduced).
 //!
 //! # Example
 //!

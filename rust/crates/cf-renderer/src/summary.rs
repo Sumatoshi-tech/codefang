@@ -1,14 +1,13 @@
-//! Executive summary model and rendering. Port of the Go `renderer/summary.go`.
+//! Executive summary model and rendering.
 
 use crate::analyze::{ReportSection, SCORE_INFO_ONLY, SCORE_LABEL_INFO};
 use crate::section_renderer::{SectionRenderer, INDENT_WIDTH, SEPARATOR_WIDTH_VALUE};
 use crate::terminal::{self, Color};
 
 /// The minimum number of sections before an executive summary is rendered.
-/// Mirrors Go's `MinSectionsForSummary`.
 pub const MIN_SECTIONS_FOR_SUMMARY: usize = 2;
 
-/// Summary layout/label constants (mirror Go's `summary.go`).
+/// Summary report title.
 pub const SUMMARY_TITLE: &str = "CODE ANALYSIS REPORT";
 /// Prefix for the overall-score header text.
 pub const SUMMARY_OVERALL_PREFIX: &str = "Overall: ";
@@ -23,27 +22,26 @@ pub const SUMMARY_ANALYZER_WIDTH: usize = 16;
 /// Score column width.
 pub const SUMMARY_SCORE_WIDTH: usize = 7;
 
-/// Holds data for the executive summary report. Mirrors Go's `ExecutiveSummary`.
+/// Holds data for the executive summary report.
 ///
-/// Borrows the sections for the lifetime of the summary, matching the Go code
-/// which stores `[]analyze.ReportSection`.
+/// Borrows the sections for the lifetime of the summary.
 pub struct ExecutiveSummary<'a> {
     /// The report sections included in the summary.
     pub sections: Vec<&'a dyn ReportSection>,
 }
 
 impl<'a> ExecutiveSummary<'a> {
-    /// Creates an executive summary from report sections. Mirrors
-    /// `NewExecutiveSummary` (a nil slice becomes an empty one).
+    /// Creates an executive summary from report sections.
+    #[must_use]
     pub fn new(sections: &[&'a dyn ReportSection]) -> Self {
-        ExecutiveSummary {
+        Self {
             sections: sections.to_vec(),
         }
     }
 
     /// Returns the average score of all scored sections, excluding info-only
     /// sections. Returns [`SCORE_INFO_ONLY`] when there are no scored sections.
-    /// Mirrors `(ExecutiveSummary).OverallScore`.
+    #[must_use]
     pub fn overall_score(&self) -> f64 {
         let mut total = 0.0;
         let mut count = 0usize;
@@ -60,8 +58,8 @@ impl<'a> ExecutiveSummary<'a> {
         total / count as f64
     }
 
-    /// Returns the formatted overall score ("N/10" or "Info"). Mirrors
-    /// `(ExecutiveSummary).OverallScoreLabel`.
+    /// Returns the formatted overall score ("N/10" or "Info").
+    #[must_use]
     pub fn overall_score_label(&self) -> String {
         let score = self.overall_score();
         if score < 0.0 {
@@ -72,8 +70,8 @@ impl<'a> ExecutiveSummary<'a> {
 }
 
 impl SectionRenderer {
-    /// Produces the executive summary output. Port of
-    /// `(SectionRenderer).RenderSummary`.
+    /// Produces the executive summary output.
+    #[must_use]
     pub fn render_summary(&self, summary: &ExecutiveSummary) -> String {
         let mut parts: Vec<String> = Vec::with_capacity(4 + summary.sections.len());
 
@@ -141,7 +139,7 @@ mod tests {
         }
     }
 
-    /// Port of `TestNewExecutiveSummary_StoresSections`.
+    /// Mirrors reference test `TestNewExecutiveSummary_StoresSections`.
     #[test]
     fn new_stores_sections() {
         let a = mock("COMPLEXITY", 0.8, "Good");
@@ -153,14 +151,14 @@ mod tests {
         assert_eq!(summary.sections[1].section_title(), "COMMENTS");
     }
 
-    /// Port of `TestNewExecutiveSummary_Empty`.
+    /// Mirrors reference test `TestNewExecutiveSummary_Empty`.
     #[test]
     fn new_empty() {
         let summary = ExecutiveSummary::new(&[]);
         assert!(summary.sections.is_empty());
     }
 
-    /// Port of `TestOverallScore_*`.
+    /// Mirrors reference test `TestOverallScore_*`.
     #[test]
     fn overall_score_variants() {
         let a = mock("C", 0.8, "Good");
@@ -181,7 +179,7 @@ mod tests {
         assert!((ExecutiveSummary::new(&[]).overall_score() - SCORE_INFO_ONLY).abs() < 0.001);
     }
 
-    /// Port of `TestOverallScoreLabel_*`.
+    /// Mirrors reference test `TestOverallScoreLabel_*`.
     #[test]
     fn overall_score_label_variants() {
         let a = mock("C", 0.8, "Good");
@@ -193,7 +191,7 @@ mod tests {
         assert_eq!(ExecutiveSummary::new(&s2).overall_score_label(), "Info");
     }
 
-    /// Port of `TestRenderSummary_*` (no-color path).
+    /// Mirrors reference test `TestRenderSummary_*` (no-color path).
     #[test]
     fn render_summary_contents() {
         let a = mock("COMPLEXITY", 0.8, "Good - reasonable complexity");
@@ -218,7 +216,7 @@ mod tests {
         assert!(out.contains("5 imports"));
     }
 
-    /// Port of `TestRenderSummary_EmptySections`.
+    /// Mirrors reference test `TestRenderSummary_EmptySections`.
     #[test]
     fn render_summary_empty() {
         let summary = ExecutiveSummary::new(&[]);
@@ -226,7 +224,7 @@ mod tests {
         assert!(r.render_summary(&summary).contains(SUMMARY_TITLE));
     }
 
-    /// Port of `TestRenderSummary_ColorEnabled/Disabled` and
+    /// Mirrors reference test `TestRenderSummary_ColorEnabled/Disabled` and
     /// `_ScoreRowsColored`.
     #[test]
     fn render_summary_colors() {

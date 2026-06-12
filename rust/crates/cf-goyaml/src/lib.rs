@@ -1,24 +1,29 @@
-//! `cf-goyaml` — a byte-faithful `gopkg.in/yaml.v3` block emitter over
+//! `cf-goyaml` — the report-format block YAML emitter over
 //! [`cf_gojson::GoValue`].
 //!
-//! This reproduces `yaml.Marshal` (yaml.v3 v3.0.1) output byte-for-byte for the
-//! value shapes codefang reports use:
+//! The emitted bytes are a frozen contract for the value shapes codefang
+//! reports use:
 //!
-//! * 2..9-space block indent (default **4**, as yaml.v3 `Marshal` sets), with
-//!   yaml.v3's exact indent-rounding and "skip the `- `" rule;
+//! * 2..9-space block indent (default **4**), with the reference emitter's
+//!   exact indent-rounding and "skip the `- `" rule;
 //! * **no** leading `---` and a single trailing `\n`;
-//! * map keys in [`GoMap::encode_order`] order — struct-origin keeps declaration
-//!   order, map-origin byte-sorts (matching yaml.v3, which sorts `map[string]…`);
-//! * yaml.v3 scalar quoting: plain unless the value would *resolve* to a non-`str`
+//! * map keys in [`GoMap::encode_order`] order — struct-origin keeps
+//!   declaration order, map-origin sorts;
+//! * scalar quoting: plain unless the value would *resolve* to a non-`str`
 //!   tag (numbers / bools / null / yes-no-on-off / timestamps / base-60), then
 //!   double-quoted; structural-indicator strings fall back to single quotes;
-//! * the emitter's plain/single/double-quoted writers including 80-column folding
-//!   and `\xNN`/`\uNNNN` escaping;
-//! * floats via `strconv.FormatFloat(f, 'g', -1, 64)` (NOT json `'g'`).
+//! * plain/single/double-quoted writers including line folding and
+//!   `\xNN`/`\uNNNN` escaping;
+//! * floats in the shortest-precision `'g'` layout with a two-digit exponent
+//!   (see the `float` module; NOT the JSON float layout).
 //!
-//! The port follows yaml.v3's `emitterc.go` / `encode.go` / `resolve.go`
-//! state machine closely; the public entry point is [`marshal`].
-#![allow(dead_code)]
+//! The internals deliberately mirror the reference emitter's state machine so
+//! parity can be audited mechanically; treat the algorithms as frozen. The
+//! public entry point is [`marshal`].
+//!
+//! Compatibility: output bytes are pinned against the reference implementation
+//! (`gopkg.in/yaml.v3` v3.0.1 `Marshal`) by this crate's oracle tests and the
+//! differential gate in `rust/tests/compat`.
 
 use cf_gojson::GoValue;
 
@@ -30,15 +35,15 @@ mod scalar;
 /// Crate name, used by smoke tests to confirm the module links.
 pub const CRATE_NAME: &str = "cf-goyaml";
 
-/// Serializes a [`GoValue`] to `gopkg.in/yaml.v3` block YAML, byte-identical to
-/// `yaml.Marshal` with the default 4-space indent.
+/// Serializes a [`GoValue`] to report-contract block YAML with the default
+/// 4-space indent.
 #[must_use]
 pub fn marshal(value: &GoValue) -> Vec<u8> {
     marshal_indent(value, 4)
 }
 
-/// Like [`marshal`] but with a caller-chosen indent (clamped to yaml.v3's
-/// `2..=9`, defaulting to 2 outside that range — matching `yaml_emitter_set_indent`).
+/// Like [`marshal`] but with a caller-chosen indent (clamped to `2..=9`,
+/// defaulting to 2 outside that range — reference-emitter behavior).
 #[must_use]
 pub fn marshal_indent(value: &GoValue, indent: i32) -> Vec<u8> {
     let mut e = emitter::Emitter::new(indent);
@@ -82,7 +87,7 @@ mod tests {
 
     #[test]
     fn nil_slice_emits_empty_sequence() {
-        // yaml.v3 marshals a nil slice as `[]`, identical to an empty slice (the
+        // YAML marshals a nil slice as `[]`, identical to an empty slice (the
         // JSON encoder writes `null`). As a struct field it appears inline.
         assert_eq!(s(&GoValue::NilSlice), "[]\n");
         let v = smap(vec![("anomalies", GoValue::NilSlice)]);

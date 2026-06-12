@@ -1,17 +1,17 @@
 //! Static registry of analyzer output schemas.
 //!
-//! Port of `internal/analyzers/analyze/schema_registry.go`. The schema is
+//! The schema is
 //! attached to [`crate::conversion::AnalyzerResult`] (`schema,omitempty`) and
 //! therefore serialized, so [`FieldMeta`]'s field order (`type`, `grain`,
 //! `description`) and omitempty are preserved, and the registry contents match
-//! the Go table verbatim.
+//! the reference table verbatim.
 
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 /// Describes a single field in an analyzer's output schema.
 ///
-/// Mirrors `FieldMeta` (schema_registry.go:4). Serialized order is `type`,
+/// Serialized order is `type`,
 /// `grain` (omitempty), `description` (omitempty).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FieldMeta {
@@ -36,14 +36,14 @@ impl FieldMeta {
 
 /// Maps output field names to their metadata.
 ///
-/// Mirrors `AnalyzerSchema = map[string]FieldMeta` (schema_registry.go:11). A
-/// [`BTreeMap`] gives the byte-sorted key order the encoder would apply to a Go
+/// A
+/// [`BTreeMap`] gives the byte-sorted key order the encoder applies to a dynamic
 /// `map[string]…` anyway, keeping serialization byte-identical.
 pub type AnalyzerSchema = BTreeMap<String, FieldMeta>;
 
 /// Returns the output schema for `analyzer_id`, or `None` if unregistered.
 ///
-/// Mirrors `SchemaForAnalyzer` (schema_registry.go:15).
+///
 #[must_use]
 pub fn schema_for_analyzer(analyzer_id: &str) -> Option<AnalyzerSchema> {
     registry().get(analyzer_id).cloned()
@@ -244,8 +244,8 @@ mod tests {
     }
 
     #[test]
-    fn registry_covers_all_go_entries() {
-        // 17 analyzer IDs in schema_registry.go.
+    fn registry_covers_all_reference_entries() {
+        // 17 analyzer IDs in the reference schema table.
         for id in [
             "static/complexity",
             "static/halstead",

@@ -1,8 +1,5 @@
-# cf-alg-lru — Rust port of Go package pkg/alg/lru.
-#
-# A generic thread-safe LRU cache with optional Bloom pre-filtering, size-based
-# eviction, and cost-aware eviction sampling, ported one-to-one from the Go
-# `lru` package (pkg/alg/lru/{cache.go,ops.go,stats.go}).
+# cf-alg-lru — generic thread-safe LRU cache with optional Bloom
+# pre-filtering, size-based eviction, and cost-aware eviction sampling.
 #
 # This crate is INTERNAL behavior only: per DESIGN.md the LRU cache is used by
 # the cache layer and the analyzer framework as an in-memory cache and never
@@ -10,11 +7,8 @@
 # cf-gojson / cf-goyaml byte-compat serialization crates — there is no
 # user-visible serialization surface to route through them.
 #
-# The only dependency is the sibling Bloom-filter crate (cf-alg-bloom), exactly
-# mirroring the Go import of pkg/alg/bloom. It is declared as a path dependency
-# (self-contained in this manifest, matching how the other cf-alg-* crates
-# reference siblings) so the new crate builds without editing the workspace
-# Cargo.toml.
+# The only dependency is the sibling Bloom-filter crate (cf-alg-bloom),
+# declared as a path dependency like the other cf-alg-* sibling references.
 [package]
 name = "cf-alg-lru"
 version.workspace = true

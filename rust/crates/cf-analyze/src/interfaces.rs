@@ -1,10 +1,8 @@
 //! Analyzer trait hierarchy and supporting types.
 //!
-//! Port of the interfaces declared across `analyzer.go`, `history.go`, `tc.go`
-//! and `aggregation_mode.go`. The Go `context.Context` parameters are dropped
-//! (Rust does not thread an ambient context); cancellation, where needed, is a
-//! concern of the eventual `cf-framework`/`cf-pipeline` schedulers, noted in
-//! the crate TODOs.
+//! The reference signatures' ambient-context parameters are dropped (no
+//! context threading here); cancellation, where needed, is a concern of the
+//! `cf-framework`/`cf-pipeline` schedulers, noted in the crate TODOs.
 
 use std::io::Write;
 
@@ -16,12 +14,12 @@ use crate::error::AnalyzeError;
 use crate::report::Report;
 use crate::thresholds::Thresholds;
 
-/// A time-interval checkpoint key (tick index). Port of Go `type TICK = int`.
+/// A time-interval checkpoint key (tick index).
 pub type Tick = i64;
 
 /// Tick Container — per-commit analyzer data emitted during `Consume`.
 ///
-/// Port of Go `TC`. `data` is a string-keyed map of arbitrary JSON values.
+/// `data` is a string-keyed map of arbitrary JSON values.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Tc {
     /// `data` — analyzer-specific per-commit data.
@@ -29,71 +27,70 @@ pub struct Tc {
 }
 
 impl Tc {
-    /// Creates an empty TC. Port of Go `NewTC`.
+    /// Creates an empty TC.
+    #[must_use] 
     pub fn new() -> Self {
-        Tc { data: Report::new_map() }
+        Self { data: Report::new_map() }
     }
 }
 
-/// Controls whether per-item data is collected during aggregation. Port of Go
-/// `AggregationMode`.
+/// Controls whether per-item data is collected during aggregation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AggregationMode {
-    /// Collects all per-item data (Go zero value `AggregationModeFull`).
+    /// Collects all per-item data (the default).
     #[default]
     Full,
-    /// Skips per-item data collection (Go `AggregationModeSummaryOnly`).
+    /// Skips per-item data collection.
     SummaryOnly,
 }
 
-/// The common base trait for all analyzers. Port of Go `Analyzer`.
+/// The common base trait for all analyzers.
 pub trait Analyzer {
-    /// Returns the unique analyzer name. Go `Name()`.
+    /// Returns the unique analyzer name.
     fn name(&self) -> String;
-    /// Returns the CLI flag. Go `Flag()`.
+    /// Returns the CLI flag.
     fn flag(&self) -> String;
-    /// Returns stable metadata. Go `Descriptor()`.
+    /// Returns stable metadata.
     fn descriptor(&self) -> Descriptor;
-    /// Lists configurable options. Go `ListConfigurationOptions()`.
+    /// Lists configurable options.
     fn list_configuration_options(&self) -> Vec<ConfigurationOption>;
-    /// Applies configuration facts. Go `Configure(map[string]any) error`.
+    /// Applies configuration facts.
     fn configure(&mut self, facts: &Report) -> Result<(), AnalyzeError>;
 }
 
 /// Shared contract for analyzers producing reportable output with thresholds,
-/// aggregation, and per-format serialization. Port of Go `FormattableAnalyzer`.
+/// aggregation, and per-format serialization.
 ///
-/// Both [`StaticAnalyzer`] and [`RawFileAnalyzer`] satisfy this trait. The Go
+/// Both [`StaticAnalyzer`] and [`RawFileAnalyzer`] satisfy this trait. The reference
 /// `CreateAggregator()`/`ResultAggregator` machinery is represented by
 /// [`FormattableAnalyzer::create_aggregator`] returning a boxed
 /// [`ResultAggregator`].
 pub trait FormattableAnalyzer: Analyzer {
-    /// Returns color-coded thresholds. Go `Thresholds()`.
+    /// Returns color-coded thresholds.
     fn thresholds(&self) -> Thresholds;
-    /// Creates a result aggregator. Go `CreateAggregator()`.
+    /// Creates a result aggregator.
     fn create_aggregator(&self) -> Box<dyn ResultAggregator>;
-    /// Writes a human-readable report. Go `FormatReport`.
+    /// Writes a human-readable report.
     fn format_report(&self, report: &Report, w: &mut dyn Write) -> Result<(), AnalyzeError>;
-    /// Writes the report as JSON. Go `FormatReportJSON`.
+    /// Writes the report as JSON.
     fn format_report_json(&self, report: &Report, w: &mut dyn Write) -> Result<(), AnalyzeError>;
-    /// Writes the report as YAML. Go `FormatReportYAML`.
+    /// Writes the report as YAML.
     fn format_report_yaml(&self, report: &Report, w: &mut dyn Write) -> Result<(), AnalyzeError>;
-    /// Writes the report as a plot. Go `FormatReportPlot`.
+    /// Writes the report as a plot.
     fn format_report_plot(&self, report: &Report, w: &mut dyn Write) -> Result<(), AnalyzeError>;
-    /// Writes the report as CFB1 binary. Go `FormatReportBinary`.
+    /// Writes the report as CFB1 binary.
     fn format_report_binary(&self, report: &Report, w: &mut dyn Write) -> Result<(), AnalyzeError>;
 }
 
-/// Contract for UAST-based static analysis. Port of Go `StaticAnalyzer`.
+/// Contract for UAST-based static analysis.
 pub trait StaticAnalyzer: FormattableAnalyzer {
-    /// Analyzes a parsed UAST root. Go `Analyze(root *node.Node)`.
+    /// Analyzes a parsed UAST root.
     fn analyze(&self, root: &Node) -> Result<Report, AnalyzeError>;
 }
 
-/// Contract for analyzers operating on raw file content. Port of Go
-/// `RawFileAnalyzer`.
+/// Contract for analyzers operating on raw file content.
 pub trait RawFileAnalyzer: FormattableAnalyzer {
-    /// Analyzes raw file bytes. Go `AnalyzeFileContent(path, content)`.
+    /// Analyzes raw file bytes.
     fn analyze_file_content(
         &self,
         path: &str,
@@ -101,26 +98,24 @@ pub trait RawFileAnalyzer: FormattableAnalyzer {
     ) -> Result<Report, AnalyzeError>;
 }
 
-/// Contract for analyzers operating over commit history. Port of Go
-/// `HistoryAnalyzer`.
+/// Contract for analyzers operating over commit history.
 pub trait HistoryAnalyzer: Analyzer {
-    /// Processes a single commit's data. Go `Consume(ctx, tc)`.
+    /// Processes a single commit's data.
     fn consume(&mut self, tc: &Tc) -> Result<(), AnalyzeError>;
-    /// Produces the final report. Go `Finalize(ctx)`.
+    /// Produces the final report.
     fn finalize(&mut self) -> Result<Report, AnalyzeError>;
 }
 
-/// A [`HistoryAnalyzer`] that also supports serialization. Port of Go
-/// `LeafAnalyzer`.
+/// A [`HistoryAnalyzer`] that also supports serialization.
 pub trait LeafAnalyzer: HistoryAnalyzer {
-    /// Serializes a report in the requested format. Go `Serialize`.
+    /// Serializes a report in the requested format.
     fn serialize(
         &self,
         report: &Report,
         format: &str,
         w: &mut dyn Write,
     ) -> Result<(), AnalyzeError>;
-    /// Serializes aggregated ticks. Go `SerializeTICKs`.
+    /// Serializes aggregated ticks.
     fn serialize_ticks(
         &self,
         ticks: &[Tick],
@@ -129,36 +124,34 @@ pub trait LeafAnalyzer: HistoryAnalyzer {
     ) -> Result<(), AnalyzeError>;
 }
 
-/// Aggregates analyzer results. Port of Go `ResultAggregator`.
+/// Aggregates analyzer results.
 pub trait ResultAggregator {
-    /// Combines per-analyzer results. Go `Aggregate(map[string]Report)`.
+    /// Combines per-analyzer results.
     fn aggregate(&mut self, results: &[(String, Report)]);
-    /// Returns the merged result. Go `GetResult()`.
+    /// Returns the merged result.
     fn get_result(&self) -> Report;
 }
 
-/// Combines per-commit reports into a final report. Port of Go `Aggregator`.
+/// Combines per-commit reports into a final report.
 pub trait Aggregator {
-    /// Merges a TC into running state. Go `Consume(ctx, tc)`.
+    /// Merges a TC into running state.
     fn consume(&mut self, tc: &Tc) -> Result<(), AnalyzeError>;
-    /// Returns the final merged report. Go `Finalize(ctx)`.
+    /// Returns the final merged report.
     fn finalize(&mut self) -> Result<Report, AnalyzeError>;
 }
 
-/// Options for aggregator creation. Port of Go `AggregatorOptions`.
+/// Options for aggregator creation.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct AggregatorOptions {
-    /// Caps parallel aggregation operations. Go `MaxParallel`.
+    /// Caps parallel aggregation operations.
     pub max_parallel: usize,
 }
 
-/// Facts key for the global temporary directory override. Port of Go
-/// `ConfigTmpDir` (`aggregator.go:79`). When set, analyzers use this directory
+/// Facts key for the global temporary directory override. When set, analyzers use this directory
 /// for spill and hibernation files instead of the system temp dir.
 pub const CONFIG_TMP_DIR: &str = "TmpDir";
 
-/// On-disk spill state of an [`Aggregator`]. Port of Go `AggregatorSpillInfo`
-/// (`aggregator.go:69`). Used by the checkpoint system to save and restore
+/// On-disk spill state of an [`Aggregator`]. Used by the checkpoint system to save and restore
 /// spill directories.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AggregatorSpillInfo {
@@ -169,13 +162,11 @@ pub struct AggregatorSpillInfo {
 }
 
 /// Extracts and clears per-commit data between chunks during streaming
-/// timeseries NDJSON output. Port of Go `CommitStatsDrainer`
-/// (`aggregator.go:57`). Aggregators that store per-commit summary data
+/// timeseries NDJSON output. Aggregators that store per-commit summary data
 /// implement this to enable per-chunk flushing.
 pub trait CommitStatsDrainer {
     /// Returns per-commit summary data and per-tick commit ordering, then clears
-    /// these maps from the aggregator. Cumulative state remains intact. Port of
-    /// Go `DrainCommitStats`.
+    /// these maps from the aggregator. Cumulative state remains intact.
     fn drain_commit_stats(&mut self) -> (Report, Vec<(Tick, Vec<String>)>);
 }
 

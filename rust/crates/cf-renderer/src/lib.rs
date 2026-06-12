@@ -1,14 +1,12 @@
 //! Report renderer dispatch for analyzers.
 //!
-//! This crate is a faithful port of the Go package
-//! `internal/analyzers/common/renderer`. It is shared by the analyzers
-//! (`clones`, `cohesion`, `comments`, `complexity`, `halstead`, `imports`) and
-//! the CLI, and provides:
+//! Shared by the analyzers (`clones`, `cohesion`, `comments`, `complexity`,
+//! `halstead`, `imports`) and the CLI. Provides:
 //!
 //! - **Structured JSON model** ([`json`]) — the [`json::JsonReport`] /
 //!   [`json::JsonSection`] tree with **score-last** field ordering and the
 //!   **initialized-empty `[]` vs `omitempty`** nuance, serialized through a
-//!   Go-`encoding/json`-byte-compatible encoder.
+//!   report-format byte-compatible encoder.
 //! - **Terminal section rendering** ([`section_renderer`]) — the
 //!   [`section_renderer::SectionRenderer`] producing the header box, key
 //!   metrics, distribution bars, and issue lists.
@@ -21,20 +19,18 @@
 //!
 //! # Byte identity
 //!
-//! Per DESIGN.md §1.1/§2, machine-format report bytes must match Go's
-//! `encoding/json`. All JSON serialization here routes through the
-//! [`gocompat`] encoder (map-key byte-sorting, HTML escaping on, Go float
-//! formatting, score-last via declaration-ordered objects), never
-//! `serde_json`. [`gocompat`] mirrors the design's tier-0 `cf-gojson` crate and
-//! is replaced by it once that crate lands.
+//! Machine-format report bytes are a frozen contract, pinned against the
+//! reference implementation by `rust/tests/compat` (DESIGN.md §1.1/§2). All
+//! JSON serialization here routes through the [`gocompat`] encoder (map-key
+//! byte-sorting, HTML escaping on, report-contract float formatting, score-last
+//! via declaration-ordered objects), never `serde_json`. [`gocompat`] mirrors
+//! the `GoValue`/`Encoder` API shape of the shared `cf-gojson` crate.
 //!
-//! # Not-yet-ported dependencies
+//! # Local dependency surfaces
 //!
-//! The Go renderer depends on `internal/analyzers/analyze` and
-//! `internal/analyzers/common/terminal`, whose Rust crates (`cf-analyze`,
-//! `cf-terminal`) are still scaffolds. Their renderer-facing surface is
-//! reproduced in the [`analyze`] and [`terminal`] modules and will be replaced
-//! by path dependencies once those crates are ported (see the crate `Cargo.toml`).
+//! The renderer-facing subsets of the analysis model and the terminal helpers
+//! live in the local [`analyze`] and [`terminal`] modules (see the crate
+//! `Cargo.toml` for the consolidation plan with `cf-analyze`/`cf-terminal`).
 
 #![forbid(unsafe_code)]
 
@@ -47,7 +43,7 @@ pub mod static_renderer;
 pub mod summary;
 pub mod terminal;
 
-// Flatten the most-used items to the crate root, mirroring the flat Go package.
+// Flatten the most-used items to the crate root.
 pub use json::{
     section_to_json, section_to_json_file_entry, sections_to_json, JsonDistribution, JsonFileEntry,
     JsonIssue, JsonMetric, JsonReport, JsonSection,

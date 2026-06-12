@@ -1,9 +1,7 @@
-//! Structured store record-kind constants and the store-write payload mapping.
-//!
-//! Ports the kind constants from `internal/analyzers/anomaly/store_writer.go`
-//! and the pure portion of `WriteToStore` (the record set derived from
-//! [`ComputedMetrics`]). The actual `ReportWriter`/`ReportReader` I/O lives in
-//! the not-yet-ported `cf-analyze` store layer; see the crate todos.
+//! Structured store record-kind constants and the store-write payload
+//! mapping (the record set derived from [`ComputedMetrics`]). The actual
+//! reader/writer I/O belongs to the `cf-analyze` store layer; see the crate
+//! todos.
 
 use crate::model::{
     AggregateData, ComputedMetrics, ExternalAnomaly, ExternalSummary, Record, TimeSeriesEntry,
@@ -20,12 +18,11 @@ pub const KIND_EXTERNAL_ANOMALY: &str = "external_anomaly";
 /// Record kind: cross-analyzer `ExternalSummary` records.
 pub const KIND_EXTERNAL_SUMMARY: &str = "external_summary";
 
-/// The full set of store records derived from computed metrics.
-///
-/// Mirrors the records `WriteToStore` streams: the `time_series` slice, the
-/// `anomaly_record` slice, and the single `aggregate` record. Borrowing keeps
-/// this allocation-free; a store-writer adapter (in `cf-analyze`, once ported)
-/// iterates these and writes each kind through the byte-identical codec.
+/// The full set of store records derived from computed metrics: the
+/// `time_series` slice, the `anomaly_record` slice, and the single
+/// `aggregate` record. Borrowing keeps this allocation-free; a store-writer
+/// adapter (in `cf-analyze`, once wired) iterates these and writes each kind
+/// through the byte-identical codec.
 pub struct StoreRecords<'a> {
     /// Per-tick time-series entries (kind [`KIND_TIME_SERIES`]).
     pub time_series: &'a [TimeSeriesEntry],
@@ -36,7 +33,7 @@ pub struct StoreRecords<'a> {
 }
 
 impl<'a> StoreRecords<'a> {
-    /// Builds the store-record view over `metrics`, mirroring `WriteToStore`.
+    /// Builds the store-record view over `metrics`.
     #[must_use]
     pub fn from_metrics(metrics: &'a ComputedMetrics) -> Self {
         Self {
@@ -47,10 +44,8 @@ impl<'a> StoreRecords<'a> {
     }
 }
 
-/// The enrichment record set written after cross-analyzer detection.
-///
-/// Mirrors `WriteEnrichmentToStore`: the `external_anomaly` and
-/// `external_summary` slices.
+/// The enrichment record set written after cross-analyzer detection: the
+/// `external_anomaly` and `external_summary` slices.
 pub struct EnrichmentRecords<'a> {
     /// Cross-analyzer anomalies (kind [`KIND_EXTERNAL_ANOMALY`]).
     pub external_anomalies: &'a [ExternalAnomaly],

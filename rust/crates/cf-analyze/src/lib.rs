@@ -1,5 +1,5 @@
 //! `cf-analyze` — analyzer registry/dispatch hub and cross-format report
-//! conversion, the Rust port of Go `internal/analyzers/analyze`.
+//! conversion.
 //!
 //! This crate is the keystone the whole analyzer ecosystem builds on: every
 //! concrete analyzer, the common/plumbing layers, the framework, the MCP server,
@@ -9,25 +9,24 @@
 //!
 //! # What lives here
 //!
-//! - [`Report`] / [`GoMap`] / [`GoValue`] — the dynamic `map[string]any` report
+//! - [`Report`] / [`GoMap`] / [`GoValue`] — the dynamic string-keyed report
 //!   model, reusing the [`cf_gojson`] value tree so serialization is byte-exact.
 //! - The analyzer interfaces ([`Analyzer`], [`FormattableAnalyzer`],
 //!   [`StaticAnalyzer`], [`RawFileAnalyzer`], [`HistoryAnalyzer`],
-//!   [`Parallelizable`], …) ported from `analyzer.go` and `history.go`.
+//!   [`Parallelizable`], …).
 //! - [`BaseHistoryAnalyzer`] — the embeddable default `HistoryAnalyzer`
-//!   implementation (`base_history.go`).
+//!   implementation.
 //! - The **cross-format conversion hub** ([`write_converted_output`],
 //!   [`UnifiedModel`], [`MergedTimeSeries`], [`StreamingSink`], the format
-//!   constants/validation) reimplemented over [`cf_gojson`] / [`cf_goyaml`] /
-//!   [`cf_reportutil`] — `conversion.go`, `timeseries.go`, `streaming_sink.go`,
-//!   `formats.go`, `metadata.go`.
+//!   constants/validation) built over [`cf_gojson`] / [`cf_goyaml`] /
+//!   [`cf_reportutil`].
 //!
 //! # Byte-identity discipline (DESIGN §2)
 //!
 //! Every machine format routes through the tier-0 encoders. Dynamic report maps
 //! ([`Report`], the flattened `MergedCommitData`) are [`GoMap`]s built with
 //! [`MapOrigin::Map`] so the encoder **byte-sorts** their keys at encode time,
-//! matching Go's `map[string]any` ordering. Wrapper types ([`UnifiedModel`],
+//! per the report-format contract for dynamic maps. Wrapper types ([`UnifiedModel`],
 //! [`AnalyzerResult`], [`MergedTimeSeries`], [`AnalysisMetadata`],
 //! [`NdjsonLine`]) are built with [`MapOrigin::Struct`] so fields stay in source
 //! declaration order and honor `omitempty`.
@@ -97,6 +96,6 @@ pub use typed_collection::{
     TypedCollection, DIRECTORY_KEY, LANGUAGE_KEY, SOURCE_FILE_KEY,
 };
 
-/// `ErrNotImplemented` — returned by stub methods that are not yet wired
-/// (`history.go:15`). Kept crate-public so analyzers can match on it.
+/// Sentinel error text returned by stub methods that are not yet wired.
+/// Kept crate-public so analyzers can match on it.
 pub const ERR_NOT_IMPLEMENTED: &str = "not implemented";

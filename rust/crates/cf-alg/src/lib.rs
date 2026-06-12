@@ -1,15 +1,10 @@
-//! Top-level generic algorithm utilities.
+//! Generic algorithm utilities: range chunking, a pull-based iterator
+//! collector, unordered-pair enumeration, and iterative tree traversal.
 //!
-//! Port of the Go top-level `pkg/alg` package (the package-level files
-//! `chunk.go`, `iter.go`, `pairs.go`, `tree.go`). The sub-packages of
-//! `pkg/alg` (`bloom`, `cms`, `hll`, `interval`, `levenshtein`, `lru`, `lsh`,
-//! `mapx`, `minhash`, `stats`, `internal/hashutil`) are ported into their own
-//! dedicated crates (`cf-alg-bloom`, `cf-alg-cms`, ...), per the rewrite design.
-//!
-//! These are pure, allocation-light helpers: range chunking, a pull-based
-//! iterator collector, unordered-pair enumeration, and iterative tree
-//! traversal. None of them participate in report serialization, so no
-//! Go-compat serializer is required here.
+//! These are pure, allocation-light helpers. More specialized algorithm
+//! families (bloom filters, sketches, LRU caches, ...) live in their own
+//! dedicated `cf-alg-*` crates. Nothing here participates in report
+//! serialization, so no compatibility serializer is required.
 
 mod chunk;
 mod iter;

@@ -6,7 +6,8 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "Count-Min Sketch frequency estimator with fixed seeds (Rust port of pkg/alg/cms). Used by analyzers/halstead."
+description = "Count-Min Sketch frequency estimator with fixed seeds. Used by analyzers/halstead."
 
 [dependencies]
 cf-alg-hashutil = { path = "../cf-alg-hashutil" }
+thiserror = "1"

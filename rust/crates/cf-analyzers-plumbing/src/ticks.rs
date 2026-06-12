@@ -1,14 +1,14 @@
 //! `TicksSinceStart` provider.
 //!
-//! Port of `internal/analyzers/plumbing/ticks.go`.
-//!
 //! Assigns each commit an integer "tick" relative to the first commit's
 //! tick-boundary-floored committer time. The tick is monotonically
-//! non-decreasing (`max(tick, previousTick)`), and committer timestamps are
+//! non-decreasing (`max(tick, previous_tick)`), and committer timestamps are
 //! sanitized into a sane window before the math runs. The wall-clock upper
-//! bound (`time.Now().Add(maxClockSkew)`, ticks.go:163) — the byte-identity
-//! hazard called out in the porting brief and DESIGN §2.8 — is read through an
-//! injectable [`Clock`] so goldens are reproducible.
+//! bound (now + max clock skew) — a byte-identity hazard, per DESIGN §2.8 —
+//! is read through an injectable [`Clock`] so goldens are reproducible.
+//!
+//! Tick assignment feeds the history analyzers' report keys; it is pinned by
+//! the differential gate (`rust/tests/compat`).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -18,27 +18,25 @@ use crate::clock::{Clock, SystemClock};
 use crate::git_model::{Commit, Hash};
 use crate::ticks_anomaly::{TimeAnomalyStats, TimeAnomalyTracker, MAX_CLOCK_SKEW_SECS, MIN_SANE_COMMIT_TIME_UNIX};
 
-/// Default tick size in hours, mirroring Go's
-/// `DefaultTicksSinceStartTickSize = 24`.
+/// Default tick size in hours.
 pub const DEFAULT_TICKS_SINCE_START_TICK_SIZE_HOURS: i64 = 24;
 
 const SECS_PER_HOUR: i64 = 3600;
 
-/// `TicksSinceStart` provider, mirroring Go's `TicksSinceStart`.
+/// `TicksSinceStart` provider.
 pub struct TicksSinceStart {
-    /// Tick width in seconds (Go's `TickSize time.Duration`, set from the
-    /// configured hours).
+    /// Tick width in seconds, set from the configured hours.
     tick_size_secs: i64,
-    /// The tick value of the last processed commit (Go's exported `Tick`).
+    /// The tick value of the last processed commit.
     pub tick: i64,
-    /// commit hashes grouped by tick (Go's `commits map[int][]gitlib.Hash`).
+    /// Commit hashes grouped by tick.
     pub commits: HashMap<i64, Vec<Hash>>,
     previous_tick: i64,
-    /// Tick origin, seeded lazily from the first in-window commit (Go's
-    /// `tick0`/`tick0Set`). `None` mirrors the unset zero value.
+    /// Tick origin, seeded lazily from the first in-window commit. `None`
+    /// means "not yet seeded".
     tick0_unix: Option<i64>,
-    /// Most recent in-window committer time; the substitution source (Go's
-    /// `lastValidWhen`). `None` mirrors the zero `time.Time`.
+    /// Most recent in-window committer time; the substitution source for
+    /// out-of-window timestamps. `None` until one has been seen.
     last_valid_when: Option<i64>,
     anomalies: Arc<TimeAnomalyTracker>,
     clock: Arc<dyn Clock>,
@@ -52,14 +50,16 @@ impl Default for TicksSinceStart {
 
 impl TicksSinceStart {
     /// Construct with the default tick size and the real system clock.
+    #[must_use]
     pub fn new() -> Self {
         Self::with_clock(Arc::new(SystemClock))
     }
 
     /// Construct with the default tick size and an injected clock (for
     /// deterministic goldens, per DESIGN §2.8).
+    #[must_use]
     pub fn with_clock(clock: Arc<dyn Clock>) -> Self {
-        TicksSinceStart {
+        Self {
             tick_size_secs: DEFAULT_TICKS_SINCE_START_TICK_SIZE_HOURS * SECS_PER_HOUR,
             tick: 0,
             commits: HashMap::new(),
@@ -71,33 +71,32 @@ impl TicksSinceStart {
         }
     }
 
-    /// Set the tick size in hours, mirroring Go's `Configure` reading
-    /// `ConfigTicksSinceStartTickSize` (`time.Duration(val) * time.Hour`).
+    /// Set the tick size in hours (the `TicksSinceStart.TickSize`
+    /// configuration value).
     pub fn set_tick_size_hours(&mut self, hours: i64) {
         self.tick_size_secs = hours * SECS_PER_HOUR;
     }
 
-    /// Round a timestamp down to the nearest tick boundary, mirroring Go's
-    /// `FloorTime` over `time.Time.Round(d)`.
+    /// Round a timestamp down to the nearest tick boundary.
     ///
-    /// Go's `Round` rounds to the nearest multiple of `d` since the zero time
-    /// (away-from-zero on a tie); `FloorTime` then subtracts one `d` if the
-    /// rounded result moved past `t`. For non-negative unix seconds this equals
-    /// arithmetic floor division onto the tick grid.
-    pub fn floor_time(when_unix: i64, tick_size_secs: i64) -> i64 {
+    /// The reference floor rounds to the nearest multiple of the grid since
+    /// an absolute zero time (away-from-zero on a tie) and subtracts one grid
+    /// step if the rounded result moved past `t`. For non-negative unix
+    /// seconds this equals arithmetic floor division onto the tick grid.
+    #[must_use]
+    pub const fn floor_time(when_unix: i64, tick_size_secs: i64) -> i64 {
         if tick_size_secs <= 0 {
             return when_unix;
         }
-        // Go's Round is relative to the zero time (Jan 1, year 1), but the only
-        // use here is computing deltas `when - tick0` that are then divided by
-        // the same grid, so flooring relative to the unix epoch is equivalent
-        // for tick assignment. Use Euclidean floor to handle negatives like
-        // Go's round-then-subtract.
+        // The reference floor is relative to an absolute zero time, but the
+        // only use here is computing deltas `when - tick0` that are then
+        // divided by the same grid, so flooring relative to the unix epoch is
+        // equivalent for tick assignment. Euclidean floor handles negatives
+        // the same way as the reference round-then-subtract.
         when_unix.div_euclid(tick_size_secs) * tick_size_secs
     }
 
-    /// Clamp a committer timestamp into the sane window, mirroring Go's
-    /// `sanitizeWhen`.
+    /// Clamp a committer timestamp into the sane window.
     ///
     /// Returns the (possibly substituted) timestamp and records anomalies.
     fn sanitize_when(&mut self, when_unix: i64) -> i64 {
@@ -116,48 +115,39 @@ impl TicksSinceStart {
         when_unix
     }
 
-    /// Pick a stand-in for an out-of-window committer time, mirroring Go's
-    /// `substituteWhen`: the most recent in-window value, or the
-    /// `minSaneCommitTime` floor when none has been seen.
+    /// Pick a stand-in for an out-of-window committer time: the most recent
+    /// in-window value, or the [`MIN_SANE_COMMIT_TIME_UNIX`] floor when none
+    /// has been seen.
     fn substitute_when(&self) -> i64 {
         self.last_valid_when.unwrap_or(MIN_SANE_COMMIT_TIME_UNIX)
     }
 
     /// Compute the tick for one commit, advancing internal state.
     ///
-    /// Mirrors the body of Go's `Consume`:
+    /// The algorithm (frozen; tick values flow into report keys):
     /// 1. sanitize the committer time;
-    /// 2. on the first commit, seed `tick0 = FloorTime(when, TickSize)`;
-    /// 3. `tick = max(int((when - tick0) / TickSize), previousTick)`;
-    /// 4. accumulate the commit hash under `commits[tick]` (dedup tail-scan for
-    ///    commits with parents);
+    /// 2. on the first commit, seed `tick0 = floor_time(when, tick_size)`;
+    /// 3. `tick = max((when - tick0) / tick_size, previous_tick)`;
+    /// 4. accumulate the commit hash under `commits[tick]` (dedup tail-scan
+    ///    for commits with parents);
     /// 5. record `tick`.
     pub fn tick_for(&mut self, committer_when_unix: i64, commit_hash: Hash, num_parents: usize) -> i64 {
         let when = self.sanitize_when(committer_when_unix);
 
-        if self.tick0_unix.is_none() {
-            self.tick0_unix = Some(Self::floor_time(when, self.tick_size_secs));
-        }
-        let tick0 = self.tick0_unix.expect("tick0 seeded above");
+        let tick0 = *self
+            .tick0_unix
+            .get_or_insert_with(|| Self::floor_time(when, self.tick_size_secs));
 
-        // Go: int((when.Sub(tick0)) / TickSize) — integer division truncating
-        // toward zero, then max with previousTick.
+        // Integer division truncating toward zero (reference behavior), then
+        // max with previous_tick.
         let delta = when - tick0;
         let raw_tick = delta / self.tick_size_secs;
         let tick = raw_tick.max(self.previous_tick);
         self.previous_tick = tick;
 
         let tick_commits = self.commits.entry(tick).or_default();
-        let mut exists = false;
-        if num_parents > 0 {
-            // Go scans the tail of tickCommits for an existing entry.
-            for h in tick_commits.iter().rev() {
-                if *h == commit_hash {
-                    exists = true;
-                    break;
-                }
-            }
-        }
+        // Scan the tail for an existing entry (dedup; root commits skip it).
+        let exists = num_parents > 0 && tick_commits.iter().rev().any(|h| *h == commit_hash);
         if !exists {
             tick_commits.push(commit_hash);
         }
@@ -166,13 +156,15 @@ impl TicksSinceStart {
         tick
     }
 
-    /// Cumulative committer-timestamp anomalies, mirroring Go's `TimeAnomalies`.
+    /// Cumulative committer-timestamp anomalies.
+    #[must_use]
     pub fn time_anomalies(&self) -> TimeAnomalyStats {
         self.anomalies.snapshot()
     }
 
-    /// Tick of the last processed commit, mirroring Go's `CurrentTick`.
-    pub fn current_tick(&self) -> i64 {
+    /// Tick of the last processed commit.
+    #[must_use]
+    pub const fn current_tick(&self) -> i64 {
         self.tick
     }
 }
@@ -192,8 +184,8 @@ impl Analyzer for TicksSinceStart {
 
     fn consume(&mut self, deps: &mut ValueMap) -> Result<ValueMap, AnalyzerError> {
         let commit = dep::<Commit>(deps, "commit")?.clone();
-        // num_parents is carried alongside the commit when present, defaulting
-        // to 0 (Go reads commit.NumParents()).
+        // num_parents is carried alongside the commit when present,
+        // defaulting to 0.
         let num_parents = deps
             .get("num_parents")
             .and_then(|v| v.downcast_ref::<usize>())
@@ -232,7 +224,7 @@ mod tests {
         Hash(b)
     }
 
-    // Port of the first-tick expectation from ticks_test.go.
+    // Mirrors the reference suite's first-tick expectation.
     #[test]
     fn first_tick_is_zero() {
         let mut ts = fixed();

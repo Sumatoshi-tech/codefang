@@ -1,31 +1,25 @@
-//! Rust port of the Go package `pkg/pipeline`.
+//! Composable building blocks for concurrent pipeline construction, plus the
+//! configuration-option types for analysis pipeline items:
 //!
-//! Provides configuration-option types for analysis pipeline items and
-//! composable building blocks for concurrent pipeline construction:
-//!
-//! - [`RunPc`] — a producer-consumer goroutine skeleton (`runpc.go`).
+//! - [`RunPc`] — a producer-consumer skeleton.
 //! - [`Phase`] / [`run_phases`] — a chain-of-responsibility over a threaded
-//!   state value (`phase.go`).
+//!   state value.
 //! - [`Batcher`] family ([`ThresholdBatcher`], [`PassthroughBatcher`]) —
-//!   batching strategies (`batcher.go`).
-//! - [`DispatchFunc`] — a dispatch strategy alias (`dispatch.go`).
-//! - [`Fetcher`] / [`FetcherFunc`] — the cache-decorator base interface
-//!   (`fetcher.go`).
-//! - [`WorkerPool`] — bounded-concurrency item processing (`workerpool.go`).
-//! - [`signal_on_drain`] — fan a channel through while signalling exhaustion
-//!   (`drain.go`).
-//! - [`SharedResponse`] — evaluate a computation exactly once (`shared_response.go`).
+//!   batching strategies.
+//! - [`DispatchFunc`] — a dispatch strategy alias.
+//! - [`Fetcher`] / [`FetcherFunc`] — the cache-decorator base interface.
+//! - [`WorkerPool`] — bounded-concurrency item processing.
+//! - [`signal_on_drain`] — fan a channel through while signalling exhaustion.
+//! - [`SharedResponse`] — evaluate a computation exactly once.
 //! - [`ConfigurationOption`] / [`ConfigurationOptionType`] — the unified option
-//!   description used to build CLI flags (`options.go`).
+//!   description used to build CLI flags.
 //!
-//! # Mapping from Go to Rust
+//! # Concurrency model
 //!
-//! Go's `context.Context` is reproduced by [`Ctx`], a cheap clonable
-//! cancellation handle: [`Ctx::err`] mirrors `ctx.Err()` and
-//! [`Ctx::is_cancelled`] mirrors `ctx.Err() != nil`. Go goroutines map to OS
-//! threads and Go channels map to [`crossbeam_channel`] channels, which
-//! reproduce Go's buffered/unbuffered, blocking-send/recv, and close-on-drop
-//! semantics. Go generics map to Rust generics.
+//! Cancellation is modeled by [`Ctx`], a cheap clonable handle: [`Ctx::err`]
+//! reports the cancellation error and [`Ctx::is_cancelled`] is the boolean
+//! guard. Workers are OS threads communicating over [`crossbeam_channel`]
+//! channels (bounded/unbounded, blocking send/recv, close-on-drop).
 //!
 //! This crate emits no machine-format report bytes, so — unlike the report
 //! crates — it does not route through `cf-gojson` / `cf-goyaml`.

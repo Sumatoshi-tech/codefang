@@ -1,15 +1,12 @@
 //! `UASTChanges` provider.
 //!
-//! Port of `internal/analyzers/plumbing/uast.go`.
-//!
 //! Produces, per change, the parsed UAST root of the before and/or after blob:
 //! * the **before** side is parsed for `Modify` and `Delete`;
 //! * the **after** side is parsed for `Modify` and `Insert`.
 //!
-//! A change is only emitted when at least one side parsed to a node (Go:
-//! `if before != nil || after != nil`). `parseBlob` gates on the path filter,
-//! cache membership, parser language support, and a blob-size limit, mirroring
-//! `uast.go` step for step.
+//! A change is only emitted when at least one side parsed to a node. Blob
+//! parsing gates on the path filter, cache membership, parser language
+//! support, and a blob-size limit — in this exact order (frozen behavior).
 
 use std::collections::HashMap;
 
@@ -19,12 +16,10 @@ use crate::git_model::{Action, Change, Changes, Hash};
 use crate::uast_iface::{AllowAllPathFilter, Node, SharedParser, SharedPathFilter};
 use std::sync::Arc;
 
-/// Maximum blob size (bytes) for UAST parsing, mirroring Go's
-/// `maxUASTBlobSize = 256 * 1024`.
+/// Maximum blob size (bytes) for UAST parsing.
 pub const MAX_UAST_BLOB_SIZE: usize = 256 * 1024;
 
-/// A change paired with its before/after UAST roots, mirroring Go's
-/// `uast.Change`.
+/// A change paired with its before/after UAST roots.
 #[derive(Debug, Clone)]
 pub struct UASTChange {
     /// The underlying file change.
@@ -37,12 +32,11 @@ pub struct UASTChange {
     pub after: Option<Node>,
 }
 
-/// `UASTChanges` provider, mirroring Go's `UASTChangesAnalyzer`.
+/// `UASTChanges` provider.
 pub struct UASTChanges {
     parser: Option<SharedParser>,
     path_filter: SharedPathFilter,
-    /// Maximum blob size for parsing; `0` uses [`MAX_UAST_BLOB_SIZE`]
-    /// (Go's `MaxBlobSize`).
+    /// Maximum blob size for parsing; `0` uses [`MAX_UAST_BLOB_SIZE`].
     pub max_blob_size: usize,
 }
 
@@ -55,23 +49,23 @@ impl Default for UASTChanges {
 impl UASTChanges {
     /// Construct without a parser (every parse yields `None` until one is set),
     /// using a permissive path filter.
+    #[must_use]
     pub fn new() -> Self {
-        UASTChanges {
+        Self {
             parser: None,
             path_filter: Arc::new(AllowAllPathFilter),
             max_blob_size: 0,
         }
     }
 
-    /// Set the path filter used to skip vendor/generated files
-    /// (Go's `pathfilter.New()`).
+    /// Set the path filter used to skip vendor/generated files.
     pub fn set_path_filter(&mut self, filter: SharedPathFilter) {
         self.path_filter = filter;
     }
 
-    /// Build the list of UAST changes for one commit, mirroring Go's
-    /// `changesSequential`: parse before/after per change and keep only changes
-    /// with at least one parsed side.
+    /// Build the list of UAST changes for one commit: parse before/after per
+    /// change and keep only changes with at least one parsed side.
+    #[must_use]
     pub fn build(
         &self,
         changes: &Changes,
@@ -92,35 +86,35 @@ impl UASTChanges {
         result
     }
 
-    /// Parse the before side for Modify/Delete, mirroring `parseBeforeVersion`.
+    /// Parse the before side for Modify/Delete.
     fn parse_before_version(
         &self,
         change: &Change,
         cache: &HashMap<Hash, CachedBlob>,
     ) -> Option<Node> {
         match change.action() {
-            Some(Action::Modify) | Some(Action::Delete) => {
+            Some(Action::Modify | Action::Delete) => {
                 self.parse_blob(change.from.hash, &change.from.name, cache)
             }
             _ => None,
         }
     }
 
-    /// Parse the after side for Modify/Insert, mirroring `parseAfterVersion`.
+    /// Parse the after side for Modify/Insert.
     fn parse_after_version(
         &self,
         change: &Change,
         cache: &HashMap<Hash, CachedBlob>,
     ) -> Option<Node> {
         match change.action() {
-            Some(Action::Modify) | Some(Action::Insert) => {
+            Some(Action::Modify | Action::Insert) => {
                 self.parse_blob(change.to.hash, &change.to.name, cache)
             }
             _ => None,
         }
     }
 
-    /// Parse a blob into a UAST root, mirroring Go's `parseBlob` gate sequence:
+    /// Parse a blob into a UAST root. Gate sequence (frozen):
     /// path-filter name exclusion -> cache membership -> parser support ->
     /// blob-size limit -> path-filter content exclusion -> parse.
     fn parse_blob(

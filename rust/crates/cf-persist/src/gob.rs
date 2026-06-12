@@ -1,14 +1,13 @@
-//! Binary codec — the Rust-native replacement for Go's `encoding/gob`.
+//! Binary codec for internal state files.
 //!
-//! DESIGN.md §3 drops gob outright: it is a Go-specific wire format that is not
-//! byte-portable, and persist/checkpoint state is never user-visible report
-//! output. This codec uses [`bincode`] for a compact, deterministic, self-
-//! describing-enough binary encoding of serde types.
+//! Persist/checkpoint state is never user-visible report output, so no
+//! cross-implementation wire format is reproduced (DESIGN.md §3). This codec
+//! uses [`bincode`] for a compact, deterministic binary encoding of serde
+//! types.
 //!
-//! For drop-in parity with the Go API the type keeps the name [`GobCodec`], the
-//! `.gob` file extension, and the `gob encode` / `gob decode` error prefixes the
-//! Go unit tests assert on. The on-disk *bytes* differ from Go's gob (by design);
-//! everything observable through the [`Codec`] contract is preserved.
+//! The historical name [`GobCodec`], the `.gob` file extension, and the
+//! `gob encode` / `gob decode` error prefixes are kept stable: tests and
+//! on-disk layouts depend on them.
 
 use std::io::{Read, Write};
 
@@ -18,21 +17,20 @@ use serde::de::DeserializeOwned;
 use crate::error::PersistError;
 use crate::Codec;
 
-/// File extension for binary state files (`gobExtension` in Go).
+/// File extension for binary state files.
 pub const GOB_EXTENSION: &str = ".gob";
 
-/// Binary codec backed by `bincode` (the gob replacement).
+/// Stateless binary codec backed by `bincode`, with a `.gob` extension.
 ///
-/// Mirrors Go's `persist.GobCodec`: a stateless codec with a `.gob` extension.
-/// Construct with [`GobCodec::new`] (`NewGobCodec()` in Go).
+/// Construct with [`GobCodec::new`].
 #[derive(Debug, Clone, Copy, Default)]
 pub struct GobCodec;
 
 impl GobCodec {
-    /// Creates a binary codec. Equivalent to Go's `NewGobCodec()`.
+    /// Creates a binary codec.
     #[must_use]
-    pub fn new() -> Self {
-        GobCodec
+    pub const fn new() -> Self {
+        Self
     }
 }
 

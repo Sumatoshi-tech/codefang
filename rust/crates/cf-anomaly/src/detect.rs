@@ -1,8 +1,4 @@
 //! Anomaly detection over per-tick and external time-series data.
-//!
-//! Ports `buildRecords` / `detectAnomaliesFromTicks` from
-//! `internal/analyzers/anomaly/analyzer.go` and `detectExternalAnomalies` from
-//! `internal/analyzers/anomaly/enrich.go`.
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -14,15 +10,15 @@ use crate::zscore::compute_z_scores;
 
 /// Detects anomalies across all six per-tick metrics.
 ///
-/// Mirrors Go `detectAnomaliesFromTicks`: it computes independent trailing-window
-/// Z-scores for net churn, files changed, lines added, lines removed, language
-/// diversity, and author count, flags any tick whose maximum absolute Z-score
-/// strictly exceeds `threshold`, and sorts the result by descending severity.
+/// Computes independent trailing-window Z-scores for net churn, files
+/// changed, lines added, lines removed, language diversity, and author count,
+/// flags any tick whose maximum absolute Z-score strictly exceeds
+/// `threshold`, and sorts the result by descending severity.
 ///
-/// `tick_metrics` keys are consumed in ascending order (Go `mapx.SortedKeys`).
-/// The `threshold` is a Go `float32` widened to `f64` for the comparison, exactly
-/// as Go does (`thresholdF := float64(threshold)`).
+/// `tick_metrics` keys are consumed in ascending order. The `threshold` is
+/// single-precision by contract and widened to `f64` for the comparison.
 #[must_use]
+#[allow(clippy::cast_precision_loss)] // contractual float math on counts
 pub fn detect_anomalies_from_ticks(
     tick_metrics: &BTreeMap<i64, TickMetrics>,
     threshold: f32,
@@ -71,8 +67,8 @@ pub fn detect_anomalies_from_ticks(
         threshold_f,
     );
 
-    // Sort by max absolute Z-score descending. Go uses sort.Slice, which is not
-    // stable; ties keep an unspecified relative order. We use a stable sort with
+    // Sort by max absolute Z-score descending. The reference binary's sort is
+    // unstable on ties (unspecified relative order); we use a stable sort with
     // a strict comparator so behavior is deterministic without altering the
     // documented "most extreme first" semantics.
     anomalies.sort_by(|a, b| {
@@ -84,11 +80,10 @@ pub fn detect_anomalies_from_ticks(
     anomalies
 }
 
-/// Builds anomaly records for ticks whose max-abs Z-score exceeds `threshold`.
-///
-/// Mirrors Go `buildRecords`. A tick is flagged only when `max_abs > threshold`
-/// (strict), matching `if maxAbs <= threshold { continue }`.
+/// Builds anomaly records for ticks whose max-abs Z-score exceeds
+/// `threshold` (strict).
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::cast_possible_wrap)] // language/author counts are small
 fn build_records(
     ticks: &[i64],
     tick_metrics: &BTreeMap<i64, TickMetrics>,
@@ -140,10 +135,9 @@ fn build_records(
 
 /// Detects anomalies on an external analyzer's per-dimension time series.
 ///
-/// Mirrors Go `detectExternalAnomalies` (enrich.go). Dimensions are processed in
-/// sorted-name order for deterministic output. A dimension is skipped when its
-/// value count does not match `ticks.len()`. A value is flagged when its
-/// absolute Z-score strictly exceeds `threshold`.
+/// Dimensions are processed in sorted-name order for deterministic output. A
+/// dimension is skipped when its value count does not match `ticks.len()`. A
+/// value is flagged when its absolute Z-score strictly exceeds `threshold`.
 ///
 /// Returns `(anomalies, summaries)`, where summaries are emitted one per
 /// processed dimension (in sorted order) and anomalies in dimension-then-tick
@@ -159,7 +153,7 @@ pub fn detect_external_anomalies(
     let mut anomalies = Vec::new();
     let mut summaries = Vec::new();
 
-    // BTreeMap already yields keys in sorted order (Go does sort.Strings).
+    // BTreeMap already yields keys in sorted order.
     for (dim_name, values) in dimensions {
         if values.len() != ticks.len() {
             continue;
@@ -204,9 +198,8 @@ pub fn detect_external_anomalies(
 }
 
 /// Sorts a global external-anomaly list by descending absolute Z-score and a
-/// summary list by `(source, dimension)`. Mirrors the two `sort.Slice` calls in
-/// `runStoreEnrichment` (enrich_store.go) so callers that merge per-analyzer
-/// results produce the same deterministic order as Go.
+/// summary list by `(source, dimension)`, so callers that merge per-analyzer
+/// results produce the same deterministic order as the reference binary.
 pub fn sort_external_results(anomalies: &mut [ExternalAnomaly], summaries: &mut [ExternalSummary]) {
     anomalies.sort_by(|a, b| {
         b.z_score

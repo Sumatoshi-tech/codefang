@@ -1,6 +1,4 @@
 //! Hibernation and spill-cleanup interfaces for streaming execution.
-//!
-//! Port of Go `internal/streaming/hibernatable.go`.
 
 use cf_sigutil::SignalCleanupGuard;
 
@@ -8,8 +6,6 @@ use cf_sigutil::SignalCleanupGuard;
 /// hibernation. [`SpillCleaner::cleanup_spills`] removes all temp directories
 /// and files. It is invoked by [`SpillCleanupGuard`] on normal exit, error
 /// exit, and SIGTERM/SIGINT to prevent orphaned temp files.
-///
-/// Port of Go `streaming.SpillCleaner`.
 pub trait SpillCleaner {
     /// Removes all spill temp directories and files created by this analyzer.
     fn cleanup_spills(&self);
@@ -22,10 +18,8 @@ pub trait SpillCleaner {
 /// [`from_boxed`](Self::from_boxed)) and call [`close`](Self::close) — or rely
 /// on [`Drop`] — to run cleanup. Cleanup runs **exactly once**.
 ///
-/// Port of Go `streaming.SpillCleanupGuard`, which embeds
-/// `sigutil.SignalCleanupGuard`. This wraps [`cf_sigutil::SignalCleanupGuard`]
-/// the same way: that type owns the run-exactly-once semantics
-/// (`sync.Once`-equivalent), the [`Drop`] hook, and SIGTERM/SIGINT registration.
+/// Wraps [`cf_sigutil::SignalCleanupGuard`], which owns the run-exactly-once
+/// semantics, the [`Drop`] hook, and SIGTERM/SIGINT registration.
 pub struct SpillCleanupGuard {
     inner: SignalCleanupGuard,
 }
@@ -34,8 +28,8 @@ impl SpillCleanupGuard {
     /// Creates a guard that invokes [`SpillCleaner::cleanup_spills`] on every
     /// registered cleaner when [`close`](Self::close) (or [`Drop`]) runs.
     ///
-    /// Port of Go `NewSpillCleanupGuard`. Cleaners must be `Send` because the
-    /// underlying guard may run cleanup from a signal-handling thread.
+    /// Cleaners must be `Send` because the underlying guard may run cleanup
+    /// from a signal-handling thread.
     #[must_use]
     pub fn new<C>(cleaners: Vec<C>) -> Self
     where
@@ -52,8 +46,8 @@ impl SpillCleanupGuard {
         }
     }
 
-    /// Creates a guard from boxed trait objects, allowing a heterogeneous set of
-    /// cleaners. Equivalent to the Go `[]SpillCleaner` slice form.
+    /// Creates a guard from boxed trait objects, allowing a heterogeneous set
+    /// of cleaners.
     #[must_use]
     pub fn from_boxed(cleaners: Vec<Box<dyn SpillCleaner + Send + 'static>>) -> Self {
         let cleanup = move || {
@@ -68,8 +62,6 @@ impl SpillCleanupGuard {
     }
 
     /// Runs cleanup exactly once. Idempotent: subsequent calls are no-ops.
-    ///
-    /// Port of Go `(*SignalCleanupGuard).Close`.
     pub fn close(&mut self) {
         self.inner.close();
     }
@@ -78,8 +70,6 @@ impl SpillCleanupGuard {
 /// Optional trait for analyzers that support hibernation. Implementors can have
 /// their state compressed between chunks to reduce memory usage during
 /// streaming execution.
-///
-/// Port of Go `streaming.Hibernatable`.
 pub trait Hibernatable {
     /// Compresses the analyzer's state to reduce memory usage. Called between
     /// chunks during streaming execution.
@@ -101,10 +91,10 @@ pub trait Hibernatable {
 
 /// Error returned by [`Hibernatable`] operations.
 ///
-/// Go uses the bare `error` interface; this crate provides a concrete,
-/// inspectable error so analyzers across crates can interoperate. It carries a
-/// human-readable message.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A concrete, inspectable error type so analyzers across crates can
+/// interoperate. It carries a human-readable message.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{message}")]
 pub struct HibernateError {
     /// Description of what went wrong.
     pub message: String,
@@ -119,14 +109,6 @@ impl HibernateError {
         }
     }
 }
-
-impl std::fmt::Display for HibernateError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.message)
-    }
-}
-
-impl std::error::Error for HibernateError {}
 
 #[cfg(test)]
 mod tests {
@@ -144,7 +126,7 @@ mod tests {
         }
     }
 
-    // Mirrors Go TestSpillCleanupGuard_CleanupOnClose.
+    // Mirrors reference test TestSpillCleanupGuard_CleanupOnClose.
     #[test]
     fn cleanup_on_close() {
         let c1 = Arc::new(AtomicI32::new(0));
@@ -160,7 +142,7 @@ mod tests {
         assert_eq!(c2.load(Ordering::SeqCst), 1);
     }
 
-    // Mirrors Go TestSpillCleanupGuard_IdempotentClose.
+    // Mirrors reference test TestSpillCleanupGuard_IdempotentClose.
     #[test]
     fn idempotent_close() {
         let calls = Arc::new(AtomicI32::new(0));
@@ -174,7 +156,7 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
-    // Mirrors Go TestSpillCleanupGuard_NilCleaners (empty cleaner set).
+    // Mirrors reference test TestSpillCleanupGuard_NilCleaners (empty cleaner set).
     #[test]
     fn nil_cleaners() {
         let mut guard: SpillCleanupGuard = SpillCleanupGuard::from_boxed(Vec::new());
@@ -193,7 +175,7 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
-    // Mock hibernatable mirroring the Go hibernatable_test.go mock.
+    // Mock hibernatable mirroring the reference suite's mock.
     struct MockHibernatable {
         hibernate_count: i32,
         boot_count: i32,
@@ -225,7 +207,7 @@ mod tests {
         Ok(())
     }
 
-    // Mirrors Go TestHibernateAnalyzers_SingleChunk_NoHibernation.
+    // Mirrors reference test TestHibernateAnalyzers_SingleChunk_NoHibernation.
     #[test]
     fn single_chunk_no_hibernation() {
         let mut mock = MockHibernatable {
@@ -246,7 +228,7 @@ mod tests {
         assert_eq!(mock.boot_count, 0);
     }
 
-    // Mirrors Go TestHibernateAnalyzers_MultipleChunks_Hibernates.
+    // Mirrors reference test TestHibernateAnalyzers_MultipleChunks_Hibernates.
     #[test]
     fn multiple_chunks_hibernates() {
         let mut mock = MockHibernatable {
@@ -272,7 +254,7 @@ mod tests {
         assert_eq!(mock.boot_count, 2);
     }
 
-    // Mirrors Go TestCollectHibernatables_MixedAnalyzers.
+    // Mirrors reference test TestCollectHibernatables_MixedAnalyzers.
     #[test]
     fn collect_hibernatables_mixed() {
         let mut h1 = MockHibernatable {

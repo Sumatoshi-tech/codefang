@@ -60,19 +60,15 @@ fn matches_go_enry_oracle() {
             continue;
         }
 
-        let content = match fs::read(file) {
-            Ok(c) => c,
-            Err(_) => continue, // file vanished; skip.
-        };
+        // Skip files that vanished since the oracle ran.
+        let Ok(content) = fs::read(file) else { continue };
         // Pass the full path: enry computes filepath.Ext on it, and the Rust
         // port mirrors filepath.Ext including separator handling.
         let got = languages_by_content(file, &content);
 
         compared += 1;
-        if got != want {
-            if mismatches.len() < 50 {
-                mismatches.push(format!("{file}\n  want={want:?}\n   got={got:?}"));
-            }
+        if got != want && mismatches.len() < 50 {
+            mismatches.push(format!("{file}\n  want={want:?}\n   got={got:?}"));
         }
     }
 

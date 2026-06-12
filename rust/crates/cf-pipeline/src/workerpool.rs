@@ -1,4 +1,4 @@
-//! `WorkerPool` — bounded-concurrency item processing (`workerpool.go`).
+//! `WorkerPool` — bounded-concurrency item processing.
 
 use crate::context::{ContextError, Ctx};
 use crossbeam_channel::Receiver;
@@ -7,43 +7,30 @@ use std::thread;
 
 /// The error type returned by [`WorkerPool`] operations.
 ///
-/// Mirrors Go where `Run`/`RunChan` either wrap a context error
-/// (`fmt.Errorf("worker pool: %w", ctx.Err())`) or surface the first `Work`
-/// error verbatim.
-#[derive(Debug)]
+/// Either wraps a context error or surfaces the first work error verbatim.
+/// The rendered strings are part of the CLI error-text contract.
+#[derive(Debug, thiserror::Error)]
 pub enum WorkerPoolError<E> {
     /// The supplied context was already cancelled. Stringifies as
-    /// `"worker pool: <ctx err>"`, matching Go's wrapping.
+    /// `"worker pool: <ctx err>"` (error-text contract).
+    #[error("worker pool: {0}")]
     Context(ContextError),
-    /// The first non-`nil` error returned by a [`WorkerPool::work`] call.
+    /// The first error returned by a [`WorkerPool::work`] call.
+    #[error("{0}")]
     Work(E),
 }
 
-impl<E: std::fmt::Display> std::fmt::Display for WorkerPoolError<E> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            WorkerPoolError::Context(e) => write!(f, "worker pool: {e}"),
-            WorkerPoolError::Work(e) => write!(f, "{e}"),
-        }
-    }
-}
-
-impl<E: std::fmt::Display + std::fmt::Debug> std::error::Error for WorkerPoolError<E> {}
-
 /// Runs `work` on each item with at most `max_parallel` worker threads.
 ///
-/// Returns the first non-`nil` error encountered, or `Ok(())`. Remaining
-/// workers observe cancellation on the first error (the derived context is
+/// Returns the first error encountered, or `Ok(())`. Remaining workers
+/// observe cancellation on the first error (the derived context is
 /// cancelled), so they skip their remaining items.
-///
-/// Mirrors Go's `WorkerPool[T]` struct.
 pub struct WorkerPool<T, E, F>
 where
     F: Fn(&Ctx, T) -> Result<(), E> + Send + Sync,
 {
     /// The maximum number of concurrent worker threads. Zero (or negative)
-    /// defaults to the available parallelism (the analogue of
-    /// `runtime.NumCPU()`).
+    /// defaults to the available parallelism.
     pub max_parallel: i64,
     /// Processes a single item.
     pub work: F,
@@ -56,8 +43,8 @@ where
     E: Send + 'static,
     F: Fn(&Ctx, T) -> Result<(), E> + Send + Sync + 'static,
 {
-    /// Constructs a worker pool. `max_parallel` of `0` (or negative) defaults to
-    /// the available parallelism, matching Go's `runtime.NumCPU()` fallback.
+    /// Constructs a worker pool. `max_parallel` of `0` (or negative) defaults
+    /// to the available parallelism.
     pub fn new(max_parallel: i64, work: F) -> Self {
         WorkerPool {
             max_parallel,
@@ -68,13 +55,22 @@ where
 
     /// Processes all items with bounded concurrency.
     ///
-    /// If any `work` call returns an error, the derived context is cancelled and
-    /// `run` returns that error after all workers finish. Mirrors Go's
-    /// `(WorkerPool).Run`:
+    /// If any `work` call returns an error, the derived context is cancelled
+    /// and `run` returns that error after all workers finish.
     ///
     /// - empty `items` → `Ok(())`;
     /// - already-cancelled `ctx` → `Err(WorkerPoolError::Context(..))`;
     /// - worker count is clamped to `items.len()`.
+    ///
+    /// # Errors
+    ///
+    /// Returns the context error when `ctx` is already cancelled, or the
+    /// first error produced by a `work` call.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a worker thread panicked (propagated) or the internal error
+    /// mutex was poisoned by such a panic.
     pub fn run(&self, ctx: &Ctx, items: Vec<T>) -> Result<(), WorkerPoolError<E>> {
         if items.is_empty() {
             return Ok(());
@@ -84,14 +80,13 @@ where
         }
 
         let workers = self.resolve_workers(items.len());
-        // Buffered work channel of capacity `workers`, matching
-        // `make(chan T, workers)`.
+        // Buffered work channel of capacity `workers`.
         let (work_tx, work_rx) = crossbeam_channel::bounded::<T>(workers);
         let (child_ctx, cancel) = ctx.with_cancel();
 
         let first_err: Arc<Mutex<Option<E>>> = Arc::new(Mutex::new(None));
 
-        let result = thread::scope(|scope| {
+        thread::scope(|scope| {
             let mut handles = Vec::with_capacity(workers);
             for _ in 0..workers {
                 let rx = work_rx.clone();
@@ -101,14 +96,14 @@ where
                 let work = &self.work;
                 handles.push(scope.spawn(move || {
                     while let Ok(item) = rx.recv() {
-                        // `if ctx.Err() != nil { continue }`: drain remaining
-                        // items without working once cancelled.
+                        // Once cancelled, drain remaining items without
+                        // working them.
                         if ctx_w.is_cancelled() {
                             continue;
                         }
                         if let Err(e) = work(&ctx_w, item) {
-                            // `errOnce.Do`: record only the first error, then
-                            // cancel so peers stop working.
+                            // Record only the first error, then cancel so
+                            // peers stop working.
                             let mut slot = first_err_w
                                 .lock()
                                 .expect("worker pool first_err mutex poisoned");
@@ -121,7 +116,8 @@ where
                 }));
             }
 
-            // Feed all items, then close the channel so workers' `iter()` ends.
+            // Feed all items, then close the channel so the workers' recv
+            // loops end.
             for item in items {
                 // A send error means every receiver was dropped, which cannot
                 // happen here because the workers live until the scope ends; but
@@ -130,43 +126,37 @@ where
                     break;
                 }
             }
-            drop(work_tx); // `close(workCh)`
+            drop(work_tx); // close the work channel
 
             for h in handles {
                 // Worker closures never panic on their own; propagate if they do.
                 h.join().expect("worker pool thread panicked");
             }
         });
-        // thread::scope returns () on success here.
-        let () = result;
 
-        // `defer cancel()` — release the derived context regardless of outcome.
+        // Release the derived context regardless of outcome.
         cancel.cancel();
 
-        match Arc::try_unwrap(first_err)
-            .map(Mutex::into_inner)
-            .map(|r| r.expect("worker pool first_err mutex poisoned"))
-        {
-            Ok(Some(e)) => Err(WorkerPoolError::Work(e)),
-            Ok(None) => Ok(()),
-            // If somehow still shared, fall back to a lock-and-clone path is not
-            // possible without E: Clone; by construction all worker threads have
-            // joined, so the Arc is unique. Treat the impossible case as success.
-            Err(_) => Ok(()),
-        }
+        Self::take_first_err(first_err)
     }
 
     /// Processes items arriving on a channel with bounded concurrency.
     ///
-    /// Semantics match [`WorkerPool::run`] but items arrive via a [`Receiver`]
-    /// instead of a `Vec`. An already-cancelled context returns an error; the
-    /// worker count is *not* clamped (item count is unknown). Mirrors Go's
-    /// `(WorkerPool).RunChan`.
+    /// Semantics match [`WorkerPool::run`] but items arrive via a
+    /// [`Receiver`] instead of a `Vec`. An already-cancelled context returns
+    /// an error; the worker count is *not* clamped (item count is unknown).
+    /// An already-closed, empty channel returns `Ok(())` because the workers'
+    /// recv loops end immediately.
     ///
-    /// Go's "nil or already-closed channel returns nil immediately" splits into
-    /// two Rust cases: there is no nil [`Receiver`], so the closest analogue —
-    /// an already-closed/empty channel — naturally returns `Ok(())` because the
-    /// workers' `iter()` ends immediately.
+    /// # Errors
+    ///
+    /// Returns the context error when `ctx` is already cancelled, or the
+    /// first error produced by a `work` call.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a worker thread panicked (propagated) or the internal error
+    /// mutex was poisoned by such a panic.
     pub fn run_chan(&self, ctx: &Ctx, ch: Receiver<T>) -> Result<(), WorkerPoolError<E>> {
         if let Some(e) = ctx.err() {
             return Err(WorkerPoolError::Context(e));
@@ -208,20 +198,28 @@ where
 
         cancel.cancel();
 
+        Self::take_first_err(first_err)
+    }
+
+    /// Extracts the recorded first work error after all workers have joined.
+    ///
+    /// By construction every worker thread has been joined when this runs, so
+    /// the `Arc` is unique; a lock-and-clone fallback would need `E: Clone`,
+    /// and the impossible outstanding-clone case reads as success.
+    fn take_first_err(first_err: Arc<Mutex<Option<E>>>) -> Result<(), WorkerPoolError<E>> {
         match Arc::try_unwrap(first_err)
             .map(Mutex::into_inner)
             .map(|r| r.expect("worker pool first_err mutex poisoned"))
         {
             Ok(Some(e)) => Err(WorkerPoolError::Work(e)),
-            Ok(None) => Ok(()),
-            Err(_) => Ok(()),
+            Ok(None) | Err(_) => Ok(()),
         }
     }
 
     /// Returns the effective worker count, clamped to `item_count`.
     ///
-    /// When `item_count` is 0 (unknown, e.g. a channel source), no clamping is
-    /// applied. Mirrors Go's `resolveWorkers`.
+    /// When `item_count` is 0 (unknown, e.g. a channel source), no clamping
+    /// is applied.
     fn resolve_workers(&self, item_count: usize) -> usize {
         let mut workers = if self.max_parallel <= 0 {
             num_cpus()
@@ -231,15 +229,15 @@ where
         if item_count > 0 && workers > item_count {
             workers = item_count;
         }
-        // A pool with zero workers can never drain its channel; Go never reaches
-        // zero (NumCPU >= 1, MaxParallel clamp only lowers toward item_count
-        // which is >= 1 when nonzero). Guard defensively.
+        // A pool with zero workers can never drain its channel. The count
+        // never legitimately reaches zero (available parallelism >= 1; the
+        // clamp only lowers toward item_count, which is >= 1 when nonzero) —
+        // guard defensively.
         workers.max(1)
     }
 }
 
-/// The analogue of Go's `runtime.NumCPU()`: the available parallelism, or 1 if
-/// it cannot be determined.
+/// The available parallelism, or 1 if it cannot be determined.
 fn num_cpus() -> usize {
     thread::available_parallelism()
         .map(std::num::NonZeroUsize::get)
@@ -305,8 +303,8 @@ mod tests {
     #[test]
     fn cancelled_context_error_message() {
         // Use a Display-able error type so `to_string()` is available; the
-        // message under test comes from the Context variant's wrapping, which
-        // mirrors Go's `fmt.Errorf("worker pool: %w", ctx.Err())`.
+        // message under test comes from the Context variant's wrapping
+        // (error-text contract).
         let pool = WorkerPool::<i32, String, _>::new(1, |_ctx, _item| Ok(()));
         let ctx = Ctx::background();
         ctx.cancel();

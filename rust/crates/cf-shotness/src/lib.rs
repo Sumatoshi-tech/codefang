@@ -1,7 +1,7 @@
-//! cf-shotness — Go→Rust port of `internal/analyzers/shotness`.
+//! cf-shotness — structural hotspots.
 //!
-//! Structural hotspots: co-change frequency of DSL-selected UAST entities
-//! (functions, classes, …) across commit history. Analyzer id `history/shotness`.
+//! Co-change frequency of DSL-selected UAST entities (functions, classes, …)
+//! across commit history. Analyzer id `history/shotness`.
 //!
 //! # What this crate covers
 //!
@@ -14,24 +14,22 @@
 //!   merges tick/fork state purely additively (counts and coupling counters
 //!   add). The merged data flattens into the index-keyed `Nodes`/`Counters`
 //!   report.
-//! - **Metrics.** [`metrics`] is a faithful port of `metrics.go`: hotness,
-//!   coupling strength (`co / max(co, a, b)`), risk classification, and the
-//!   aggregate summary.
+//! - **Metrics.** [`metrics`] computes hotness, coupling strength
+//!   (`co / max(co, a, b)`), risk classification, and the aggregate summary.
 //! - **Machine-format report.** [`report`] assembles the
-//!   [`metrics::ComputedMetrics`] tree as ordered [`cf_gojson::GoValue`] so the
-//!   json / yaml / ndjson / timeseries / compact / bin outputs are byte-identical
-//!   to Go (DESIGN §2). All serialization routes through cf-gojson, never serde.
-//! - **Report store.** [`store`] ports the `node_data` / `aggregate` record
+//!   [`metrics::ComputedMetrics`] tree as ordered [`cf_gojson::GoValue`] so
+//!   the json / yaml / ndjson / timeseries / compact / bin outputs follow the
+//!   report-format contract. All serialization routes through cf-gojson,
+//!   never serde.
+//! - **Report store.** [`store`] emits the `node_data` / `aggregate` record
 //!   stream.
 //!
 //! # Parity scope
 //!
-//! Machine formats (json, yaml, ndjson, timeseries, timeseries+ndjson, compact,
-//! bin) are byte-identity targets. Terminal text and plot output are cosmetic
-//! and are not ported here (see crate todos).
-//!
-//! Go sources: `internal/analyzers/shotness/{analyzer,aggregator,report,metrics,
-//! store_writer,store_reader,hibernation,text,plot}.go`.
+//! Machine formats (json, yaml, ndjson, timeseries, timeseries+ndjson,
+//! compact, bin) are byte-identity targets, pinned against the reference
+//! implementation by `rust/tests/compat`. Terminal text and plot output are
+//! cosmetic and live elsewhere (see crate todos).
 
 pub mod aggregate;
 pub mod metrics;
@@ -48,19 +46,17 @@ pub use report::{aggregate_to_value, CommitSummary};
 pub use store::{write_to_store, NodeStoreRecord, ReportWriter, KIND_AGGREGATE, KIND_NODE_DATA};
 pub use types::{NodeSummary, ReportData};
 
-/// Analyzer identifier as used in the report registry and CLI (`history/shotness`).
+/// Analyzer identifier as used in the report registry and CLI.
 pub const ANALYZER_ID: &str = "history/shotness";
 
 /// Default DSL expression for selecting code structures.
-/// Mirrors `DefaultShotnessDSLStruct`.
 pub const DEFAULT_SHOTNESS_DSL_STRUCT: &str = r#"filter(.roles has "Function")"#;
-/// Default DSL expression for extracting names. Mirrors `DefaultShotnessDSLName`.
+/// Default DSL expression for extracting names.
 pub const DEFAULT_SHOTNESS_DSL_NAME: &str = ".props.name";
 
 /// Configuration key for the DSL structure expression.
-/// Mirrors `ConfigShotnessDSLStruct`.
 pub const CONFIG_SHOTNESS_DSL_STRUCT: &str = "Shotness.DSLStruct";
-/// Configuration key for the DSL name expression. Mirrors `ConfigShotnessDSLName`.
+/// Configuration key for the DSL name expression.
 pub const CONFIG_SHOTNESS_DSL_NAME: &str = "Shotness.DSLName";
 
 #[cfg(test)]

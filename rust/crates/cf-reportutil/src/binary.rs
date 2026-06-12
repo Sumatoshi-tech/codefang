@@ -1,8 +1,8 @@
 //! Binary serialization for analyzer reports — the CFB1 envelope.
 //!
-//! Port of `internal/analyzers/common/reportutil/binary.go`. The "bin" /
-//! "binary" machine format is a simple length-prefixed framing format (NOT
-//! compression — there is no LZ4 anywhere in codefang, see DESIGN.md §0).
+//! The "bin" / "binary" machine format is a simple length-prefixed framing
+//! format (NOT compression — there is no LZ4 anywhere in codefang, see
+//! DESIGN.md §0).
 //!
 //! Each envelope is laid out as:
 //!
@@ -11,19 +11,20 @@
 //! ```
 //!
 //! where `json-payload` is [`cf_gojson::marshal`] output — compact,
-//! HTML-escape ON, no trailing newline — exactly mirroring Go's
-//! `json.Marshal(value)` (binary.go:31). Multiple envelopes concatenate
-//! back-to-back; the decoder loops while bytes remain. See DESIGN.md §2.5.
+//! HTML-escape ON, no trailing newline (the report-contract JSON encoding).
+//! Multiple envelopes concatenate back-to-back; the decoder loops while bytes
+//! remain. See DESIGN.md §2.5. Envelope bytes are pinned by
+//! `rust/tests/compat`.
 
 use cf_gojson::{marshal, GoValue};
 
-/// Maximum payload size, mirroring Go's `math.MaxUint32` bound (binary.go:36).
+/// Maximum payload size (the LE u32 length field's bound).
 pub const MAX_PAYLOAD_SIZE: usize = u32::MAX as usize;
 
-/// Identifies a codefang binary envelope. Mirrors `BinaryMagic` (binary.go:17).
+/// Identifies a codefang binary envelope.
 pub const BINARY_MAGIC: &[u8; 4] = b"CFB1";
 
-/// Magic (4) + length (4). Mirrors `binaryHeaderSize` (binary.go:19).
+/// Magic (4) + length (4).
 pub const BINARY_HEADER_SIZE: usize = 8;
 
 /// Size of the little-endian length field.
@@ -31,45 +32,29 @@ pub const BINARY_LENGTH_SIZE: usize = 4;
 
 /// Error encoding a binary envelope.
 ///
-/// Mirrors `ErrBinaryPayloadTooLarge` (binary.go:26). The [`Display`] wording
-/// matches Go's `fmt.Errorf("%w: %d bytes", …)` so error output stays identical.
-///
-/// [`Display`]: std::fmt::Display
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The error text is part of the CLI compatibility contract; keep the wording
+/// stable.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum EncodeError {
     /// The marshalled payload exceeds [`MAX_PAYLOAD_SIZE`].
+    #[error("binary payload too large: {len} bytes")]
     PayloadTooLarge {
         /// Actual payload length in bytes.
         len: usize,
     },
 }
 
-impl std::fmt::Display for EncodeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            // Mirrors: "binary payload too large: %d bytes" (binary.go:26,37).
-            Self::PayloadTooLarge { len } => {
-                write!(f, "binary payload too large: {len} bytes")
-            }
-        }
-    }
-}
-
-impl std::error::Error for EncodeError {}
-
 /// Error decoding a binary envelope stream.
 ///
-/// Mirrors `ErrInvalidBinaryEnvelope` (binary.go:24): Go reports bad magic and
-/// truncation through the same sentinel via `errors.Join` / `fmt.Errorf`. Here
-/// the distinct cause is preserved as separate variants while keeping the shared
-/// "invalid binary envelope" prefix in [`Display`].
-///
-/// [`Display`]: std::fmt::Display
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Both causes share the stable "invalid binary envelope" prefix (CLI
+/// compatibility contract) while staying distinguishable as variants.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DecodeError {
-    /// An envelope did not start with the `CFB1` magic (binary.go:66).
+    /// An envelope did not start with the `CFB1` magic.
+    #[error("invalid binary envelope: bad magic")]
     BadMagic,
-    /// An envelope claimed more bytes than remain in the buffer (binary.go:73).
+    /// An envelope claimed more bytes than remain in the buffer.
+    #[error("invalid binary envelope: unexpected EOF (need {need} bytes, have {have})")]
     Truncated {
         /// Payload length the header claimed.
         need: usize,
@@ -78,35 +63,17 @@ pub enum DecodeError {
     },
 }
 
-impl std::fmt::Display for DecodeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            // Mirrors: "invalid binary envelope: bad magic" (binary.go:67).
-            Self::BadMagic => write!(f, "invalid binary envelope: bad magic"),
-            // Go joins ErrInvalidBinaryEnvelope with the io.ReadFull error
-            // (io.ErrUnexpectedEOF) on truncation; the stable prefix is kept.
-            Self::Truncated { need, have } => write!(
-                f,
-                "invalid binary envelope: unexpected EOF (need {need} bytes, have {have})"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for DecodeError {}
-
 /// Encodes a value as a length-prefixed CFB1 binary envelope.
 ///
 /// Format: `[magic:4][length:4][json-payload:length]`. This is framing, not
 /// compression. The payload is [`cf_gojson::marshal`] — compact, HTML-escape ON,
-/// no trailing newline — matching Go's `json.Marshal(value)` exactly
-/// (binary.go:31). Mirrors `EncodeBinaryEnvelope` (binary.go:30); Go writes to an
-/// `io.Writer`, this port returns the bytes (callers write them where needed).
+/// no trailing newline (the report-contract JSON encoding). Returns the bytes;
+/// callers write them where needed.
 ///
 /// # Errors
 ///
 /// Returns [`EncodeError::PayloadTooLarge`] if the payload exceeds
-/// [`MAX_PAYLOAD_SIZE`] (mirrors binary.go:36).
+/// [`MAX_PAYLOAD_SIZE`].
 ///
 /// # Examples
 ///
@@ -128,7 +95,7 @@ pub fn encode_binary_envelope(value: &GoValue) -> Result<Vec<u8>, EncodeError> {
 
     let mut buf = Vec::with_capacity(BINARY_HEADER_SIZE + payload.len());
     buf.extend_from_slice(BINARY_MAGIC);
-    // binary.LittleEndian.PutUint32 of the payload length (binary.go:42).
+    // Little-endian u32 payload length.
     let len = payload.len() as u32;
     buf.extend_from_slice(&len.to_le_bytes());
     buf.extend_from_slice(&payload);
@@ -139,21 +106,18 @@ pub fn encode_binary_envelope(value: &GoValue) -> Result<Vec<u8>, EncodeError> {
 /// Decodes one CFB1 envelope from the front of `data`.
 ///
 /// On success returns `(payload, rest)` where `payload` is the compact-JSON
-/// bytes and `rest` is the remaining input after this envelope. Mirrors
-/// `DecodeBinaryEnvelope` (binary.go:58).
+/// bytes and `rest` is the remaining input after this envelope.
 ///
-/// The Go function reads from an `io.Reader` and returns the payload bytes; it
-/// does **not** JSON-unmarshal here (the caller does). This port likewise
-/// returns the raw payload, because `cf-gojson` ships only the Go-compatible
-/// JSON *encoder*, not a parser — preserving byte-exact round-tripping.
+/// The payload is returned raw, **not** JSON-parsed (the caller decides):
+/// `cf-gojson` ships only the contract JSON *encoder*, not a parser, which
+/// preserves byte-exact round-tripping.
 ///
 /// # Errors
 ///
-/// - [`DecodeError::BadMagic`] if the magic prefix is not `CFB1` (binary.go:66).
-/// - [`DecodeError::Truncated`] if fewer than `header + length` bytes remain
-///   (mirrors the `io.ReadFull` short-read paths, binary.go:61/73).
+/// - [`DecodeError::BadMagic`] if the magic prefix is not `CFB1`.
+/// - [`DecodeError::Truncated`] if fewer than `header + length` bytes remain.
 pub fn decode_binary_envelope(data: &[u8]) -> Result<(&[u8], &[u8]), DecodeError> {
-    // io.ReadFull(reader, header) fails if fewer than 8 bytes remain.
+    // A complete 8-byte header must be present.
     if data.len() < BINARY_HEADER_SIZE {
         return Err(DecodeError::Truncated {
             need: BINARY_HEADER_SIZE,
@@ -184,18 +148,15 @@ pub fn decode_binary_envelope(data: &[u8]) -> Result<(&[u8], &[u8]), DecodeError
 
 /// Decodes all concatenated CFB1 envelopes from `data`.
 ///
-/// Returns the raw compact-JSON payloads in order. Mirrors
-/// `DecodeBinaryEnvelopes` (binary.go:82): it loops while bytes remain, decoding
-/// one envelope per iteration. Unlike Go (which JSON-unmarshals each payload into
-/// `any`), this returns the payload bytes; see [`decode_binary_envelope`] for
-/// why.
+/// Returns the raw compact-JSON payloads in order, looping while bytes remain
+/// and decoding one envelope per iteration. The payloads stay raw bytes; see
+/// [`decode_binary_envelope`] for why.
 ///
 /// # Errors
 ///
 /// Propagates any [`DecodeError`] from [`decode_binary_envelope`]. Note that a
 /// trailing partial header (fewer than 8 bytes) is reported as
-/// [`DecodeError::Truncated`], matching Go's `io.ReadFull` failure on the next
-/// loop iteration (the Go loop condition is `reader.Len() > 0`).
+/// [`DecodeError::Truncated`] — trailing garbage is never silently accepted.
 pub fn decode_binary_envelopes(data: &[u8]) -> Result<Vec<&[u8]>, DecodeError> {
     let mut payloads = Vec::new();
     let mut rest = data;
@@ -222,7 +183,7 @@ mod tests {
         GoValue::Map(m)
     }
 
-    // Port of TestEncodeDecodeBinaryEnvelope_RoundTrip (binary_test.go:11).
+    // Reference suite: TestEncodeDecodeBinaryEnvelope_RoundTrip.
     #[test]
     fn encode_decode_binary_envelope_round_trip() {
         let value = obj(&[
@@ -240,7 +201,7 @@ mod tests {
         assert_eq!(payload, br#"{"name":"test","value":42}"#);
     }
 
-    // Port of TestDecodeBinaryEnvelope_InvalidMagic (binary_test.go:34).
+    // Reference suite: TestDecodeBinaryEnvelope_InvalidMagic.
     #[test]
     fn decode_binary_envelope_invalid_magic() {
         let data = b"BAD!\x00\x00\x00\x00";
@@ -249,7 +210,7 @@ mod tests {
         assert_eq!(err.to_string(), "invalid binary envelope: bad magic");
     }
 
-    // Port of TestDecodeBinaryEnvelope_Truncated (binary_test.go:42).
+    // Reference suite: TestDecodeBinaryEnvelope_Truncated.
     // Header claims 5-byte payload but only one byte follows.
     #[test]
     fn decode_binary_envelope_truncated() {
@@ -258,7 +219,7 @@ mod tests {
         assert_eq!(err, DecodeError::Truncated { need: 5, have: 1 });
     }
 
-    // Port of TestDecodeBinaryEnvelopes (binary_test.go:50).
+    // Reference suite: TestDecodeBinaryEnvelopes.
     #[test]
     fn decode_binary_envelopes_multiple() {
         let mut buf = encode_binary_envelope(&obj(&[("id", GoValue::Str("first".into()))]))
@@ -274,8 +235,8 @@ mod tests {
         assert_eq!(payloads[1], br#"{"id":"second"}"#);
     }
 
-    // Port of TestDecodeBinaryEnvelopes_InvalidPayload (binary_test.go:70).
-    // "bad" is 3 bytes — shorter than a header → error (Go's io.ReadFull fails).
+    // Reference suite: TestDecodeBinaryEnvelopes_InvalidPayload.
+    // "bad" is 3 bytes — shorter than a header → truncation error.
     #[test]
     fn decode_binary_envelopes_invalid_payload() {
         let err = decode_binary_envelopes(b"bad").expect_err("expected error");
@@ -293,7 +254,7 @@ mod tests {
         assert_eq!(&encoded[8..], br#"{"k":"v"}"#);
     }
 
-    // Empty input decodes to zero envelopes (Go loop condition reader.Len() > 0).
+    // Empty input decodes to zero envelopes.
     #[test]
     fn decode_binary_envelopes_empty() {
         let payloads = decode_binary_envelopes(&[]).expect("decode empty");

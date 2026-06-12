@@ -1,23 +1,16 @@
-//! Batching strategies (`batcher.go`).
+//! Batching strategies.
 
 /// Accumulates input items and produces batches.
-///
-/// Mirrors Go's `Batcher[In, Batch]` interface.
 pub trait Batcher<In, Batch> {
     /// Adds an item. Returns `true` if the batch is ready to flush.
     fn add(&mut self, item: In) -> bool;
 
     /// Returns the current batch and resets. Returns `None` if empty.
-    ///
-    /// (Go returns `(Batch, bool)`; the idiomatic Rust equivalent of the
-    /// "false means empty" convention is `Option<Batch>`.)
     fn flush(&mut self) -> Option<Batch>;
 }
 
 /// Accumulates items into a `Vec` until the count reaches the configured
 /// threshold, at which point [`Batcher::add`] returns `true`.
-///
-/// Mirrors Go's `ThresholdBatcher[T]`.
 #[derive(Debug, Clone)]
 pub struct ThresholdBatcher<T> {
     threshold: usize,
@@ -26,8 +19,7 @@ pub struct ThresholdBatcher<T> {
 
 impl<T> ThresholdBatcher<T> {
     /// Creates a batcher that signals readiness after `threshold` items.
-    /// Threshold values below 1 are clamped to 1 (matching `max(threshold, 1)`
-    /// in Go).
+    /// Threshold values below 1 are clamped to 1.
     #[must_use]
     pub fn new(threshold: i64) -> Self {
         let threshold = threshold.max(1) as usize;
@@ -57,8 +49,6 @@ impl<T> Batcher<T, Vec<T>> for ThresholdBatcher<T> {
 
 /// Wraps each input item as a single-element batch. [`Batcher::add`] always
 /// returns `true`, meaning every item is immediately ready.
-///
-/// Mirrors Go's `PassthroughBatcher[T]`.
 #[derive(Debug, Clone, Default)]
 pub struct PassthroughBatcher<T> {
     item: Option<T>,
@@ -67,15 +57,14 @@ pub struct PassthroughBatcher<T> {
 impl<T> PassthroughBatcher<T> {
     /// Creates an empty passthrough batcher.
     #[must_use]
-    pub fn new() -> Self {
-        PassthroughBatcher { item: None }
+    pub const fn new() -> Self {
+        Self { item: None }
     }
 }
 
 impl<T> Batcher<T, Vec<T>> for PassthroughBatcher<T> {
-    /// Stores the item and returns `true` (always ready). A previously stored,
-    /// un-flushed item is overwritten — matching Go where `b.item = &item`
-    /// replaces the pointer.
+    /// Stores the item and returns `true` (always ready). A previously
+    /// stored, un-flushed item is overwritten.
     fn add(&mut self, item: T) -> bool {
         self.item = Some(item);
         true
@@ -148,8 +137,7 @@ mod tests {
         assert_eq!(b.flush(), Some(vec![2]));
     }
 
-    // Verify both concrete types satisfy the trait (mirrors Go's compile-time
-    // `var _ Batcher[int, []int] = ...` checks).
+    // Compile-time check that both concrete types satisfy the trait.
     fn _assert_impls() {
         fn takes<B: Batcher<i32, Vec<i32>>>(_: &B) {}
         takes(&ThresholdBatcher::<i32>::new(1));

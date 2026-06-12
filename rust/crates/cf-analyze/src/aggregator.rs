@@ -1,6 +1,6 @@
 //! Default merge-based aggregator.
 //!
-//! Port of `internal/analyzers/analyze/aggregator.go`. `GenericAggregator` is
+//! `GenericAggregator` is
 //! the default [`Aggregator`] backed by a user-supplied report merge function.
 
 use cf_gojson::GoValue;
@@ -9,22 +9,20 @@ use crate::error::AnalyzeError;
 use crate::interfaces::{Aggregator, Tc};
 use crate::report::{new_report, Report};
 
-/// Combines two reports in place: `into` accumulates `from`. Port of the Go
-/// `reportMergeFunc` type.
+/// Combines two reports in place: `into` accumulates `from`.
 pub type ReportMergeFunc = Box<dyn Fn(&mut Report, &Report) + Send + Sync>;
 
-/// The default aggregator implementation backed by a merge function. Port of Go
-/// `genericAggregator`.
+/// The default aggregator implementation backed by a merge function.
 pub struct GenericAggregator {
     report: Report,
     merge: ReportMergeFunc,
 }
 
 impl GenericAggregator {
-    /// Creates an aggregator with the provided merge function. Port of Go
-    /// `newGenericAggregator`.
+    /// Creates an aggregator with the provided merge function.
+    #[must_use] 
     pub fn new(merge: ReportMergeFunc) -> Self {
-        GenericAggregator {
+        Self {
             report: new_report(),
             merge,
         }
@@ -32,19 +30,18 @@ impl GenericAggregator {
 }
 
 impl Aggregator for GenericAggregator {
-    /// Merges a TC's data into the running report. Port of Go
-    /// `(*genericAggregator).Consume`. A nil/empty TC is a no-op.
+    /// Merges a TC's data into the running report. A nil/empty TC is a no-op.
     fn consume(&mut self, tc: &Tc) -> Result<(), AnalyzeError> {
         if tc.data.is_empty() {
             return Ok(());
         }
-        // Go passes `Report(tc.Data)` — the same map view — into merge.
+        // The merge function receives the TC's data as the same map view.
         let from = tc.data.clone();
         (self.merge)(&mut self.report, &from);
         Ok(())
     }
 
-    /// Returns the merged report. Port of Go `(*genericAggregator).Finalize`.
+    /// Returns the merged report.
     fn finalize(&mut self) -> Result<Report, AnalyzeError> {
         Ok(self.report.clone())
     }

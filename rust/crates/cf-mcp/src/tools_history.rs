@@ -1,19 +1,15 @@
 //! `codefang_history` tool handler.
 //!
-//! Ports `internal/mcp/tools_history.go`. Validates the repository path, selects
-//! the requested (or all) history analyzers, runs the analysis pipeline over the
-//! commit range, and returns the merged results as Go-compatible pretty JSON.
+//! Validates the repository path, selects the requested (or all) history
+//! analyzers, runs the analysis pipeline over the commit range, and returns
+//! the merged results as report-compatible pretty JSON.
 //!
-//! The Go handler wired the full plumbing core + leaf analyzers
-//! (`buildMCPPipeline`/`buildMCPLeaves`), loaded the repo via `gitlib`, ran the
-//! `framework.Runner`/`Coordinator`, and formatted via
-//! `analyze.OutputHistoryResults(..., FormatJSON, ...)` (then re-decoded the JSON
-//! into `any` before re-encoding). Those concrete crates (`cf-gitlib`,
-//! `cf-framework`, the 8 history analyzers, `cf-analyze`'s `OutputHistoryResults`)
-//! are scaffolds at port time, so the pipeline execution is taken behind the
-//! [`HistoryAnalysisProvider`] trait. The **input validation, analyzer-key
-//! selection, default commit limit, and all error wording are fully ported and
-//! unit-tested here**; the provider supplies the merged JSON-shaped [`JsonValue`].
+//! Pipeline execution (repository load → runner/coordinator → JSON-formatted
+//! history results) is taken behind the [`HistoryAnalysisProvider`] trait so
+//! this module does not depend on the concrete pipeline crates. The **input
+//! validation, analyzer-key selection, default commit limit, and all error
+//! wording live here and are unit-tested**; the provider supplies the merged
+//! JSON-shaped [`JsonValue`].
 
 use std::path::Path;
 
@@ -24,10 +20,10 @@ use crate::providers::{HistoryAnalysisProvider, HistoryRunOptions};
 use crate::result::{ToolOutput, ToolResult};
 use crate::tools::HistoryInput;
 
-/// Default commit limit for the MCP history tool. Go `defaultMCPCommitLimit`.
+/// Default commit limit for the MCP history tool.
 pub const DEFAULT_MCP_COMMIT_LIMIT: i64 = 1000;
 
-/// The eight history analyzer keys, in the exact order of Go `allHistoryKeys()`.
+/// The eight history analyzer keys, in their fixed registration order.
 pub const ALL_HISTORY_KEYS: &[&str] = &[
     "burndown",
     "couples",
@@ -39,7 +35,7 @@ pub const ALL_HISTORY_KEYS: &[&str] = &[
     "typos",
 ];
 
-/// Returns the full history-analyzer key list (Go `allHistoryKeys`).
+/// Returns the full history-analyzer key list as owned strings.
 #[must_use]
 pub fn all_history_keys() -> Vec<String> {
     ALL_HISTORY_KEYS.iter().map(|s| (*s).to_string()).collect()
@@ -47,7 +43,7 @@ pub fn all_history_keys() -> Vec<String> {
 
 /// Validates the history tool input parameters.
 ///
-/// Reproduces Go `validateHistoryInput` exactly, including message wording:
+/// The check order and message wording are part of the tool contract:
 /// - empty path → [`ToolError::EmptyRepoPath`];
 /// - relative path → [`ToolError::RepoPathNotAbsolute`];
 /// - missing path → [`ToolError::RepoNotFound`];
@@ -66,13 +62,10 @@ pub fn validate_history_input(input: &HistoryInput) -> Result<(), ToolError> {
         return Err(ToolError::RepoPathNotAbsolute);
     }
 
-    let meta = match std::fs::metadata(path) {
-        Ok(m) => m,
-        Err(_) => {
-            return Err(ToolError::RepoNotFound {
-                path: input.repo_path.clone(),
-            });
-        }
+    let Ok(meta) = std::fs::metadata(path) else {
+        return Err(ToolError::RepoNotFound {
+            path: input.repo_path.clone(),
+        });
     };
 
     if !meta.is_dir() {
@@ -91,13 +84,12 @@ pub fn validate_history_input(input: &HistoryInput) -> Result<(), ToolError> {
     Ok(())
 }
 
-/// Selects the analyzer leaves for the requested keys, erroring on any unknown
+/// Selects the analyzer keys for the requested names, erroring on any unknown
 /// key.
 ///
-/// Reproduces Go `selectMCPLeaves`: validates each requested key against the
-/// known set, preserving the requested order. Returns
-/// [`ToolError::UnknownHistoryAnalyzer`] (`unknown history analyzer: <name>`) on
-/// the first unknown key.
+/// Validates each requested key against the known set, preserving the
+/// requested order. Returns [`ToolError::UnknownHistoryAnalyzer`]
+/// (`unknown history analyzer: <name>`) on the first unknown key.
 ///
 /// # Errors
 /// Returns [`ToolError::UnknownHistoryAnalyzer`] for the first unknown key.
@@ -114,17 +106,17 @@ pub fn select_history_keys(keys: &[String]) -> Result<Vec<String>, ToolError> {
 
 /// Processes a `codefang_history` tool call.
 ///
-/// Reproduces Go `handleHistory` → `executeHistory`:
-/// 1. `validateHistoryInput`.
+/// The step order is observable through the returned errors, so keep it:
+/// 1. validate the history input.
 /// 2. normalize the commit limit (`<= 0` → [`DEFAULT_MCP_COMMIT_LIMIT`]).
 /// 3. default to all analyzer keys when none requested; validate the selection.
 /// 4. run the pipeline via the provider.
 /// 5. return the merged results as pretty JSON.
 ///
-/// Note: the Go code validates the leaf selection *after* loading the repository,
-/// but selection is purely a function of the key set, so the observable error
-/// (unknown analyzer) is identical. Path validation still happens first, so the
-/// repo-load error class is unaffected.
+/// Note: the reference flow validates the key selection *after* loading the
+/// repository, but selection is purely a function of the key set, so the
+/// observable error (unknown analyzer) is identical. Path validation still
+/// happens first, so the repo-load error class is unaffected.
 #[must_use]
 pub fn handle_history(
     provider: &dyn HistoryAnalysisProvider,
@@ -305,7 +297,7 @@ mod tests {
     }
 
     #[test]
-    fn all_history_keys_match_go_order() {
+    fn all_history_keys_match_registration_order() {
         assert_eq!(
             ALL_HISTORY_KEYS,
             &[

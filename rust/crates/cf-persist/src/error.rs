@@ -1,65 +1,42 @@
 //! Error type for the persistence layer.
 //!
-//! The Go package wraps every failure with a stable `fmt.Errorf("<op>: %w", err)`
-//! prefix (for example `"json encode"`, `"open state file"`). The Go unit tests
-//! assert on those substrings, so [`PersistError`]'s `Display` output reproduces
-//! the exact same prefixes to keep behavioral parity.
-
-use std::fmt;
+//! Every failure carries a stable `<op>: ` prefix (for example `json encode`,
+//! `open state file`). Unit tests — here and in the reference suite — assert on
+//! those substrings, so [`PersistError`]'s `Display` output keeps the exact
+//! prefixes.
 
 /// An error produced while encoding, decoding, or moving state to/from disk.
 ///
-/// Each variant's [`fmt::Display`] output begins with the same operation prefix
-/// the Go `pkg/persist` package emits, so callers and tests that match on
-/// substrings (`"json encode"`, `"gob decode"`, `"open state file"`, …) behave
-/// identically.
-#[derive(Debug)]
+/// Each variant's `Display` output begins with a stable operation prefix
+/// (`json encode`, `gob decode`, `open state file`, …) that callers and tests
+/// match on.
+#[derive(Debug, thiserror::Error)]
 pub enum PersistError {
-    /// JSON encoding failed. Go: `fmt.Errorf("json encode: %w", err)`.
-    JsonEncode(serde_json::Error),
-    /// JSON decoding failed. Go: `fmt.Errorf("json decode: %w", err)`.
-    JsonDecode(serde_json::Error),
-    /// Binary (gob-replacement) encoding failed. Go: `"gob encode: %w"`.
-    GobEncode(Box<bincode::ErrorKind>),
-    /// Binary (gob-replacement) decoding failed. Go: `"gob decode: %w"`.
-    GobDecode(Box<bincode::ErrorKind>),
-    /// Creating the on-disk state file failed. Go: `"create state file: %w"`.
-    CreateStateFile(std::io::Error),
-    /// Opening the on-disk state file failed. Go: `"open state file: %w"`.
-    OpenStateFile(std::io::Error),
-    /// Writing encoded state to disk failed. Go: `"encode state: %w"`.
-    EncodeState(Box<PersistError>),
-    /// Reading/decoding state from disk failed. Go: `"decode state: %w"`.
-    DecodeState(Box<PersistError>),
+    /// JSON encoding failed.
+    #[error("json encode: {0}")]
+    JsonEncode(#[source] serde_json::Error),
+    /// JSON decoding failed.
+    #[error("json decode: {0}")]
+    JsonDecode(#[source] serde_json::Error),
+    /// Binary (gob-replacement) encoding failed.
+    #[error("gob encode: {0}")]
+    GobEncode(#[source] Box<bincode::ErrorKind>),
+    /// Binary (gob-replacement) decoding failed.
+    #[error("gob decode: {0}")]
+    GobDecode(#[source] Box<bincode::ErrorKind>),
+    /// Creating the on-disk state file failed.
+    #[error("create state file: {0}")]
+    CreateStateFile(#[source] std::io::Error),
+    /// Opening the on-disk state file failed.
+    #[error("open state file: {0}")]
+    OpenStateFile(#[source] std::io::Error),
+    /// Writing encoded state to disk failed.
+    #[error("encode state: {0}")]
+    EncodeState(#[source] Box<Self>),
+    /// Reading/decoding state from disk failed.
+    #[error("decode state: {0}")]
+    DecodeState(#[source] Box<Self>),
     /// A plain I/O failure surfaced by a codec while streaming to the writer.
-    Io(std::io::Error),
-}
-
-impl fmt::Display for PersistError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            PersistError::JsonEncode(e) => write!(f, "json encode: {e}"),
-            PersistError::JsonDecode(e) => write!(f, "json decode: {e}"),
-            PersistError::GobEncode(e) => write!(f, "gob encode: {e}"),
-            PersistError::GobDecode(e) => write!(f, "gob decode: {e}"),
-            PersistError::CreateStateFile(e) => write!(f, "create state file: {e}"),
-            PersistError::OpenStateFile(e) => write!(f, "open state file: {e}"),
-            PersistError::EncodeState(e) => write!(f, "encode state: {e}"),
-            PersistError::DecodeState(e) => write!(f, "decode state: {e}"),
-            PersistError::Io(e) => write!(f, "io: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for PersistError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            PersistError::JsonEncode(e) | PersistError::JsonDecode(e) => Some(e),
-            PersistError::GobEncode(e) | PersistError::GobDecode(e) => Some(e.as_ref()),
-            PersistError::CreateStateFile(e)
-            | PersistError::OpenStateFile(e)
-            | PersistError::Io(e) => Some(e),
-            PersistError::EncodeState(e) | PersistError::DecodeState(e) => Some(e.as_ref()),
-        }
-    }
+    #[error("io: {0}")]
+    Io(#[source] std::io::Error),
 }

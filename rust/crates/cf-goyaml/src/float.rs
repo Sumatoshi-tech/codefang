@@ -1,15 +1,14 @@
-//! `strconv.FormatFloat(f, 'g', -1, 64)` — yaml.v3's float encoder.
+//! The YAML float layout: shortest-precision `'g'` form (frozen contract).
 //!
-//! This is **not** Go's `encoding/json` float format (which uses an exponent
-//! threshold of `1e21`/`1e-6`). The `'g'` verb with shortest precision (`prec=-1`)
-//! uses Go's `formatDigits` rule: for shortest mode `eprec = 6`, so the exponent
-//! form (`fmtE`) is chosen when `exp < -4 || exp >= 6` where `exp = dp - 1`,
-//! otherwise fixed form (`fmtF`). The exponent is rendered with a sign and at
-//! least two digits (`1e+20`, `1e-07`).
+//! This is **not** the JSON float layout (whose exponent threshold is
+//! `1e21`/`1e-6`). In the shortest-precision `'g'` form the exponent layout is
+//! chosen when `exp < -4 || exp >= 6` where `exp = dp - 1`, otherwise fixed
+//! layout. The exponent is rendered with a sign and at least two digits
+//! (`1e+20`, `1e-07`).
 //!
 //! Digits come from Rust's own shortest-round-trip `f64` formatter (`{:e}`),
-//! which produces the same digit sequence Go's `strconv` does, then we re-render
-//! with Go's `'g'` layout.
+//! which produces the same digit sequence as the reference formatter (modulo
+//! the tie-break corrected below), re-rendered with the `'g'` layout.
 
 /// A parsed shortest-decimal: value = `(-1)^neg * d[0..] * 10^(dp - nd)`.
 struct Shortest {
@@ -38,12 +37,13 @@ fn shortest_decimal(f: f64) -> Shortest {
 }
 
 /// Rust's shortest `f64` formatter (`{:e}`) breaks last-digit ties **half-up**,
-/// whereas Go's `strconv` (and thus yaml.v3) breaks them **half-to-even**. The
-/// divergence only appears for the rare value whose *exact* decimal expansion is
-/// `<shortest-digits>` followed by exactly `5000…0` at the next position — a
-/// true midpoint. There Go keeps the even last digit; Rust rounds the odd one
-/// up. We detect that exact-midpoint case and, when Rust chose an odd last
-/// digit, drop back to the even neighbor.
+/// whereas the reference formatter breaks them **half-to-even** (a measured
+/// divergence, exercised by the oracle corpus). It only appears for the rare
+/// value whose *exact* decimal expansion is `<shortest-digits>` followed by
+/// exactly `5000…0` at the next position — a true midpoint. There the contract
+/// keeps the even last digit; Rust rounds the odd one up. We detect that
+/// exact-midpoint case and, when Rust chose an odd last digit, drop back to
+/// the even neighbor.
 ///
 /// `abs` is the positive `f64` these digits came from; `dp` is the count of
 /// digits to the left of the decimal point.
@@ -89,14 +89,15 @@ fn round_half_to_even(digits: &mut [u8], dp: i32, abs: f64) {
     if mant_digits[round_idx + 1..].iter().any(|&b| b != b'0') {
         return; // Not an exact midpoint; Rust's half-up choice is correct.
     }
-    // Exact midpoint with an odd last digit -> Go rounds half-to-even (down).
+    // Exact midpoint with an odd last digit -> the contract rounds
+    // half-to-even (down).
     *digits.last_mut().unwrap() = last - 1;
 }
 
-/// Formats `f` exactly as `strconv.FormatFloat(f, 'g', -1, 64)`.
+/// Formats `f` in the contract's shortest-precision `'g'` YAML layout.
 ///
-/// `f` must be finite (codefang report floats always are; NaN/Inf would need the
-/// `.nan`/`.inf` spellings yaml.v3's `floatv` emits, handled by the caller).
+/// Finite values are the expected input (codefang report floats always are);
+/// NaN/±Inf render as the YAML `.nan` / `.inf` / `-.inf` spellings.
 #[must_use]
 pub fn format_g(f: f64) -> String {
     if f.is_nan() {
@@ -107,10 +108,10 @@ pub fn format_g(f: f64) -> String {
     }
     let s = shortest_decimal(f);
     if s.digits == [b'0'] {
-        // strconv 'g' renders both +0 and -0 as "0".
+        // The 'g' layout renders both +0 and -0 as "0".
         return "0".to_string();
     }
-    // Go: exp = digs.dp - 1; shortest mode forces eprec = 6.
+    // exp = dp - 1; shortest mode fixes the exponent threshold at 6.
     let exp = s.dp - 1;
     if !(-4..6).contains(&exp) {
         render_exp(&s)
@@ -119,7 +120,7 @@ pub fn format_g(f: f64) -> String {
     }
 }
 
-/// Fixed (`fmtF`) layout, e.g. `112539`, `0.7142857142857143`, `0.0001`.
+/// Fixed layout, e.g. `112539`, `0.7142857142857143`, `0.0001`.
 fn render_fixed(s: &Shortest) -> String {
     let mut out = String::new();
     if s.neg {
@@ -156,7 +157,7 @@ fn render_fixed(s: &Shortest) -> String {
     out
 }
 
-/// Exponent (`fmtE`) layout, e.g. `1e+20`, `1e-07`, `1.2345678912345679e+08`.
+/// Exponent layout, e.g. `1e+20`, `1e-07`, `1.2345678912345679e+08`.
 fn render_exp(s: &Shortest) -> String {
     let mut out = String::new();
     if s.neg {
@@ -190,7 +191,7 @@ mod tests {
     use super::format_g;
 
     #[test]
-    fn matches_go_strconv_g() {
+    fn matches_reference_g_layout() {
         assert_eq!(format_g(1e20), "1e+20");
         assert_eq!(format_g(1e21), "1e+21");
         assert_eq!(format_g(1e-5), "1e-05");

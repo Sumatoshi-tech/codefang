@@ -1,137 +1,101 @@
 //! `cf-plumbing` — core git plumbing shared types, keys, and fact accessors.
 //!
-//! Port of the Go package `internal/plumbing`
-//! (`github.com/Sumatoshi-tech/codefang/internal/plumbing`), whose stated
-//! purpose is "Core git plumbing for analysis (tree diffs, blob access)
-//! bridging gitlib to identity. Used by framework, analyze, most analyzers."
+//! Core git plumbing for analysis (tree diffs, blob access) bridging gitlib to
+//! identity; used by the framework, analyze, and most analyzers. This crate
+//! only defines:
 //!
-//! The Go package itself contains **no serialization output paths** — it only
-//! defines:
+//! * dependency / fact **key constants**,
+//! * shared **types** bridged from the git layer,
+//! * typed **fact accessors** over the dynamic facts map.
 //!
-//! * dependency / fact **key constants** (`keys.go`),
-//! * shared **types** re-exported or bridged from `gitlib` (`types.go`),
-//! * typed **fact accessors** over the dynamic `facts map[string]any`
-//!   (`fact_accessors.go`).
-//!
-//! Because nothing in this module emits a MACHINE-format report, there is no
-//! `cf-gojson` / `cf-goyaml` routing to do here. The optional `serde` derives on
-//! [`LineStats`] mirror the Go `json:"…" yaml:"…"` struct tags purely so that
-//! *downstream* crates (which DO route through the shared go-compat
-//! serialization crate) observe the exact same field names and declaration
-//! order; the field order below is the byte-identity-relevant invariant.
+//! Because nothing in this crate emits a MACHINE-format report, there is no
+//! `cf-gojson` / `cf-goyaml` routing to do here. The optional `serde` derives
+//! on [`LineStats`] exist purely so that *downstream* crates (which DO route
+//! through the shared report serializers) observe the exact same field names
+//! and declaration order; the field order below is the byte-identity-relevant
+//! invariant (pinned by `rust/tests/compat`).
 //!
 //! # Bridged identity constants
 //!
-//! In Go this package references three `identity.*` fact-key constants. Two of
-//! them — the reversed people dictionary and the people count — are owned by the
-//! `cf-identity` crate and re-exported here verbatim
+//! The reversed people dictionary and the people-count fact keys are owned by
+//! the `cf-identity` crate and re-exported here verbatim
 //! ([`FACT_IDENTITY_DETECTOR_REVERSED_PEOPLE_DICT`],
-//! [`FACT_IDENTITY_DETECTOR_PEOPLE_COUNT`]) so there is a single source of truth.
+//! [`FACT_IDENTITY_DETECTOR_PEOPLE_COUNT`]) so there is a single source of
+//! truth.
 //!
 //! # Bridged git types
 //!
-//! In Go this package aliases [`CachedBlob`], re-exports [`ErrBinary`], and uses
-//! `gitlib.Hash` as the element type of the commits-by-tick fact map. Those
-//! definitions are owned by `pkg/gitlib` (the `cf-gitlib` crate). While
-//! `cf-gitlib` does not yet publish those types through its crate root, this
-//! crate defines a minimal, behavior-faithful bridge surface locally. Once
-//! `cf-gitlib` exports `Hash`, `CachedBlob`, and the binary-blob error, the
-//! definitions below collapse into plain `pub use cf_gitlib::…;` re-exports with
-//! no change to this crate's public API (the names and shapes already match).
+//! [`CachedBlob`], [`ErrBinary`], and [`Hash`] are owned conceptually by the
+//! git layer (`cf-gitlib`). While `cf-gitlib` does not publish those types
+//! through its crate root, this crate defines a minimal, behavior-faithful
+//! bridge surface locally. Once `cf-gitlib` exports `Hash`, `CachedBlob`, and
+//! the binary-blob error, the definitions below collapse into plain
+//! `pub use cf_gitlib::…;` re-exports with no change to this crate's public
+//! API (the names and shapes already match).
 
 #![forbid(unsafe_code)]
 
 use std::collections::HashMap;
 use std::time::Duration;
 
-// Re-export the two identity fact keys from their owning crate so Go's
-// `identity.FactIdentityDetector{ReversedPeopleDict,PeopleCount}` references map
-// to a single definition shared across the whole rewrite.
+// Re-export the two identity fact keys from their owning crate so every
+// reference resolves to a single definition shared across the workspace.
 pub use cf_identity::{
     FACT_IDENTITY_DETECTOR_PEOPLE_COUNT, FACT_IDENTITY_DETECTOR_REVERSED_PEOPLE_DICT,
 };
 
 // ---------------------------------------------------------------------------
-// keys.go — dependency and fact key constants.
+// Dependency and fact key constants (frozen contract strings).
 // ---------------------------------------------------------------------------
 
 /// Name of the dependency provided by `FileDiff`.
-///
-/// Go: `plumbing.DependencyFileDiff`.
 pub const DEPENDENCY_FILE_DIFF: &str = "file_diff";
 
 /// Name of the dependency provided by `TreeDiff`.
-///
-/// Go: `plumbing.DependencyTreeChanges`.
 pub const DEPENDENCY_TREE_CHANGES: &str = "changes";
 
 /// Name of the dependency which `DaysSinceStart` provides — the number of ticks
 /// since the first commit in the analyzed sequence.
-///
-/// Go: `plumbing.DependencyTick`.
 pub const DEPENDENCY_TICK: &str = "tick";
 
 /// Mapping between day indices and the corresponding commits.
-///
-/// Go: `plumbing.FactCommitsByTick`.
 pub const FACT_COMMITS_BY_TICK: &str = "TicksSinceStart.Commits";
 
 /// The [`Duration`] of each tick.
-///
-/// Go: `plumbing.FactTickSize`.
 pub const FACT_TICK_SIZE: &str = "TicksSinceStart.TickSize";
 
 /// Identifies the dependency provided by `BlobCache`.
-///
-/// Go: `plumbing.DependencyBlobCache`.
 pub const DEPENDENCY_BLOB_CACHE: &str = "blob_cache";
 
 /// Name of the dependency provided by `LanguagesDetection`.
-///
-/// Go: `plumbing.DependencyLanguages`.
 pub const DEPENDENCY_LANGUAGES: &str = "languages";
 
 /// Identifier of the data provided by `LinesStatsCalculator` — line statistics
 /// for each file in the commit.
-///
-/// Go: `plumbing.DependencyLineStats`.
 pub const DEPENDENCY_LINE_STATS: &str = "line_stats";
 
 // ---------------------------------------------------------------------------
-// types.go — shared types.
+// Shared types.
 // ---------------------------------------------------------------------------
 
-/// Git object hash.
-///
-/// Bridges `gitlib.Hash` (git SHA-1, a fixed 20-byte array — the same layout
+/// Git object hash (git SHA-1, a fixed 20-byte array — the same layout
 /// `git2`'s `Oid` uses). Used here only as the element type of the
-/// commits-by-tick fact map. The byte layout (`[u8; 20]`) matches `cf-gitlib`'s
-/// `Hash(pub [u8; 20])` newtype exactly, so this alias is a drop-in for the
-/// `cf-gitlib` type once that crate publishes it through its crate root.
+/// commits-by-tick fact map. The byte layout (`[u8; 20]`) matches
+/// `cf-gitlib`'s `Hash(pub [u8; 20])` newtype exactly, so this alias is a
+/// drop-in for the `cf-gitlib` type once that crate publishes it through its
+/// crate root.
 pub type Hash = [u8; 20];
 
 /// Raised in [`CachedBlob::count_lines`] when the file is binary.
 ///
-/// Bridges `plumbing.ErrBinary` (= `gitlib.ErrBinary` = `errors.New("binary")`).
-/// Its [`std::fmt::Display`] renders exactly `"binary"`, matching the Go
-/// sentinel and `cf-gitlib`'s `GitError::Binary` message.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Its [`std::fmt::Display`] renders exactly `"binary"`, matching
+/// `cf-gitlib`'s `GitError::Binary` message (error-text contract).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("binary")]
 pub struct ErrBinary;
 
-impl std::fmt::Display for ErrBinary {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("binary")
-    }
-}
-
-impl std::error::Error for ErrBinary {}
-
-/// A single diff edit operation, mirroring `diffmatchpatch.Diff`
-/// (`github.com/sergi/go-diff/diffmatchpatch`).
-///
-/// `FileDiffData.Diffs` is `[]diffmatchpatch.Diff`; the Go type is a pair of
-/// `{Type Operation; Text string}`. This port keeps the same shape so the
-/// `FileDiff` analyzer can be ported faithfully on top.
+/// A single diff edit operation — the element type of [`FileDiffData::diffs`]
+/// and the shape produced by the diff engine (`cf-godiff`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diff {
     /// The edit operation kind.
@@ -140,22 +104,20 @@ pub struct Diff {
     pub text: String,
 }
 
-/// Diff edit operation kind, mirroring `diffmatchpatch.Operation`
-/// (`DiffDelete = -1`, `DiffEqual = 0`, `DiffInsert = 1`).
+/// Diff edit operation kind. The discriminants (`Delete = -1`, `Equal = 0`,
+/// `Insert = 1`) are frozen — they match the diff engine's operation codes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i8)]
 pub enum DiffOperation {
-    /// Text was removed (`diffmatchpatch.DiffDelete`).
+    /// Text was removed.
     Delete = -1,
-    /// Text is unchanged (`diffmatchpatch.DiffEqual`).
+    /// Text is unchanged.
     Equal = 0,
-    /// Text was added (`diffmatchpatch.DiffInsert`).
+    /// Text was added.
     Insert = 1,
 }
 
 /// The type of the dependency provided by `FileDiff`.
-///
-/// Go: `plumbing.FileDiffData`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FileDiffData {
     /// The list of diff edit operations.
@@ -166,16 +128,15 @@ pub struct FileDiffData {
     pub new_lines_of_code: i32,
 }
 
-/// Bridged stand-in for `gitlib.CachedBlob` (aliased in Go as
-/// `plumbing.CachedBlob`).
+/// Bridged stand-in for `cf-gitlib`'s `CachedBlob`.
 ///
-/// Models the documented surface of the Go alias — owned blob bytes plus a
-/// `CountLines()` that returns [`ErrBinary`] for binary content. The owning
-/// implementation (with `git2` loading, the memoized line count, and the full
-/// `cf-textutil` binary-detection) lives in `cf-gitlib::CachedBlob`; this bridge
-/// reproduces the same observable contract so analyzers that only need
-/// `count_lines` can be ported against `cf-plumbing` directly, and it is shape-
-/// compatible with a future `pub use cf_gitlib::CachedBlob;` re-export.
+/// Owned blob bytes plus a [`count_lines`](Self::count_lines) that returns
+/// [`ErrBinary`] for binary content. The owning implementation (with `git2`
+/// loading, the memoized line count, and the full `cf-textutil`
+/// binary-detection) lives in `cf-gitlib::CachedBlob`; this bridge reproduces
+/// the same observable contract so analyzers that only need `count_lines` can
+/// build against `cf-plumbing` directly, and it is shape-compatible with a
+/// future `pub use cf_gitlib::CachedBlob;` re-export.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CachedBlob {
     /// Raw blob contents (`git2`: `blob.content().to_vec()`).
@@ -183,21 +144,21 @@ pub struct CachedBlob {
 }
 
 impl CachedBlob {
-    /// Constructs a cached blob from raw bytes (Go `NewCachedBlobForTest`).
+    /// Constructs a cached blob from raw bytes.
     #[must_use]
-    pub fn from_data(data: Vec<u8>) -> Self {
-        CachedBlob { data }
+    pub const fn from_data(data: Vec<u8>) -> Self {
+        Self { data }
     }
 
     /// Counts the number of lines in the blob, returning [`ErrBinary`] if the
     /// content is detected as binary.
     ///
-    /// Mirrors the `gitlib.CachedBlob.CountLines` contract: binary blobs (those
-    /// containing a NUL byte) yield [`ErrBinary`]; otherwise the count is the
-    /// number of `\n`-terminated lines plus a trailing partial line, and an
-    /// empty blob counts as zero. The authoritative binary heuristic and line
-    /// counter ship with `cf-textutil` (used by `cf-gitlib`); this bridge keeps
-    /// the same observable result for the common cases analyzers rely on.
+    /// Contract: binary blobs (those containing a NUL byte) yield
+    /// [`ErrBinary`]; otherwise the count is the number of `\n`-terminated
+    /// lines plus a trailing partial line, and an empty blob counts as zero.
+    /// The authoritative binary heuristic and line counter ship with
+    /// `cf-textutil` (used by `cf-gitlib`); this bridge keeps the same
+    /// observable result for the common cases analyzers rely on.
     ///
     /// # Errors
     ///
@@ -217,10 +178,10 @@ impl CachedBlob {
 
 /// Holds the numbers of inserted, deleted and changed lines.
 ///
-/// Go: `plumbing.LineStats`. Field declaration order — `added`, `removed`,
-/// `changed` — is byte-identity-relevant for any downstream wrapper that
-/// serializes this struct in source order; the `serde` rename attributes mirror
-/// the Go `json`/`yaml` tags exactly.
+/// Field declaration order — `added`, `removed`, `changed` — is
+/// byte-identity-relevant for any downstream wrapper that serializes this
+/// struct in source order; the `serde` rename attributes pin the serialized
+/// field names (report-format contract).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LineStats {
@@ -236,20 +197,18 @@ pub struct LineStats {
 }
 
 // ---------------------------------------------------------------------------
-// fact_accessors.go — typed accessors over the dynamic facts map.
+// Typed accessors over the dynamic facts map.
 //
-// In Go, `facts` is `map[string]any` and each accessor performs a type
-// assertion: `val, ok := facts[key].(T)`. The faithful Rust equivalent models
-// the heterogeneous fact map as `HashMap<String, FactValue>` and each accessor
-// returns `Option<T>` (where `Some`/`None` mirrors Go's `ok` boolean and a type
-// mismatch yields `None`, exactly like a failed type assertion).
+// The facts map is heterogeneous: it is modeled as
+// `HashMap<String, FactValue>` and each accessor returns `Option<T>`, where
+// both an absent key and a type mismatch yield `None`.
 // ---------------------------------------------------------------------------
 
 /// A value stored in the analyzer facts map.
 ///
-/// Models the heterogeneous `map[string]any` used by the Go pipeline. Only the
-/// variants the `plumbing` accessors read are enumerated; downstream crates may
-/// extend this enum as more fact types are ported.
+/// Models the heterogeneous fact map used by the pipeline. Only the variants
+/// the plumbing accessors read are enumerated; downstream crates may extend
+/// this enum as more fact types are needed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FactValue {
     /// A [`Duration`] (e.g. [`FACT_TICK_SIZE`]).
@@ -264,13 +223,12 @@ pub enum FactValue {
     Str(String),
 }
 
-/// The analyzer facts map: `map[string]any` in Go.
+/// The analyzer facts map.
 pub type Facts = HashMap<String, FactValue>;
 
 /// Extracts the tick duration from the facts map.
 ///
-/// Go: `plumbing.GetTickSize`. Returns [`None`] when the key is absent or holds
-/// the wrong type (mirroring the failed `.(time.Duration)` assertion).
+/// Returns [`None`] when the key is absent or holds the wrong type.
 #[must_use]
 pub fn get_tick_size(facts: &Facts) -> Option<Duration> {
     match facts.get(FACT_TICK_SIZE) {
@@ -281,8 +239,8 @@ pub fn get_tick_size(facts: &Facts) -> Option<Duration> {
 
 /// Extracts the commits-by-tick mapping from the facts map.
 ///
-/// Go: `plumbing.GetCommitsByTick`. The key type is `int` in Go; modeled here as
-/// `i32` (tick indices are small). Returns [`None`] on absence or type mismatch.
+/// Tick indices are small, so the key type is `i32`. Returns [`None`] on
+/// absence or type mismatch.
 #[must_use]
 pub fn get_commits_by_tick(facts: &Facts) -> Option<&HashMap<i32, Vec<Hash>>> {
     match facts.get(FACT_COMMITS_BY_TICK) {
@@ -293,9 +251,8 @@ pub fn get_commits_by_tick(facts: &Facts) -> Option<&HashMap<i32, Vec<Hash>>> {
 
 /// Extracts the reversed people dictionary from the facts map.
 ///
-/// Go: `plumbing.GetReversedPeopleDict`. Reads
-/// [`FACT_IDENTITY_DETECTOR_REVERSED_PEOPLE_DICT`]. Returns [`None`] on absence
-/// or type mismatch.
+/// Reads [`FACT_IDENTITY_DETECTOR_REVERSED_PEOPLE_DICT`]. Returns [`None`] on
+/// absence or type mismatch.
 #[must_use]
 pub fn get_reversed_people_dict(facts: &Facts) -> Option<&[String]> {
     match facts.get(FACT_IDENTITY_DETECTOR_REVERSED_PEOPLE_DICT) {
@@ -306,8 +263,8 @@ pub fn get_reversed_people_dict(facts: &Facts) -> Option<&[String]> {
 
 /// Extracts the unique author count from the facts map.
 ///
-/// Go: `plumbing.GetPeopleCount`. Reads [`FACT_IDENTITY_DETECTOR_PEOPLE_COUNT`].
-/// Returns [`None`] on absence or type mismatch.
+/// Reads [`FACT_IDENTITY_DETECTOR_PEOPLE_COUNT`]. Returns [`None`] on absence
+/// or type mismatch.
 #[must_use]
 pub fn get_people_count(facts: &Facts) -> Option<i64> {
     match facts.get(FACT_IDENTITY_DETECTOR_PEOPLE_COUNT) {
@@ -320,7 +277,7 @@ pub fn get_people_count(facts: &Facts) -> Option<i64> {
 mod tests {
     use super::*;
 
-    // Ported from fact_accessors_test.go::TestGetTickSize.
+    // Mirrors reference test TestGetTickSize.
     #[test]
     fn test_get_tick_size() {
         // present_with_correct_type
@@ -344,7 +301,7 @@ mod tests {
         assert_eq!(get_tick_size(&facts), None);
     }
 
-    // Ported from fact_accessors_test.go::TestGetCommitsByTick.
+    // Mirrors reference test TestGetCommitsByTick.
     #[test]
     fn test_get_commits_by_tick() {
         let sample_hash: Hash = {
@@ -373,7 +330,7 @@ mod tests {
         assert_eq!(get_commits_by_tick(&facts), None);
     }
 
-    // Ported from fact_accessors_test.go::TestGetReversedPeopleDict.
+    // Mirrors reference test TestGetReversedPeopleDict.
     #[test]
     fn test_get_reversed_people_dict() {
         let sample_dict = vec!["alice".to_string(), "bob".to_string()];
@@ -402,7 +359,7 @@ mod tests {
         assert_eq!(get_reversed_people_dict(&facts), None);
     }
 
-    // Ported from fact_accessors_test.go::TestGetPeopleCount.
+    // Mirrors reference test TestGetPeopleCount.
     #[test]
     fn test_get_people_count() {
         // present_with_correct_type
@@ -426,7 +383,7 @@ mod tests {
         assert_eq!(get_people_count(&facts), None);
     }
 
-    // Key constants must match the Go source verbatim (byte-for-byte).
+    // Key constants are frozen contract strings (byte-for-byte).
     #[test]
     fn test_key_constants_verbatim() {
         assert_eq!(DEPENDENCY_FILE_DIFF, "file_diff");
@@ -437,7 +394,8 @@ mod tests {
         assert_eq!(DEPENDENCY_BLOB_CACHE, "blob_cache");
         assert_eq!(DEPENDENCY_LANGUAGES, "languages");
         assert_eq!(DEPENDENCY_LINE_STATS, "line_stats");
-        // Re-exported from cf-identity; assert the values still match Go.
+        // Re-exported from cf-identity; assert the values still match the
+        // contract.
         assert_eq!(
             FACT_IDENTITY_DETECTOR_REVERSED_PEOPLE_DICT,
             "IdentityDetector.ReversedPeopleDict"

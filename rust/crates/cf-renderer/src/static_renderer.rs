@@ -1,10 +1,9 @@
-//! Default static renderer. Port of the Go `renderer/static_renderer.go`.
+//! Default static renderer.
 //!
 //! Provides the high-level text/compact/JSON rendering entry points used by the
-//! `run` command for static-analysis output. The Go `DefaultStaticRenderer`
-//! implements `analyze.StaticRenderer`; the trait it satisfies lives in
-//! `cf-analyze` (still a scaffold), so here the methods are provided as
-//! inherent methods with the same shapes.
+//! `run` command for static-analysis output. The methods are provided as
+//! inherent methods (rather than via the `cf-analyze` static-renderer trait)
+//! with the same shapes.
 
 use std::fmt::Write as _;
 
@@ -15,27 +14,27 @@ use crate::summary::{ExecutiveSummary, MIN_SECTIONS_FOR_SUMMARY};
 use crate::terminal;
 
 /// Default implementation of static rendering using the renderer and terminal
-/// helpers. Port of Go's `DefaultStaticRenderer`.
+/// helpers.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DefaultStaticRenderer;
 
 impl DefaultStaticRenderer {
-    /// Creates a `DefaultStaticRenderer`. Port of `NewDefaultStaticRenderer`.
-    pub fn new() -> Self {
-        DefaultStaticRenderer
+    /// Creates a `DefaultStaticRenderer`.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self
     }
 
-    /// Converts report sections to the JSON-serializable [`JsonReport`]. Port
-    /// of `(DefaultStaticRenderer).SectionsToJSON`. The Go version returns a
-    /// pointer to enable per-file enrichment; the Rust port returns the owned
-    /// report (callers mutate `report.sections[_].files` directly).
+    /// Converts report sections to the JSON-serializable [`JsonReport`].
+    /// Returns the owned report; callers enrich per-file data by mutating
+    /// `report.sections[_].files` directly.
+    #[must_use]
     pub fn sections_to_json(&self, sections: &[&dyn ReportSection]) -> JsonReport {
         sections_to_json(sections)
     }
 
-    /// Writes human-readable text output for the given sections. Port of
-    /// `(DefaultStaticRenderer).RenderText`. Returns the rendered string (the
-    /// Go version writes to an `io.Writer`).
+    /// Renders human-readable text output for the given sections.
+    #[must_use]
     pub fn render_text(&self, sections: &[&dyn ReportSection], verbose: bool, no_color: bool) -> String {
         let mut config = terminal::Config::new();
         if no_color {
@@ -58,8 +57,8 @@ impl DefaultStaticRenderer {
         out
     }
 
-    /// Writes single-line-per-section compact output. Port of
-    /// `(DefaultStaticRenderer).RenderCompact`.
+    /// Renders single-line-per-section compact output.
+    #[must_use]
     pub fn render_compact(&self, sections: &[&dyn ReportSection], no_color: bool) -> String {
         let mut config = terminal::Config::new();
         if no_color {

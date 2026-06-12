@@ -1,4 +1,4 @@
-//! Deterministic coupling-matrix construction (pure logic from `history.go`).
+//! Deterministic coupling-matrix construction.
 //!
 //! These functions take the raw accumulated coupling data and produce the
 //! index-keyed matrices that form the analyzer report. All index assignment
@@ -13,11 +13,11 @@ pub type RawFiles = BTreeMap<String, BTreeMap<String, i64>>;
 /// commits`.
 pub type People = Vec<BTreeMap<String, i64>>;
 
-/// Builds the byte-sorted file-name sequence and a name→index map
-/// (Go: `buildFilesIndex`).
+/// Builds the byte-sorted file-name sequence and a name→index map.
 ///
-/// The sequence is sorted with `sort.Strings` semantics (raw byte order), which
-/// matches Rust's default `str` ordering for the ASCII/UTF-8 paths involved.
+/// The sequence is sorted in raw byte order (the default `str` ordering),
+/// which is the index order the report contract expects.
+#[must_use]
 pub fn build_files_index(files: &RawFiles) -> (Vec<String>, HashMap<String, usize>) {
     let mut sequence: Vec<String> = files.keys().cloned().collect();
     sequence.sort();
@@ -28,15 +28,15 @@ pub fn build_files_index(files: &RawFiles) -> (Vec<String>, HashMap<String, usiz
     (sequence, index)
 }
 
-/// A developer's commit count on a file (Go: `devCommit`).
+/// A developer's commit count on a file.
 #[derive(Debug, Clone, Copy)]
 struct DevCommit {
     dev_id: usize,
     commits: i64,
 }
 
-/// Builds the developer co-occurrence matrix and per-developer file-index lists
-/// (Go: `computePeopleMatrix`).
+/// Builds the developer co-occurrence matrix and per-developer file-index
+/// lists.
 ///
 /// Returns `(matrix, people_files)` where:
 /// * `matrix[i]` maps developer `j` → `sum over files of min(commits_i,
@@ -44,7 +44,10 @@ struct DevCommit {
 /// * `people_files[i]` is the byte-sorted list of file indices developer `i`
 ///   touched.
 ///
-/// Both have length `people_number + 1`, matching Go.
+/// Both have length `people_number + 1` (one extra slot for the
+/// "missing author" sentinel).
+#[must_use]
+#[allow(clippy::implicit_hasher)] // public signature is frozen
 pub fn compute_people_matrix(
     people: &People,
     files_index: &HashMap<String, usize>,
@@ -56,7 +59,7 @@ pub fn compute_people_matrix(
     (matrix, people_files)
 }
 
-/// Builds sorted per-developer file-index lists (Go: `buildPeopleFileIndices`).
+/// Builds sorted per-developer file-index lists.
 fn build_people_file_indices(
     people: &People,
     files_index: &HashMap<String, usize>,
@@ -77,19 +80,19 @@ fn build_people_file_indices(
     result
 }
 
-/// Builds the `file -> [(devID, commits)]` inverted index
-/// (Go: `buildInvertedIndex`). Only positive commit counts are recorded.
+/// Builds the `file -> [(devID, commits)]` inverted index.
+/// Only positive commit counts are recorded.
 fn build_inverted_index(
     people: &People,
     _files_index: &HashMap<String, usize>,
     people_number: usize,
 ) -> BTreeMap<String, Vec<DevCommit>> {
-    // Go keys the inverted index by file name regardless of `files_index`
-    // membership (`buildInvertedIndex` in history.go): filtering to indexed
-    // files happens separately via `peopleFiles`. The `files_index` parameter is
-    // retained only for signature parity with `compute_people_matrix`; the
-    // accumulated matrix is identical either way because only co-touched files
-    // ever produce a non-zero `min(commits_i, commits_j)` contribution.
+    // The inverted index is keyed by file name regardless of `files_index`
+    // membership: filtering to indexed files happens separately via the
+    // per-developer file lists. The `files_index` parameter is retained only
+    // for signature parity with `compute_people_matrix`; the accumulated
+    // matrix is identical either way because only co-touched files ever
+    // produce a non-zero `min(commits_i, commits_j)` contribution.
     let mut inverted: BTreeMap<String, Vec<DevCommit>> = BTreeMap::new();
     for (i, files) in people.iter().enumerate() {
         if i > people_number {
@@ -107,8 +110,7 @@ fn build_inverted_index(
     inverted
 }
 
-/// Accumulates the developer co-occurrence matrix from the inverted index
-/// (Go: `accumulateMatrix`).
+/// Accumulates the developer co-occurrence matrix from the inverted index.
 ///
 /// For each file, adds `min(commits_a, commits_b)` for every ordered developer
 /// pair (including `a == b`).
@@ -130,11 +132,12 @@ fn accumulate_matrix(
     matrix
 }
 
-/// Builds the file co-occurrence matrix keyed by file index
-/// (Go: `computeFilesMatrix`).
+/// Builds the file co-occurrence matrix keyed by file index.
 ///
 /// `matrix[i]` maps the index of every co-changed file to its count, for the
 /// file at sorted position `i`.
+#[must_use]
+#[allow(clippy::implicit_hasher)] // public signature is frozen
 pub fn compute_files_matrix(
     raw_files: &RawFiles,
     files_sequence: &[String],
@@ -162,8 +165,8 @@ mod tests {
             .iter()
             .map(|(f, inner)| {
                 (
-                    f.to_string(),
-                    inner.iter().map(|(o, c)| (o.to_string(), *c)).collect(),
+                    (*f).to_string(),
+                    inner.iter().map(|(o, c)| ((*o).to_string(), *c)).collect(),
                 )
             })
             .collect()

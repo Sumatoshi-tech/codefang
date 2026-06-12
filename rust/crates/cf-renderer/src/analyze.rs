@@ -1,23 +1,20 @@
-//! Minimal port of the `internal/analyzers/analyze` types the renderer
-//! depends on: the [`ReportSection`] trait, its data records ([`Metric`],
-//! [`DistributionItem`], [`Issue`]), the severity/score constants, and the
-//! [`BaseReportSection`] default implementation.
+//! The renderer-facing subset of the analysis model: the [`ReportSection`]
+//! trait, its data records ([`Metric`], [`DistributionItem`], [`Issue`]), the
+//! severity/score constants, and the [`BaseReportSection`] default
+//! implementation.
 //!
-//! The full analyze crate (`cf-analyze`) is still a scaffold in this
-//! workspace, so the renderer's dependency surface is reproduced here. When
-//! `cf-analyze` lands, replace this module with a dependency on it (see
-//! `Cargo.toml`) and re-export these types.
+//! See `Cargo.toml` for the consolidation plan with `cf-analyze`.
 
 use crate::terminal;
 
-/// A section has no score (info only). Mirrors Go's `ScoreInfoOnly`.
+/// A section has no score (info only).
 pub const SCORE_INFO_ONLY: f64 = -1.0;
 
-/// The label shown for info-only sections. Mirrors Go's `ScoreLabelInfo`.
+/// The label shown for info-only sections.
 pub const SCORE_LABEL_INFO: &str = "Info";
 
-/// Severity classification for an [`Issue`]. The string values match Go's
-/// `Severity*` constants exactly, so they appear unchanged in machine output.
+/// Severity classification for an [`Issue`]. The string values appear verbatim
+/// in machine output (report-format contract).
 pub mod severity {
     /// Good severity.
     pub const GOOD: &str = "good";
@@ -29,7 +26,7 @@ pub mod severity {
     pub const INFO: &str = "info";
 }
 
-/// A key-value metric for display. Mirrors Go's `analyze.Metric`.
+/// A key-value metric for display.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Metric {
     /// Display label (e.g. "Total Functions").
@@ -38,7 +35,7 @@ pub struct Metric {
     pub value: String,
 }
 
-/// A category in a distribution chart. Mirrors Go's `analyze.DistributionItem`.
+/// A category in a distribution chart.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DistributionItem {
     /// Category label (e.g. "Simple (1-5)").
@@ -49,7 +46,7 @@ pub struct DistributionItem {
     pub count: i64,
 }
 
-/// A problem or item to highlight. Mirrors Go's `analyze.Issue`.
+/// A problem or item to highlight.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Issue {
     /// Item name (e.g. a function name).
@@ -63,7 +60,7 @@ pub struct Issue {
 }
 
 /// A standardized structure for analyzer reports. Analyzers implement this to
-/// enable unified rendering. Mirrors Go's `analyze.ReportSection` interface.
+/// enable unified rendering.
 pub trait ReportSection {
     /// The display title (e.g. "COMPLEXITY").
     fn section_title(&self) -> String;
@@ -104,8 +101,7 @@ pub trait ReportSection {
     }
 }
 
-/// Default field-bearing implementation analyzers can build on. Mirrors Go's
-/// `analyze.BaseReportSection`.
+/// Default field-bearing implementation analyzers can build on.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct BaseReportSection {
     /// Display title.

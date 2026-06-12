@@ -1,18 +1,17 @@
-//! cf-config — Configuration model + layered loader (Go package `internal/config`).
+//! cf-config — configuration model + layered loader.
 //!
-//! Reproduces viper precedence (**flag > env `CODEFANG_` > file > default**) and
-//! the analyzer / pipeline / history / checkpoint configuration constants. The
-//! crate emits no machine-format report bytes, so it does not route through the
-//! `cf-gojson` / `cf-goyaml` serialization crates; `serde_yaml` is used purely
-//! to *parse* the `.codefang.yaml` input file.
+//! Implements the layered precedence **flag > env `CODEFANG_` > file >
+//! default** (CLI compatibility contract) and the analyzer / pipeline /
+//! history / checkpoint configuration constants. The crate emits no
+//! machine-format report bytes, so it does not route through the `cf-gojson` /
+//! `cf-goyaml` serialization crates; `serde_yaml` is used purely to *parse*
+//! the `.codefang.yaml` input file.
 //!
 //! # Layout
-//! - [`defaults`] — every `DEFAULT_*` constant (port of `defaults.go`).
-//! - [`Config`] and the per-section structs + [`Config::validate`] (port of
-//!   `config.go`).
-//! - [`Config::apply_to_facts`] — merge into the analyzer facts map (port of
-//!   `facts.go`).
-//! - [`load_config`] — the layered loader (port of `loader.go`).
+//! - [`defaults`] — every `DEFAULT_*` constant.
+//! - [`Config`] and the per-section structs + [`Config::validate`].
+//! - [`Config::apply_to_facts`] — merge into the analyzer facts map.
+//! - [`load_config`] — the layered loader.
 //!
 //! # Example
 //! ```
@@ -47,13 +46,13 @@ pub use types::{
 pub use types::CheckpointConfig;
 
 impl Config {
-    /// Returns the Go zero-value config (all numeric/string/bool fields zeroed).
+    /// Returns the all-zero config (all numeric/string/bool fields zeroed).
     ///
-    /// This is distinct from [`Config::default`], which returns the
-    /// viper-`SetDefault` populated config. Use `zero()` to mirror Go literals
-    /// like `config.Config{ History: ... }` where unspecified fields are zero.
+    /// This is distinct from [`Config::default`], which returns the config
+    /// populated with the registered defaults. Use `zero()` where unspecified
+    /// fields must stay zero rather than fall back to defaults.
     #[must_use]
-    pub fn zero() -> Self {
+    pub const fn zero() -> Self {
         Self {
             analyzers: Vec::new(),
             pipeline: PipelineConfig {
@@ -188,11 +187,11 @@ mod tests {
         None
     }
 
-    // ---- loader_test.go -----------------------------------------------------
+    // ---- loader tests ---------------------------------------------------------
 
     #[test]
     fn load_config_no_file_uses_defaults() {
-        // Port of TestLoadConfig_NoFile_UsesDefaults: an empty YAML file yields
+        // Mirrors TestLoadConfig_NoFile_UsesDefaults: an empty YAML file yields
         // the registered defaults.
         let cfg = load_from_yaml_and_env("", &no_env).unwrap();
 
@@ -228,7 +227,7 @@ mod tests {
 
     #[test]
     fn load_config_valid_file_unmarshals() {
-        // Port of TestLoadConfig_ValidFile_Unmarshals.
+        // Mirrors TestLoadConfig_ValidFile_Unmarshals.
         let content = r#"analyzers:
   - burndown
   - complexity
@@ -306,7 +305,7 @@ checkpoint:
 
     #[test]
     fn load_config_explicit_path_overrides() {
-        // Port of TestLoadConfig_ExplicitPath_Overrides via the temp-file path.
+        // Mirrors TestLoadConfig_ExplicitPath_Overrides via the temp-file path.
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("custom-config.yaml");
         std::fs::write(&path, "pipeline:\n  workers: 16\n").unwrap();
@@ -317,7 +316,7 @@ checkpoint:
 
     #[test]
     fn load_config_malformed_yaml_returns_error() {
-        // Port of TestLoadConfig_MalformedYAML_ReturnsError.
+        // Mirrors TestLoadConfig_MalformedYAML_ReturnsError.
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("bad.yaml");
         std::fs::write(&path, "pipeline:\n  workers: [invalid yaml\n").unwrap();
@@ -328,8 +327,8 @@ checkpoint:
 
     #[test]
     fn load_config_unknown_keys_no_error() {
-        // Port of TestLoadConfig_UnknownKeys_NoError: unknown keys are ignored
-        // (serde ignores unknown fields by default, like viper).
+        // Mirrors TestLoadConfig_UnknownKeys_NoError: unknown keys are ignored
+        // (serde ignores unknown fields by default, like the reference loader).
         let content = "unknown_section:\n  unknown_key: \"value\"\npipeline:\n  workers: 4\n";
         let cfg = load_from_yaml_and_env(content, &no_env).unwrap();
         assert_eq!(cfg.pipeline.workers, 4);
@@ -337,14 +336,14 @@ checkpoint:
 
     #[test]
     fn load_config_empty_analyzers_nil_slice() {
-        // Port of TestLoadConfig_EmptyAnalyzers_NilSlice.
+        // Mirrors TestLoadConfig_EmptyAnalyzers_NilSlice.
         let cfg = load_from_yaml_and_env("analyzers: []\n", &no_env).unwrap();
         assert!(cfg.analyzers.is_empty());
     }
 
     #[test]
     fn load_config_partial_config_merges_defaults() {
-        // Port of TestLoadConfig_PartialConfig_MergesDefaults.
+        // Mirrors TestLoadConfig_PartialConfig_MergesDefaults.
         let content = "history:\n  burndown:\n    granularity: 60\n";
         let cfg = load_from_yaml_and_env(content, &no_env).unwrap();
 
@@ -356,7 +355,7 @@ checkpoint:
 
     #[test]
     fn load_config_env_override_pipeline() {
-        // Port of TestLoadConfig_EnvOverride_Pipeline.
+        // Mirrors TestLoadConfig_EnvOverride_Pipeline.
         let cfg = load_from_yaml_and_env("", &|name| {
             (name == "CODEFANG_PIPELINE_WORKERS").then(|| "32".to_owned())
         })
@@ -366,7 +365,7 @@ checkpoint:
 
     #[test]
     fn load_config_env_override_nested_key() {
-        // Port of TestLoadConfig_EnvOverride_NestedKey.
+        // Mirrors TestLoadConfig_EnvOverride_NestedKey.
         let cfg = load_from_yaml_and_env("", &|name| {
             (name == "CODEFANG_HISTORY_BURNDOWN_GRANULARITY").then(|| "60".to_owned())
         })
@@ -376,7 +375,7 @@ checkpoint:
 
     #[test]
     fn load_config_explicit_path_not_found_returns_error() {
-        // Port of TestLoadConfig_ExplicitPath_NotFound_ReturnsError.
+        // Mirrors TestLoadConfig_ExplicitPath_NotFound_ReturnsError.
         let err = load_config("/nonexistent/path/config.yaml").unwrap_err();
         assert!(matches!(err, LoadError::Read(_)), "got: {err}");
     }
@@ -391,7 +390,7 @@ checkpoint:
         assert_eq!(cfg.pipeline.workers, 32);
     }
 
-    // ---- types_test.go ------------------------------------------------------
+    // ---- types tests ----------------------------------------------------------
 
     fn valid_config() -> Config {
         let mut c = Config::zero();
@@ -420,7 +419,7 @@ checkpoint:
 
     #[test]
     fn validate_zero_config_no_error() {
-        // Port of TestValidate_ZeroConfig_NoError: Config{} is valid.
+        // Mirrors TestValidate_ZeroConfig_NoError: Config{} is valid.
         assert!(Config::zero().validate().is_ok());
     }
 
@@ -509,7 +508,7 @@ checkpoint:
     }
 
     #[test]
-    fn config_error_messages_match_go() {
+    fn config_error_messages_are_frozen() {
         // Guards the byte-identical sentinel wording used by `validate config: ...`.
         assert_eq!(ConfigError::InvalidWorkers.message(), "pipeline.workers must be non-negative");
         assert_eq!(
@@ -526,7 +525,7 @@ checkpoint:
         );
     }
 
-    // ---- apply_test.go ------------------------------------------------------
+    // ---- apply_to_facts tests -------------------------------------------------
 
     const FACT_BURNDOWN_GRANULARITY: &str = "Burndown.Granularity";
     const FACT_BURNDOWN_SAMPLING: &str = "Burndown.Sampling";
@@ -656,7 +655,7 @@ checkpoint:
 
     #[test]
     fn apply_to_facts_zero_values_skips_numeric_overrides() {
-        // Port of TestApplyToFacts_ZeroValues_SkipsNumericOverrides.
+        // Mirrors TestApplyToFacts_ZeroValues_SkipsNumericOverrides.
         let cfg = Config::zero();
         let mut facts = Facts::new();
         facts.insert(FACT_BURNDOWN_GRANULARITY.to_owned(), FactValue::Int(30));
@@ -670,7 +669,7 @@ checkpoint:
 
     #[test]
     fn apply_to_facts_boolean_fields_always_applied() {
-        // Port of TestApplyToFacts_BooleanFields_AlwaysApplied: false overrides true.
+        // Mirrors TestApplyToFacts_BooleanFields_AlwaysApplied: false overrides true.
         let mut cfg = Config::zero();
         cfg.history.burndown.track_files = false;
         cfg.history.burndown.track_people = false;

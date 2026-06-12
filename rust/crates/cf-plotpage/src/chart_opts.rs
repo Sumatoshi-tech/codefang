@@ -1,4 +1,4 @@
-//! Themed chart-option presets — port of Go `plotpage/chart_opts.go`.
+//! Themed chart-option presets.
 
 use crate::echarts::{
     AxisLabel, AxisLine, AxisName, DataZoom, Grid, Indicator, Legend, LineStyle, RadarComponent,
@@ -6,32 +6,31 @@ use crate::echarts::{
 };
 use crate::theme::{get_theme_config, Theme, ThemeConfig};
 
-/// DataZoom end percentage default (chart_opts.go `dataZoomEndPercent`).
+/// DataZoom end percentage default.
 const DATA_ZOOM_END_PERCENT: f64 = 100.0;
 
-/// Themed chart options based on the current theme (Go `plotpage.ChartOpts`).
+/// Themed chart options based on the current theme.
 #[derive(Debug, Clone)]
 pub struct ChartOpts {
     theme: ThemeConfig,
 }
 
 impl ChartOpts {
-    /// Creates chart options for the given theme (Go `NewChartOpts`).
+    /// Creates chart options for the given theme.
     #[must_use]
-    pub fn new(theme: Theme) -> Self {
-        ChartOpts {
+    pub const fn new(theme: Theme) -> Self {
+        Self {
             theme: get_theme_config(theme),
         }
     }
 
-    /// Chart options for the default dark theme (Go `DefaultChartOpts`).
+    /// Chart options for the default dark theme.
     #[must_use]
-    pub fn default_dark() -> Self {
-        ChartOpts::new(Theme::Dark)
+    pub const fn default_dark() -> Self {
+        Self::new(Theme::Dark)
     }
 
-    /// Initialization values with the themed background (Go `ChartOpts.Init`).
-    /// Returns `(width, height, background_color, theme)` for
+    /// Initialization values with the themed background. Returns `(width, height, background_color, theme)` for
     /// [`crate::echarts::Chart::set_init`].
     #[must_use]
     pub fn init(&self, width: &str, height: &str) -> (String, String, String, String) {
@@ -43,7 +42,7 @@ impl ChartOpts {
         )
     }
 
-    /// Title options with themed text colors (Go `ChartOpts.Title`).
+    /// Title options with themed text colors.
     #[must_use]
     pub fn title(&self, title: &str, subtitle: &str) -> Title {
         Title {
@@ -62,7 +61,7 @@ impl ChartOpts {
         }
     }
 
-    /// Legend options with themed text color (Go `ChartOpts.Legend`).
+    /// Legend options with themed text color.
     #[must_use]
     pub fn legend(&self) -> Legend {
         Legend {
@@ -78,7 +77,7 @@ impl ChartOpts {
         }
     }
 
-    /// X-axis options with themed colors (Go `ChartOpts.XAxis`).
+    /// X-axis options with themed colors.
     #[must_use]
     pub fn x_axis(&self, name: &str) -> XAxis {
         XAxis {
@@ -98,7 +97,7 @@ impl ChartOpts {
         }
     }
 
-    /// Y-axis options with themed colors (Go `ChartOpts.YAxis`).
+    /// Y-axis options with themed colors.
     #[must_use]
     pub fn y_axis(&self, name: &str) -> YAxis {
         YAxis {
@@ -125,7 +124,7 @@ impl ChartOpts {
         }
     }
 
-    /// Grid options with the standard margins (Go `ChartOpts.Grid`).
+    /// Grid options with the standard margins.
     #[must_use]
     pub fn grid(&self) -> Grid {
         Grid {
@@ -137,7 +136,7 @@ impl ChartOpts {
         }
     }
 
-    /// The standard data-zoom pair (Go `ChartOpts.DataZoom`).
+    /// The standard data-zoom pair.
     #[must_use]
     pub fn data_zoom(&self) -> Vec<DataZoom> {
         vec![
@@ -153,8 +152,7 @@ impl ChartOpts {
         ]
     }
 
-    /// Radar component options with themed colors (Go
-    /// `ChartOpts.RadarComponent`).
+    /// Radar component options with themed colors.
     #[must_use]
     pub fn radar_component(&self, indicator: Vec<Indicator>, split_number: i64) -> RadarComponent {
         RadarComponent {
@@ -182,7 +180,7 @@ impl ChartOpts {
         }
     }
 
-    /// Tooltip options (Go `ChartOpts.Tooltip`).
+    /// Tooltip options.
     #[must_use]
     pub fn tooltip(&self, trigger: &str) -> Tooltip {
         Tooltip {
@@ -191,27 +189,27 @@ impl ChartOpts {
         }
     }
 
-    /// The primary chart text color (Go `ChartOpts.TextColor`).
+    /// The primary chart text color.
     #[must_use]
-    pub fn text_color(&self) -> &'static str {
+    pub const fn text_color(&self) -> &'static str {
         self.theme.chart_text
     }
 
-    /// The muted chart text color (Go `ChartOpts.TextMutedColor`).
+    /// The muted chart text color.
     #[must_use]
-    pub fn text_muted_color(&self) -> &'static str {
+    pub const fn text_muted_color(&self) -> &'static str {
         self.theme.chart_text_muted
     }
 
-    /// The chart grid color (Go `ChartOpts.GridColor`).
+    /// The chart grid color.
     #[must_use]
-    pub fn grid_color(&self) -> &'static str {
+    pub const fn grid_color(&self) -> &'static str {
         self.theme.chart_grid
     }
 
-    /// The chart axis color (Go `ChartOpts.AxisColor`).
+    /// The chart axis color.
     #[must_use]
-    pub fn axis_color(&self) -> &'static str {
+    pub const fn axis_color(&self) -> &'static str {
         self.theme.chart_axis
     }
 }

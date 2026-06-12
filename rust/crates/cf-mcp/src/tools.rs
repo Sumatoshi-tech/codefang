@@ -1,28 +1,27 @@
 //! Tool name constants, input schemas, limits, and shared validation.
 //!
-//! Ports `internal/mcp/tools.go`: the three tool-name constants, the
-//! [`MAX_CODE_INPUT_BYTES`] limit, the input structs (`AnalyzeInput`,
-//! `HistoryInput`, `UastParseInput`) with their JSON field names, the shared
-//! `validateCodeInput`, and the `syntheticFilename` helper.
+//! The three tool-name constants, the [`MAX_CODE_INPUT_BYTES`] limit, the
+//! input structs (`AnalyzeInput`, `HistoryInput`, `UastParseInput`) with their
+//! JSON field names, the shared code-input validation, and the
+//! synthetic-filename helper.
 
 use serde::Deserialize;
 
 use crate::errors::ToolError;
 
-/// Tool name for static analysis. Go `ToolNameAnalyze`.
+/// Tool name for static analysis.
 pub const TOOL_NAME_ANALYZE: &str = "codefang_analyze";
-/// Tool name for Git history analysis. Go `ToolNameHistory`.
+/// Tool name for Git history analysis.
 pub const TOOL_NAME_HISTORY: &str = "codefang_history";
-/// Tool name for UAST parsing. Go `ToolNameUAST`.
+/// Tool name for UAST parsing.
 pub const TOOL_NAME_UAST: &str = "uast_parse";
 
-/// Maximum allowed size for inline code input (1 MiB). Go `MaxCodeInputBytes`.
+/// Maximum allowed size for inline code input (1 MiB).
 pub const MAX_CODE_INPUT_BYTES: usize = 1 << 20;
 
-/// Input schema for the `codefang_analyze` tool. Go `AnalyzeInput`.
+/// Input schema for the `codefang_analyze` tool.
 ///
-/// JSON field names match the Go struct tags exactly (`analyzers` is omitted when
-/// empty, matching `omitempty`).
+/// JSON field names are part of the tool schema contract.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct AnalyzeInput {
     /// Optional list of analyzer names to run (default: all).
@@ -36,7 +35,7 @@ pub struct AnalyzeInput {
     pub language: String,
 }
 
-/// Input schema for the `codefang_history` tool. Go `HistoryInput`.
+/// Input schema for the `codefang_history` tool.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct HistoryInput {
     /// Optional list of history analyzers (default: all).
@@ -56,7 +55,7 @@ pub struct HistoryInput {
     pub since: String,
 }
 
-/// Input schema for the `uast_parse` tool. Go `UASTParseInput`.
+/// Input schema for the `uast_parse` tool.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct UastParseInput {
     /// Source code to parse into UAST.
@@ -73,10 +72,10 @@ pub struct UastParseInput {
 /// Validates the common code-input constraints shared by `codefang_analyze` and
 /// `uast_parse`.
 ///
-/// Reproduces Go `validateCodeInput`: empty code → [`ToolError::EmptyCode`],
-/// empty language → [`ToolError::EmptyLanguage`], oversized code →
-/// [`ToolError::CodeTooLarge`]. The size compared is the **byte** length of the
-/// code (Go `len(code)`), not the character count.
+/// Empty code → [`ToolError::EmptyCode`], empty language →
+/// [`ToolError::EmptyLanguage`], oversized code → [`ToolError::CodeTooLarge`].
+/// The size compared is the **byte** length of the code, not the character
+/// count.
 ///
 /// # Errors
 /// Returns the first failing constraint as a [`ToolError`].
@@ -96,10 +95,8 @@ pub fn validate_code_input(code: &str, language: &str) -> Result<(), ToolError> 
     Ok(())
 }
 
-/// Builds a synthetic filename from a language identifier so the parser can
+/// Builds the synthetic filename `"code.<language>"` so the parser can
 /// dispatch by extension.
-///
-/// Reproduces Go `syntheticFilename`: `"code." + language`.
 #[must_use]
 pub fn synthetic_filename(language: &str) -> String {
     format!("code.{language}")
@@ -110,7 +107,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tool_names_match_go() {
+    fn tool_names_match_contract() {
         assert_eq!(TOOL_NAME_ANALYZE, "codefang_analyze");
         assert_eq!(TOOL_NAME_HISTORY, "codefang_history");
         assert_eq!(TOOL_NAME_UAST, "uast_parse");
@@ -154,7 +151,7 @@ mod tests {
     #[test]
     fn validate_uses_byte_length_not_char_count() {
         // 'é' is 2 bytes in UTF-8; a string just over MAX bytes but under MAX
-        // chars must still be rejected (Go compares len(code), the byte length).
+        // chars must still be rejected (the limit is the byte length).
         let s = "é".repeat(MAX_CODE_INPUT_BYTES / 2 + 1);
         assert!(s.chars().count() <= MAX_CODE_INPUT_BYTES);
         assert!(matches!(
@@ -170,7 +167,7 @@ mod tests {
     }
 
     #[test]
-    fn analyze_input_deserializes_go_field_names() {
+    fn analyze_input_deserializes_schema_field_names() {
         let json = r#"{"code":"x","language":"go","analyzers":["complexity"]}"#;
         let input: AnalyzeInput = serde_json::from_str(json).unwrap();
         assert_eq!(input.code, "x");

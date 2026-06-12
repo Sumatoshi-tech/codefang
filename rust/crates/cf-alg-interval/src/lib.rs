@@ -1,7 +1,6 @@
 //! Augmented interval tree for efficient range-overlap queries.
 //!
-//! This crate is a Rust port of the Go package `pkg/alg/interval`. It provides
-//! an augmented interval tree supporting [`Tree::insert`], [`Tree::delete`],
+//! Supports [`Tree::insert`], [`Tree::delete`],
 //! [`Tree::query_overlap`], and [`Tree::query_point`] operations with
 //! `O(log N)` insert/delete and `O(log N + k)` query time, where `k` is the
 //! number of overlapping intervals.
@@ -13,19 +12,16 @@
 //! Intervals are **closed** ranges `[low, high]`. Two intervals `[a, b]` and
 //! `[low, high]` overlap when `a <= high && b >= low`.
 //!
-//! # Relationship to the Go original
-//!
-//! Behaviour is reproduced exactly: ordering, balancing, query results and
-//! `max_high` augmentation all match the Go implementation. This crate emits no
-//! machine-format report bytes (it is a pure data structure consumed by the
-//! burndown analyzer), so per the Rust rewrite design it does NOT depend on the
+//! Ordering, balancing, query results and `max_high` augmentation are
+//! deterministic (reference-implementation behavior, exercised indirectly by
+//! the differential gate through the burndown analyzer). This crate emits no
+//! machine-format report bytes, so it does NOT depend on the
 //! `cf-gojson`/`cf-goyaml` serialization crates.
 //!
 //! # Memory model
 //!
-//! The Go implementation uses pointer-linked nodes with parent pointers. To
-//! reproduce the exact red-black balancing without `unsafe`, this port stores
-//! nodes in an arena (`Vec<Node<..>>`) and links them by index. Deleted nodes
+//! Red-black balancing needs parent links; to express them without `unsafe`,
+//! nodes live in an arena (`Vec<Node<..>>`) and link by index. Deleted nodes
 //! are recycled through a free list so the arena does not grow without bound
 //! across long insert/delete sequences.
 //!
@@ -56,19 +52,17 @@ use std::fmt::Debug;
 
 /// Endpoint type for interval bounds.
 ///
-/// In the Go original this is the `Integer` type-set constraint
-/// (`~int | … | ~uintptr`). In Rust we accept any totally-ordered, copyable
-/// key; integer types satisfy this and are the intended usage, but the bound is
-/// expressed structurally rather than as a closed set of integer types.
+/// Any totally-ordered, copyable key works; integer types are the intended
+/// usage, but the bound is expressed structurally rather than as a closed set
+/// of integer types.
 pub trait Endpoint: Copy + Ord + Debug {}
 
 impl<T: Copy + Ord + Debug> Endpoint for T {}
 
 /// Value type stored alongside an interval.
 ///
-/// The Go original requires `comparable` because [`Tree::delete`] matches on
-/// the exact `(low, high, value)` triple. In Rust we require [`PartialEq`] for
-/// the same equality check and [`Clone`] so values can be returned by
+/// [`PartialEq`] is required because [`Tree::delete`] matches on the exact
+/// `(low, high, value)` triple, and [`Clone`] so values can be returned by
 /// [`Tree::query_overlap`] / [`Tree::query_point`].
 pub trait Value: PartialEq + Clone + Debug {}
 
@@ -92,7 +86,7 @@ enum Color {
     Black,
 }
 
-/// Sentinel "nil" index used for absent links (mirrors Go's `nil` pointers).
+/// Sentinel index used for absent links.
 const NIL: usize = usize::MAX;
 
 /// Internal red-black tree node augmented with `max_high`.
@@ -127,8 +121,8 @@ impl<K: Endpoint, V: Value> Default for Tree<K, V> {
 impl<K: Endpoint, V: Value> Tree<K, V> {
     /// Creates an empty interval tree.
     #[must_use]
-    pub fn new() -> Self {
-        Tree {
+    pub const fn new() -> Self {
+        Self {
             nodes: Vec::new(),
             free: Vec::new(),
             root: NIL,
@@ -138,13 +132,13 @@ impl<K: Endpoint, V: Value> Tree<K, V> {
 
     /// Returns the number of intervals in the tree.
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.size
     }
 
     /// Returns `true` if the tree contains no intervals.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.size == 0
     }
 
@@ -286,8 +280,7 @@ impl<K: Endpoint, V: Value> Tree<K, V> {
             if self.nodes[x].max_high < zhigh {
                 self.nodes[x].max_high = zhigh;
             }
-            // Order by the full (low, high) key — identical to Go's bstInsert,
-            // which uses compareIntervals (low then high). This MUST match the
+            // Order by the full (low, high) key. This MUST match the
             // comparator used by find_exact, or lookups break for equal-low
             // nodes that differ in high.
             let xlow = self.nodes[x].interval.low;
@@ -452,7 +445,7 @@ impl<K: Endpoint, V: Value> Tree<K, V> {
     }
 
     /// Compares two `(low, high)` keys for BST ordering: primary by `low`,
-    /// secondary by `high`. Mirrors Go's `compareIntervals`.
+    /// secondary by `high`.
     #[inline]
     fn compare_key(alow: K, ahigh: K, blow: K, bhigh: K) -> std::cmp::Ordering {
         match alow.cmp(&blow) {
@@ -461,10 +454,10 @@ impl<K: Endpoint, V: Value> Tree<K, V> {
         }
     }
 
-    /// Faithful port of Go's `findExact`: ordered search by `(low, high)`; when
-    /// the key compares equal but the value differs, the left subtree is also
-    /// checked (duplicate keys with different values can land on either side
-    /// after red-black rotations), then the right subtree.
+    /// Ordered search by `(low, high)`; when the key compares equal but the
+    /// value differs, the left subtree is also checked (duplicate keys with
+    /// different values can land on either side after red-black rotations),
+    /// then the right subtree.
     fn find_exact(&self, n: usize, low: K, high: K, value: &V) -> usize {
         if n == NIL {
             return NIL;
@@ -483,7 +476,7 @@ impl<K: Endpoint, V: Value> Tree<K, V> {
         }
 
         // cmp > 0, or cmp == 0 but value did not match: also check the left
-        // subtree for an equal key, then search right (mirrors Go findExact).
+        // subtree for an equal key, then search right.
         if cmp == std::cmp::Ordering::Equal {
             let found = self.find_exact(self.nodes[n].left, low, high, value);
             if found != NIL {
@@ -674,9 +667,6 @@ mod tests {
         ivs.into_iter().map(|iv| iv.value).collect()
     }
 
-    // ---- ported from Go interval_test.go ---------------------------------
-
-    /// Port of `TestNew`.
     #[test]
     fn new_tree_is_empty() {
         let tree: Tree<u32, u32> = Tree::new();
@@ -684,7 +674,6 @@ mod tests {
         assert!(tree.is_empty());
     }
 
-    /// Port of `TestInsert_Len`.
     #[test]
     fn insert_len() {
         let mut tree: Tree<u32, u32> = Tree::new();
@@ -694,7 +683,6 @@ mod tests {
         assert_eq!(tree.len(), 2);
     }
 
-    /// Port of `TestInsert_QueryOverlap_Basic`.
     #[test]
     fn insert_query_overlap_basic() {
         let mut tree: Tree<u32, u32> = Tree::new();
@@ -706,7 +694,6 @@ mod tests {
         assert_eq!(results[0].value, 1);
     }
 
-    /// Port of `TestQueryOverlap_NoMatch`.
     #[test]
     fn query_overlap_no_match() {
         let mut tree: Tree<u32, u32> = Tree::new();
@@ -714,14 +701,12 @@ mod tests {
         assert!(tree.query_overlap(30, 40).is_empty());
     }
 
-    /// Port of `TestQueryOverlap_EmptyTree`.
     #[test]
     fn query_overlap_empty_tree() {
         let tree: Tree<u32, u32> = Tree::new();
         assert!(tree.query_overlap(10, 20).is_empty());
     }
 
-    /// Port of `TestQueryOverlap_MultipleResults`.
     #[test]
     fn query_overlap_multiple_results() {
         let mut tree: Tree<u32, u32> = Tree::new();
@@ -732,7 +717,6 @@ mod tests {
         assert_eq!(tree.query_overlap(12, 18).len(), 2);
     }
 
-    /// Port of `TestQueryPoint_Basic`.
     #[test]
     fn query_point_basic() {
         let mut tree: Tree<u32, u32> = Tree::new();
@@ -743,7 +727,6 @@ mod tests {
         assert_eq!(results[0].value, 1);
     }
 
-    /// Port of `TestQueryPoint_Boundary`.
     #[test]
     fn query_point_boundary() {
         let mut tree: Tree<u32, u32> = Tree::new();
@@ -754,7 +737,6 @@ mod tests {
         assert_eq!(tree.query_point(20).len(), 1);
     }
 
-    /// Port of `TestQueryPoint_NoMatch`.
     #[test]
     fn query_point_no_match() {
         let mut tree: Tree<u32, u32> = Tree::new();
@@ -762,7 +744,6 @@ mod tests {
         assert!(tree.query_point(50).is_empty());
     }
 
-    /// Port of `TestDelete_Basic`.
     #[test]
     fn delete_basic() {
         let mut tree: Tree<u32, u32> = Tree::new();
@@ -772,7 +753,6 @@ mod tests {
         assert!(tree.query_overlap(10, 20).is_empty());
     }
 
-    /// Port of `TestDelete_NonExistent`.
     #[test]
     fn delete_non_existent() {
         let mut tree: Tree<u32, u32> = Tree::new();
@@ -781,14 +761,12 @@ mod tests {
         assert_eq!(tree.len(), 1);
     }
 
-    /// Port of `TestDelete_EmptyTree`.
     #[test]
     fn delete_empty_tree() {
         let mut tree: Tree<u32, u32> = Tree::new();
         assert!(!tree.delete(10, 20, &1));
     }
 
-    /// Port of `TestDelete_PreservesOthers`.
     #[test]
     fn delete_preserves_others() {
         let mut tree: Tree<u32, u32> = Tree::new();
@@ -800,7 +778,6 @@ mod tests {
         assert_eq!(results[0].value, 2);
     }
 
-    /// Port of `TestClear`.
     #[test]
     fn clear() {
         let mut tree: Tree<u32, u32> = Tree::new();
@@ -816,7 +793,6 @@ mod tests {
         assert_eq!(sorted_values(tree.query_point(10)), vec![7]);
     }
 
-    /// Port of `TestAdjacentNonOverlapping`.
     #[test]
     fn adjacent_non_overlapping() {
         let mut tree: Tree<u32, u32> = Tree::new();
@@ -832,7 +808,6 @@ mod tests {
         assert_eq!(r[0].value, 2);
     }
 
-    /// Port of `TestZeroWidthInterval`.
     #[test]
     fn zero_width_interval() {
         let mut tree: Tree<u32, u32> = Tree::new();
@@ -841,7 +816,6 @@ mod tests {
         assert!(tree.query_point(10).is_empty());
     }
 
-    /// Port of `TestLargeScale` (10K intervals).
     #[test]
     fn large_scale() {
         let mut tree: Tree<u32, u32> = Tree::new();
@@ -863,7 +837,6 @@ mod tests {
         assert_eq!(r[0].value, 50);
     }
 
-    /// Port of `TestDeleteMultiple`.
     #[test]
     fn delete_multiple() {
         let mut tree: Tree<u32, u32> = Tree::new();
@@ -878,7 +851,6 @@ mod tests {
         assert_eq!(tree.len(), 0);
     }
 
-    /// Port of `TestInsertDuplicateIntervals`.
     #[test]
     fn insert_duplicate_intervals() {
         let mut tree: Tree<u32, u32> = Tree::new();
@@ -892,7 +864,6 @@ mod tests {
         assert_eq!(tree.query_overlap(10, 20).len(), 1);
     }
 
-    /// Port of `TestWideOverlap`.
     #[test]
     fn wide_overlap() {
         let mut tree: Tree<u32, u32> = Tree::new();
@@ -903,7 +874,6 @@ mod tests {
         assert_eq!(tree.query_overlap(0, 50).len(), 4);
     }
 
-    /// Port of `TestDeleteAndReinsert`.
     #[test]
     fn delete_and_reinsert() {
         let mut tree: Tree<u32, u32> = Tree::new();
@@ -917,7 +887,6 @@ mod tests {
         assert_eq!(r[0].value, 2);
     }
 
-    /// Port of `TestGeneric_IntKeys` (int keys, string values).
     #[test]
     fn generic_int_keys() {
         let mut tree: Tree<i32, String> = Tree::new();
@@ -943,7 +912,6 @@ mod tests {
         assert_eq!(r[0].value, "beta");
     }
 
-    /// Port of `TestGeneric_Int64Keys`.
     #[test]
     fn generic_int64_keys() {
         let mut tree: Tree<i64, i64> = Tree::new();
@@ -971,11 +939,10 @@ mod tests {
         assert_eq!(tree.len(), 0);
     }
 
-    /// Behavioural port of `TestMaxHighMaintenance`. The Go test reaches into
-    /// the private `tree.root.maxHigh` field directly; the Rust API does not
-    /// expose internal node state, so we assert the *observable* consequence of
-    /// correct `max_high` maintenance instead: pruning must not drop a still
-    /// reachable interval after the widest one is deleted.
+    /// The API does not expose internal node state, so assert the
+    /// *observable* consequence of correct `max_high` maintenance: pruning
+    /// must not drop a still-reachable interval after the widest one is
+    /// deleted.
     #[test]
     fn max_high_maintenance() {
         let mut tree: Tree<u32, u32> = Tree::new();
@@ -992,7 +959,7 @@ mod tests {
         assert!(tree.query_point(55).is_empty());
     }
 
-    /// Covers signed endpoints crossing zero (extends the Go int64 coverage).
+    /// Covers signed endpoints crossing zero.
     #[test]
     fn signed_endpoints() {
         let mut tree: Tree<i64, u32> = Tree::new();
@@ -1005,8 +972,7 @@ mod tests {
         assert!(tree.query_point(40).is_empty());
     }
 
-    /// Stress test cross-checked against a naive linear reference. Mirrors the
-    /// correctness intent of the Go benchmarks plus large-scale tests.
+    /// Stress test cross-checked against a naive linear reference.
     #[test]
     fn stress_against_naive_reference() {
         let mut tree: Tree<u32, u32> = Tree::new();

@@ -1,10 +1,8 @@
 //! Aggregation-mode flag controlling per-item data collection.
 //!
-//! Port of `internal/analyzers/analyze/aggregation_mode.go`.
-
-/// Controls whether per-item data is collected during aggregation.
+//! /// Controls whether per-item data is collected during aggregation.
 ///
-/// Mirrors Go's `AggregationMode` (`int` iota). [`AggregationMode::Full`] is the
+/// [`AggregationMode::Full`] is the
 /// zero value (collect everything); [`AggregationMode::SummaryOnly`] skips
 /// per-item data collection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -18,7 +16,7 @@ pub enum AggregationMode {
 
 /// Implemented by aggregators that support runtime mode switching.
 ///
-/// Mirrors `AggregationModeAware` (aggregation_mode.go:16).
+///
 pub trait AggregationModeAware {
     /// Sets the aggregation mode.
     fn set_aggregation_mode(&mut self, mode: AggregationMode);

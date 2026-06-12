@@ -1,5 +1,5 @@
-//! Multi-page renderer — port of Go `plotpage/multipage.go`: per-analyzer
-//! HTML pages plus an index page with navigation cards.
+//! Multi-page renderer: per-analyzer HTML pages plus an index page with
+//! navigation cards.
 
 use std::fs;
 use std::io;
@@ -10,13 +10,12 @@ use crate::page::{Page, Section};
 use crate::templates::{render_index_content, NAV_HTML};
 use crate::theme::Theme;
 
-/// Index page constants (multipage.go:13).
+/// Index page constants.
 const INDEX_FILE_NAME: &str = "index.html";
 const INDEX_TITLE: &str = "Analysis Report";
 const INDEX_DESCRIPTION: &str = "Select an analyzer to view its report.";
 
-/// Metadata about a rendered analyzer page for the index (Go
-/// `plotpage.PageMeta`).
+/// Metadata about a rendered analyzer page for the index.
 #[derive(Debug, Clone, Default)]
 pub struct PageMeta {
     /// Filename stem, e.g. `static-complexity`.
@@ -27,8 +26,7 @@ pub struct PageMeta {
     pub description: String,
 }
 
-/// Produces per-analyzer HTML pages plus an index page (Go
-/// `plotpage.MultiPageRenderer`).
+/// Produces per-analyzer HTML pages plus an index page.
 pub struct MultiPageRenderer {
     /// Directory to write HTML files into.
     pub output_dir: String,
@@ -39,9 +37,8 @@ pub struct MultiPageRenderer {
 }
 
 impl MultiPageRenderer {
-    /// Renders a single analyzer page to `<output_dir>/<id>.html` (Go
-    /// `RenderAnalyzerPage`, multipage.go:36): standalone HTML with a
-    /// navigation section prepended.
+    /// Renders a single analyzer page to `<output_dir>/<id>.html`: standalone
+    /// HTML with a navigation section prepended.
     ///
     /// # Errors
     /// Returns the I/O error when the output file cannot be written.
@@ -70,7 +67,7 @@ impl MultiPageRenderer {
     }
 
     /// Renders the index page with navigation cards to
-    /// `<output_dir>/index.html` (Go `RenderIndex`, multipage.go:73).
+    /// `<output_dir>/index.html`.
     ///
     /// # Errors
     /// Returns the I/O error when the output file cannot be written.
@@ -91,8 +88,7 @@ impl MultiPageRenderer {
     }
 
     /// Scans the output dir for `*.html` files (excluding index.html), derives
-    /// page metadata from filenames, and regenerates index.html (Go
-    /// `RebuildIndex`, multipage.go:108).
+    /// page metadata from filenames, and regenerates index.html.
     ///
     /// # Errors
     /// Returns the I/O error when the directory cannot be read or the index

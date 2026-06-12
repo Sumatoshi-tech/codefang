@@ -1,21 +1,19 @@
-//! Per-stage high-watermark counters for memory triage — port of
-//! `internal/framework/stage_metrics.go`.
+//! Per-stage high-watermark counters for memory triage.
 //!
 //! All fields are updated atomically by pipeline stages and read by the
 //! sampler. Following the playbook: "diff items queued", "bytes of blob
 //! content held", "AST cache entries", "results map size".
 //!
-//! Go uses `atomic.Int64` for every field; the Rust port uses
-//! [`AtomicI64`](std::sync::atomic::AtomicI64) with the same load/store/CAS
-//! semantics. The high-watermark updates reproduce Go's CAS loop verbatim so
-//! that concurrent `Record*` callers never lose a peak.
+//! Every field is an [`AtomicI64`](std::sync::atomic::AtomicI64); the
+//! high-watermark updates use a CAS loop so that concurrent `record_*`
+//! callers never lose a peak.
 
 use std::sync::atomic::{AtomicI64, Ordering};
 
 /// Per-stage high-watermark counters for memory triage.
 ///
-/// Mirrors Go `framework.StageMetrics`. Each counter is atomic; high-watermark
-/// counters (`peak_*`) never decrease within a chunk (see [`Self::reset`]).
+/// Each counter is atomic; high-watermark counters (`peak_*`) never decrease
+/// within a chunk (see [`Self::reset`]).
 #[derive(Debug, Default)]
 pub struct StageMetrics {
     // Blob pipeline metrics.
@@ -55,8 +53,7 @@ pub struct StageMetrics {
     pub peak_diff_queued: AtomicI64,
 }
 
-/// Lock-free `peak = max(peak, value)` via a CAS loop, mirroring Go's
-/// `for { peak := x.Load(); if v <= peak || x.CompareAndSwap(peak, v) { break } }`.
+/// Lock-free `peak = max(peak, value)` via a CAS loop.
 fn store_max(target: &AtomicI64, value: i64) {
     loop {
         let peak = target.load(Ordering::SeqCst);
@@ -117,8 +114,8 @@ impl StageMetrics {
 
     /// Reads all counters atomically (each field individually).
     ///
-    /// Mirrors Go `Snapshot()`: this is NOT a consistent cut across all fields;
-    /// each load is independent, exactly as in the Go original.
+    /// This is NOT a consistent cut across all fields; each load is
+    /// independent.
     #[must_use]
     pub fn snapshot(&self) -> StageMetricsSnapshot {
         StageMetricsSnapshot {
@@ -139,8 +136,7 @@ impl StageMetrics {
     }
 }
 
-/// A point-in-time copy of all stage metrics. Mirrors Go
-/// `framework.StageMetricsSnapshot`.
+/// A point-in-time copy of all stage metrics.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct StageMetricsSnapshot {
     /// See [`StageMetrics::blob_changes_in_flight`].

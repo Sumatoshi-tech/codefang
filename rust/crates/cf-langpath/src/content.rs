@@ -1,6 +1,6 @@
 //! enry content-classifier language detection (`GetLanguagesByClassifier`).
 //!
-//! Faithful port of `github.com/src-d/enry/v2`'s pure-Go tokenizer
+//! Faithful reproduction of `github.com/src-d/enry/v2`'s tokenizer
 //! (`internal/tokenizer/tokenize.go`, the default `!flex` build) and Naive-Bayes
 //! classifier (`classifier.go`), backed by the vendored frequency tables
 //! (`data/frequencies.go`, dumped to `data/enry-frequencies-v2.1.0.tsv`).
@@ -8,14 +8,14 @@
 //! The classifier is the last enry strategy: it scores a set of **candidate**
 //! languages (the union of all earlier strategies' results) by
 //! `languagesLogProbabilities[lang] + Σ tokenProbability(token, lang)` and
-//! returns them sorted by decreasing score (`sort.Stable`, descending). Float
+//! returns them sorted by decreasing score (stable sort, descending). Float
 //! addition order is fixed (tokens are a slice), so scores are deterministic;
-//! the only Go nondeterminism (map-iteration order when building `scoredLangs`)
-//! is erased by the stable score sort.
+//! the reference library's only nondeterminism (map-iteration order when
+//! building `scoredLangs`) is erased by the stable score sort.
 //!
 //! Parity hinges on (1) the tokenizer reproducing Linguist's token stream and
-//! (2) the frequency floats round-tripping exactly. The Go data literals are
-//! 6-decimal, dumped here with `%f`, and parsed back to `f64` — exact.
+//! (2) the frequency floats round-tripping exactly. The upstream data literals
+//! are 6-decimal, dumped with `%f`, and parsed back to `f64` — exact.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -28,14 +28,14 @@ const BYTE_LIMIT: usize = 100_000;
 /// Parsed Naive-Bayes frequency tables (`data.{LanguagesLogProbabilities,
 /// TokensLogProbabilities, TokensTotal}`).
 ///
-/// Token keys are raw bytes (`Vec<u8>`): Go stores them as `map[string]float64`
-/// where the string is `string([]byte token)` — raw bytes, possibly invalid
-/// UTF-8 (3 such lines exist). Keying by `Vec<u8>` reproduces the exact lookup.
+/// Token keys are raw bytes (`Vec<u8>`): enry keys its map by the raw token
+/// bytes, which may be invalid UTF-8 (3 such lines exist). Keying by `Vec<u8>`
+/// reproduces the exact lookup.
 struct Frequencies {
     languages_log_prob: HashMap<String, f64>,
     tokens_log_prob: HashMap<String, HashMap<Vec<u8>, f64>>,
     /// `log(1.0 / tokens_total)`, the unknown-token fallback (precomputed).
-    /// This is the only runtime use Go makes of `data.TokensTotal`
+    /// This is the only runtime use enry makes of `data.TokensTotal`
     /// (`tokenProbability`), so the raw total itself is not stored.
     unknown_token_log_prob: f64,
 }
@@ -113,7 +113,7 @@ fn parse_frequencies(tsv: &[u8]) -> Frequencies {
 }
 
 // ---------------------------------------------------------------------------
-// Tokenizer (port of internal/tokenizer/tokenize.go, the !flex build).
+// Tokenizer (enry internal/tokenizer/tokenize.go, the !flex build).
 // ---------------------------------------------------------------------------
 
 struct TokenizerRegexes {
@@ -134,8 +134,9 @@ struct TokenizerRegexes {
 fn tokenizer_regexes() -> &'static TokenizerRegexes {
     static R: OnceLock<TokenizerRegexes> = OnceLock::new();
     R.get_or_init(|| {
-        // Patterns copied verbatim from enry's tokenize.go (the already
-        // oniguruma-vs-Go-reconciled forms). `regex::bytes` operates on &[u8].
+        // Patterns copied verbatim from enry's tokenize.go (the forms already
+        // reconciled against oniguruma upstream). `regex::bytes` operates on
+        // &[u8].
         TokenizerRegexes {
             literal_string_quotes: Regex::new(r#"("(.|\n)*?"|'(.|\n)*?')"#).unwrap(),
             single_line_comment: Regex::new(r#"(?m)(//|--|#|%|")\s([^\n]*$)"#).unwrap(),
@@ -144,20 +145,20 @@ fn tokenizer_regexes() -> &'static TokenizerRegexes {
             )
             .unwrap(),
             literal_number: Regex::new(
-                r#"(0x[0-9A-Fa-f]([0-9A-Fa-f]|\.)*|\d(\d|\.)*)([uU][lL]{0,2}|([eE][-+]\d*)?[fFlL]*)"#,
+                r"(0x[0-9A-Fa-f]([0-9A-Fa-f]|\.)*|\d(\d|\.)*)([uU][lL]{0,2}|([eE][-+]\d*)?[fFlL]*)",
             )
             .unwrap(),
             shebang: Regex::new(
-                r#"(?m)^#!(?:/[0-9A-Za-z_]+)*/(?:([0-9A-Za-z_]+)|[0-9A-Za-z_]+(?:\s*[0-9A-Za-z_]+=[0-9A-Za-z_]+\s*)*\s*([0-9A-Za-z_]+))(?:\s*-[0-9A-Za-z_]+\s*)*$"#,
+                r"(?m)^#!(?:/[0-9A-Za-z_]+)*/(?:([0-9A-Za-z_]+)|[0-9A-Za-z_]+(?:\s*[0-9A-Za-z_]+=[0-9A-Za-z_]+\s*)*\s*([0-9A-Za-z_]+))(?:\s*-[0-9A-Za-z_]+\s*)*$",
             )
             .unwrap(),
-            punctuation: Regex::new(r#";|\{|\}|\(|\)|\[|\]"#).unwrap(),
+            punctuation: Regex::new(r";|\{|\}|\(|\)|\[|\]").unwrap(),
             sgml: Regex::new(r#"(<\/?[^\s<>=\d"']+)(?:\s(.|\n)*?\/?>|>)"#).unwrap(),
-            sgml_comment: Regex::new(r#"(<!--(.|\n)*?-->)"#).unwrap(),
-            sgml_attributes: Regex::new(r#"\s+([0-9A-Za-z_]+=)|\s+([^\s>]+)"#).unwrap(),
-            sgml_lone_attribute: Regex::new(r#"([0-9A-Za-z_]+)"#).unwrap(),
-            regular_token: Regex::new(r#"[0-9A-Za-z_\.@#/\*]+"#).unwrap(),
-            operators: Regex::new(r#"<<?|\+|\-|\*|/|%|&&?|\|\|?"#).unwrap(),
+            sgml_comment: Regex::new(r"(<!--(.|\n)*?-->)").unwrap(),
+            sgml_attributes: Regex::new(r"\s+([0-9A-Za-z_]+=)|\s+([^\s>]+)").unwrap(),
+            sgml_lone_attribute: Regex::new(r"([0-9A-Za-z_]+)").unwrap(),
+            regular_token: Regex::new(r"[0-9A-Za-z_\.@#/\*]+").unwrap(),
+            operators: Regex::new(r"<<?|\+|\-|\*|/|%|&&?|\|\|?").unwrap(),
         }
     })
 }
@@ -170,10 +171,8 @@ fn tokenize(content: &[u8]) -> Vec<Vec<u8>> {
     let mut buf = content.to_vec();
     let mut tokens: Vec<Vec<u8>> = Vec::with_capacity(50);
 
-    // 1. extractAndReplaceShebang.
-    let (b1, t1) = extract_shebang(buf);
-    buf = b1;
-    tokens.extend(t1);
+    // 1. extractAndReplaceShebang (leaves the buffer unmodified; see below).
+    tokens.extend(extract_shebang(&buf));
     // 2. extractAndReplaceSGML.
     let (b2, t2) = extract_sgml(buf);
     buf = b2;
@@ -181,15 +180,15 @@ fn tokenize(content: &[u8]) -> Vec<Vec<u8>> {
     // 3. skipCommentsAndLiterals (no tokens).
     buf = skip_comments_and_literals(buf);
     // 4. extractAndReplacePunctuation.
-    let (b4, t4) = common_extract_replace(buf, &tokenizer_regexes().punctuation);
+    let (b4, t4) = common_extract_replace(&buf, &tokenizer_regexes().punctuation);
     buf = b4;
     tokens.extend(t4);
     // 5. extractAndReplaceRegular.
-    let (b5, t5) = common_extract_replace(buf, &tokenizer_regexes().regular_token);
+    let (b5, t5) = common_extract_replace(&buf, &tokenizer_regexes().regular_token);
     buf = b5;
     tokens.extend(t5);
     // 6. extractAndReplaceOperator.
-    let (b6, t6) = common_extract_replace(buf, &tokenizer_regexes().operators);
+    let (b6, t6) = common_extract_replace(&buf, &tokenizer_regexes().operators);
     buf = b6;
     tokens.extend(t6);
     // 7. extractRemainders.
@@ -198,28 +197,28 @@ fn tokenize(content: &[u8]) -> Vec<Vec<u8>> {
     tokens
 }
 
-fn common_extract_replace(content: Vec<u8>, re: &Regex) -> (Vec<u8>, Vec<Vec<u8>>) {
-    let toks: Vec<Vec<u8>> = re.find_iter(&content).map(|m| m.as_bytes().to_vec()).collect();
-    let replaced = re.replace_all(&content, &b" "[..]).into_owned();
+fn common_extract_replace(content: &[u8], re: &Regex) -> (Vec<u8>, Vec<Vec<u8>>) {
+    let toks: Vec<Vec<u8>> = re.find_iter(content).map(|m| m.as_bytes().to_vec()).collect();
+    let replaced = re.replace_all(content, &b" "[..]).into_owned();
     (replaced, toks)
 }
 
-fn extract_shebang(content: Vec<u8>) -> (Vec<u8>, Vec<Vec<u8>>) {
+fn extract_shebang(content: &[u8]) -> Vec<Vec<u8>> {
     let re = &tokenizer_regexes().shebang;
     let mut shebang_tokens: Vec<Vec<u8>> = Vec::new();
-    for caps in re.captures_iter(&content) {
+    for caps in re.captures_iter(content) {
         shebang_tokens.push(get_shebang_token(&caps));
     }
-    // NOTE: Go's extractAndReplaceShebang calls reShebang.ReplaceAll but
-    // DISCARDS the result (`reShebang.ReplaceAll(content, ...)` with no
-    // assignment), so the content is NOT modified. Reproduce that bug exactly.
-    (content, shebang_tokens)
+    // NOTE: enry's extractAndReplaceShebang computes a replacement but DISCARDS
+    // it (the ReplaceAll result is never assigned), so the buffer is NOT
+    // modified. Reproduce that upstream quirk exactly: only tokens come out.
+    shebang_tokens
 }
 
 fn get_shebang_token(caps: &regex::bytes::Captures) -> Vec<u8> {
     const PREFIX: &[u8] = b"SHEBANG#!";
     let mut token: &[u8] = b"";
-    // Mirror Go: iterate submatches from index 1, first non-empty wins.
+    // Iterate submatches from index 1; the first non-empty one wins.
     for i in 1..caps.len() {
         if let Some(m) = caps.get(i) {
             if !m.as_bytes().is_empty() {
@@ -240,7 +239,7 @@ fn extract_sgml(content: Vec<u8>) -> (Vec<u8>, Vec<Vec<u8>>) {
     let mut any = false;
     for caps in re.captures_iter(&content) {
         any = true;
-        let whole = caps.get(0).map(|m| m.as_bytes()).unwrap_or(b"");
+        let whole = caps.get(0).map_or(&b""[..], |m| m.as_bytes());
         if re_comment.is_match(whole) {
             continue;
         }
@@ -294,13 +293,13 @@ fn skip_comments_and_literals(mut content: Vec<u8>) -> Vec<u8> {
 }
 
 fn extract_remainders(content: &[u8]) -> Vec<Vec<u8>> {
-    // Go: bytes.Fields(content) then split each field on nil (== into bytes).
+    // enry splits the leftover buffer into whitespace-separated fields, then
+    // splits each field into its individual bytes (one token per byte).
     let mut out: Vec<Vec<u8>> = Vec::new();
-    for field in content.split(|b| b.is_ascii_whitespace()) {
+    for field in content.split(u8::is_ascii_whitespace) {
         if field.is_empty() {
             continue;
         }
-        // bytes.Split(remainder, nil) splits into individual bytes.
         for &byte in field {
             out.push(vec![byte]);
         }
@@ -309,7 +308,7 @@ fn extract_remainders(content: &[u8]) -> Vec<Vec<u8>> {
 }
 
 // ---------------------------------------------------------------------------
-// Classifier (port of classifier.go).
+// Classifier (enry classifier.go).
 // ---------------------------------------------------------------------------
 
 /// Classify `content` among `candidates`, returning the languages sorted by
@@ -325,14 +324,14 @@ fn classify(content: &[u8], candidates: &[String]) -> Vec<String> {
     // GetLanguageByAlias normalization on each candidate (matches Classify).
     let mut languages: Vec<String> = Vec::with_capacity(candidates.len());
     for cand in candidates {
-        let normalized = crate::canonical_language(cand).unwrap_or(cand.clone());
+        let normalized = crate::canonical_language(cand).unwrap_or_else(|| cand.clone());
         if !languages.contains(&normalized) {
             languages.push(normalized);
         }
     }
 
     let empty = content.is_empty();
-    // Token keys are raw bytes, matching Go's `string([]byte token)` map keys.
+    // Token keys are raw bytes, matching the frequency tables' raw-byte keys.
     let tokens: Vec<Vec<u8>> = if empty { Vec::new() } else { tokenize(content) };
 
     let mut scored: Vec<(String, f64)> = Vec::with_capacity(languages.len());
@@ -351,9 +350,9 @@ fn classify(content: &[u8], candidates: &[String]) -> Vec<String> {
         scored.push((lang.clone(), score));
     }
 
-    // sort.Stable(byScore): Less(i,j) == score[j] < score[i] ⇒ descending by
-    // score, stable on ties (preserves insertion order, which is `languages`
-    // order). Rust's sort_by is stable.
+    // enry's byScore stable sort: descending by score, stable on ties
+    // (preserves insertion order, which is `languages` order). Rust's sort_by
+    // is stable, so the ranking matches exactly.
     scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     scored.into_iter().map(|(l, _)| l).collect()
 }
@@ -370,6 +369,7 @@ fn first_language(languages: &[String]) -> String {
 
 /// Public entry: resolve a language for `content` among `candidates` via the
 /// Naive-Bayes classifier (`GetLanguageByClassifier` → `firstLanguage`).
+///
 /// Returns `None` when there are no candidates (enry returns nil ⇒ the caller's
 /// `firstLanguage` over the empty list yields "Other", which the devs path maps
 /// to the "" / "Other" bucket itself).

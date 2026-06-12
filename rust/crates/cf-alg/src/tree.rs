@@ -1,6 +1,6 @@
-//! Iterative tree traversal. Port of `pkg/alg/tree.go`.
+//! Iterative tree traversal.
 
-/// Initial stack capacity, matching the Go `defaultTreeStackCap` constant.
+/// Initial capacity of the explicit traversal stack.
 const DEFAULT_TREE_STACK_CAP: usize = 32;
 
 /// Performs an iterative pre-order DFS over a tree.
@@ -9,10 +9,9 @@ const DEFAULT_TREE_STACK_CAP: usize = 32;
 /// with its depth (the root has depth `0`). An empty children slice terminates
 /// the branch.
 ///
-/// This reproduces `alg.TraverseTree` exactly, including the visitation order:
-/// children are pushed onto the explicit stack in reverse so they are visited
-/// left-to-right (pre-order). `T: Clone` mirrors the Go semantics where node
-/// values (or pointers) are copied onto the work stack.
+/// Children are pushed onto the explicit stack in reverse so they are visited
+/// left-to-right (pre-order); downstream callers rely on this order.
+/// `T: Clone` because node values are copied onto the work stack.
 pub fn traverse_tree<T, C, V>(root: T, mut children: C, mut visit: V)
 where
     T: Clone,
@@ -63,7 +62,6 @@ mod tests {
 
     #[test]
     fn single_node() {
-        // Go: TestTraverseTree_SingleNode.
         let root = TestNode::leaf("root");
         let mut visited = Vec::new();
         traverse_tree(root, children_of, |n, depth| {
@@ -75,7 +73,7 @@ mod tests {
 
     #[test]
     fn pre_order() {
-        // Go: TestTraverseTree_PreOrder. Tree: a -> {b -> {d}, c}.
+        // Tree: a -> {b -> {d}, c}.
         let d = TestNode::leaf("d");
         let b = TestNode::with_children("b", vec![d]);
         let c = TestNode::leaf("c");
@@ -88,7 +86,6 @@ mod tests {
 
     #[test]
     fn depth_tracking() {
-        // Go: TestTraverseTree_DepthTracking.
         use std::collections::HashMap;
 
         let d = TestNode::leaf("d");
@@ -109,7 +106,6 @@ mod tests {
 
     #[test]
     fn nil_children() {
-        // Go: TestTraverseTree_NilChildren.
         let root = TestNode::leaf("root");
         let mut count = 0;
         traverse_tree(root, children_of, |_, _| count += 1);
@@ -118,7 +114,6 @@ mod tests {
 
     #[test]
     fn empty_children_terminates_branch() {
-        // Go: TestTraverseTree_EmptyChildrenTerminatesBranch.
         let leaf = TestNode::with_children("leaf", Vec::new());
         let root = TestNode::with_children("root", vec![leaf]);
 
@@ -129,7 +124,6 @@ mod tests {
 
     #[test]
     fn visit_filters_by_depth() {
-        // Go: TestTraverseTree_ChildrenFuncControlsTraversal.
         let d = TestNode::leaf("d");
         let b = TestNode::with_children("b", vec![d]);
         let c = TestNode::leaf("c");
@@ -151,7 +145,7 @@ mod tests {
 
     #[test]
     fn int_tree() {
-        // Go: TestTraverseTree_IntTree. Non-pointer value types.
+        // Non-pointer value types.
         #[derive(Clone)]
         struct IntNode {
             val: i32,
@@ -182,7 +176,6 @@ mod tests {
 
     #[test]
     fn wide_tree() {
-        // Go: TestTraverseTree_WideTree.
         const WIDTH: usize = 100;
         let children: Vec<TestNode> = (0..WIDTH).map(|_| TestNode::leaf("child")).collect();
         let root = TestNode::with_children("root", children);

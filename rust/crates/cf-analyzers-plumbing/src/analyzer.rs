@@ -1,38 +1,23 @@
 //! Minimal analyzer interface used by the plumbing providers.
 //!
-//! In the Go implementation this is `framework.Analyzer`
-//! (`internal/analyzers/framework/registry.go`):
-//!
-//! ```go
-//! type Analyzer interface {
-//!     Name() string
-//!     Provides() []string
-//!     Requires() []string
-//!     Configure(facts map[string]any) error
-//!     ConfigureUAST(parser uast.Parser)
-//!     Consume(deps map[string]any) (map[string]any, error)
-//! }
-//! ```
-//!
-//! The canonical home for this trait is `cf-core`. At the time this crate was
-//! ported `cf-core` was still a stub, so a local definition is provided here so
-//! the plumbing providers can be expressed against a stable interface. When
-//! `cf-core` exposes the real trait this module should be deleted and replaced
-//! by a re-export. See the crate-level `todos`.
+//! A local definition so the plumbing providers can be expressed against a
+//! stable interface without depending on the framework crate. When the
+//! framework exposes the canonical trait this module should be deleted and
+//! replaced by a re-export.
 
 use std::any::Any;
 use std::collections::HashMap;
 
 use crate::uast_iface::SharedParser;
 
-/// Type-erased value flowing between analyzers, mirroring Go's `any`.
+/// Type-erased value flowing between analyzers.
 ///
-/// The Go pipeline threads `map[string]any` between providers; in Rust we use
-/// `Box<dyn Any>` so heterogeneous outputs (changes, caches, ticks, ...) can be
-/// carried through a single map type without a closed enum.
+/// The pipeline threads heterogeneous outputs (changes, caches, ticks, ...)
+/// between providers; `Box<dyn Any>` carries them through a single map type
+/// without a closed enum.
 pub type AnyValue = Box<dyn Any + Send + Sync>;
 
-/// Dependency / output map, the analogue of Go's `map[string]any`.
+/// Dependency / output map.
 pub type ValueMap = HashMap<String, AnyValue>;
 
 /// Configuration facts passed to [`Analyzer::configure`].
@@ -40,8 +25,8 @@ pub type Facts = HashMap<String, AnyValue>;
 
 /// Error returned by analyzer operations.
 ///
-/// Mirrors the Go convention of returning `error`. Variants are kept coarse on
-/// purpose; the precise error taxonomy belongs to `cf-core`.
+/// Variants are kept coarse on purpose; the precise error taxonomy belongs to
+/// the framework layer.
 #[derive(Debug, thiserror::Error)]
 pub enum AnalyzerError {
     /// A required dependency was missing or had an unexpected type.
@@ -70,7 +55,7 @@ impl From<std::io::Error> for AnalyzerError {
     }
 }
 
-/// A pipeline provider, mirroring `framework.Analyzer`.
+/// A pipeline provider.
 ///
 /// Implementors declare what facts they `provides` and `requires`, are
 /// optionally configured with facts and a UAST parser, and `consume` a map of
@@ -86,6 +71,10 @@ pub trait Analyzer {
     fn requires(&self) -> Vec<&'static str>;
 
     /// Apply free-form configuration facts. Default: no-op.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`AnalyzerError`] when a fact is invalid for this provider.
     fn configure(&mut self, _facts: &Facts) -> Result<(), AnalyzerError> {
         Ok(())
     }
@@ -94,13 +83,20 @@ pub trait Analyzer {
     fn configure_uast(&mut self, _parser: SharedParser) {}
 
     /// Process one commit's worth of dependencies into outputs.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`AnalyzerError`] when a dependency is missing/mistyped or
+    /// the underlying computation fails.
     fn consume(&mut self, deps: &mut ValueMap) -> Result<ValueMap, AnalyzerError>;
 }
 
-/// Borrow a typed dependency out of the [`ValueMap`], returning a
-/// [`AnalyzerError::Dependency`] when absent or of the wrong type.
+/// Borrow a typed dependency out of the [`ValueMap`].
 ///
-/// This is the Rust analogue of the Go `deps["x"].(T)` type assertion.
+/// # Errors
+///
+/// Returns [`AnalyzerError::Dependency`] when the key is absent or holds a
+/// value of the wrong type.
 pub fn dep<'a, T: 'static>(deps: &'a ValueMap, key: &str) -> Result<&'a T, AnalyzerError> {
     deps.get(key)
         .ok_or_else(|| AnalyzerError::Dependency(format!("{key} not present")))?

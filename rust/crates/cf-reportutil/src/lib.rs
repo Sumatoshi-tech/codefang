@@ -1,41 +1,40 @@
 //! Shared helpers for analyzers that emit reports (`cf-reportutil`).
 //!
-//! Rust port of the Go package `internal/analyzers/common/reportutil`. It
-//! provides three things, one per module:
+//! Three things, one per module:
 //!
-//! * [`binary`] — the **CFB1** binary envelope (`binary.go`): a stream of
+//! * [`binary`] — the **CFB1** binary envelope: a stream of
 //!   `[4-byte magic "CFB1"][LE u32 payload length][compact escaped JSON payload]`
 //!   records ([`binary::encode_binary_envelope`],
 //!   [`binary::decode_binary_envelope`], [`binary::decode_binary_envelopes`]).
-//! * [`accessors`] — type-safe accessors over the dynamic `map[string]any`
-//!   report model (`reportutil.go`): [`accessors::get`], [`accessors::get_int`],
+//! * [`accessors`] — type-safe accessors over the dynamic report map:
+//!   [`accessors::get`], [`accessors::get_int`],
 //!   [`accessors::get_float64`], [`accessors::get_string`],
 //!   [`accessors::get_string_slice`], [`accessors::get_functions`],
 //!   [`accessors::get_string_int_map`], [`accessors::map_string`].
-//! * [`format`] — small scalar formatting helpers (`reportutil.go`):
+//! * [`format`] — small scalar formatting helpers:
 //!   [`format::format_int`], [`format::format_float`],
 //!   [`format::format_percent`], [`format::pct`].
 //!
 //! # Byte identity
 //!
-//! The CFB1 payload is the *compact, HTML-escaped* JSON encoding produced by
-//! Go's `encoding/json.Marshal`. Per `specs/rust-rewrite/DESIGN.md` (§2.2, §2.5)
-//! this crate does **not** use `serde_json`; it routes the payload through the
-//! shared [`cf_gojson`] crate's `marshal`, which reproduces Go's defaults
-//! exactly: map keys byte-sorted, `<`/`>`/`&` and `U+2028`/`U+2029` escaped, no
-//! insignificant whitespace, no trailing newline.
+//! The CFB1 payload is the *compact, HTML-escaped* report-contract JSON
+//! encoding. Per `specs/rust-rewrite/DESIGN.md` (§2.2, §2.5) this crate does
+//! **not** use `serde_json`; it routes the payload through the shared
+//! [`cf_gojson`] crate's `marshal` (map keys byte-sorted, `<`/`>`/`&` and
+//! `U+2028`/`U+2029` escaped, no insignificant whitespace, no trailing
+//! newline). Output bytes are pinned against the reference implementation by
+//! `rust/tests/compat`.
 //!
 //! Cross-type numeric coercion in [`accessors::get_int`] /
-//! [`accessors::get_float64`] delegates to the shared [`cf_safeconv`] crate,
-//! mirroring Go's `safeconv.ToInt` / `safeconv.ToFloat64`.
+//! [`accessors::get_float64`] delegates to the shared [`cf_safeconv`] crate.
 
 pub mod accessors;
 pub mod binary;
 pub mod format;
 
-// Flat re-exports so callers can use the package-level names that mirror the Go
-// `reportutil` API surface (e.g. `reportutil.GetString`, `reportutil.FormatInt`,
-// `reportutil.EncodeBinaryEnvelope`).
+// Flat re-exports so callers can use short package-level names
+// (`cf_reportutil::get_string`, `cf_reportutil::format_int`,
+// `cf_reportutil::encode_binary_envelope`, …).
 pub use accessors::{
     get, get_float64, get_functions, get_int, get_string, get_string_int_map, get_string_slice,
     map_string,

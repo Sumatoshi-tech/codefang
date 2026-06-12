@@ -6,13 +6,12 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "Build/version metadata constants for codefang (Go pkg/version port). Both binaries print `<name> <Version> (commit: <Commit>, built: <Date>)`."
+description = "Build/version metadata constants for codefang. Both binaries print `<name> <Version> (commit: <Commit>, built: <Date>)`."
 
-# Build metadata is injected at compile time by build.rs (the Rust analogue of
-# Go's ldflags `-X ...version.Version=` injection). build.rs reads, per field
-# (first non-empty wins): Version <- CF_VERSION / GIT_VERSION; Commit <-
-# CF_COMMIT / GIT_COMMIT; Date <- CF_DATE / SOURCE_DATE_EPOCH (epoch -> RFC3339
-# UTC). When unset, the Go defaults dev / none / unknown are used.
+# Build metadata is injected at compile time by build.rs, which reads, per
+# field (first non-empty wins): Version <- CF_VERSION / GIT_VERSION; Commit <-
+# CF_COMMIT / GIT_COMMIT; Date <- CF_DATE / SOURCE_DATE_EPOCH (epoch ->
+# RFC3339 UTC). When unset, the frozen defaults dev / none / unknown are used.
 build = "build.rs"
 
 [dependencies]

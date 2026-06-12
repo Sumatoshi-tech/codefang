@@ -1,20 +1,18 @@
 //! Checkpoint state and metadata structures.
 //!
-//! These are the wrapper structs whose JSON field order is governed by **struct
-//! declaration order** (DESIGN §2): the field order and the `json:"..."` tag
-//! names below match `internal/checkpoint/state.go` exactly so that
-//! `checkpoint.json` is byte-identical to the Go output. `Checksums` is the only
-//! map-origin field; serialized via a `BTreeMap` it is byte-sorted by key,
-//! matching Go's `map[string]X` encode-time sort.
+//! These are the wrapper structs whose JSON field order is governed by
+//! **struct declaration order** (DESIGN §2): the declaration order and the
+//! serde rename strings below are frozen so that `checkpoint.json` keeps the
+//! pinned byte layout. `checksums` is the only map-origin field; serialized
+//! via a `BTreeMap` it is byte-sorted by key (map-key ordering contract).
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// Records on-disk spill state for a single aggregator.
 ///
-/// Ported from Go's `AggregatorSpillEntry`. Both fields carry `omitempty`, so an
-/// empty entry (`Dir == ""`, `Count == 0`) serializes to `{}` — matching the Go
-/// encoder, which omits zero-valued `omitempty` fields.
+/// Both fields are omitted when zero-valued, so an empty entry
+/// (`dir == ""`, `count == 0`) serializes to `{}` (metadata-layout contract).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AggregatorSpillEntry {
     /// Directory containing gob/bincode-encoded spill files.
@@ -28,10 +26,8 @@ pub struct AggregatorSpillEntry {
 
 /// Tracks chunk-orchestrator progress for streaming analysis.
 ///
-/// Ported from Go's `StreamingState`. The six scalar fields have no `omitempty`
-/// and are always emitted (in declaration order); `aggregator_spills` carries
-/// `omitempty`, so a `None`/empty list is omitted, matching Go's nil-slice
-/// behavior.
+/// The six scalar fields are always emitted (in declaration order);
+/// `aggregator_spills` is omitted when empty (metadata-layout contract).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StreamingState {
     /// Total number of commits in the analysis.
@@ -60,9 +56,9 @@ pub struct StreamingState {
 
     /// Spill state of each aggregator at checkpoint time, indexed by analyzer
     /// position in the runner's analyzer list. Empty entries mean the analyzer
-    /// has no aggregator (e.g. plumbing, file_history).
+    /// has no aggregator (e.g. plumbing, `file_history`).
     ///
-    /// Serialized only when non-empty (Go `omitempty` on a nil slice).
+    /// Serialized only when non-empty.
     #[serde(
         rename = "aggregator_spills",
         default,
@@ -73,11 +69,10 @@ pub struct StreamingState {
 
 /// Checkpoint metadata used for validation and resume.
 ///
-/// Ported from Go's `Metadata`. Field order matches the Go struct declaration.
+/// Field declaration order is frozen (it governs the emitted key order).
 /// `checksums` is a map; using a [`BTreeMap`] makes its keys byte-sorted on
-/// serialize, matching Go's `map[string]string` encode-time ordering. None of
-/// the fields carry `omitempty`, so all are always present (a `null`
-/// `checksums`/`analyzers` round-trips to an empty map/vec on load).
+/// serialize (map-key ordering contract). Every field is always present (a
+/// `null` `checksums`/`analyzers` round-trips to an empty map/vec on load).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Metadata {
     /// Checkpoint metadata format version (see [`MetadataVersion`](crate::MetadataVersion)).
@@ -109,15 +104,15 @@ pub struct Metadata {
     pub checksums: BTreeMap<String, String>,
 }
 
-/// `skip_serializing_if` predicate for `i64` zero values, mirroring Go's
-/// `omitempty` on an `int` field.
+/// `skip_serializing_if` predicate for `i64` zero values (omit-when-zero
+/// metadata-layout rule).
 #[allow(clippy::trivially_copy_pass_by_ref)]
-fn is_zero_i64(v: &i64) -> bool {
+const fn is_zero_i64(v: &i64) -> bool {
     *v == 0
 }
 
-/// Deserializes a JSON `null` into the type's `Default`, matching Go's
-/// `json.Unmarshal` which leaves a nil slice/map (rendered here as empty).
+/// Deserializes a JSON `null` into the type's `Default`, so metadata written
+/// with null lists/maps loads as empty collections.
 fn null_to_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -132,7 +127,7 @@ mod tests {
     use super::*;
     use crate::codec::JsonCodec;
 
-    // Ported from state_test.go TestStreamingState_JSONRoundTrip.
+    // Mirrors TestStreamingState_JSONRoundTrip.
     #[test]
     fn streaming_state_json_round_trip() {
         let state = StreamingState {
@@ -149,7 +144,7 @@ mod tests {
         assert_eq!(state, restored);
     }
 
-    // Ported from state_test.go TestMetadata_JSONRoundTrip.
+    // Mirrors TestMetadata_JSONRoundTrip.
     #[test]
     fn metadata_json_round_trip() {
         let mut checksums = BTreeMap::new();
@@ -175,7 +170,7 @@ mod tests {
         assert_eq!(meta.checksums, restored.checksums);
     }
 
-    // Ported from state_test.go TestMetadata_CreatedAt.
+    // Mirrors TestMetadata_CreatedAt.
     #[test]
     fn metadata_created_at_round_trip() {
         let meta = Metadata {
@@ -189,9 +184,10 @@ mod tests {
     }
 
     #[test]
-    fn metadata_field_order_matches_go_declaration() {
-        // Go declares: version, repo_path, repo_hash, created_at, analyzers,
-        // streaming_state, checksums. serde_json preserves struct field order.
+    fn metadata_field_order_matches_declaration() {
+        // Declaration order: version, repo_path, repo_hash, created_at,
+        // analyzers, streaming_state, checksums. serde_json preserves struct
+        // field order.
         let meta = Metadata {
             version: 2,
             repo_path: "/r".into(),

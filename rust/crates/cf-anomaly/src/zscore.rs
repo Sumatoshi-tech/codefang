@@ -1,11 +1,11 @@
 //! Trailing-window Z-score computation.
 //!
-//! Port of `ComputeZScores` in `internal/analyzers/anomaly/zscore.go`. For each
-//! index `i`, the Z-score is computed relative to the trailing window of values
-//! **before** `i`: `values[max(0, i-window) .. i]` (exclusive of `i`), exactly as
-//! Go does.
+//! For each index `i`, the Z-score is computed relative to the trailing
+//! window of values **before** `i`: `values[max(0, i-window) .. i]`
+//! (exclusive of `i`).
 //!
-//! Edge rules mirror Go verbatim:
+//! Edge rules (reference-implementation behavior, pinned by the differential
+//! gate):
 //! * the window for `i == 0` is empty → Z-score `0`;
 //! * zero standard deviation and the value equals the mean → `0`;
 //! * zero standard deviation but the value differs → the signed sentinel
@@ -13,15 +13,14 @@
 
 use cf_alg_stats::{mean_std_dev, Z_SCORE_MAX_SENTINEL};
 
-/// Sentinel magnitude for a zero-variance trailing window whose current value
-/// differs from the window mean. Re-exported from `cf_alg_stats` (Go
-/// `stats.ZScoreMaxSentinel` = `100.0`); the emitted value is signed via
-/// `copysign`, matching Go.
+/// Sentinel magnitude (`100.0`) for a zero-variance trailing window whose
+/// current value differs from the window mean. Re-exported from
+/// `cf_alg_stats`; the emitted value is signed via `copysign`.
 pub use cf_alg_stats::Z_SCORE_MAX_SENTINEL as Z_SCORE_SENTINEL;
 
 /// Returns, for each index `i`, the trailing-window Z-score of `values[i]`.
 ///
-/// Mirrors Go `ComputeZScores` operation-for-operation:
+/// The operation order is part of the float contract:
 /// * `window` is clamped up to `1` when `< 1`;
 /// * the window is `values[max(0, i-window) .. i]` (**exclusive** of `i`);
 /// * an empty window (`i == 0`) yields `0`;
@@ -35,15 +34,14 @@ pub fn compute_z_scores(values: &[f64], window: usize) -> Vec<f64> {
         return Vec::new();
     }
 
-    // Go: if window < 1 { window = 1 }. usize is >= 0, so only 0 needs clamping.
+    // A window below 1 is clamped to 1; usize is >= 0, so only 0 needs it.
     let window = window.max(1);
 
     let mut scores = vec![0.0_f64; count];
 
     for i in 0..count {
-        // Go: start := max(0, i-window). `i.saturating_sub(window)` == max(0, i-window).
-        let start = i.saturating_sub(window);
-        let window_slice = &values[start..i]; // EXCLUSIVE of i, matching Go.
+        let start = i.saturating_sub(window); // max(0, i-window)
+        let window_slice = &values[start..i]; // EXCLUSIVE of i.
 
         if window_slice.is_empty() {
             scores[i] = 0.0;
@@ -57,7 +55,6 @@ pub fn compute_z_scores(values: &[f64], window: usize) -> Vec<f64> {
             scores[i] = if diff == 0.0 {
                 0.0
             } else {
-                // Go: math.Copysign(stats.ZScoreMaxSentinel, diff).
                 Z_SCORE_MAX_SENTINEL.copysign(diff)
             };
             continue;
@@ -70,12 +67,12 @@ pub fn compute_z_scores(values: &[f64], window: usize) -> Vec<f64> {
 }
 
 #[cfg(test)]
+#[allow(clippy::float_cmp)] // exact contract values (sentinels, exact zeros) are the point
 mod tests {
     use super::*;
 
     #[test]
     fn empty_input() {
-        // Go returns nil; we return an empty Vec (same length: 0).
         assert!(compute_z_scores(&[], 5).is_empty());
     }
 
@@ -88,16 +85,16 @@ mod tests {
 
     #[test]
     fn zero_stddev_equal_is_zero() {
-        // Mirrors Go TestComputeZScores_ZeroStdDev: flat trailing window, value
-        // equals the mean -> 0.
+        // Mirrors reference test TestComputeZScores_ZeroStdDev: flat trailing
+        // window, value equals the mean -> 0.
         let z = compute_z_scores(&[5.0, 5.0, 5.0, 5.0], 3);
         assert_eq!(z, vec![0.0, 0.0, 0.0, 0.0]);
     }
 
     #[test]
     fn zero_stddev_with_diff_uses_signed_sentinel() {
-        // Mirrors Go TestComputeZScores_SentinelOnZeroStdDevWithDiff: a flat
-        // trailing window then a larger value -> +sentinel.
+        // Mirrors reference test TestComputeZScores_SentinelOnZeroStdDevWithDiff:
+        // a flat trailing window then a larger value -> +sentinel.
         let z = compute_z_scores(&[1.0, 1.0, 1.0, 9.0], 3);
         assert_eq!(z[3], Z_SCORE_MAX_SENTINEL);
         // A smaller value than a flat window -> -sentinel (copysign).

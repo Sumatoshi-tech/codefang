@@ -1,5 +1,4 @@
-//! `signal_on_drain` channel fan-through with exhaustion signalling
-//! (`drain.go`).
+//! `signal_on_drain` channel fan-through with exhaustion signalling.
 
 use crossbeam_channel::Receiver;
 use std::thread;
@@ -7,18 +6,15 @@ use std::thread;
 /// Forwards items from `src` to the returned `forwarded` receiver and closes
 /// the returned `drained` receiver once `src` is exhausted.
 ///
-/// This enables ending pipeline-stage spans independently. Mirrors Go's
-/// `SignalOnDrain[T]`.
+/// This enables ending pipeline-stage spans independently.
 ///
-/// Implementation mirrors the Go goroutine: a worker thread ranges over `src`,
-/// forwarding every item to `out`; on exhaustion it drops both the `out` sender
-/// (closing the forwarded channel) and the `sig` sender (closing the drained
-/// channel). In crossbeam, dropping a [`Sender`] closes its channel, the exact
-/// analogue of Go's `defer close(...)`.
+/// A worker thread loops over `src`, forwarding every item to `out`; on
+/// exhaustion it drops both the `out` sender (closing the forwarded channel)
+/// and the `sig` sender (closing the drained channel) — in crossbeam,
+/// dropping a [`Sender`](crossbeam_channel::Sender) closes its channel.
 ///
 /// The drained channel carries `()` and is never sent to — receivers observe
-/// closure (via `recv()` returning `Err`), which is the Rust equivalent of a
-/// closed `chan struct{}`.
+/// closure via `recv()` returning `Err`.
 #[must_use]
 pub fn signal_on_drain<T: Send + 'static>(
     src: Receiver<T>,
@@ -28,14 +24,12 @@ pub fn signal_on_drain<T: Send + 'static>(
 
     thread::spawn(move || {
         // `sig_tx` and `out_tx` are moved in; dropping them at scope exit
-        // closes both channels — the analogue of `defer close(sig)` /
-        // `defer close(out)`.
+        // closes both channels.
         let _sig_guard = sig_tx;
-        // `recv()` returns `Err` once `src` is closed and drained — the Rust
-        // analogue of `for item := range src`.
+        // `recv()` returns `Err` once `src` is closed and drained.
         while let Ok(item) = src.recv() {
-            // If the consumer dropped `out_rx`, send fails; stop forwarding,
-            // matching a Go pipeline whose downstream stage has gone away.
+            // If the consumer dropped `out_rx`, send fails; the downstream
+            // stage has gone away, so stop forwarding.
             if out_tx.send(item).is_err() {
                 break;
             }

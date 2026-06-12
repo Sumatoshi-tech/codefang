@@ -1,6 +1,6 @@
 //! Content-based language disambiguation heuristics.
 //!
-//! Faithful Rust port of enry's `GetLanguagesByContent` strategy
+//! Faithful reproduction of enry's `GetLanguagesByContent` strategy
 //! (`github.com/src-d/enry/v2@v2.1.0`), comprising:
 //!
 //! - the rule engine in `data/rule/rule.go` ([`Matcher`] / [`Heuristic`]),
@@ -14,9 +14,9 @@
 //! The heuristics disambiguate languages that collide on a single file
 //! extension (e.g. `.h` is C++ vs Objective-C, `.1` is Roff vs Roff Manpage),
 //! based on Linguist's content regexps. Regex matching runs over **raw bytes**
-//! (content may be non-UTF8) via [`regex::bytes`]. Go `regexp` and Rust `regex`
-//! are both RE2-family, so the pattern strings are ported verbatim, including
-//! the `(?m)` flag.
+//! (content may be non-UTF8) via [`regex::bytes`]. enry's regexp engine and
+//! Rust `regex` are both RE2-family, so the pattern strings are reproduced
+//! verbatim, including the `(?m)` flag.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -28,17 +28,17 @@ use regex::bytes::Regex;
 /// Variants correspond to the concrete `rule` types used in `content.go`:
 /// `or` (a single regex, since enry's `Or` always wraps one
 /// `regexp.MustCompile`), `and`, `not`, and `always`. The `languages` field of
-/// the Go rule types is carried separately on [`Heuristic`], not here, because
-/// only the **top-level** rule's languages are ever read.
+/// the upstream rule types is carried separately on [`Heuristic`], not here,
+/// because only the **top-level** rule's languages are ever read.
 enum Matcher {
     /// A single compiled regex. Matches when the regex matches the data. Covers
     /// both a bare `regexp.Regexp` matcher and the `rule.Or(langs, regexp)`
     /// wrapper (whose `Match` is just the inner regex's `Match`).
     Regex(Regex),
     /// `rule.And`: matches when **every** inner matcher matches.
-    And(Vec<Matcher>),
+    And(Vec<Self>),
     /// `rule.Not`: matches when **none** of the inner matchers match.
-    Not(Vec<Matcher>),
+    Not(Vec<Self>),
     /// `rule.Always`: always matches (Linguist's default fallback rule).
     Always,
 }
@@ -47,10 +47,10 @@ impl Matcher {
     /// Reproduces `rule.Matcher.Match(data)`.
     fn matches(&self, data: &[u8]) -> bool {
         match self {
-            Matcher::Regex(re) => re.is_match(data),
-            Matcher::And(ms) => ms.iter().all(|m| m.matches(data)),
-            Matcher::Not(ms) => !ms.iter().any(|m| m.matches(data)),
-            Matcher::Always => true,
+            Self::Regex(re) => re.is_match(data),
+            Self::And(ms) => ms.iter().all(|m| m.matches(data)),
+            Self::Not(ms) => !ms.iter().any(|m| m.matches(data)),
+            Self::Always => true,
         }
     }
 }
@@ -71,9 +71,9 @@ struct Heuristic {
 ///
 /// Iterates the rules in order; the **first** rule whose matcher matches wins.
 /// Its languages are mapped through enry's `LanguageByAlias`
-/// ([`crate::canonical_language`]); names that fail to resolve are dropped (Go
-/// `continue`s on `!ok`). Returns the matched, resolved languages in order, or
-/// an empty vec if no rule matched.
+/// ([`crate::canonical_language`]); names that fail to resolve are silently
+/// dropped, as upstream does. Returns the matched, resolved languages in
+/// order, or an empty vec if no rule matched.
 fn match_heuristics(rules: &[Heuristic], data: &[u8]) -> Vec<String> {
     let mut matched = Vec::new();
     for rule in rules {
@@ -92,34 +92,34 @@ fn match_heuristics(rules: &[Heuristic], data: &[u8]) -> Vec<String> {
 /// Reproduces enry's `GetLanguagesByContent(filename, content, _)` from
 /// `common.go`.
 ///
-/// Computes the **last** dotted extension of `filename`, lowercased — Go
-/// `strings.ToLower(filepath.Ext(filename))` semantics, i.e. the suffix from
-/// the final `.` (for `pcons-2.3.1` → `.1`, for `foo.tar.gz` → `.gz`). Looks up
+/// Computes the **last** dotted extension of `filename`, lowercased
+/// ([`filepath_ext`]), i.e. the suffix from the final `.` (for `pcons-2.3.1` →
+/// `.1`, for `foo.tar.gz` → `.gz`). Looks up
 /// the per-extension heuristics; if present, runs [`match_heuristics`] over the
 /// content. Returns the matched languages (possibly several, possibly empty).
 /// Returns an empty vec when `filename` is empty or its extension has no
 /// heuristics.
 ///
-/// The incoming-candidates argument of the Go strategy is ignored (its
-/// signature is `_ []string`): the result depends only on `(filename, content)`.
+/// Upstream's incoming-candidates argument is ignored (its signature discards
+/// it): the result depends only on `(filename, content)`.
 #[must_use]
 pub fn languages_by_content(filename: &str, content: &[u8]) -> Vec<String> {
     if filename.is_empty() {
         return Vec::new();
     }
     let ext = filepath_ext(filename).to_lowercase();
-    match content_heuristics().get(ext.as_str()) {
-        Some(rules) => match_heuristics(rules, content),
-        None => Vec::new(),
-    }
+    content_heuristics()
+        .get(ext.as_str())
+        .map_or_else(Vec::new, |rules| match_heuristics(rules, content))
 }
 
-/// Reproduces Go `filepath.Ext`: the suffix beginning at the final `.` in the
-/// last path element, or `""` if there is no dot.
+/// Reproduces the extension rule enry applies (its stdlib `filepath.Ext`): the
+/// suffix beginning at the final `.` in the last path element, or `""` if
+/// there is no dot.
 ///
-/// Go scans from the end of the whole path back to the last separator; the
-/// first `.` it hits (i.e. the last `.` in the basename) begins the extension.
-/// Since enry calls `filepath.Ext` on a filename that may still contain
+/// The scan runs from the end of the whole path back to the last separator;
+/// the first `.` it hits (i.e. the last `.` in the basename) begins the
+/// extension. Since enry computes this on a filename that may still contain
 /// separators, we mirror that: only dots after the last `/` or `\` count.
 fn filepath_ext(path: &str) -> &str {
     let bytes = path.as_bytes();
@@ -146,11 +146,11 @@ fn content_heuristics() -> &'static HashMap<&'static str, Vec<Heuristic>> {
 /// Compiles a Linguist regex pattern, panicking on failure.
 ///
 /// All `content.go` patterns are RE2-clean (no backreferences or lookaround),
-/// so this never fails at runtime; a panic here would mean a port bug in a
-/// pattern string. The pattern is first passed through [`sanitize_braces`] to
-/// reconcile Go RE2's lenient handling of literal `{`/`}` with Rust `regex`'s
-/// stricter parser (see that function). Compilation happens once, behind the
-/// [`content_heuristics`] `OnceLock`.
+/// so this never fails at runtime; a panic here would mean a transcription bug
+/// in a pattern string. The pattern is first passed through
+/// [`sanitize_braces`] to reconcile the reference engine's lenient handling of
+/// literal `{`/`}` with Rust `regex`'s stricter parser (see that function).
+/// Compilation happens once, behind the [`content_heuristics`] `OnceLock`.
 fn re(pattern: &str) -> Matcher {
     let sanitized = sanitize_braces(pattern);
     Matcher::Regex(
@@ -158,20 +158,21 @@ fn re(pattern: &str) -> Matcher {
     )
 }
 
-/// Reconciles Go RE2's lenient brace handling with Rust `regex`'s parser.
+/// Reconciles the reference engine's lenient brace handling with Rust
+/// `regex`'s parser.
 ///
-/// Go's `regexp` (RE2) treats a `{` that does not begin a valid counted
+/// enry's RE2 engine treats a `{` that does not begin a valid counted
 /// repetition (`{n}`, `{n,}`, `{n,m}`) as a **literal** brace, and likewise a
 /// stray `}`. Rust's `regex` crate instead rejects such braces as malformed
 /// repetition syntax. Several Linguist content patterns rely on the lenient
 /// behaviour (e.g. `\w+\s*{`, `{{[A-Za-z]`, `:{`).
 ///
-/// To port the patterns verbatim while compiling under Rust, this escapes every
-/// brace that is *not* part of a valid counted repetition (`\{` / `\}`), which
-/// is semantically identical to Go treating it as a literal. Backslash escapes
-/// are passed through untouched (so an already-literal `\}` and the `\\`
-/// sequence are preserved), and genuine repetitions like `[A-Za-z]{2}` are left
-/// intact.
+/// To keep the patterns verbatim while compiling under Rust, this escapes
+/// every brace that is *not* part of a valid counted repetition (`\{` / `\}`),
+/// which is semantically identical to the lenient literal treatment. Backslash
+/// escapes are passed through untouched (so an already-literal `\}` and the
+/// `\\` sequence are preserved), and genuine repetitions like `[A-Za-z]{2}`
+/// are left intact.
 fn sanitize_braces(pattern: &str) -> String {
     let bytes = pattern.as_bytes();
     let mut out = String::with_capacity(pattern.len() + 4);
@@ -511,11 +512,11 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
             },
             Heuristic {
                 langs: &["C++"],
-                // src-d/enry v2.1.0 (the version codefang's go.mod pins) has
-                // ONLY these alternatives and NO trailing `rule.Always(C)` —
-                // later go-enry releases add `__has_cpp_attribute|__cplusplus >`
-                // and an Always(C) rule; do NOT backport them, the classifier
-                // must arbitrate unmatched headers exactly as v2.1.0 does.
+                // src-d/enry v2.1.0 (the pinned reference version) has ONLY
+                // these alternatives and NO trailing `rule.Always(C)` — later
+                // go-enry releases add `__has_cpp_attribute|__cplusplus >` and
+                // an Always(C) rule; do NOT backport them, the classifier must
+                // arbitrate unmatched headers exactly as v2.1.0 does.
                 matcher: re(r"(?m)^\s*#\s*include <(cstdint|string|vector|map|list|array|bitset|queue|stack|forward_list|unordered_map|unordered_set|(i|o|io)stream)>|^\s*template\s*<|^[ \t]*(try|constexpr)|^[ \t]*catch\s*\(|^[ \t]*(class|(using[ \t]+)?namespace)\s+\w+|^[ \t]*(private|public|protected):$|std::\w+"),
             },
         ],

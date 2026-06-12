@@ -8,28 +8,25 @@
 //! Mitzenmacher (2006): two base hashes derive `k` bit positions via
 //! `h(i) = h1 + i*h2 mod m`, avoiding `k` independent hash functions.
 //!
-//! This is a faithful, behavior-exact port of the Go package
-//! `pkg/alg/bloom`. In particular:
+//! Compatibility: filter behavior is pinned to the reference implementation
+//! (differential gate: `rust/tests/compat`). Concretely:
 //!
-//! * `optimal_m` / `optimal_k` reproduce the Go sizing formulas (and Go's
-//!   `float64`-`uint` truncation), so [`Filter::bit_count`] and
-//!   [`Filter::hash_count`] return identical values to Go.
-//! * The hash kernel uses **FNV-128a** (matching Go's `hash/fnv.New128a`),
-//!   splitting the 128-bit digest into two big-endian 64-bit halves, with the
-//!   second half forced odd. This makes the chosen bit positions, and therefore
-//!   membership behavior, bit-identical to Go for any input.
-//! * [`Filter::to_binary`] / [`Filter::from_binary`] reproduce the Go
-//!   `MarshalBinary` / `UnmarshalBinary` byte layout exactly:
+//! * `optimal_m` / `optimal_k` use the reference sizing formulas, including
+//!   the `f64`-to-integer truncation, so [`Filter::bit_count`] and
+//!   [`Filter::hash_count`] are deterministic and reproducible.
+//! * The hash kernel is **FNV-128a**, splitting the 128-bit digest into two
+//!   big-endian 64-bit halves, with the second half forced odd. The chosen bit
+//!   positions — and therefore membership behavior — are bit-stable for any
+//!   input.
+//! * [`Filter::to_binary`] / [`Filter::from_binary`] use a frozen byte layout:
 //!   `[m: u64 BE][k: u64 BE][count: u64 BE][bits: u64 BE...]`.
 //!
 //! # Thread safety
 //!
-//! The Go `Filter` embeds a `sync.RWMutex`. In Rust the idiomatic and
-//! type-safe equivalent is to make the bare [`Filter`] `Send + Sync`-free of
-//! interior mutability and wrap it in a [`std::sync::RwLock`] when shared. For
-//! direct drop-in concurrent use matching the Go API (where every method takes
-//! `&self`), use [`SyncFilter`], which embeds an [`std::sync::RwLock`] exactly
-//! as the Go type embeds its mutex.
+//! The bare [`Filter`] has no interior mutability: mutating methods take
+//! `&mut self`, and the type can be wrapped in a [`std::sync::RwLock`] when
+//! shared. For a drop-in concurrent variant where every method takes `&self`,
+//! use [`SyncFilter`], which embeds the lock internally.
 //!
 //! # Example
 //!
@@ -51,11 +48,9 @@ const BITS_PER_WORD: u64 = 64;
 
 /// `ln(2)` squared, used in the optimal bit-array size formula.
 ///
-/// Computed from [`std::f64::consts::LN_2`] so it matches Go's
-/// `math.Ln2 * math.Ln2` to the last bit.
-const fn ln2_squared() -> f64 {
-    std::f64::consts::LN_2 * std::f64::consts::LN_2
-}
+/// Computed from [`std::f64::consts::LN_2`] so the sizing math is
+/// bit-reproducible.
+const LN2_SQUARED: f64 = std::f64::consts::LN_2 * std::f64::consts::LN_2;
 
 /// Byte size of the serialized header (`m` + `k` + `count`).
 const BLOOM_HEADER_SIZE: usize = 24;
@@ -65,48 +60,28 @@ const UINT64_SIZE: usize = 8;
 
 /// Errors returned by [`Filter`] construction and deserialization.
 ///
-/// The [`std::fmt::Display`] text matches the Go `errors.New` strings verbatim
-/// so log output and behavior parity hold across the port.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The [`std::fmt::Display`] texts are part of the CLI/log compatibility
+/// contract and must not change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum BloomError {
     /// `n` (expected element count) was zero.
-    ///
-    /// Go: `ErrZeroN = "bloom: n must be positive"`.
+    #[error("bloom: n must be positive")]
     ZeroN,
     /// `fp` was not in the open interval `(0, 1)`.
-    ///
-    /// Go: `ErrInvalidFP = "bloom: fp must be in the open interval (0, 1)"`.
+    #[error("bloom: fp must be in the open interval (0, 1)")]
     InvalidFp,
     /// Binary data was shorter than the fixed header.
-    ///
-    /// Go: `errBinaryDataTooShort = "bloom: binary data too short"`.
+    #[error("bloom: binary data too short")]
     BinaryDataTooShort,
     /// Binary payload length did not match the declared word count.
-    ///
-    /// Go: `errBinaryDataLenMismatch = "bloom: binary data length mismatch"`.
+    #[error("bloom: binary data length mismatch")]
     BinaryDataLenMismatch,
 }
 
-impl std::fmt::Display for BloomError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            BloomError::ZeroN => "bloom: n must be positive",
-            BloomError::InvalidFp => "bloom: fp must be in the open interval (0, 1)",
-            BloomError::BinaryDataTooShort => "bloom: binary data too short",
-            BloomError::BinaryDataLenMismatch => "bloom: binary data length mismatch",
-        };
-        f.write_str(s)
-    }
-}
-
-impl std::error::Error for BloomError {}
-
 /// A Bloom filter.
 ///
-/// Mirrors the Go `bloom.Filter` value (without the embedded mutex). All
-/// mutating methods take `&mut self`; read-only methods take `&self`. For a
-/// shared, internally-synchronized variant matching the Go API exactly, see
-/// [`SyncFilter`].
+/// All mutating methods take `&mut self`; read-only methods take `&self`. For
+/// a shared, internally-synchronized variant, see [`SyncFilter`].
 #[derive(Debug, Clone)]
 pub struct Filter {
     bits: Vec<u64>,
@@ -122,13 +97,15 @@ impl Filter {
     /// Creates a Bloom filter sized for `n` expected elements at a
     /// false-positive rate of `fp`.
     ///
+    /// The bit-array size `m` and hash-function count `k` are computed with
+    /// fixed formulas (including a deliberate `f64`-to-integer truncation), so
+    /// [`bit_count`](Self::bit_count) and [`hash_count`](Self::hash_count) are
+    /// fully determined by `n` and `fp`.
+    ///
+    /// # Errors
+    ///
     /// Returns [`BloomError::ZeroN`] if `n` is zero, or
     /// [`BloomError::InvalidFp`] if `fp` is not in the open interval `(0, 1)`.
-    ///
-    /// The bit-array size `m` and hash-function count `k` are computed with the
-    /// same formulas (and the same `f64`→integer truncation) as the Go
-    /// implementation, so [`bit_count`](Self::bit_count) and
-    /// [`hash_count`](Self::hash_count) are identical to Go.
     pub fn new_with_estimates(n: u64, fp: f64) -> Result<Self, BloomError> {
         if n == 0 {
             return Err(BloomError::ZeroN);
@@ -142,7 +119,7 @@ impl Filter {
         let k = optimal_k(m, n);
         let words = m.div_ceil(BITS_PER_WORD);
 
-        Ok(Filter {
+        Ok(Self {
             bits: vec![0u64; words as usize],
             m,
             k,
@@ -153,14 +130,14 @@ impl Filter {
     /// Returns the size of the bit array in bits (`m`).
     #[inline]
     #[must_use]
-    pub fn bit_count(&self) -> u64 {
+    pub const fn bit_count(&self) -> u64 {
         self.m
     }
 
     /// Returns the number of hash functions used by the filter (`k`).
     #[inline]
     #[must_use]
-    pub fn hash_count(&self) -> u64 {
+    pub const fn hash_count(&self) -> u64 {
         self.k
     }
 
@@ -209,7 +186,7 @@ impl Filter {
 
     /// Inserts multiple elements into the filter.
     ///
-    /// An empty `items` slice is a no-op (matching Go).
+    /// An empty `items` slice is a no-op.
     pub fn add_bulk(&mut self, items: &[&[u8]]) {
         if items.is_empty() {
             return;
@@ -224,9 +201,9 @@ impl Filter {
 
     /// Tests multiple elements for membership.
     ///
-    /// Returns `None` when `items` is empty (matching Go's `nil` return);
-    /// otherwise returns a `Vec<bool>` the same length as `items`, where each
-    /// entry indicates possible presence.
+    /// Returns `None` when `items` is empty; otherwise returns a `Vec<bool>`
+    /// the same length as `items`, where each entry indicates possible
+    /// presence.
     #[must_use]
     pub fn test_bulk(&self, items: &[&[u8]]) -> Option<Vec<bool>> {
         if items.is_empty() {
@@ -247,7 +224,7 @@ impl Filter {
     /// Returns an approximation of the number of elements added to the filter.
     #[inline]
     #[must_use]
-    pub fn estimated_count(&self) -> u64 {
+    pub const fn estimated_count(&self) -> u64 {
         self.count
     }
 
@@ -260,7 +237,7 @@ impl Filter {
 
     /// Encodes the filter into a binary format.
     ///
-    /// Layout (byte-identical to Go `MarshalBinary`):
+    /// Layout (frozen compatibility contract):
     /// `[m: u64 BE][k: u64 BE][count: u64 BE][bits: u64 BE ...]`.
     #[must_use]
     pub fn to_binary(&self) -> Vec<u8> {
@@ -277,8 +254,10 @@ impl Filter {
         buf
     }
 
-    /// Decodes a filter from a binary format produced by
-    /// [`to_binary`](Self::to_binary) (or Go's `MarshalBinary`).
+    /// Decodes a filter from the binary format produced by
+    /// [`to_binary`](Self::to_binary).
+    ///
+    /// # Errors
     ///
     /// Returns [`BloomError::BinaryDataTooShort`] if `data` is shorter than the
     /// fixed header, or [`BloomError::BinaryDataLenMismatch`] if the payload
@@ -304,12 +283,7 @@ impl Filter {
             *slot = read_be_u64(&data[start..start + UINT64_SIZE]);
         }
 
-        Ok(Filter {
-            bits,
-            m,
-            k,
-            count,
-        })
+        Ok(Self { bits, m, k, count })
     }
 
     /// Clears the filter without reallocating the bit array.
@@ -343,30 +317,26 @@ fn test_bits(arr: &[u64], m: u64, k: u64, h1: u64, h2: u64) -> bool {
 /// Computes the optimal bit-array size for `n` elements at false-positive rate
 /// `fp` using the formula `m = ceil(-n * ln(fp) / ln(2)^2)`.
 ///
-/// Reproduces Go's `uint(math.Ceil(...))` including the `f64`→integer
-/// truncation toward zero.
+/// The `f64`-to-integer conversion deliberately truncates toward zero
+/// (reference-implementation behavior).
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn optimal_m(n: u64, fp: f64) -> u64 {
-    (-(n as f64) * fp.ln() / ln2_squared()).ceil() as u64
+    (-(n as f64) * fp.ln() / LN2_SQUARED).ceil() as u64
 }
 
 /// Computes the optimal number of hash functions using the formula
 /// `k = round(m/n * ln(2))`, clamped to a minimum of 1.
-///
-/// Reproduces Go's `uint(math.Round(...))` and the `if k < 1 { 1 }` guard.
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn optimal_k(m: u64, n: u64) -> u64 {
     let k = (m as f64 / n as f64 * std::f64::consts::LN_2).round() as u64;
-    if k < 1 {
-        1
-    } else {
-        k
-    }
+    k.max(1)
 }
 
 /// Computes two independent 64-bit hashes from `data` using FNV-128a.
 ///
 /// The 128-bit digest is split into two big-endian 64-bit halves. The second
 /// half is forced odd so the step through the bit array is coprime with any
-/// even `m`. This matches Go's `hash/fnv.New128a` exactly.
+/// even `m`.
 fn hash_kernel(data: &[u8]) -> (u64, u64) {
     let digest = fnv128a(data);
 
@@ -379,17 +349,14 @@ fn hash_kernel(data: &[u8]) -> (u64, u64) {
     (h1, h2)
 }
 
-/// FNV-128a (Fowler–Noll–Vo, 128-bit, variant 1a).
-///
-/// Bit-identical to Go's `hash/fnv.New128a().Sum(nil)`:
+/// FNV-128a (Fowler–Noll–Vo, 128-bit, variant 1a) with the canonical
+/// constants:
 /// * offset basis `0x6c62272e07bb014262b821756295c58d`;
 /// * prime `0x0000000001000000000000000000013b` (`2^88 + 2^8 + 0x3b`).
 ///
 /// For each input byte: XOR into the low-order octet, then multiply the 128-bit
 /// accumulator by the FNV prime modulo `2^128`. The digest is serialized
-/// big-endian. (Go computes the multiply via two 64-bit limbs; a single `u128`
-/// `wrapping_mul` produces the identical low-128-bit result, so the emitted
-/// digest bytes match exactly.)
+/// big-endian.
 fn fnv128a(data: &[u8]) -> [u8; 16] {
     // 128-bit FNV offset basis and prime (canonical constants).
     const OFFSET_BASIS: u128 = 0x6c62_272e_07bb_0142_62b8_2175_6295_c58d;
@@ -412,12 +379,10 @@ fn read_be_u64(b: &[u8]) -> u64 {
     u64::from_be_bytes(a)
 }
 
-/// A thread-safe wrapper matching the Go `bloom.Filter` API surface, where
-/// every method takes `&self` and synchronization is internal (the Go type
-/// embeds a `sync.RWMutex`).
+/// A thread-safe wrapper around [`Filter`] where every method takes `&self`
+/// and synchronization is internal.
 ///
-/// Read methods take a read lock; mutating methods take a write lock, exactly
-/// as the Go implementation uses `RLock`/`Lock`.
+/// Read methods take a read lock; mutating methods take a write lock.
 #[derive(Debug)]
 pub struct SyncFilter {
     inner: RwLock<Filter>,
@@ -425,8 +390,12 @@ pub struct SyncFilter {
 
 impl SyncFilter {
     /// Creates a [`SyncFilter`]; see [`Filter::new_with_estimates`].
+    ///
+    /// # Errors
+    ///
+    /// See [`Filter::new_with_estimates`].
     pub fn new_with_estimates(n: u64, fp: f64) -> Result<Self, BloomError> {
-        Ok(SyncFilter {
+        Ok(Self {
             inner: RwLock::new(Filter::new_with_estimates(n, fp)?),
         })
     }
@@ -501,8 +470,12 @@ impl SyncFilter {
     }
 
     /// See [`Filter::from_binary`].
+    ///
+    /// # Errors
+    ///
+    /// See [`Filter::from_binary`].
     pub fn from_binary(data: &[u8]) -> Result<Self, BloomError> {
-        Ok(SyncFilter {
+        Ok(Self {
             inner: RwLock::new(Filter::from_binary(data)?),
         })
     }
@@ -517,37 +490,32 @@ impl SyncFilter {
 mod tests {
     use super::*;
 
-    /// Converts a `u64` to an 8-byte big-endian slice.
-    ///
-    /// Ported from the Go test helper `uint64ToBytes`.
+    /// Converts a `u64` to an 8-byte big-endian array.
     fn uint64_to_bytes(v: u64) -> [u8; 8] {
         v.to_be_bytes()
     }
 
     /// Generates a deterministic test key from a prefix and index.
-    ///
-    /// Ported from the Go test helper `testKey`.
     fn test_key(prefix: &str, idx: i32) -> Vec<u8> {
         format!("{prefix}-{idx}").into_bytes()
     }
 
-    // ---- Cross-language hash-parity fixtures --------------------------------
+    // ---- Hash-parity fixtures ----------------------------------------------
     //
-    // These golden vectors were computed against Go's `hash/fnv.New128a()`
-    // (the exact function the Go bloom kernel uses) and pin our FNV-128a
-    // reimplementation byte-for-byte. If these pass, the chosen bit positions
-    // — and thus all membership behavior — are identical to Go.
+    // These golden vectors were computed with the reference implementation's
+    // FNV-128a and pin our kernel byte-for-byte. If these pass, the chosen bit
+    // positions — and thus all membership behavior — match the reference
+    // binary.
 
     fn fnv128a_hex(data: &[u8]) -> String {
         let d = fnv128a(data);
         d.iter().map(|b| format!("{b:02x}")).collect()
     }
 
-    /// Independent, obviously-correct FNV-128a reference using native `u128`
-    /// arithmetic. This is a *different code path* from the production
-    /// limb-based [`fnv128a`] (which exists to mirror Go's `big`-style limb
-    /// multiply). If the two agree across a corpus, the production multiply is
-    /// proven correct — without relying on hand-transcribed golden hex.
+    /// Independent, obviously-correct FNV-128a reference written from the
+    /// published definition. If it agrees with the production [`fnv128a`]
+    /// across a corpus, the production kernel is correct — without relying on
+    /// hand-transcribed golden hex.
     fn fnv128a_reference(data: &[u8]) -> [u8; 16] {
         // FNV-128 offset basis and prime (canonical constants).
         let mut hash: u128 = 0x6c62_272e_07bb_0142_62b8_2175_6295_c58d;
@@ -597,7 +565,7 @@ mod tests {
         assert_eq!(fnv128a_hex(b"foobar"), "343e1662793c64bf6f0d3597ba446f18");
     }
 
-    // ---- Ported from bloom_test.go -----------------------------------------
+    // ---- Behavioral suite ---------------------------------------------------
 
     const STANDARD_N: u64 = 10_000_000;
     const STANDARD_FP: f64 = 0.01;
@@ -748,8 +716,8 @@ mod tests {
 
     #[test]
     fn nil_data() {
-        // In Rust, nil and empty slice are the same `&[]`. Both must behave the
-        // same and must not panic (Go's `Add(nil)` / `Add([]byte{})`).
+        // Adding the empty slice must behave like any other key and must not
+        // panic.
         let mut f = Filter::new_with_estimates(SMALL_N, STANDARD_FP).unwrap();
         f.add(&[]);
         assert!(f.test(&[]));
@@ -787,22 +755,22 @@ mod tests {
         use std::sync::Arc;
         use std::thread;
 
-        const CONC_GOROUTINES: u64 = 100;
-        const CONC_OPS_PER_G: u64 = 1000;
+        const CONC_THREADS: u64 = 100;
+        const CONC_OPS_PER_THREAD: u64 = 1000;
 
         let f = Arc::new(
-            SyncFilter::new_with_estimates(CONC_GOROUTINES * CONC_OPS_PER_G, STANDARD_FP).unwrap(),
+            SyncFilter::new_with_estimates(CONC_THREADS * CONC_OPS_PER_THREAD, STANDARD_FP).unwrap(),
         );
 
-        let handles: Vec<_> = (0..CONC_GOROUTINES)
+        let handles: Vec<_> = (0..CONC_THREADS)
             .map(|g| {
                 let f = Arc::clone(&f);
                 thread::spawn(move || {
-                    let base = g * CONC_OPS_PER_G;
-                    for i in 0..CONC_OPS_PER_G {
+                    let base = g * CONC_OPS_PER_THREAD;
+                    for i in 0..CONC_OPS_PER_THREAD {
                         f.add(&uint64_to_bytes(base + i));
                     }
-                    for i in 0..CONC_OPS_PER_G {
+                    for i in 0..CONC_OPS_PER_THREAD {
                         assert!(f.test(&uint64_to_bytes(base + i)));
                     }
                 })
@@ -813,7 +781,7 @@ mod tests {
             h.join().unwrap();
         }
 
-        assert_eq!(f.estimated_count(), CONC_GOROUTINES * CONC_OPS_PER_G);
+        assert_eq!(f.estimated_count(), CONC_THREADS * CONC_OPS_PER_THREAD);
     }
 
     #[test]
@@ -852,7 +820,7 @@ mod tests {
         }
     }
 
-    // ---- Binary round-trip (MarshalBinary / UnmarshalBinary parity) --------
+    // ---- Binary round-trip (serialized-layout contract) ---------------------
 
     #[test]
     fn binary_round_trip() {

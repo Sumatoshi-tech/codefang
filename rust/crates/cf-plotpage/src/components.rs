@@ -1,23 +1,23 @@
-//! HTML visualization components — port of Go `plotpage/components.go`.
+//! HTML visualization components.
 //!
-//! Each component reproduces, byte for byte, the output of its Go
-//! `html/template` file (`plotpage/templates/*.html`). The Go templates keep
-//! every literal byte outside `{{…}}` actions, so the Rust render functions
-//! interleave the same literal fragments with the (Go-html-escaped) data.
+//! Each component reproduces, byte for byte, the output of its reference
+//! `html/template` file (`plotpage/templates/*.html`). The templates keep
+//! every literal byte outside `{{…}}` actions, so the render functions
+//! interleave the same literal fragments with the html/template-escaped data.
 
 use crate::echarts::ChartIdGen;
 
-/// The render contract for chart/page components (Go `plotpage.Renderable`).
+/// The render contract for chart/page components.
 ///
-/// `ids` is the per-page deterministic chart-ID generator (Go assigns a random
-/// ID per chart at construction; the Rust port assigns sequential IDs at render
-/// so output is reproducible).
+/// `ids` is the per-page deterministic chart-ID generator (the reference
+/// renderer assigns a random ID per chart at construction; this crate assigns
+/// sequential IDs at render so output is reproducible).
 pub trait Renderable {
     /// Appends this component's HTML to `out`.
     fn render(&self, out: &mut String, ids: &mut ChartIdGen);
 }
 
-/// Pre-rendered raw HTML (Go `plotpage.rawHTML`).
+/// Pre-rendered raw HTML.
 pub struct RawHtml(pub String);
 
 impl Renderable for RawHtml {
@@ -34,10 +34,10 @@ impl Renderable for crate::echarts::Chart {
 }
 
 /// Escapes `s` exactly like `html/template`'s contextual auto-escaper for
-/// text nodes and quoted attribute values (`htmlReplacementTable`,
-/// GOROOT/src/html/template/html.go): `"` `&` `'` `+` `<` `>` become numeric/
-/// named entities and NUL becomes U+FFFD. Note `+` → `&#43;` — this is why the
-/// base64 logo data URI carries `&#43;` in Go's output.
+/// text nodes and quoted attribute values (its `htmlReplacementTable`):
+/// `"` `&` `'` `+` `<` `>` become numeric/named entities and NUL becomes
+/// U+FFFD. Note `+` → `&#43;` — this is why the base64 logo data URI carries
+/// `&#43;` in the reference output.
 #[must_use]
 pub fn html_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -56,9 +56,10 @@ pub fn html_escape(s: &str) -> String {
     out
 }
 
-/// Escapes `s` exactly like Go `template.HTMLEscapeString` (text/template's
-/// table: `&` `'` `<` `>` `"` only — no `+`). Used by [`Text`], which calls
-/// that function directly in Go (components.go:261).
+/// Escapes `s` exactly like `template.HTMLEscapeString` (text/template's
+/// table: `&` `'` `<` `>` `"` only — no `+`). Used by [`Text`], which the
+/// reference implementation escapes with that function directly
+/// (components.go:261).
 #[must_use]
 pub fn html_escape_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -78,7 +79,7 @@ pub fn html_escape_string(s: &str) -> String {
 /// Maximum grid columns (components.go `maxGridColumns`).
 const MAX_GRID_COLUMNS: usize = 4;
 
-/// Badge styling variants (Go `plotpage.BadgeVariant`).
+/// Badge styling variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BadgeVariant {
     /// Solid background.
@@ -90,7 +91,7 @@ pub enum BadgeVariant {
     Outline,
 }
 
-/// Badge colors (Go `plotpage.BadgeColor`).
+/// Badge colors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BadgeColor {
     /// Neutral stone palette (default).
@@ -108,17 +109,17 @@ pub enum BadgeColor {
     Info,
 }
 
-/// Plain text content, HTML-escaped on render (Go `plotpage.Text`).
+/// Plain text content, HTML-escaped on render.
 pub struct Text {
     /// The text content.
     pub content: String,
 }
 
 impl Text {
-    /// New text block (Go `NewText`).
+    /// New text block.
     #[must_use]
     pub fn new(content: &str) -> Self {
-        Text {
+        Self {
             content: content.to_string(),
         }
     }
@@ -130,7 +131,7 @@ impl Renderable for Text {
     }
 }
 
-/// An inline badge/tag (Go `plotpage.Badge`, templates/badge.html).
+/// An inline badge/tag (templates/badge.html).
 pub struct Badge {
     /// Badge text.
     pub text: String,
@@ -141,26 +142,26 @@ pub struct Badge {
 }
 
 impl Badge {
-    /// New soft default-colored badge (Go `NewBadge`).
+    /// New soft default-colored badge.
     #[must_use]
     pub fn new(text: &str) -> Self {
-        Badge {
+        Self {
             text: text.to_string(),
             variant: BadgeVariant::Soft,
             color: BadgeColor::Default,
         }
     }
 
-    /// Sets the badge color (Go `WithColor`).
+    /// Sets the badge color.
     #[must_use]
-    pub fn with_color(mut self, color: BadgeColor) -> Self {
+    pub const fn with_color(mut self, color: BadgeColor) -> Self {
         self.color = color;
         self
     }
 
-    /// The Tailwind classes for the variant+color (Go `getClasses`).
+    /// The Tailwind classes for the variant+color.
     #[must_use]
-    pub fn classes(&self) -> &'static str {
+    pub const fn classes(&self) -> &'static str {
         match self.variant {
             BadgeVariant::Solid => match self.color {
                 BadgeColor::Accent => "bg-amber-600 text-white",
@@ -212,7 +213,7 @@ impl Renderable for Badge {
     }
 }
 
-/// A card container (Go `plotpage.Card`, templates/card.html).
+/// A card container (templates/card.html).
 pub struct Card {
     /// Card title.
     pub title: String,
@@ -223,17 +224,17 @@ pub struct Card {
 }
 
 impl Card {
-    /// New card (Go `NewCard`).
+    /// New card.
     #[must_use]
     pub fn new(title: &str, subtitle: &str) -> Self {
-        Card {
+        Self {
             title: title.to_string(),
             subtitle: subtitle.to_string(),
             content: None,
         }
     }
 
-    /// Sets the card content (Go `WithContent`).
+    /// Sets the card content.
     #[must_use]
     pub fn with_content(mut self, content: Box<dyn Renderable>) -> Self {
         self.content = Some(content);
@@ -269,7 +270,7 @@ impl Renderable for Card {
     }
 }
 
-/// A single tab in a tab group (Go `plotpage.TabItem`).
+/// A single tab in a tab group.
 pub struct TabItem {
     /// Tab identifier.
     pub id: String,
@@ -279,7 +280,7 @@ pub struct TabItem {
     pub content: Option<Box<dyn Renderable>>,
 }
 
-/// A tabbed interface (Go `plotpage.Tabs`, templates/tabs.html).
+/// A tabbed interface (templates/tabs.html).
 pub struct Tabs {
     /// Tab group identifier.
     pub id: String,
@@ -288,10 +289,10 @@ pub struct Tabs {
 }
 
 impl Tabs {
-    /// New tab group (Go `NewTabs`).
+    /// New tab group.
     #[must_use]
     pub fn new(id: &str, items: Vec<TabItem>) -> Self {
-        Tabs {
+        Self {
             id: id.to_string(),
             items,
         }
@@ -358,7 +359,7 @@ impl Renderable for Tabs {
     }
 }
 
-/// A responsive grid layout (Go `plotpage.Grid`, templates/grid.html).
+/// A responsive grid layout (templates/grid.html).
 pub struct GridLayout {
     /// Number of columns (clamped to 1..=4).
     pub columns: usize,
@@ -369,17 +370,17 @@ pub struct GridLayout {
 }
 
 impl GridLayout {
-    /// New grid layout (Go `NewGrid`).
+    /// New grid layout.
     #[must_use]
     pub fn new(columns: usize, items: Vec<Box<dyn Renderable>>) -> Self {
-        GridLayout {
+        Self {
             columns: columns.clamp(1, MAX_GRID_COLUMNS),
             gap: "gap-4".to_string(),
             items,
         }
     }
 
-    fn col_class(&self) -> &'static str {
+    const fn col_class(&self) -> &'static str {
         match self.columns {
             1 => "grid-cols-1",
             2 => "grid-cols-1 md:grid-cols-2",
@@ -406,7 +407,7 @@ impl Renderable for GridLayout {
     }
 }
 
-/// A statistic/metric display (Go `plotpage.Stat`, templates/stat.html).
+/// A statistic/metric display (templates/stat.html).
 pub struct Stat {
     /// Metric label.
     pub label: String,
@@ -419,10 +420,10 @@ pub struct Stat {
 }
 
 impl Stat {
-    /// New stat display (Go `NewStat`).
+    /// New stat display.
     #[must_use]
     pub fn new(label: &str, value: &str) -> Self {
-        Stat {
+        Self {
             label: label.to_string(),
             value: value.to_string(),
             trend: String::new(),
@@ -430,7 +431,7 @@ impl Stat {
         }
     }
 
-    /// Sets the trend indicator (Go `WithTrend`).
+    /// Sets the trend indicator.
     #[must_use]
     pub fn with_trend(mut self, trend: &str, color: BadgeColor) -> Self {
         self.trend = trend.to_string();
@@ -463,7 +464,7 @@ impl Renderable for Stat {
     }
 }
 
-/// An alert/notification box (Go `plotpage.Alert`, templates/alert.html).
+/// An alert/notification box (templates/alert.html).
 pub struct Alert {
     /// Alert title.
     pub title: String,
@@ -474,10 +475,10 @@ pub struct Alert {
 }
 
 impl Alert {
-    /// New alert (Go `NewAlert`).
+    /// New alert.
     #[must_use]
     pub fn new(title: &str, message: &str, color: BadgeColor) -> Self {
-        Alert {
+        Self {
             title: title.to_string(),
             message: message.to_string(),
             color,
@@ -539,8 +540,9 @@ impl Renderable for Alert {
     }
 }
 
-/// An HTML table (Go `plotpage.Table`, templates/table.html). Cells may carry
-/// raw HTML (Go converts cells to `template.HTML`); headers are escaped.
+/// An HTML table (templates/table.html). Cells may carry raw HTML (the
+/// reference template treats cells as pre-trusted `template.HTML`); headers
+/// are escaped.
 pub struct Table {
     /// Column headers (escaped).
     pub headers: Vec<String>,
@@ -551,25 +553,25 @@ pub struct Table {
 }
 
 impl Table {
-    /// New striped table (Go `NewTable`).
+    /// New striped table.
     #[must_use]
     pub fn new(headers: Vec<String>) -> Self {
-        Table {
+        Self {
             headers,
             rows: Vec::new(),
             striped: true,
         }
     }
 
-    /// Appends a row (Go `AddRow`).
+    /// Appends a row.
     pub fn add_row(&mut self, cells: Vec<String>) -> &mut Self {
         self.rows.push(cells);
         self
     }
 
-    /// Enables/disables striping (Go `WithStriped`).
+    /// Enables/disables striping.
     #[must_use]
-    pub fn with_striped(mut self, striped: bool) -> Self {
+    pub const fn with_striped(mut self, striped: bool) -> Self {
         self.striped = striped;
         self
     }
@@ -586,7 +588,7 @@ impl Renderable for Table {
         out.push_str("\n            </tr>\n        </thead>\n        <tbody>\n");
         for (i, row) in self.rows.iter().enumerate() {
             out.push_str("\n            <tr class=\"border-b border-stone-100 dark:border-stone-800 ");
-            // Go template: {{if and $.Striped (odd $i)}} (funcMap "odd": i%2==1).
+            // Template condition: {{if and $.Striped (odd $i)}} (funcMap "odd": i%2==1).
             if self.striped && i % 2 == 1 {
                 out.push_str("bg-stone-50 dark:bg-stone-800/50");
             }

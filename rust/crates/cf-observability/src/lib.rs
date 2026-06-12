@@ -1,12 +1,13 @@
-//! `cf-observability` — port of Go `internal/observability`.
+//! `cf-observability` — telemetry for the codefang binary.
 //!
 //! OpenTelemetry tracing/metrics/logging initialization, RED + analysis +
 //! scheduler metrics, the diagnostics HTTP server (`/healthz`, `/readyz`,
-//! `/metrics`), span filtering, and `/proc` memory introspection for the
-//! codefang Rust rewrite (DESIGN §1; none of this is report bytes — DESIGN §2).
+//! `/metrics`), span filtering, and `/proc` memory introspection. Nothing in
+//! this crate produces report bytes (DESIGN §2); instrument names, attribute
+//! keys, log fields, and operator-facing wire strings nevertheless follow the
+//! established telemetry contract so dashboards and alerts keep working.
 //!
-//! The Go run command reaches this package on every invocation
-//! (`run.go` `initObservability` → `observability.Init`); the Rust consumers
+//! The run command initializes this crate on every invocation; the consumers
 //! are the `cf-commands` run handler (behind its `runtime` feature) and the
 //! trait hooks in `cf-mcp` / `cf-framework` / `cf-streaming`.
 

@@ -1,17 +1,15 @@
 //! Data types for the temporal anomaly analyzer.
 //!
-//! Ports the structs declared across `internal/analyzers/anomaly/analyzer.go`
-//! and `metrics.go`. Each report-bearing type provides [`ToGoValue::to_go_value`]
-//! so it can be serialized through [`cf_gojson`] (and, later, `cf-goyaml`) with
-//! byte-identity to Go's `encoding/json` / `yaml.v3`.
+//! Each report-bearing type provides [`ToGoValue::to_go_value`] so it can be
+//! serialized through [`cf_gojson`] (and, later, `cf-goyaml`) with the
+//! contractual report bytes (pinned by `rust/tests/compat`).
 //!
-//! # Ordering rules (DESIGN §2.2)
+//! # Ordering rules
 //!
 //! Wrapper structs serialize their fields in **declaration order** (via
-//! [`cf_gojson::GoMap::new_struct`]), honoring `omitempty`. Dynamic report maps
-//! such as `commit_metrics` (Go `map[string]*CommitAnomalyData`) and the
-//! per-tick `languages` map serialize with **byte-sorted keys** (via
-//! [`cf_gojson::GoMap::new_map`]).
+//! [`cf_gojson::GoMap::new_struct`]), honoring omit-when-empty. Dynamic report
+//! maps such as `commit_metrics` and the per-tick `languages` map serialize
+//! with **byte-sorted keys** (via [`cf_gojson::GoMap::new_map`]).
 
 use std::collections::BTreeMap;
 
@@ -25,11 +23,10 @@ pub trait ToGoValue {
 
 /// Raw metrics collected for a single tick.
 ///
-/// Mirrors Go `TickMetrics` (analyzer.go). This is an internal accumulation
-/// type — it is never serialized directly, so it carries no JSON tags. Maps use
-/// [`BTreeMap`] so iteration order is deterministic (Go relies on map length and
-/// `mapx.MergeAdditive`, never on iteration order here).
-#[derive(Debug, Clone, Default, PartialEq)]
+/// An internal accumulation type — it is never serialized directly. Maps use
+/// [`BTreeMap`] so iteration order is deterministic (only map length and
+/// additive merging matter to the result).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TickMetrics {
     /// Number of files changed across the tick.
     pub files_changed: i64,
@@ -39,7 +36,7 @@ pub struct TickMetrics {
     pub lines_removed: i64,
     /// Net churn (`lines_added - lines_removed`).
     pub net_churn: i64,
-    /// Files changed in the tick (concatenated across commits, like Go).
+    /// Files changed in the tick (concatenated across commits).
     pub files: Vec<String>,
     /// Language name -> file count for this tick.
     pub languages: BTreeMap<String, i64>,
@@ -49,11 +46,10 @@ pub struct TickMetrics {
 
 /// Raw metrics for a single commit.
 ///
-/// Mirrors Go `CommitAnomalyData` (analyzer.go). JSON field order and
-/// `omitempty` semantics match the Go struct tags exactly:
-/// `files_changed, lines_added, lines_removed, net_churn,
+/// JSON field order and omit-when-empty semantics are part of the report
+/// contract: `files_changed, lines_added, lines_removed, net_churn,
 /// files (omitempty), languages (omitempty), author_id`.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CommitAnomalyData {
     /// Files changed in the commit.
     pub files_changed: i64,
@@ -63,9 +59,9 @@ pub struct CommitAnomalyData {
     pub lines_removed: i64,
     /// Net churn (`lines_added - lines_removed`).
     pub net_churn: i64,
-    /// File names touched by the commit (`omitempty`).
+    /// File names touched by the commit (omitted when empty).
     pub files: Vec<String>,
-    /// Language name -> file count (`omitempty`).
+    /// Language name -> file count (omitted when empty).
     pub languages: BTreeMap<String, i64>,
     /// Author identity ID.
     pub author_id: i64,
@@ -73,17 +69,17 @@ pub struct CommitAnomalyData {
 
 impl ToGoValue for CommitAnomalyData {
     fn to_go_value(&self) -> GoValue {
-        // Struct origin: fields emitted in Go declaration order.
+        // Struct origin: fields emitted in declaration order.
         let mut m = GoMap::new_struct();
         m.push("files_changed", GoValue::Int(self.files_changed));
         m.push("lines_added", GoValue::Int(self.lines_added));
         m.push("lines_removed", GoValue::Int(self.lines_removed));
         m.push("net_churn", GoValue::Int(self.net_churn));
-        // Go `omitempty` on a nil/empty slice => key omitted entirely.
+        // omit-when-empty: the key is omitted entirely for an empty slice.
         if !self.files.is_empty() {
             m.push("files", string_array(&self.files));
         }
-        // Go `omitempty` on a nil/empty map => key omitted entirely.
+        // omit-when-empty: the key is omitted entirely for an empty map.
         if !self.languages.is_empty() {
             m.push("languages", lang_map(&self.languages));
         }
@@ -94,7 +90,7 @@ impl ToGoValue for CommitAnomalyData {
 
 /// Per-metric Z-scores for a single tick.
 ///
-/// Mirrors Go `ZScoreSet` (metrics.go). Field order:
+/// Field order:
 /// `net_churn, files_changed, lines_added, lines_removed,
 /// language_diversity, author_count`.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -114,9 +110,8 @@ pub struct ZScoreSet {
 }
 
 impl ZScoreSet {
-    /// Returns the maximum absolute Z-score across all metrics.
-    ///
-    /// Mirrors Go `ZScoreSet.MaxAbs` — a 6-way `max` over `math.Abs`.
+    /// Returns the maximum absolute Z-score across all metrics (a 6-way
+    /// `max` over absolute values).
     #[must_use]
     pub fn max_abs(&self) -> f64 {
         let vals = [
@@ -127,7 +122,7 @@ impl ZScoreSet {
             self.language_diversity.abs(),
             self.author_count.abs(),
         ];
-        // Go's variadic `max` over float64 returns the largest; none are NaN here.
+        // None of the inputs are NaN, so a plain fold over f64::max suffices.
         vals.iter().copied().fold(f64::NEG_INFINITY, f64::max)
     }
 }
@@ -147,10 +142,10 @@ impl ToGoValue for ZScoreSet {
 
 /// Raw integer metric values for a single tick.
 ///
-/// Mirrors Go `RawMetrics` (metrics.go). Field order:
+/// Field order:
 /// `files_changed, lines_added, lines_removed, net_churn,
 /// language_diversity, author_count`.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RawMetrics {
     /// Files changed.
     pub files_changed: i64,
@@ -181,7 +176,7 @@ impl ToGoValue for RawMetrics {
 
 /// A detected anomaly at a specific tick.
 ///
-/// Mirrors Go `Record` (metrics.go). Field order:
+/// Field order:
 /// `tick, z_scores, max_abs_z_score, metrics, files`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Record {
@@ -204,7 +199,8 @@ impl ToGoValue for Record {
         m.push("z_scores", self.z_scores.to_go_value());
         m.push("max_abs_z_score", GoValue::Float(self.max_abs_z_score));
         m.push("metrics", self.metrics.to_go_value());
-        // `files` has no `omitempty`: Go emits `null` for a nil slice.
+        // `files` is always present and renders as `null` when empty
+        // (report-format contract).
         m.push("files", string_array_or_null(&self.files));
         GoValue::Object(m)
     }
@@ -212,9 +208,8 @@ impl ToGoValue for Record {
 
 /// Summary statistics for the anomaly analysis.
 ///
-/// Mirrors Go `AggregateData` (metrics.go). The `threshold` field is a Go
-/// `float32`; serialization promotes it to `f64` exactly as Go does when the
-/// `float32` flows through `encoding/json`'s float encoder.
+/// The `threshold` field is single-precision; serialization widens it to
+/// `f64`, reproducing the reference encoder's float handling.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct AggregateData {
     /// Number of time periods analyzed.
@@ -223,7 +218,7 @@ pub struct AggregateData {
     pub total_anomalies: i64,
     /// Percentage of ticks that are anomalous.
     pub anomaly_rate: f64,
-    /// Z-score threshold used (Go `float32`).
+    /// Z-score threshold used (single-precision by contract).
     pub threshold: f32,
     /// Sliding window size used.
     pub window_size: i64,
@@ -267,16 +262,16 @@ impl ToGoValue for AggregateData {
 
 /// Per-tick entry for the time-series output.
 ///
-/// Mirrors Go `TimeSeriesEntry` (metrics.go). Field order:
+/// Field order:
 /// `tick, start_time (omitempty), end_time (omitempty), metrics,
 /// is_anomaly, churn_z_score, language_diversity, author_count`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TimeSeriesEntry {
     /// Time-period index.
     pub tick: i64,
-    /// Tick start time, RFC3339 (`omitempty`).
+    /// Tick start time, RFC3339 (omitted when empty).
     pub start_time: String,
-    /// Tick end time, RFC3339 (`omitempty`).
+    /// Tick end time, RFC3339 (omitted when empty).
     pub end_time: String,
     /// Raw metric values.
     pub metrics: RawMetrics,
@@ -311,7 +306,7 @@ impl ToGoValue for TimeSeriesEntry {
 
 /// An anomaly detected on an external analyzer's time-series dimension.
 ///
-/// Mirrors Go `ExternalAnomaly` (metrics.go). Field order:
+/// Field order:
 /// `source, dimension, tick, z_score, raw_value`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ExternalAnomaly {
@@ -341,7 +336,7 @@ impl ToGoValue for ExternalAnomaly {
 
 /// Summary of anomaly detection for one external dimension.
 ///
-/// Mirrors Go `ExternalSummary` (metrics.go). Field order:
+/// Field order:
 /// `source, dimension, mean, stddev, anomalies, highest_z`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ExternalSummary {
@@ -374,8 +369,7 @@ impl ToGoValue for ExternalSummary {
 
 /// All computed metric results for the anomaly analyzer.
 ///
-/// Mirrors Go `ComputedMetrics` (metrics.go). Field order:
-/// `anomalies, time_series, aggregate,
+/// Field order: `anomalies, time_series, aggregate,
 /// external_anomalies (omitempty), external_summaries (omitempty)`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ComputedMetrics {
@@ -385,16 +379,16 @@ pub struct ComputedMetrics {
     pub time_series: Vec<TimeSeriesEntry>,
     /// Aggregate statistics.
     pub aggregate: AggregateData,
-    /// Cross-analyzer anomalies (`omitempty`).
+    /// Cross-analyzer anomalies (omitted when empty).
     pub external_anomalies: Vec<ExternalAnomaly>,
-    /// Cross-analyzer summaries (`omitempty`).
+    /// Cross-analyzer summaries (omitted when empty).
     pub external_summaries: Vec<ExternalSummary>,
 }
 
 impl ComputedMetrics {
-    /// The analyzer name, mirroring Go `ComputedMetrics.AnalyzerName`.
+    /// Short analyzer identifier used in report metadata.
     #[must_use]
-    pub fn analyzer_name(&self) -> &'static str {
+    pub const fn analyzer_name(&self) -> &'static str {
         crate::ANALYZER_NAME_ANOMALY
     }
 }
@@ -402,12 +396,10 @@ impl ComputedMetrics {
 impl ToGoValue for ComputedMetrics {
     fn to_go_value(&self) -> GoValue {
         let mut m = GoMap::new_struct();
-        // Go emits `null` for a nil slice and `[]` for an initialized-but-empty
-        // slice. `computeList` returns `input.Anomalies`, which is whatever
-        // `buildRecords` produced: a nil `[]Record` (`var anomalies []Record`)
-        // when no tick is flagged, so an empty anomaly set marshals as `null`.
-        // `computeTimeSeries` always allocates `make([]TimeSeriesEntry, …)`, a
-        // non-nil slice, so an empty series marshals as `[]`.
+        // The report contract distinguishes an absent list from an empty one:
+        // an empty anomaly set marshals as `null` (no tick was flagged), while
+        // an empty time series — which is always materialized — marshals as
+        // `[]`. Pinned by the differential gate.
         m.push("anomalies", records_array_or_null(&self.anomalies));
         m.push("time_series", time_series_array(&self.time_series));
         m.push("aggregate", self.aggregate.to_go_value());
@@ -423,14 +415,14 @@ impl ToGoValue for ComputedMetrics {
 
 // --- serialization helpers ---
 
-/// Encodes a `[]string` that Go would emit as a JSON array, never `null`
-/// (used where `omitempty` already guarded against the empty case).
+/// Encodes a string list as a JSON array, never `null` (used where
+/// omit-when-empty already guarded against the empty case).
 fn string_array(items: &[String]) -> GoValue {
     GoValue::Array(items.iter().cloned().map(GoValue::Str).collect())
 }
 
-/// Encodes a `[]string` mirroring Go's nil-slice → `null` behavior for fields
-/// without `omitempty` (e.g. `Record.files`).
+/// Encodes a string list that renders as `null` when empty (report-format
+/// contract for always-present list fields, e.g. `Record.files`).
 fn string_array_or_null(items: &[String]) -> GoValue {
     if items.is_empty() {
         GoValue::Null
@@ -439,7 +431,8 @@ fn string_array_or_null(items: &[String]) -> GoValue {
     }
 }
 
-/// Encodes a Go `map[string]int` with byte-sorted keys (map-origin object).
+/// Encodes a string-keyed count map with byte-sorted keys (map-origin
+/// object).
 fn lang_map(langs: &BTreeMap<String, i64>) -> GoValue {
     let mut m = GoMap::new_map();
     for (k, v) in langs {
@@ -452,11 +445,10 @@ fn records_array(items: &[Record]) -> GoValue {
     GoValue::Array(items.iter().map(ToGoValue::to_go_value).collect())
 }
 
-/// Encodes a `[]Record` mirroring Go's nil-slice behavior. `computeList` returns
-/// the nil slice `buildRecords` yields when no anomaly is flagged; Go marshals
-/// that nil slice as `null` in JSON but `[]` in YAML, so an empty list maps to
-/// [`GoValue::NilSlice`] (which each encoder renders the matching way), not to a
-/// bare `null` (which YAML would wrongly render as `null`).
+/// Encodes the anomaly list with the contractual absent-list behavior: an
+/// empty list renders as `null` in JSON but `[]` in YAML, so it maps to
+/// [`GoValue::NilSlice`] (which each encoder renders the matching way), not
+/// to a bare `null` (which YAML would wrongly render as `null`).
 fn records_array_or_null(items: &[Record]) -> GoValue {
     if items.is_empty() {
         GoValue::NilSlice
@@ -484,7 +476,7 @@ mod tests {
 
     #[test]
     fn max_abs_picks_largest_magnitude() {
-        // Mirrors Go TestZScoreSet_MaxAbs.
+        // Mirrors reference test TestZScoreSet_MaxAbs.
         let zs = ZScoreSet {
             net_churn: 1.5,
             files_changed: -3.0,
@@ -553,7 +545,7 @@ mod tests {
             ..Default::default()
         };
         let json = Encoder::marshal().encode_to_string(&rec.to_go_value());
-        // `files` has no omitempty => `null` for an empty slice.
+        // `files` is always present => `null` for an empty slice.
         assert!(json.contains(r#""files":null"#), "got: {json}");
     }
 
@@ -563,9 +555,8 @@ mod tests {
         let json = Encoder::marshal().encode_to_string(&cm.to_go_value());
         assert!(!json.contains("external_anomalies"), "got: {json}");
         assert!(!json.contains("external_summaries"), "got: {json}");
-        // `anomalies` is the nil slice `buildRecords` yields for no detections
-        // (Go marshals nil `[]Record` -> `null`); `time_series` is a non-nil
-        // `make([]TimeSeriesEntry, 0)` -> `[]`.
+        // With no detections `anomalies` renders as `null`, while the
+        // always-materialized `time_series` renders as `[]` (report contract).
         assert!(json.contains(r#""anomalies":null"#), "got: {json}");
         assert!(json.contains(r#""time_series":[]"#), "got: {json}");
     }
@@ -577,7 +568,7 @@ mod tests {
             ..Default::default()
         };
         let json = Encoder::marshal().encode_to_string(&agg.to_go_value());
-        // Go renders float32(2.0) -> 2 through the json float encoder.
+        // The float encoder renders a single-precision 2.0 as "2".
         assert!(json.contains(r#""threshold":2"#), "got: {json}");
     }
 }

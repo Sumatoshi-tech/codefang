@@ -1,20 +1,21 @@
 //! `cf-langpath` — language token → file-path matchers (enry data inversion).
 //!
-//! Rust port of the Go package
-//! `internal/analyzers/plumbing/langpath`. It converts user-supplied language
-//! tokens (e.g. `"go"`, `"Python"`, `"dockerfile"`) into a deterministic,
-//! sorted, deduplicated set of pathspec globs (`"*.go"`, `"Dockerfile"`, …),
-//! backed by [`src-d/enry`](https://github.com/src-d/enry)'s Linguist data.
+//! Converts user-supplied language tokens (e.g. `"go"`, `"Python"`,
+//! `"dockerfile"`) into a deterministic, sorted, deduplicated set of pathspec
+//! globs (`"*.go"`, `"Dockerfile"`, …), backed by
+//! [`src-d/enry`](https://github.com/src-d/enry)'s Linguist data. Also exposes
+//! the full enry language-detection cascade used to bucket files by language.
 //!
-//! ## Parity
+//! ## Compatibility
 //!
-//! Per DESIGN §3.7 / port rule (7), enry language classification is
-//! decision-parity-critical: the glob set selects which files an analysis
-//! includes, which in turn selects which bytes appear in machine reports. We
-//! therefore vendor the **same** three Linguist data tables that the Go
-//! `codefang` binary links (`github.com/src-d/enry/v2@v2.1.0`), as a verbatim
-//! TSV snapshot in `data/enry-v2.1.0.tsv` (see `data/README.md`), and reproduce
-//! enry's lookup functions exactly:
+//! Per DESIGN §3.7, enry language classification is decision-parity-critical:
+//! the glob set selects which files an analysis includes, which in turn
+//! selects which bytes appear in machine reports — output that
+//! `rust/tests/compat` pins against the reference binary. We therefore vendor
+//! the **same** three Linguist data tables that the reference binary links
+//! (`github.com/src-d/enry/v2@v2.1.0`), as a verbatim TSV snapshot in
+//! `data/enry-v2.1.0.tsv` (see `data/README.md`), and reproduce enry's lookup
+//! functions exactly:
 //!
 //! - [`enry::GetLanguageByAlias`] — normalizes the token via
 //!   `convertToAliasKey` (substring before the first `,`, spaces → `_`,
@@ -33,9 +34,10 @@ pub mod content;
 pub mod content_heuristics;
 
 /// Resolve a candidate token to its canonical Linguist language via enry's
-/// alias table (`GetLanguageByAlias`), or `None` if unrecognized. Public so the
-/// content classifier can normalize candidates exactly as enry's
-/// `(*classifier).Classify` does.
+/// alias table (`GetLanguageByAlias`), or `None` if unrecognized.
+///
+/// Public so the content classifier can normalize candidates exactly as
+/// enry's `(*classifier).Classify` does.
 #[must_use]
 pub fn canonical_language(token: &str) -> Option<String> {
     get_language_by_alias(token).map(str::to_string)
@@ -44,22 +46,21 @@ pub fn canonical_language(token: &str) -> Option<String> {
 /// Error returned when a user-supplied token does not resolve to any Linguist
 /// language (including its aliases).
 ///
-/// Mirrors the Go sentinel `langpath.ErrUnknownLanguage`. The
-/// [`Display`](std::fmt::Display) form reproduces Go's wrapped message
-/// `unknown language: "<raw>"` (the raw token is quoted with Go `%q`-style
-/// double quotes), so callers that surface the error text stay byte-compatible.
+/// The [`Display`](std::fmt::Display) form is part of the CLI error contract:
+/// `unknown language: "<raw>"`, with the raw token double-quoted (see
+/// [`quote_token`]). Callers that surface the error text stay byte-compatible
+/// with the reference binary.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnknownLanguage {
-    /// The original, untrimmed token the caller supplied (Go formats the raw
-    /// `%q` value, not the trimmed one).
+    /// The original, untrimmed token the caller supplied (the error quotes the
+    /// raw value, not the trimmed one).
     pub raw: String,
 }
 
 impl std::fmt::Display for UnknownLanguage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Go: fmt.Errorf("%w: %q", ErrUnknownLanguage, raw)
-        // ErrUnknownLanguage.Error() == "unknown language"; %q double-quotes.
-        write!(f, "unknown language: {}", go_quote(&self.raw))
+        // CLI contract: `unknown language: "<raw>"` (raw token double-quoted).
+        write!(f, "unknown language: {}", quote_token(&self.raw))
     }
 }
 
@@ -97,7 +98,7 @@ const ENRY_TSV: &str = include_str!("../data/enry-v2.1.0.tsv");
 const ENRY_INTERPRETERS_TSV: &str = include_str!("../data/enry-interpreters-v2.1.0.tsv");
 
 /// Loads and caches the parsed enry tables. Parsed once on first access;
-/// read-only thereafter (mirrors the Go package-load-time inversion).
+/// read-only thereafter.
 fn enry_data() -> &'static EnryData {
     static DATA: OnceLock<EnryData> = OnceLock::new();
     DATA.get_or_init(|| parse_enry_tsv(ENRY_TSV))
@@ -192,17 +193,17 @@ fn parse_enry_tsv(tsv: &str) -> EnryData {
 /// Reproduces `enry.getInterpreter`: extract the interpreter name from a
 /// shebang line, returning `""` when there is none.
 ///
-/// Mirrors the Go logic: read the first line; require a `#!` prefix; strip it;
-/// split on whitespace; if the first field contains `env`, use the second
-/// field, else use the basename of the first field. `sh` triggers a 5-line
-/// `exec <interp> ... $0 ... $@` scan; `pythonX.Y` collapses to `pythonX`;
-/// `osascript` with a `-l` flag is cleared.
+/// enry's logic, reproduced exactly: read the first line; require a `#!`
+/// prefix; strip it; split on whitespace; if the first field contains `env`,
+/// use the second field, else use the basename of the first field. `sh`
+/// triggers a 5-line `exec <interp> ... $0 ... $@` scan; `pythonX.Y` collapses
+/// to `pythonX`; `osascript` with a `-l` flag is cleared.
 fn get_interpreter(content: &[u8]) -> String {
     let line = first_line(content);
     if !line.starts_with(b"#!") {
         return String::new();
     }
-    // Skip `#!`, trim ASCII whitespace (Go bytes.TrimSpace).
+    // Skip `#!`, trim ASCII whitespace from both ends.
     let rest = trim_ascii_space(&line[2..]);
     let fields: Vec<&[u8]> = rest.split(u8::is_ascii_whitespace).filter(|f| !f.is_empty()).collect();
     if fields.is_empty() {
@@ -231,7 +232,7 @@ fn get_interpreter(content: &[u8]) -> String {
     }
 
     // osascript -l: clear (matches linguist behaviour).
-    if interpreter == "osascript" && contains_subslice(&line, b"-l") {
+    if interpreter == "osascript" && contains_subslice(line, b"-l") {
         interpreter = String::new();
     }
 
@@ -267,7 +268,7 @@ fn look_for_multiline_exec(content: &[u8]) -> String {
     interpreter
 }
 
-/// Matches `exec (\w+).+\$0.+\$@` (Go RE2 semantics: `.` does not match `\n`,
+/// Matches `exec (\w+).+\$0.+\$@` (RE2 semantics: `.` does not match `\n`,
 /// `\w` = `[0-9A-Za-z_]`); returns the captured interpreter word.
 fn match_exec_hack(line: &[u8]) -> Option<String> {
     // Find "exec " then a \w+ run, then require "$0" later then "$@" later.
@@ -296,13 +297,13 @@ fn match_exec_hack(line: &[u8]) -> Option<String> {
     Some(String::from_utf8_lossy(word).into_owned())
 }
 
-fn is_word_byte(b: u8) -> bool {
+const fn is_word_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
 }
 
 fn first_line(content: &[u8]) -> &[u8] {
-    // Go uses bufio.Scanner default split (lines), which strips a trailing \r\n
-    // or \n. We take bytes up to the first \n and strip a trailing \r.
+    // enry reads the first line with a scanner that strips a trailing \r\n or
+    // \n. We take bytes up to the first \n and strip a trailing \r.
     let end = content.iter().position(|&b| b == b'\n').unwrap_or(content.len());
     let line = &content[..end];
     if line.last() == Some(&b'\r') {
@@ -330,8 +331,8 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 }
 
 /// Reproduces `enry.GetLanguage(base(filename), content)` for a NON-binary blob:
-/// the strategy cascade `GetLanguages` runs (minus the modeline pass, which is
-/// content-regexp-only and not ported), then `firstLanguage` picks the result.
+/// the strategy cascade `GetLanguages` runs, then `firstLanguage` picks the
+/// result.
 ///
 /// `GetLanguages` semantics (`common.go`): each strategy returns candidate
 /// languages; if a strategy yields **exactly one** candidate it short-circuits
@@ -442,8 +443,8 @@ pub fn language_by_path(filename: &str) -> Option<String> {
 
 /// enry `getHeaderAndFooter`: when the content has at least `2 * searchScope`
 /// newlines, restrict the modeline scan to the first 5 lines plus the last 5
-/// lines; otherwise scan the whole content. The index arithmetic is ported
-/// verbatim from `headScope` / `footScope`.
+/// lines; otherwise scan the whole content. The index arithmetic reproduces
+/// `headScope` / `footScope` verbatim.
 fn get_header_and_footer(content: &[u8]) -> Vec<u8> {
     const SEARCH_SCOPE: usize = 5;
 
@@ -507,10 +508,9 @@ fn modeline_language(content: &[u8]) -> Option<String> {
         let line = last.get(1).map_or(&b""[..], |m| m.as_bytes());
         let re_lang = RE_EMACS_LANG
             .get_or_init(|| Regex::new(r".*(?i:mode)\s*:\s*([^\s;]+)\s*;*.*").expect("emacs lang re"));
-        let alias = match re_lang.captures(line) {
-            Some(c) => c.get(1).map_or(&b""[..], |m| m.as_bytes()),
-            None => line,
-        };
+        let alias = re_lang
+            .captures(line)
+            .map_or(line, |c| c.get(1).map_or(&b""[..], |m| m.as_bytes()));
         if let Some(lang) = get_language_by_alias(&String::from_utf8_lossy(alias)) {
             return Some(lang.to_string());
         }
@@ -575,21 +575,15 @@ pub fn language_by_extension(filename: &str) -> Option<String> {
     None
 }
 
-/// Reproduces enry's `convertToAliasKey`: take the substring before the first
-/// comma, replace ASCII spaces with underscores, then lowercase.
-///
-/// Matches `data.convertToAliasKey` byte-for-byte:
-/// `strings.SplitN(s, ",", 2)[0]`, `strings.Replace(_, " ", "_", -1)`,
-/// `strings.ToLower`.
+/// Reproduces enry's `convertToAliasKey` byte-for-byte: take the substring
+/// before the first comma, replace ASCII spaces with underscores, then apply
+/// full-Unicode lowercasing.
 fn convert_to_alias_key(lang_name: &str) -> String {
-    // SplitN(",", 2)[0]: everything up to (not including) the first comma.
-    let before_comma = match lang_name.find(',') {
-        Some(idx) => &lang_name[..idx],
-        None => lang_name,
-    };
-    // Replace ASCII space with underscore (Go replaces the byte ' ' only).
+    // Everything up to (not including) the first comma.
+    let before_comma = lang_name.find(',').map_or(lang_name, |idx| &lang_name[..idx]);
+    // Replace the ASCII space byte (only) with underscore.
     let underscored = before_comma.replace(' ', "_");
-    // Go strings.ToLower is full-Unicode lowercasing.
+    // Full-Unicode lowercasing, matching enry.
     underscored.to_lowercase()
 }
 
@@ -609,15 +603,13 @@ fn get_language_extensions(language: &str) -> &'static [String] {
     enry_data()
         .extensions_by_language
         .get(language)
-        .map(Vec::as_slice)
-        .unwrap_or(&[])
+        .map_or(&[], Vec::as_slice)
 }
 
 /// Result of [`globs`]: the sorted/deduplicated glob set and the `wants_all`
 /// flag.
 ///
-/// This is the Rust shape of the Go `(globs []string, wantsAll bool, err error)`
-/// triple. When `wants_all` is `true`, `globs` is empty and callers should skip
+/// When `wants_all` is `true`, `globs` is empty and callers should skip
 /// pathspec push-down entirely.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Globs {
@@ -632,7 +624,7 @@ pub struct Globs {
 /// Converts a list of user-supplied language tokens into a sorted, deduplicated
 /// set of pathspec globs.
 ///
-/// Mirrors the Go `langpath.Globs`:
+/// Behavior (CLI contract, pinned by the differential gate):
 /// - Empty input → `wants_all = true`, empty globs, no error.
 /// - Any token that case-insensitively equals `"all"` (after trimming) →
 ///   `wants_all = true`, empty globs, no error.
@@ -640,12 +632,11 @@ pub struct Globs {
 ///   resolved to a canonical language. The language's extensions become
 ///   `"*<ext>"` globs and its literal filenames become bare-filename globs.
 /// - An unrecognized token returns [`UnknownLanguage`] carrying the original
-///   (untrimmed) token, matching Go's `%q` of the raw value.
+///   (untrimmed) token, which the error message quotes verbatim.
 ///
-/// The returned `globs` are sorted by raw byte order (Rust `BTreeSet<String>`
-/// orders by `[u8]` lexicographically, equivalent to Go `slices.Sort` over
-/// strings) and deduplicated. A fresh `Vec` is returned per call (callers may
-/// mutate it freely).
+/// The returned `globs` are sorted by raw byte (`[u8]`) order and
+/// deduplicated. A fresh `Vec` is returned per call (callers may mutate it
+/// freely).
 ///
 /// # Examples
 ///
@@ -675,8 +666,8 @@ pub fn globs<S: AsRef<str>>(langs: &[S]) -> Result<Globs, UnknownLanguage> {
         });
     }
 
-    // BTreeSet<String> orders by raw byte (`[u8]`) comparison, matching Go's
-    // `slices.Sort` over UTF-8 strings, and deduplicates.
+    // BTreeSet<String> orders by raw byte (`[u8]`) comparison — the report
+    // contract's sort order for these globs — and deduplicates.
     let mut set: BTreeSet<String> = BTreeSet::new();
 
     let data = enry_data();
@@ -691,13 +682,10 @@ pub fn globs<S: AsRef<str>>(langs: &[S]) -> Result<Globs, UnknownLanguage> {
             });
         }
 
-        let canonical = match get_language_by_alias(token) {
-            Some(lang) => lang,
-            None => {
-                return Err(UnknownLanguage {
-                    raw: raw.to_string(),
-                })
-            }
+        let Some(canonical) = get_language_by_alias(token) else {
+            return Err(UnknownLanguage {
+                raw: raw.to_string(),
+            });
         };
 
         for ext in get_language_extensions(canonical) {
@@ -717,12 +705,13 @@ pub fn globs<S: AsRef<str>>(langs: &[S]) -> Result<Globs, UnknownLanguage> {
     })
 }
 
-/// Quotes a string the way Go's `fmt` `%q` verb does for the error message:
-/// double quotes with Go-style escaping of the common control/quote characters.
+/// Quotes a token for the [`UnknownLanguage`] error message: double quotes
+/// with backslash escaping of the common control/quote characters, matching
+/// the reference CLI's error formatting.
 ///
-/// langpath only ever feeds user tokens here; the escape set covers what those
-/// tokens can realistically contain while staying compatible with Go's `%q`.
-fn go_quote(s: &str) -> String {
+/// Only user-supplied language tokens are fed here; the escape set covers what
+/// those tokens can realistically contain.
+fn quote_token(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
     for c in s.chars() {
@@ -743,7 +732,7 @@ fn go_quote(s: &str) -> String {
 mod tests {
     use super::*;
 
-    // Helper mirroring the Go test's `mapset` dedup check.
+    // Helper mirroring the reference test's `mapset` dedup check.
     fn is_unique(xs: &[String]) -> bool {
         let set: BTreeSet<&String> = xs.iter().collect();
         set.len() == xs.len()
@@ -776,7 +765,7 @@ mod tests {
 
     #[test]
     fn all_token_yields_wants_all() {
-        // Go: TestGlobs_AllToken_YieldsWantsAll
+        // Reference test: TestGlobs_AllToken_YieldsWantsAll
         let r = globs(&["all"]).unwrap();
         assert!(r.wants_all, "all token must set wants_all");
         assert!(r.globs.is_empty(), "wants_all must return empty globs");
@@ -784,7 +773,7 @@ mod tests {
 
     #[test]
     fn returns_fresh_slice_per_call() {
-        // Go: TestGlobs_ReturnsFreshSlicePerCall
+        // Reference test: TestGlobs_ReturnsFreshSlicePerCall
         let mut a = globs(&["go"]).unwrap();
         assert!(!a.globs.is_empty());
         let b = globs(&["go"]).unwrap();
@@ -799,7 +788,7 @@ mod tests {
 
     #[test]
     fn dockerfile_includes_basename_glob() {
-        // Go: TestGlobs_Dockerfile_IncludesBasenameGlob
+        // Reference test: TestGlobs_Dockerfile_IncludesBasenameGlob
         let r = globs(&["dockerfile"]).unwrap();
         assert!(!r.wants_all);
         assert!(
@@ -811,7 +800,7 @@ mod tests {
 
     #[test]
     fn multiple_languages_sorted_and_deduplicated() {
-        // Go: TestGlobs_MultipleLanguages_SortedAndDeduplicated
+        // Reference test: TestGlobs_MultipleLanguages_SortedAndDeduplicated
         let r = globs(&["python", "go", "python"]).unwrap();
         assert!(!r.wants_all);
         assert!(!r.globs.is_empty());
@@ -829,7 +818,7 @@ mod tests {
 
     #[test]
     fn unknown_token_returns_err_unknown_language() {
-        // Go: TestGlobs_UnknownToken_ReturnsErrUnknownLanguage
+        // Reference test: TestGlobs_UnknownToken_ReturnsErrUnknownLanguage
         for input in [
             vec!["notalang"],
             vec!["go", "notalang"],
@@ -849,7 +838,7 @@ mod tests {
 
     #[test]
     fn go_token_yields_star_dot_go() {
-        // Go: TestGlobs_GoToken_YieldsStarDotGo
+        // Reference test: TestGlobs_GoToken_YieldsStarDotGo
         for input in ["go", "Go", "GO", "  go  ", "golang"] {
             let r = globs(&[input]).unwrap();
             assert!(!r.wants_all, "input {input:?} must not set wants_all");
@@ -863,7 +852,7 @@ mod tests {
 
     #[test]
     fn empty_input_yields_wants_all() {
-        // Go: TestGlobs_EmptyInput_YieldsWantsAll
+        // Reference test: TestGlobs_EmptyInput_YieldsWantsAll
         let empty: [&str; 0] = [];
         let r = globs(&empty).unwrap();
         assert!(r.wants_all);
@@ -894,13 +883,12 @@ mod tests {
         assert!(d
             .filenames_by_language
             .get("Dockerfile")
-            .map(|v| v.contains(&"Dockerfile".to_string()))
-            .unwrap_or(false));
+            .is_some_and(|v| v.contains(&"Dockerfile".to_string())));
     }
 
     #[test]
     fn unknown_language_quotes_raw_token() {
-        // Go formats the *raw* (untrimmed) token with %q.
+        // The error quotes the *raw* (untrimmed) token.
         let err = globs(&["  notalang  "]).unwrap_err();
         assert_eq!(err.to_string(), "unknown language: \"  notalang  \"");
     }

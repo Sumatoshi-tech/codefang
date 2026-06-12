@@ -1,20 +1,26 @@
-//! `cf-gojson` — Go `encoding/json` byte-parity value model and marshaller.
+//! `cf-gojson` — the report-format JSON value model and serializer.
 //!
-//! This tier-0 crate is the keystone of codefang's Rust rewrite: every
+//! This tier-0 crate is the keystone of codefang's report layer: every
 //! machine-format report (`json`, `ndjson`, `timeseries`, the CFB1 `bin`
-//! payload, and the value tree feeding `cf-goyaml`) is built as a [`GoValue`] and
-//! serialized through [`marshal`] / [`Encoder`] so the emitted bytes match the Go
-//! binary's `encoding/json` output **byte-for-byte**. See
-//! `specs/rust-rewrite/DESIGN.md` §2 for the byte-identity strategy.
+//! payload, and the value tree feeding `cf-goyaml`) is built as a [`GoValue`]
+//! and serialized through [`marshal`] / [`Encoder`]. The emitted bytes are a
+//! frozen contract — internals may be tidied, but the encoding rules must not
+//! change. See `specs/rust-rewrite/DESIGN.md` §2 for the byte-identity
+//! strategy.
+//!
+//! Compatibility: output bytes are pinned against the reference implementation
+//! by the differential gate in `rust/tests/compat`.
 //!
 //! # Modules
 //!
 //! * [`value`] — the dynamic [`GoValue`] / [`GoMap`] / [`MapOrigin`] model
-//!   (struct fields keep declaration order; map keys byte-sort on encode).
-//! * [`ftoa`] — Go-compatible `f64` formatting ([`go_float`] / the `'g'` form),
-//!   reproducing `encoding/json`'s float encoder and `strconv.FormatFloat`.
-//! * [`marshal`] — the encoder: compact [`marshal`], indented [`marshal_indent`],
-//!   and the builder [`Encoder`] (`json.NewEncoder` shape).
+//!   (struct-origin objects keep declaration order; map-origin objects
+//!   byte-sort keys on encode).
+//! * [`ftoa`] — contract `f64` formatting ([`go_float`] for JSON numbers,
+//!   [`format_float_g`] for the `'g'` layout): shortest round-trip digits,
+//!   re-rendered with the contract layout rules.
+//! * [`marshal`] — the encoder: compact [`marshal`], indented
+//!   [`marshal_indent`], and the configurable builder [`Encoder`].
 //!
 //! # Quick start
 //!

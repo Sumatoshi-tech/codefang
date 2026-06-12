@@ -1,13 +1,11 @@
 //! Core analyzer contracts and the dynamic [`Report`] model.
 //!
-//! Port of `internal/analyzers/analyze/analyzer.go`.
-//!
-//! Go's `Report = map[string]any` becomes a [`cf_gojson::GoMap`] (built with
-//! [`cf_gojson::MapOrigin::Map`] so its keys byte-sort at encode time, matching
-//! Go's `map[string]any` ordering — DESIGN §2.2). The analyzer interfaces map to
-//! Rust traits. The Go `Factory` (parallel/sequential static dispatch over UAST
-//! nodes) is ported with the structure preserved; the UAST `Node` and the
-//! visitor machinery live in not-yet-ported crates, so the node type is a trait
+//! A [`Report`] is a [`cf_gojson::GoMap`] built with
+//! [`cf_gojson::MapOrigin::Map`] so its keys byte-sort at encode time, per
+//! the report-contract string-keyed map ordering (DESIGN §2.2). The analyzer
+//! interfaces are traits. The [`Factory`] (parallel/sequential static dispatch
+//! over UAST nodes) keeps the reference structure; the UAST `Node` and the
+//! visitor machinery live in higher crates, so the node type is a trait
 //! parameter and the visitor traits are minimal (see the crate's
 //! structured-output notes for the deferred-dependency list).
 
@@ -17,18 +15,17 @@ use cf_pipeline::ConfigurationOption;
 
 use crate::descriptor::Descriptor;
 
-/// `ErrUnregisteredAnalyzer` (analyzer.go:17).
+/// Sentinel error text: the requested analyzer is not registered.
 pub const ERR_UNREGISTERED_ANALYZER: &str = "no registered analyzer with name";
-/// `ErrAnalysisFailed` (analyzer.go:20).
+/// Sentinel error text: an analysis run failed.
 pub const ERR_ANALYSIS_FAILED: &str = "analysis failed";
-/// `ErrNilRootNode` (analyzer.go:23).
+/// Sentinel error text: the UAST root node is missing.
 pub const ERR_NIL_ROOT_NODE: &str = "root node is nil";
 
-/// A report — the dynamic `map[string]any` analyzer output.
+/// A report — the dynamic string-keyed analyzer output map.
 ///
-/// Mirrors `Report = map[string]any` (analyzer.go:26). It is a [`GoMap`] built
-/// with [`MapOrigin::Map`] so the encoder byte-sorts the keys, reproducing Go's
-/// map encoding exactly.
+/// It is a [`GoMap`] built with [`MapOrigin::Map`] so the encoder byte-sorts
+/// the keys, per the report-format contract for dynamic maps.
 ///
 /// [`GoMap`]: cf_gojson::GoMap
 /// [`MapOrigin::Map`]: cf_gojson::MapOrigin::Map
@@ -36,18 +33,18 @@ pub type Report = cf_gojson::GoMap;
 
 /// Color-coded thresholds for multiple metrics.
 ///
-/// Mirrors `Thresholds = map[string]map[string]any` (analyzer.go:75). Structure:
+/// Structure:
 /// `{"metric_name": {"red": v, "yellow": v, "green": v}}`.
 pub type Thresholds = cf_gojson::GoMap;
 
 /// Extracts a `[]map[string]any` (here `Vec<&GoMap>`) from a report key.
 ///
-/// Mirrors `ReportFunctionList` (analyzer.go:30). Handles a directly-typed array
-/// of objects (Go's `[]map[string]any`) and a JSON-decoded `[]any` of objects.
-/// The Go `TypedCollection` fast path is covered by [`crate::TypedCollection`]
+/// Handles a directly-typed array
+/// of objects and a JSON-decoded heterogeneous array of objects.
+/// The `TypedCollection` fast path is covered by [`crate::TypedCollection`]
 /// at the construction boundary, so here a value already materialized as an
 /// array of objects is returned; non-object elements are filtered out (matching
-/// the Go `[]any` branch). Returns `(maps, found)` where `found` mirrors Go's
+/// the dynamic-array branch). Returns `(maps, found)` where `found` reports
 /// `len(result) > 0`.
 #[must_use]
 pub fn report_function_list<'a>(report: &'a Report, key: &str) -> (Vec<&'a cf_gojson::GoMap>, bool) {
@@ -71,7 +68,7 @@ pub fn report_function_list<'a>(report: &'a Report, key: &str) -> (Vec<&'a cf_go
 
 /// Extracts a function list, trying `primary_key` first, then `fallback_key`.
 ///
-/// Mirrors `ReportFunctionListWithFallback` (analyzer.go:64).
+///
 #[must_use]
 pub fn report_function_list_with_fallback<'a>(
     report: &'a Report,
@@ -95,7 +92,7 @@ fn lookup<'a>(report: &'a Report, key: &str) -> Option<&'a cf_gojson::GoValue> {
 
 /// The common base interface for all analyzers.
 ///
-/// Mirrors `Analyzer` (analyzer.go:78).
+///
 pub trait Analyzer {
     /// The analyzer name (`Name`).
     fn name(&self) -> String;
@@ -113,7 +110,7 @@ pub trait Analyzer {
 }
 
 /// Shared contract for analyzers producing reportable output with thresholds,
-/// aggregation, and format methods. Mirrors `FormattableAnalyzer` (analyzer.go:91).
+/// aggregation, and format methods.
 pub trait FormattableAnalyzer: Analyzer {
     /// Color-coded thresholds (`Thresholds`).
     fn thresholds(&self) -> Thresholds;
@@ -167,7 +164,7 @@ pub trait FormattableAnalyzer: Analyzer {
     ) -> Result<(), crate::history::AnalyzerError>;
 }
 
-/// UAST-based static analysis contract. Mirrors `StaticAnalyzer` (analyzer.go:109).
+/// UAST-based static analysis contract.
 ///
 /// `Node` is a trait parameter so this crate does not depend on `cf-uast-node`.
 pub trait StaticAnalyzer<Node>: FormattableAnalyzer {
@@ -178,8 +175,7 @@ pub trait StaticAnalyzer<Node>: FormattableAnalyzer {
     fn analyze(&self, root: &Node) -> Result<Report, crate::history::AnalyzerError>;
 }
 
-/// Raw-file analysis contract (path + bytes, no UAST). Mirrors `RawFileAnalyzer`
-/// (analyzer.go:118).
+/// Raw-file analysis contract (path + bytes, no UAST).
 pub trait RawFileAnalyzer: FormattableAnalyzer {
     /// Analyzes raw file content into a [`Report`] (`AnalyzeFileContent`).
     ///
@@ -192,15 +188,13 @@ pub trait RawFileAnalyzer: FormattableAnalyzer {
     ) -> Result<Report, crate::history::AnalyzerError>;
 }
 
-/// Enables single-pass traversal optimization. Mirrors `VisitorProvider`
-/// (analyzer.go:125).
+/// Enables single-pass traversal optimization.
 pub trait VisitorProvider<V> {
     /// Creates a single-pass analysis visitor (`CreateVisitor`).
     fn create_visitor(&self) -> V;
 }
 
-/// Aggregates per-analyzer results into one report. Mirrors `ResultAggregator`
-/// (analyzer.go:130).
+/// Aggregates per-analyzer results into one report.
 pub trait ResultAggregator {
     /// Folds a set of named reports into the aggregate (`Aggregate`).
     fn aggregate(&mut self, results: &[(String, Report)]);
@@ -208,15 +202,13 @@ pub trait ResultAggregator {
     fn get_result(&self) -> Report;
 }
 
-/// Implemented by aggregators supporting configurable spill thresholds. Mirrors
-/// `SpillThresholdSetter` (analyzer.go:137).
+/// Implemented by aggregators supporting configurable spill thresholds.
 pub trait SpillThresholdSetter {
     /// Sets the spill-to-disk threshold in bytes.
     fn set_spill_threshold(&mut self, threshold: i64);
 }
 
-/// Implemented by aggregators that can estimate in-memory state size. Mirrors
-/// `StateSizer` (analyzer.go:143).
+/// Implemented by aggregators that can estimate in-memory state size.
 pub trait StateSizer {
     /// Estimated bytes of in-memory state.
     fn estimated_state_size(&self) -> i64;
@@ -224,9 +216,9 @@ pub trait StateSizer {
 
 /// Manages registration and execution of static analyzers.
 ///
-/// Mirrors `Factory` (analyzer.go:148). This port keeps the registry and the
+/// This port keeps the registry and the
 /// single-analyzer dispatch (`run_analyzer`); the full parallel/sequential
-/// visitor fan-out (analyzer.go:226-341) is driven by the framework, which binds
+/// visitor fan-out is driven by the framework, which binds
 /// the UAST `Node` type and the visitor traits (see the crate's
 /// structured-output notes for the deferred-dependency list).
 pub struct Factory<N, A: StaticAnalyzer<N>> {
@@ -236,8 +228,8 @@ pub struct Factory<N, A: StaticAnalyzer<N>> {
 }
 
 impl<N, A: StaticAnalyzer<N>> Factory<N, A> {
-    /// Creates a factory from a list of analyzers. Mirrors `NewFactory`
-    /// (analyzer.go:154): `max_parallel` defaults to the CPU count.
+    /// Creates a factory from a list of analyzers.
+    /// `max_parallel` defaults to the CPU count.
     #[must_use]
     pub fn new(analyzers: Vec<A>) -> Self {
         let max_parallel =
@@ -253,8 +245,7 @@ impl<N, A: StaticAnalyzer<N>> Factory<N, A> {
         f
     }
 
-    /// Adds an analyzer to the registry. Mirrors `RegisterAnalyzer`
-    /// (analyzer.go:168). Keyed by [`Analyzer::name`].
+    /// Adds an analyzer to the registry, keyed by [`Analyzer::name`].
     pub fn register_analyzer(&mut self, analyzer: A) {
         let name = analyzer.name();
         if let Some(slot) = self.analyzers.iter_mut().find(|(n, _)| *n == name) {
@@ -266,7 +257,7 @@ impl<N, A: StaticAnalyzer<N>> Factory<N, A> {
 
     /// The configured max parallelism.
     #[must_use]
-    pub fn max_parallel(&self) -> usize {
+    pub const fn max_parallel(&self) -> usize {
         self.max_parallel
     }
 
@@ -279,8 +270,7 @@ impl<N, A: StaticAnalyzer<N>> Factory<N, A> {
             .map(|(_, a)| a)
     }
 
-    /// Executes the named analyzer on `root`. Mirrors `RunAnalyzer`
-    /// (analyzer.go:173).
+    /// Executes the named analyzer on `root`.
     ///
     /// # Errors
     /// Returns [`crate::history::AnalyzerError::Other`] with the
@@ -314,7 +304,7 @@ mod tests {
     }
 
     #[test]
-    fn error_constants_match_go() {
+    fn error_constants_match_reference() {
         assert_eq!(ERR_UNREGISTERED_ANALYZER, "no registered analyzer with name");
         assert_eq!(ERR_ANALYSIS_FAILED, "analysis failed");
         assert_eq!(ERR_NIL_ROOT_NODE, "root node is nil");

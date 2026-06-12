@@ -1,8 +1,10 @@
-//! Port of yaml.v3 `resolve.go` — decides whether an unquoted string would
-//! resolve back to a non-`!!str` tag (and thus must be quoted on output).
+//! Plain-scalar resolution — decides whether an unquoted string would parse
+//! back as a non-`!!str` tag (and thus must be quoted on output).
 //!
-//! `string_can_use_plain(s)` mirrors `encoder.stringv`:
-//! `rtag == strTag && !(isBase60Float(s) || isOldBool(s))`.
+//! [`string_can_use_plain`] is the single entry point: a string may stay plain
+//! only when it resolves to `!!str` and is neither a legacy base-60 float nor
+//! a legacy boolean spelling. The classification rules are part of the frozen
+//! emitter contract.
 
 /// Returns true if the plain (unquoted) form of `s` still resolves to `!!str`
 /// and is not a YAML-1.1 base-60 float or old-style bool, i.e. it is safe to
@@ -13,7 +15,7 @@ pub fn string_can_use_plain(s: &str) -> bool {
     resolves_to_str(s) && !is_base60_float(s) && !is_old_bool(s)
 }
 
-/// Hint table entry for the first byte (`resolveTable`).
+/// Resolution hint for the first byte: sign, digit, maybe-special, or dot.
 fn hint(c: u8) -> u8 {
     match c {
         b'+' | b'-' => b'S',
@@ -24,22 +26,22 @@ fn hint(c: u8) -> u8 {
     }
 }
 
-/// Lookup of the small set of fully-spelled special scalars (`resolveMap`).
-/// Returns Some(true) when the string maps to a NON-str tag (bool/null/float).
+/// Lookup of the small set of fully-spelled special scalars. Returns
+/// Some(true) when the string maps to a NON-str tag (bool/null/float).
 fn resolve_map_is_non_str(s: &str) -> Option<bool> {
     match s {
         "true" | "True" | "TRUE" | "false" | "False" | "FALSE" | "" | "~" | "null" | "Null"
         | "NULL" | ".nan" | ".NaN" | ".NAN" | ".inf" | ".Inf" | ".INF" | "+.inf" | "+.Inf"
         | "+.INF" | "-.inf" | "-.Inf" | "-.INF" => Some(true),
-        // `<<` resolves to the merge tag, but yaml.v3 emits it *plain* in value
-        // position (`k: <<`); only the rarely-reachable key path adds `!!merge`.
-        // codefang reports never contain `<<`, so we treat it as a plain string,
-        // matching the value-context output.
+        // `<<` resolves to the merge tag, but the reference emitter writes it
+        // *plain* in value position (`k: <<`); only the rarely-reachable key
+        // path adds `!!merge`. codefang reports never contain `<<`, so it is
+        // treated as a plain string, matching the value-context output.
         _ => None,
     }
 }
 
-/// Replicates `resolve("", s) == strTag` (i.e. the value stays a string).
+/// Whether `s` resolves to the string tag (i.e. the value stays a string).
 fn resolves_to_str(s: &str) -> bool {
     let h = if s.is_empty() { b'N' } else { hint(s.as_bytes()[0]) };
     if h == 0 {
@@ -98,8 +100,8 @@ fn resolves_to_str(s: &str) -> bool {
     }
 }
 
-/// `strconv.ParseInt(s, 0, 64)` succeeds. Base 0 means auto-detect 0x/0o/0b/0
-/// octal prefixes.
+/// Whether `s` parses as an `i64` with base auto-detection (0x/0o/0b prefixes
+/// and leading-zero octal).
 fn parse_int_go(s: &str) -> bool {
     parse_int_base0(s).is_some()
 }
@@ -129,7 +131,8 @@ fn parse_int_base0(s: &str) -> Option<i64> {
     }
 }
 
-/// Parse an unsigned integer with Go base-0 prefix detection.
+/// Parse an unsigned integer with base-0 prefix detection (`0x`/`0o`/`0b`,
+/// and a bare leading `0` meaning octal).
 fn parse_uint_base0(s: &str) -> Option<u128> {
     if s.is_empty() {
         return None;
@@ -148,8 +151,8 @@ fn parse_uint_base0(s: &str) -> Option<u128> {
     if digits.is_empty() {
         return None;
     }
-    // Go allows underscores only adjacent to digits; report strings won't hit
-    // those subtleties, so a plain strict parse suffices here.
+    // The reference parser allows underscores only adjacent to digits; report
+    // strings never hit those subtleties, so a plain strict parse suffices.
     let mut acc: u128 = 0;
     for c in digits.chars() {
         let d = c.to_digit(radix)?;
@@ -169,12 +172,13 @@ fn parse_radix_signed_neg(s: &str, radix: u32) -> bool {
 }
 
 fn parse_float_ok(s: &str) -> bool {
-    // Go strconv.ParseFloat accepts inf/nan too, but those are caught by the
-    // resolveMap. A plain Rust parse matches for the numeric forms we care about.
+    // The reference float parser accepts inf/nan spellings too, but those are
+    // caught by the special-scalar map above. A plain Rust parse matches for
+    // the numeric forms that matter here.
     s.parse::<f64>().is_ok()
 }
 
-/// `yamlStyleFloat` regex: `^[-+]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)([eE][-+]?[0-9]+)?$`.
+/// YAML-style float pattern: `^[-+]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)([eE][-+]?[0-9]+)?$`.
 fn yaml_style_float(s: &str) -> bool {
     let b = s.as_bytes();
     let mut i = 0;
@@ -223,7 +227,8 @@ fn yaml_style_float(s: &str) -> bool {
     i == b.len()
 }
 
-/// `isBase60Float`: `^[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+(?:\.[0-9_]*)?$`.
+/// Legacy (YAML 1.1) base-60 float pattern:
+/// `^[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+(?:\.[0-9_]*)?$`.
 fn is_base60_float(s: &str) -> bool {
     if s.is_empty() {
         return false;
@@ -279,7 +284,7 @@ fn is_base60_float(s: &str) -> bool {
     i == b.len()
 }
 
-/// `isOldBool`.
+/// Legacy (YAML 1.1) boolean spellings (`yes`/`no`/`on`/`off` families).
 fn is_old_bool(s: &str) -> bool {
     matches!(
         s,
@@ -288,7 +293,7 @@ fn is_old_bool(s: &str) -> bool {
     )
 }
 
-/// `parseTimestamp`: quick check + the four allowed `time.Parse` layouts.
+/// Timestamp detection: quick year check + the four allowed layouts.
 fn parse_timestamp(s: &str) -> bool {
     let b = s.as_bytes();
     let mut i = 0;
@@ -298,11 +303,11 @@ fn parse_timestamp(s: &str) -> bool {
     if i != 4 || i == b.len() || b[i] != b'-' {
         return false;
     }
-    // Layouts:
-    //   2006-1-2T15:4:5.999999999Z07:00  (RFC3339Nano, short fields, 'T')
-    //   2006-1-2t15:4:5.999999999Z07:00  (lower 't')
-    //   2006-1-2 15:4:5.999999999        (space, no zone)
-    //   2006-1-2                         (date only)
+    // Layouts (1-2 digit month/day/hour/min/sec fields):
+    //   YYYY-M-DTH:M:S(.frac)?Z|±hh:mm   (RFC3339-style, 'T')
+    //   YYYY-M-DtH:M:S(.frac)?Z|±hh:mm   (lower 't')
+    //   YYYY-M-D H:M:S(.frac)?           (space, no zone)
+    //   YYYY-M-D                         (date only)
     parse_date_only(s)
         || parse_datetime(s, b'T', true)
         || parse_datetime(s, b't', true)
@@ -336,9 +341,8 @@ fn parse_ymd(s: &str) -> Option<&str> {
 }
 
 fn parse_datetime(s: &str, sep: u8, with_zone: bool) -> bool {
-    let rest = match parse_ymd(s) {
-        Some(r) => r,
-        None => return false,
+    let Some(rest) = parse_ymd(s) else {
+        return false;
     };
     let rb = rest.as_bytes();
     if rb.is_empty() || rb[0] != sep {
@@ -346,27 +350,24 @@ fn parse_datetime(s: &str, sep: u8, with_zone: bool) -> bool {
     }
     let mut i = 1;
     // H:M:S(.frac)?
-    let h = match take_digits(rb, i, 1, 2) {
-        Some(x) => x,
-        None => return false,
+    let Some(h) = take_digits(rb, i, 1, 2) else {
+        return false;
     };
     i = h;
     if i >= rb.len() || rb[i] != b':' {
         return false;
     }
     i += 1;
-    let mi = match take_digits(rb, i, 1, 2) {
-        Some(x) => x,
-        None => return false,
+    let Some(mi) = take_digits(rb, i, 1, 2) else {
+        return false;
     };
     i = mi;
     if i >= rb.len() || rb[i] != b':' {
         return false;
     }
     i += 1;
-    let se = match take_digits(rb, i, 1, 2) {
-        Some(x) => x,
-        None => return false,
+    let Some(se) = take_digits(rb, i, 1, 2) else {
+        return false;
     };
     i = se;
     if i < rb.len() && rb[i] == b'.' {
@@ -388,18 +389,16 @@ fn parse_datetime(s: &str, sep: u8, with_zone: bool) -> bool {
             i += 1;
         } else if rb[i] == b'+' || rb[i] == b'-' {
             i += 1;
-            let z1 = match take_digits(rb, i, 2, 2) {
-                Some(x) => x,
-                None => return false,
+            let Some(z1) = take_digits(rb, i, 2, 2) else {
+                return false;
             };
             i = z1;
             if i >= rb.len() || rb[i] != b':' {
                 return false;
             }
             i += 1;
-            let z2 = match take_digits(rb, i, 2, 2) {
-                Some(x) => x,
-                None => return false,
+            let Some(z2) = take_digits(rb, i, 2, 2) else {
+                return false;
             };
             i = z2;
         } else {

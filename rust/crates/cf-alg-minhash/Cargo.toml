@@ -6,10 +6,11 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "MinHash similarity signatures (Splitmix64 seeds, deterministic). Used by alg/lsh and clone detection. Port of the Go pkg/alg/minhash package."
+description = "MinHash similarity signatures (Splitmix64 seeds, deterministic). Used by cf-alg-lsh and clone detection."
 
 [lints.rust]
 unsafe_code = "forbid"
 
 [dependencies]
 cf-alg-hashutil = { path = "../cf-alg-hashutil" }
+thiserror = "1"

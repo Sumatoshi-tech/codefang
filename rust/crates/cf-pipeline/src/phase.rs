@@ -1,27 +1,28 @@
-//! `Phase` / `run_phases` chain-of-responsibility (`phase.go`).
+//! `Phase` / `run_phases` chain-of-responsibility.
 
 use crate::context::Ctx;
 
 /// A single processing stage that transforms state `S`.
-///
-/// Mirrors Go's `Phase[S]` interface.
 pub trait Phase<S> {
     /// The error type produced by a failed phase.
     type Error;
 
     /// Runs the phase, consuming and returning the (possibly transformed)
     /// state.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Self::Error`] when the phase fails.
     fn run(&self, ctx: &Ctx, s: S) -> Result<S, Self::Error>;
 }
 
-/// Adapts a plain closure to the [`Phase`] trait, mirroring Go's
-/// `PhaseFunc[S]`.
+/// Adapts a plain closure to the [`Phase`] trait.
 pub struct PhaseFunc<F>(pub F);
 
 impl<F> PhaseFunc<F> {
     /// Wraps `f` as a [`Phase`].
-    pub fn new(f: F) -> Self {
-        PhaseFunc(f)
+    pub const fn new(f: F) -> Self {
+        Self(f)
     }
 }
 
@@ -38,12 +39,15 @@ where
 
 /// Executes phases sequentially, threading state through each one.
 ///
-/// Returns immediately on the first error, preserving the partial state (the
-/// state value as returned by the failing phase, matching Go's `return s,
-/// err`). Returns the input state unchanged when no phases are provided.
+/// Returns immediately on the first error. Returns the input state unchanged
+/// when no phases are provided.
 ///
-/// All phases share a single error type `E` so they can be passed as a uniform
-/// slice of trait objects, mirroring Go's variadic `phases ...Phase[S]`.
+/// All phases share a single error type `E` so they can be passed as a
+/// uniform slice of trait objects.
+///
+/// # Errors
+///
+/// Propagates the first error returned by any phase.
 pub fn run_phases<S, E>(ctx: &Ctx, mut s: S, phases: &[&dyn Phase<S, Error = E>]) -> Result<S, E> {
     for p in phases {
         s = p.run(ctx, s)?;

@@ -5,14 +5,11 @@
 //! `cf-alg-levenshtein` calculates the Levenshtein edit distance between
 //! strings.
 //!
-//! Ported from the Go package `levenshtein` (`pkg/alg/levenshtein`), used by
-//! the `typos` analyzer. See `specs/rust-rewrite/DESIGN.md` for the port plan.
+//! Used by the `typos` analyzer.
 //!
-//! The implementation mirrors the Go source behaviour exactly:
-//!
-//! * A [`Context`] owns reusable scratch buffers so that repeated calls perform
-//!   no heap allocation after the buffers have grown to a sufficient size (the
-//!   Go code documents this as "0 memory allocations").
+//! * A [`Context`] owns reusable scratch buffers so that repeated calls
+//!   perform no heap allocation after the buffers have grown to a sufficient
+//!   size.
 //! * For strings whose first operand is at most [`MAX_MYERS_LEN`] runes the
 //!   bit-parallel Myers algorithm is used (SIMD-within-a-register). The Myers
 //!   algorithm is asymmetric, so when the first string is too long but the
@@ -20,9 +17,8 @@
 //! * For longer strings the classic optimised dynamic-programming algorithm is
 //!   used as a fallback.
 //!
-//! Distances are computed over Unicode scalar values (Go `rune`s = Rust
-//! [`char`]s), matching the Go behaviour where a multi-byte UTF-8 character
-//! counts as a single edit unit.
+//! Distances are computed over Unicode scalar values ([`char`]s): a multi-byte
+//! UTF-8 character counts as a single edit unit.
 
 /// The maximum length, in runes, of the first string for which the
 /// bit-parallel Myers algorithm is used. It is limited by the 64-bit word size.
@@ -32,16 +28,15 @@ pub const MAX_MYERS_LEN: usize = 64;
 /// table. Runes below this value are indexed into [`Context::peq`]; runes at or
 /// above it fall back to a linear scan.
 ///
-/// Note: although named after ASCII, the value is 256 (matching the Go source),
-/// so the table covers the entire Latin-1 range, not just 7-bit ASCII.
+/// Note: although named after ASCII, the value is 256, so the table covers
+/// the entire Latin-1 range, not just 7-bit ASCII.
 const ASCII_MAX: u32 = 256;
 
 /// `Context` allows calculating the Levenshtein distance via [`Context::distance`].
 ///
 /// It owns reusable scratch buffers, so a single `Context` reused across many
 /// calls performs no allocation once its buffers have grown large enough. A
-/// `Context` is **not** safe for concurrent use; create one per thread (the Go
-/// code uses one `*Context` per goroutine for the same reason).
+/// `Context` is **not** safe for concurrent use; create one per thread.
 #[derive(Debug)]
 pub struct Context {
     /// Scratch column buffer for the dynamic-programming fallback.
@@ -76,7 +71,7 @@ impl Context {
     }
 
     /// Returns a scratch `i32` slice of exactly `length` elements, growing the
-    /// backing buffer if required. Mirrors Go's `getIntSlice`.
+    /// backing buffer if required.
     fn get_int_slice(&mut self, length: usize) -> &mut [i32] {
         if self.int_slice.len() < length {
             self.int_slice.resize(length, 0);
@@ -134,8 +129,8 @@ impl Context {
         self.distance_dp()
     }
 
-    /// Dynamic-programming fallback over the rune buffers, mirroring the Go
-    /// `column`-based implementation exactly (single column, two diagonals).
+    /// Dynamic-programming fallback over the rune buffers (single column, two
+    /// diagonals).
     fn distance_dp(&mut self) -> i32 {
         let len_s1 = self.rune_buf1.len();
 
@@ -227,9 +222,9 @@ impl Context {
             //   HP = VN | ~(D0 | VP)
             //   HN = VP & D0
             //
-            // Go's uint64 arithmetic wraps on overflow; use wrapping_add so the
-            // result matches Go exactly (and does not panic under the
-            // workspace's overflow-checks profile).
+            // The addition deliberately wraps (the algorithm relies on carry
+            // propagation); wrapping_add keeps it panic-free under the
+            // workspace's overflow-checks profile.
             let mut x_val = pm | vn;
             let d0 = ((vp.wrapping_add(x_val & vp)) ^ vp) | x_val;
             let hn = vp & d0;
@@ -292,20 +287,19 @@ impl Context {
     }
 }
 
-/// Returns the number of Unicode scalar values in `s`, matching Go's
-/// `utf8.RuneCountInString`.
+/// Returns the number of Unicode scalar values in `s`.
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 fn rune_count(s: &str) -> i32 {
     s.chars().count() as i32
 }
 
 /// Fills `buf` with the runes of `s`, reusing the buffer's existing capacity.
-/// Mirrors Go's `chars1`/`chars2` (truncate-then-append).
 fn fill_runes(buf: &mut Vec<char>, s: &str) {
     buf.clear();
     buf.extend(s.chars());
 }
 
-/// Returns the minimum of three `i32` values, mirroring Go's variadic `min`.
+/// Returns the minimum of three `i32` values.
 fn min3(a: i32, b: i32, c: i32) -> i32 {
     a.min(b).min(c)
 }
@@ -314,7 +308,6 @@ fn min3(a: i32, b: i32, c: i32) -> i32 {
 mod tests {
     use super::*;
 
-    // Ported from levenshtein_test.go (TestDistance).
     const DISTANCE_TESTS: &[(&str, &str, i32)] = &[
         ("a", "a", 0),
         ("ab", "ab", 0),
@@ -342,7 +335,6 @@ mod tests {
         }
     }
 
-    // Ported from myers_test.go (TestDistanceMyersPath).
     const MYERS_TEST_CASES: &[(&str, &str, i32)] = &[
         ("", "a", 1),
         ("a", "", 1),
@@ -377,7 +369,6 @@ mod tests {
         }
     }
 
-    // Ported from myers_test.go (TestDistanceMyersPathSymmetry).
     #[test]
     fn test_distance_myers_path_symmetry() {
         let mut ctx = Context::new();
@@ -400,7 +391,6 @@ mod tests {
         }
     }
 
-    // Ported from myers_test.go (TestDistanceMyersPathAt64Runes).
     #[test]
     fn test_distance_myers_path_at_64_runes() {
         let mut ctx = Context::new();
@@ -416,7 +406,6 @@ mod tests {
         assert_eq!(got, 0, "distance(64×a, 64×a) = {got}, want 0");
     }
 
-    // Ported from myers_test.go (TestDistanceMyersPathNonASCII).
     #[test]
     fn test_distance_myers_path_non_ascii() {
         let mut ctx = Context::new();
@@ -438,7 +427,6 @@ mod tests {
         }
     }
 
-    // Ported from myers_test.go (TestDistanceMyersVsDPConsistency).
     #[test]
     fn test_distance_myers_vs_dp_consistency() {
         let mut ctx = Context::new();

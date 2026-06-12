@@ -1,7 +1,6 @@
 # cf-budget
 
-Rust port of the Go package `internal/budget`: resource/time/memory budget
-tracking and auto-tuning for codefang analysis runs.
+Memory-budget auto-tuning for codefang analysis runs.
 
 Given a single memory-budget value (bytes) it derives:
 
@@ -14,7 +13,8 @@ Given a single memory-budget value (bytes) it derives:
 
 This crate emits configuration structs only — it never serializes a
 machine-format report — so it does not depend on the cf-gojson/cf-goyaml
-byte-identity encoders. It does reproduce Go's integer/float truncation
-arithmetic exactly so the derived knobs are bit-identical for a given CPU count.
+byte-identity encoders. Its integer/float truncation arithmetic is
+reference-implementation behavior: the derived knobs are bit-identical for a
+given CPU count.
 
 See `specs/rust-rewrite/DESIGN.md`.

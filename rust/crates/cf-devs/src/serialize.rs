@@ -1,13 +1,13 @@
 //! Machine-format serialization, routed exclusively through [`cf_gojson`].
 //!
-//! Every wrapper struct is emitted as a **struct-origin** [`GoMap`] built in Go
-//! field-declaration order (honoring `omitempty`); every dynamic `map[...]`
-//! payload is built as a **map-origin** `GoMap` that the encoder byte-sorts on
-//! encode (DESIGN §2.2). This module never touches `serde_json`.
+//! Every wrapper struct is emitted as a **struct-origin** [`GoMap`] built in
+//! the contractual field order (honoring omit-when-empty rules); every dynamic
+//! map payload is built as a **map-origin** `GoMap` that the encoder
+//! byte-sorts on encode. This module never touches `serde_json`.
 //!
-//! Go encodes integer map keys (`map[int]int`, `map[int][]Hash`) as decimal
-//! strings sorted lexicographically; we reproduce that by inserting stringified
-//! keys into a map-origin `GoMap`.
+//! Integer map keys serialize as decimal strings sorted lexicographically
+//! (report-format contract; pinned by `rust/tests/compat`). We reproduce that
+//! by inserting stringified keys into a map-origin `GoMap`.
 
 use std::collections::BTreeMap;
 
@@ -28,7 +28,7 @@ fn line_stats_map_value(map: &BTreeMap<String, LineStats>) -> GoValue {
     GoValue::Object(obj)
 }
 
-/// Struct-origin `{added, removed, changed}` value (Go `LineStats` JSON tags).
+/// Struct-origin `{added, removed, changed}` value ([`LineStats`] JSON keys).
 fn line_stats_struct_value(stats: LineStats) -> GoValue {
     let mut obj = GoMap::new_struct();
     obj.insert("added".to_string(), GoValue::Int(stats.added));
@@ -37,7 +37,7 @@ fn line_stats_struct_value(stats: LineStats) -> GoValue {
     GoValue::Object(obj)
 }
 
-/// [`CommitDevData`] → struct-origin GoValue
+/// [`CommitDevData`] → struct-origin [`GoValue`]
 /// (`commits, lines_added, lines_removed, lines_changed, author_id,
 /// languages(omitempty)`).
 #[must_use]
@@ -54,7 +54,7 @@ pub fn commit_dev_data_to_go(cdd: &CommitDevData) -> GoValue {
     GoValue::Object(obj)
 }
 
-/// [`LanguageStatsEntry`] → struct-origin GoValue
+/// [`LanguageStatsEntry`] → struct-origin [`GoValue`]
 /// (`language, added, removed, changed`).
 fn language_stats_entry_to_go(e: &LanguageStatsEntry) -> GoValue {
     let mut obj = GoMap::new_struct();
@@ -65,7 +65,7 @@ fn language_stats_entry_to_go(e: &LanguageStatsEntry) -> GoValue {
     GoValue::Object(obj)
 }
 
-/// [`DeveloperData`] → struct-origin GoValue.
+/// [`DeveloperData`] → struct-origin [`GoValue`].
 #[must_use]
 pub fn developer_data_to_go(d: &DeveloperData) -> GoValue {
     let mut obj = GoMap::new_struct();
@@ -79,9 +79,9 @@ pub fn developer_data_to_go(d: &DeveloperData) -> GoValue {
     obj.insert("lines_removed".to_string(), GoValue::Int(d.removed));
     obj.insert("lines_changed".to_string(), GoValue::Int(d.changed));
     obj.insert("net_lines".to_string(), GoValue::Int(d.net_lines));
-    // Go: `Languages []LanguageStatsEntry json:"languages"` — non-omitempty.
-    // A nil slice marshals to `null`; an empty (non-nil) slice to `[]`.
-    // finalizeLanguages leaves it nil when there are no languages.
+    // `languages` is always present in JSON, but renders as `null` rather
+    // than `[]` when the developer has no languages (reference-implementation
+    // behavior, pinned by the differential gate).
     let langs: Vec<GoValue> = d.languages.iter().map(language_stats_entry_to_go).collect();
     obj.insert(
         "languages".to_string(),
@@ -97,13 +97,12 @@ pub fn developer_data_to_go(d: &DeveloperData) -> GoValue {
     GoValue::Object(obj)
 }
 
-/// [`DeveloperData`] → struct-origin GoValue for the **YAML** target.
+/// [`DeveloperData`] → struct-origin [`GoValue`] for the **YAML** target.
 ///
-/// Identical to [`developer_data_to_go`] except the non-omitempty `languages`
-/// slice renders as an empty sequence (`[]`) rather than `null` when empty:
-/// `gopkg.in/yaml.v3` marshals a nil Go slice as `[]`, whereas `encoding/json`
-/// marshals it as `null`. The Go field is `Languages []LanguageStatsEntry`
-/// (a concrete slice type, never a nil interface), so yaml.v3 always emits `[]`.
+/// Identical to [`developer_data_to_go`] except an empty `languages` list
+/// renders as an empty sequence (`[]`) rather than `null`: the YAML and JSON
+/// report formats disagree on how an absent list renders
+/// (reference-implementation behavior, pinned by the differential gate).
 #[must_use]
 pub fn developer_data_to_go_yaml(d: &DeveloperData) -> GoValue {
     let mut obj = GoMap::new_struct();
@@ -127,8 +126,9 @@ pub fn developer_data_to_go_yaml(d: &DeveloperData) -> GoValue {
     GoValue::Object(obj)
 }
 
-/// [`LanguageData`] → struct-origin GoValue. `contributors` is a `map[int]int`
-/// → map-origin object with decimal-string keys, byte-sorted on encode.
+/// [`LanguageData`] → struct-origin [`GoValue`]. `contributors` is an
+/// integer-keyed map → map-origin object with decimal-string keys, byte-sorted
+/// on encode.
 #[must_use]
 pub fn language_data_to_go(l: &LanguageData) -> GoValue {
     let mut obj = GoMap::new_struct();
@@ -147,8 +147,8 @@ pub fn language_data_to_go(l: &LanguageData) -> GoValue {
     GoValue::Object(obj)
 }
 
-/// [`BusFactorData`] → struct-origin GoValue with the Go field order and
-/// `omitempty` rules.
+/// [`BusFactorData`] → struct-origin [`GoValue`] with the contractual field
+/// order and omit-when-empty rules.
 #[must_use]
 pub fn bus_factor_data_to_go(b: &BusFactorData) -> GoValue {
     let mut obj = GoMap::new_struct();
@@ -198,7 +198,7 @@ pub fn bus_factor_data_to_go(b: &BusFactorData) -> GoValue {
     GoValue::Object(obj)
 }
 
-/// [`DeveloperCommits`] → struct-origin GoValue (`dev_id, commits`).
+/// [`DeveloperCommits`] → struct-origin [`GoValue`] (`dev_id, commits`).
 fn developer_commits_to_go(c: &DeveloperCommits) -> GoValue {
     let mut obj = GoMap::new_struct();
     obj.insert("dev_id".to_string(), GoValue::Int(c.dev_id));
@@ -206,7 +206,7 @@ fn developer_commits_to_go(c: &DeveloperCommits) -> GoValue {
     GoValue::Object(obj)
 }
 
-/// [`ActivityData`] → struct-origin GoValue.
+/// [`ActivityData`] → struct-origin [`GoValue`].
 #[must_use]
 pub fn activity_data_to_go(a: &ActivityData) -> GoValue {
     let mut obj = GoMap::new_struct();
@@ -217,15 +217,15 @@ pub fn activity_data_to_go(a: &ActivityData) -> GoValue {
     if !a.end_time.is_empty() {
         obj.insert("end_time".to_string(), GoValue::Str(a.end_time.clone()));
     }
-    // Go: `ByDeveloper []DeveloperCommits json:"by_developer"`. ActivityMetric
-    // always makes a non-nil slice → `[]` when empty.
+    // `by_developer` is always present, rendering as `[]` when empty
+    // (compute_activity always materializes the list).
     let by: Vec<GoValue> = a.by_developer.iter().map(developer_commits_to_go).collect();
     obj.insert("by_developer".to_string(), GoValue::Array(by));
     obj.insert("total_commits".to_string(), GoValue::Int(a.total_commits));
     GoValue::Object(obj)
 }
 
-/// [`ChurnData`] → struct-origin GoValue.
+/// [`ChurnData`] → struct-origin [`GoValue`].
 #[must_use]
 pub fn churn_data_to_go(c: &ChurnData) -> GoValue {
     let mut obj = GoMap::new_struct();
@@ -242,7 +242,8 @@ pub fn churn_data_to_go(c: &ChurnData) -> GoValue {
     GoValue::Object(obj)
 }
 
-/// [`AggregateData`] → struct-origin GoValue. Estimated fields are `uint64`.
+/// [`AggregateData`] → struct-origin [`GoValue`]. Estimated fields are
+/// unsigned.
 #[must_use]
 pub fn aggregate_data_to_go(a: &AggregateData) -> GoValue {
     let mut obj = GoMap::new_struct();
@@ -283,12 +284,12 @@ pub fn aggregate_data_to_go(a: &AggregateData) -> GoValue {
     GoValue::Object(obj)
 }
 
-/// [`ComputedMetrics`] → struct-origin GoValue
+/// [`ComputedMetrics`] → struct-origin [`GoValue`]
 /// (`aggregate, developers, languages, busfactor, activity, churn`).
 ///
 /// This is the value the `run --analyzers history/devs --format json|bin|...`
-/// path marshals. Slices use `null` when their Go origin would be a nil slice;
-/// `ComputeAllMetrics` always allocates them, so they marshal to `[]` when
+/// path marshals. All top-level lists are always materialized by
+/// [`crate::metrics::compute_all_metrics`], so they marshal to `[]` when
 /// empty here.
 #[must_use]
 pub fn computed_metrics_to_go(m: &ComputedMetrics) -> GoValue {
@@ -317,12 +318,12 @@ pub fn computed_metrics_to_go(m: &ComputedMetrics) -> GoValue {
     GoValue::Object(obj)
 }
 
-/// [`ComputedMetrics`] → struct-origin GoValue for the **YAML** target.
+/// [`ComputedMetrics`] → struct-origin [`GoValue`] for the **YAML** target.
 ///
 /// Identical to [`computed_metrics_to_go`] except per-developer empty
-/// `languages` slices render as `[]` (yaml.v3 nil-slice rule) rather than
-/// `null` (encoding/json nil-slice rule). All top-level slices are already
-/// allocated by `ComputeAllMetrics`, so they render as `[]` when empty in both
+/// `languages` lists render as `[]` rather than `null` (the YAML/JSON
+/// absent-list divergence; see [`developer_data_to_go_yaml`]). All top-level
+/// lists are always materialized, so they render as `[]` when empty in both
 /// targets; only the per-developer `languages` field differs.
 #[must_use]
 pub fn computed_metrics_to_go_yaml(m: &ComputedMetrics) -> GoValue {

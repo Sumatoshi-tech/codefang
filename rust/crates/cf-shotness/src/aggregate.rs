@@ -1,9 +1,8 @@
 //! Tick aggregation and co-change matrix construction.
 //!
-//! Ports the data-flow core of `internal/analyzers/shotness/aggregator.go` and
-//! `report.go`: per-commit node touches accumulate into per-tick state, coupling
-//! pairs are derived from sorted touched-node keys, and the merged per-node data
-//! is flattened into the index-keyed `Nodes`/`Counters` report that the metric
+//! Per-commit node touches accumulate into per-tick state, coupling pairs are
+//! derived from sorted touched-node keys, and the merged per-node data is
+//! flattened into the index-keyed `Nodes`/`Counters` report that the metric
 //! functions consume.
 //!
 //! Name-collision semantics ("last-wins") happen upstream during node extraction
@@ -15,16 +14,14 @@ use std::collections::{BTreeMap, HashMap};
 use crate::types::{NodeSummary, ReportData};
 
 /// Minimum touched nodes to form at least one coupling pair.
-/// Mirrors `minCouplingNodes`.
 pub const MIN_COUPLING_NODES: usize = 2;
-/// Divisor in `C(n,2) = n*(n-1)/2`. Mirrors `combinatorialPairDivisor`.
+/// Divisor in `C(n,2) = n*(n-1)/2`.
 pub const COMBINATORIAL_PAIR_DIVISOR: i64 = 2;
 /// Cap on touched nodes per commit for coupling map updates.
-/// Mirrors `maxCouplingNodes`.
 pub const MAX_COUPLING_NODES: usize = 500;
 
-/// Per-node accumulation state in a tick. Mirrors Go `nodeShotnessData`.
-#[derive(Debug, Clone, Default, PartialEq)]
+/// Per-node accumulation state in a tick.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NodeShotnessData {
     /// Node identity.
     pub summary: NodeSummary,
@@ -38,7 +35,7 @@ pub struct NodeShotnessData {
     pub couples: BTreeMap<String, i64>,
 }
 
-/// Per-tick aggregated node map. Mirrors the node portion of Go `TickData`.
+/// Per-tick aggregated node map.
 ///
 /// Keyed by node key; a `BTreeMap` keeps deterministic ordering for merges and
 /// the sorted node order the report builder relies on.
@@ -46,8 +43,8 @@ pub type TickNodes = BTreeMap<String, NodeShotnessData>;
 
 /// Accumulates per-commit node touch deltas into the tick node map.
 ///
-/// Mirrors Go `accumulateNodes`. Each touched node's count increments by its
-/// per-commit delta (always 1 for a first touch in the commit).
+/// Each touched node's count increments by its per-commit delta (always 1 for
+/// a first touch in the commit).
 pub fn accumulate_nodes(acc: &mut TickNodes, nodes_touched: &BTreeMap<String, NodeSummary>) {
     for (key, summary) in nodes_touched {
         let nd = acc.entry(key.clone()).or_insert_with(|| NodeShotnessData {
@@ -61,11 +58,11 @@ pub fn accumulate_nodes(acc: &mut TickNodes, nodes_touched: &BTreeMap<String, No
 
 /// Computes coupling pairs from touched nodes and updates coupling counters.
 ///
-/// Mirrors Go `computeCouplingPairs`. Returns the combinatorial pair count
-/// `C(n,2)`. When `n > MAX_COUPLING_NODES` the O(n²) counter updates are skipped
-/// (mass refactor — coupling signal is noise) but the pair count is still
-/// returned. Touched-node keys are sorted before pairing, matching Go's
-/// `sort.Strings` + `alg.ForEachPair` (upper-triangle) walk.
+/// Returns the combinatorial pair count `C(n,2)`. When
+/// `n > MAX_COUPLING_NODES` the O(n²) counter updates are skipped (mass
+/// refactor — coupling signal is noise) but the pair count is still returned.
+/// Touched-node keys are paired in sorted order (an upper-triangle walk).
+#[allow(clippy::cast_possible_wrap)] // touched-node counts are small
 pub fn compute_coupling_pairs(
     acc: &mut TickNodes,
     nodes_touched: &BTreeMap<String, NodeSummary>,
@@ -81,19 +78,18 @@ pub fn compute_coupling_pairs(
         return coupling_pairs;
     }
 
-    // BTreeMap already yields keys sorted ascending (matches Go sort.Strings).
+    // BTreeMap already yields keys sorted ascending.
     let keys: Vec<&String> = nodes_touched.keys().collect();
 
     for i in 0..keys.len() {
         for j in (i + 1)..keys.len() {
-            let key1 = keys[i];
-            let key2 = keys[j];
+            let (first, second) = (keys[i], keys[j]);
 
-            if let Some(nd) = acc.get_mut(key1) {
-                *nd.couples.entry(key2.clone()).or_insert(0) += 1;
+            if let Some(nd) = acc.get_mut(first) {
+                *nd.couples.entry(second.clone()).or_insert(0) += 1;
             }
-            if let Some(nd) = acc.get_mut(key2) {
-                *nd.couples.entry(key1.clone()).or_insert(0) += 1;
+            if let Some(nd) = acc.get_mut(second) {
+                *nd.couples.entry(first.clone()).or_insert(0) += 1;
             }
         }
     }
@@ -101,10 +97,9 @@ pub fn compute_coupling_pairs(
     coupling_pairs
 }
 
-/// Additively merges `src` node data into `dst`.
-///
-/// Mirrors Go `mergeNodesInto`: counts add, coupling counters add per key, and
-/// new nodes are inserted with copied coupling maps.
+/// Additively merges `src` node data into `dst`: counts add, coupling
+/// counters add per key, and new nodes are inserted with copied coupling
+/// maps.
 pub fn merge_nodes_into(dst: &mut TickNodes, src: &TickNodes) {
     for (key, nd) in src {
         match dst.get_mut(key) {
@@ -123,10 +118,10 @@ pub fn merge_nodes_into(dst: &mut TickNodes, src: &TickNodes) {
 
 /// Builds the index-keyed `Nodes`/`Counters` report from merged node data.
 ///
-/// Port of Go `buildReportFromMerged`. Nodes are ordered by sorted node key;
-/// `counters[i][i]` holds node `i`'s self-change count and `counters[i][j]`
-/// holds the co-change count with node `j` (only couples whose key resolves to a
-/// node in the merged set are kept).
+/// Nodes are ordered by sorted node key; `counters[i][i]` holds node `i`'s
+/// self-change count and `counters[i][j]` holds the co-change count with node
+/// `j` (only couples whose key resolves to a node in the merged set are
+/// kept).
 #[must_use]
 pub fn build_report_from_merged(merged: &TickNodes) -> ReportData {
     let keys: Vec<String> = merged.keys().cloned().collect(); // BTreeMap → sorted.
@@ -163,7 +158,7 @@ mod tests {
     use super::*;
 
     fn touched(keys: &[(&str, NodeSummary)]) -> BTreeMap<String, NodeSummary> {
-        keys.iter().map(|(k, s)| (k.to_string(), s.clone())).collect()
+        keys.iter().map(|(k, s)| ((*k).to_string(), s.clone())).collect()
     }
 
     #[test]

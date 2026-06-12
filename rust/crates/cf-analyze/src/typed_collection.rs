@@ -1,7 +1,7 @@
 //! Deferred typed-slice → `[]map[string]any` conversion at the serialization
 //! boundary.
 //!
-//! Port of `internal/analyzers/analyze/typed_collection.go`. Per-file analyzers
+//! Per-file analyzers
 //! place a [`TypedCollection`] in the report instead of a materialized map slice;
 //! conversion is deferred to the serialization boundary. In Rust the "typed
 //! slice + reflective converter" is expressed with a boxed converter closure that
@@ -9,24 +9,23 @@
 
 use cf_gojson::GoMap;
 
-/// Report key stamping the originating source file. Mirrors `SourceFileKey`.
+/// Report key stamping the originating source file.
 pub const SOURCE_FILE_KEY: &str = "_source_file";
-/// Report key stamping the detected language. Mirrors `LanguageKey`.
+/// Report key stamping the detected language.
 pub const LANGUAGE_KEY: &str = "_language";
-/// Report key stamping the parent directory. Mirrors `DirectoryKey`.
+/// Report key stamping the parent directory.
 pub const DIRECTORY_KEY: &str = "_directory";
 
 /// Converts deferred typed items into report maps.
 ///
-/// The Rust analogue of Go's `ItemConverter func(items any, sourceFile string)
-/// []map[string]any` (typed_collection.go:5). It receives the stamped source
+/// A deferred item-to-maps converter. It receives the stamped source
 /// file and produces the flattened maps; when `source_file` is non-empty the
 /// converter should include it as [`SOURCE_FILE_KEY`] in each output map.
 pub type ItemConverter = Box<dyn Fn(&str) -> Vec<GoMap> + Send + Sync>;
 
 /// Wraps a typed struct slice for deferred map conversion.
 ///
-/// Mirrors `TypedCollection` (typed_collection.go:11). Go stores the concrete
+/// The reference stores the concrete
 /// typed slice in `Items any`; in Rust the (already type-erased) items are
 /// captured inside the [`ItemConverter`] closure, so this struct carries only
 /// the stamped metadata plus the converter.
@@ -37,15 +36,14 @@ pub struct TypedCollection {
     pub language: String,
     /// Stamped parent directory of the source file (`Directory`).
     pub directory: String,
-    /// Deferred converter (`ToMaps`); `None` mirrors Go's nil converter.
+    /// Deferred converter; `None` means no converter is set.
     pub to_maps: Option<ItemConverter>,
 }
 
 impl TypedCollection {
     /// Converts the typed items to report maps using the stored converter.
     ///
-    /// Mirrors `MapSlice` (typed_collection.go:20): returns an empty vector
-    /// (Go's nil) when no converter is set.
+    /// Returns an empty vector when no converter is set.
     #[must_use]
     pub fn map_slice(&self) -> Vec<GoMap> {
         match &self.to_maps {
@@ -72,7 +70,7 @@ mod tests {
     use cf_gojson::{GoValue, MapOrigin};
 
     #[test]
-    fn keys_match_go() {
+    fn keys_match_reference() {
         assert_eq!(SOURCE_FILE_KEY, "_source_file");
         assert_eq!(LANGUAGE_KEY, "_language");
         assert_eq!(DIRECTORY_KEY, "_directory");

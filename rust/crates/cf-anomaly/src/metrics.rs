@@ -1,8 +1,4 @@
 //! Metric computation for the temporal anomaly analyzer.
-//!
-//! Ports `computeList` / `computeAggregate` / `computeTimeSeries` /
-//! `ComputeAllMetrics` and the `ReportData` input model from
-//! `internal/analyzers/anomaly/metrics.go`.
 
 use std::collections::BTreeMap;
 
@@ -15,13 +11,13 @@ use crate::model::{
 };
 use crate::zscore::compute_z_scores;
 
-/// Inclusive tick time bounds (start/end) used to annotate time-series entries.
+/// Inclusive tick time bounds (start/end) used to annotate time-series
+/// entries.
 ///
-/// Minimal stand-in for `analyze.TickBounds` (the `cf-analyze` crate is not yet
-/// ported). `format_start_time` / `format_end_time` produce the RFC3339 strings
-/// Go writes via `bounds.FormatStartTime()` / `FormatEndTime()`. Callers that
-/// have real bounds pass pre-formatted RFC3339 strings here; an empty string
-/// means "no bound", matching Go's `omitempty` behavior on `TimeSeriesEntry`.
+/// Minimal stand-in for the canonical tick-bounds type in `cf-analyze` (not
+/// yet wired). Callers that have real bounds pass pre-formatted RFC3339
+/// strings here; an empty string means "no bound" and is omitted from
+/// [`TimeSeriesEntry`] output.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TickBounds {
     /// Pre-formatted RFC3339 start time, or empty for none.
@@ -32,19 +28,18 @@ pub struct TickBounds {
 
 /// Parsed input data for anomaly metric computation.
 ///
-/// Mirrors Go `ReportData` (metrics.go). In Go this is parsed out of the
-/// untyped `Report = map[string]any`; here it is a typed struct. The
-/// report-map parsing (`ParseReportData`) belongs to the `cf-analyze`
-/// conversion hub and is tracked as a framework dependency (see crate todos).
+/// A typed struct (the reference implementation parses it out of an untyped
+/// report map). The report-map parsing belongs to the `cf-analyze` conversion
+/// hub and is tracked as a framework dependency (see crate todos).
 #[derive(Debug, Clone, Default)]
 pub struct ReportData {
-    /// Pre-detected anomalies (Go reads `report["anomalies"]`).
+    /// Pre-detected anomalies.
     pub anomalies: Vec<Record>,
-    /// Per-tick metrics (Go derives via `AggregateCommitsToTicks`).
+    /// Per-tick metrics (derived from per-commit data).
     pub tick_metrics: BTreeMap<i64, TickMetrics>,
     /// Optional per-tick time bounds.
     pub tick_bounds: BTreeMap<i64, TickBounds>,
-    /// Z-score threshold (Go `float32`).
+    /// Z-score threshold (single-precision by contract).
     pub threshold: f32,
     /// Sliding window size.
     pub window_size: usize,
@@ -54,14 +49,15 @@ pub struct ReportData {
     pub external_summaries: Vec<ExternalSummary>,
 }
 
-/// Extracts the anomaly list. Mirrors Go `computeList`.
+/// Extracts the anomaly list.
 #[must_use]
 fn compute_list(input: &ReportData) -> Vec<Record> {
     input.anomalies.clone()
 }
 
-/// Calculates aggregate statistics. Mirrors Go `computeAggregate`.
+/// Calculates aggregate statistics.
 #[must_use]
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_wrap)] // contractual count math
 fn compute_aggregate(input: &ReportData) -> AggregateData {
     let total_ticks = input.tick_metrics.len() as i64;
     let total_anomalies = input.anomalies.len() as i64;
@@ -109,13 +105,15 @@ fn compute_aggregate(input: &ReportData) -> AggregateData {
     }
 }
 
-/// Builds the annotated time series. Mirrors Go `computeTimeSeries`.
+/// Builds the annotated time series.
 #[must_use]
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_wrap)] // contractual count math
 fn compute_time_series(input: &ReportData) -> Vec<TimeSeriesEntry> {
     let ticks: Vec<i64> = input.tick_metrics.keys().copied().collect();
 
-    // Anomaly set for O(log n) lookup (Go uses a map[int]float64).
-    let anomaly_set: BTreeMap<i64, ()> = input.anomalies.iter().map(|a| (a.tick, ())).collect();
+    // Anomalous-tick set for O(log n) lookup.
+    let anomaly_set: std::collections::BTreeSet<i64> =
+        input.anomalies.iter().map(|a| a.tick).collect();
 
     // Churn Z-scores in tick order.
     let churn: Vec<f64> = ticks
@@ -128,7 +126,7 @@ fn compute_time_series(input: &ReportData) -> Vec<TimeSeriesEntry> {
 
     for (i, tick) in ticks.iter().enumerate() {
         let tm = &input.tick_metrics[tick];
-        let is_anomaly = anomaly_set.contains_key(tick);
+        let is_anomaly = anomaly_set.contains(tick);
 
         let churn_z = churn_scores.get(i).copied().unwrap_or(0.0);
 
@@ -150,8 +148,8 @@ fn compute_time_series(input: &ReportData) -> Vec<TimeSeriesEntry> {
         };
 
         if let Some(bounds) = input.tick_bounds.get(tick) {
-            entry.start_time = bounds.start_time.clone();
-            entry.end_time = bounds.end_time.clone();
+            entry.start_time.clone_from(&bounds.start_time);
+            entry.end_time.clone_from(&bounds.end_time);
         }
 
         entries.push(entry);
@@ -160,11 +158,10 @@ fn compute_time_series(input: &ReportData) -> Vec<TimeSeriesEntry> {
     entries
 }
 
-/// Runs all anomaly metrics. Mirrors Go `ComputeAllMetrics`.
+/// Runs all anomaly metrics over typed [`ReportData`].
 ///
-/// Unlike Go, which parses an untyped `Report`, this takes typed [`ReportData`]
-/// directly. The returned [`ComputedMetrics`] is what `WriteToStore` /
-/// `conversion.go` serialize through `cf-gojson` for the machine formats.
+/// The returned [`ComputedMetrics`] is what the store/report paths serialize
+/// through `cf-gojson` for the machine formats.
 #[must_use]
 pub fn compute_all_metrics(input: &ReportData) -> ComputedMetrics {
     ComputedMetrics {
@@ -176,13 +173,12 @@ pub fn compute_all_metrics(input: &ReportData) -> ComputedMetrics {
     }
 }
 
-/// Builds [`ReportData`] from per-commit metrics, the commits-by-tick mapping,
-/// and the analyzer config, running anomaly detection over the aggregated ticks.
+/// Builds [`ReportData`] from per-commit metrics, the commits-by-tick
+/// mapping, and the analyzer config, running anomaly detection over the
+/// aggregated ticks.
 ///
-/// Mirrors the body of Go `ticksToReport` followed by `ParseReportData` (the
-/// "canonical path"): aggregate commits to ticks, detect anomalies, and package
-/// the typed inputs `compute_all_metrics` consumes. This is the deterministic
-/// equivalent of `ticksToReport -> ComputeAllMetrics` used by `WriteToStore`.
+/// This is the canonical path: aggregate commits to ticks, detect anomalies,
+/// and package the typed inputs [`compute_all_metrics`] consumes.
 #[must_use]
 pub fn build_report_data(
     commit_metrics: &BTreeMap<String, crate::model::CommitAnomalyData>,
@@ -216,7 +212,8 @@ mod tests {
     }
 
     fn build_test_report() -> ReportData {
-        // Mirrors Go buildTestReport: 3 ticks, no pre-detected anomalies.
+        // Mirrors the reference suite's buildTestReport: 3 ticks, no
+        // pre-detected anomalies.
         let mut commit_metrics = BTreeMap::new();
         commit_metrics.insert(
             hash('a'),
@@ -265,7 +262,7 @@ mod tests {
 
     #[test]
     fn compute_all_metrics_basic() {
-        // Mirrors Go TestComputeAllMetrics_Basic.
+        // Mirrors reference test TestComputeAllMetrics_Basic.
         let input = build_test_report();
         let computed = compute_all_metrics(&input);
         assert!(computed.aggregate.total_ticks > 0);
@@ -274,7 +271,7 @@ mod tests {
 
     #[test]
     fn compute_all_metrics_from_commit_data_three_ticks() {
-        // Mirrors Go TestComputeAllMetrics_FromCommitData.
+        // Mirrors reference test TestComputeAllMetrics_FromCommitData.
         let input = build_test_report();
         let computed = compute_all_metrics(&input);
         assert_eq!(computed.aggregate.total_ticks, 3);
@@ -282,7 +279,7 @@ mod tests {
 
     #[test]
     fn compute_all_metrics_with_spike() {
-        // Mirrors Go TestComputeAllMetrics_WithAnomaly with a window=5 spike.
+        // Mirrors reference test TestComputeAllMetrics_WithAnomaly (window=5 spike).
         let mut commit_metrics = BTreeMap::new();
         let mut commits_by_tick = BTreeMap::new();
         for tick in 0..10_i64 {
@@ -335,9 +332,8 @@ mod tests {
         let computed = compute_all_metrics(&input);
         // Every tick is present in the series.
         assert_eq!(computed.time_series.len(), 3);
-        // is_anomaly is driven by the pre-detected anomaly set (Go
-        // `computeTimeSeries` reads `input.Anomalies`), so the number of flagged
-        // series entries equals the number of detected anomalies.
+        // is_anomaly is driven by the pre-detected anomaly set, so the number
+        // of flagged series entries equals the number of detected anomalies.
         let flagged = computed.time_series.iter().filter(|e| e.is_anomaly).count();
         assert_eq!(flagged, computed.anomalies.len());
     }

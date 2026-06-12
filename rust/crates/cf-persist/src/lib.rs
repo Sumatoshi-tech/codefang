@@ -1,22 +1,20 @@
 //! `cf-persist` — codec-based file persistence for arbitrary state types.
 //!
-//! Rust port of the Go `pkg/persist` package. It provides a pluggable [`Codec`]
-//! abstraction, two concrete codecs ([`JsonCodec`] and [`GobCodec`]), directory-
-//! scoped [`save_state`] / [`load_state`] helpers, and a typed [`Persister`].
+//! Provides a pluggable [`Codec`] abstraction, two concrete codecs
+//! ([`JsonCodec`] and [`GobCodec`]), directory-scoped [`save_state`] /
+//! [`load_state`] helpers, and a typed [`Persister`].
 //!
-//! # Byte-identity and the dropped gob format
+//! # Byte-identity (specs/rust-rewrite/DESIGN.md §2–§3)
 //!
-//! Per specs/rust-rewrite/DESIGN.md §2–§3:
-//!
-//! * The **JSON codec** emits bytes compatible with Go's `encoding/json`
-//!   `Encoder` (HTML escaping on, optional indent, trailing newline, map keys
-//!   byte-sorted). It is the persistence-layer analogue of the tier-0
-//!   `cf-gojson` crate and should delegate to `cf-gojson::Encoder` once that
-//!   crate is implemented (see [`json`] for the bridge note).
-//! * Go's **`encoding/gob`** is dropped: it is a Go-specific wire format that is
-//!   not byte-portable, and persist/checkpoint state is never user-visible report
-//!   output. [`GobCodec`] keeps the Go-facing API (name, `.gob` extension, error
-//!   prefixes) but encodes with `bincode`.
+//! * The **JSON codec** emits the pinned report-format byte layout (HTML
+//!   escaping on, optional indent, trailing newline, map keys byte-sorted).
+//!   It is the persistence-layer analogue of the tier-0 `cf-gojson` crate and
+//!   should delegate to `cf-gojson::Encoder` once available (see [`json`] for
+//!   the bridge note).
+//! * The **binary codec** carries internal-only state that is never
+//!   user-visible report output, so no cross-implementation wire format is
+//!   reproduced. [`GobCodec`] keeps its historical surface (name, `.gob`
+//!   extension, error prefixes) but encodes with `bincode`.
 //!
 //! # Example
 //!
@@ -63,11 +61,9 @@ pub use json::{JsonCodec, DEFAULT_INDENT, JSON_EXTENSION};
 
 /// Defines how state is serialized and deserialized.
 ///
-/// Mirrors Go's `persist.Codec` interface. Because Go uses reflection over `any`
-/// while Rust resolves the concrete state type at the call site, [`encode`] and
-/// [`decode`] are generic over the serde-(de)serializable state type rather than
-/// taking a `&dyn Any`. The trait is therefore not object-safe; pass a concrete
-/// codec to [`Persister`], [`save_state`], and [`load_state`].
+/// [`encode`] and [`decode`] are generic over the serde-(de)serializable state
+/// type, resolved at each call site. The trait is therefore not object-safe;
+/// pass a concrete codec to [`Persister`], [`save_state`], and [`load_state`].
 ///
 /// [`encode`]: Codec::encode
 /// [`decode`]: Codec::decode
@@ -95,9 +91,8 @@ pub trait Codec {
 
 /// Saves `state` to a file in `dir`.
 ///
-/// The filename is `basename` + the codec's [`extension`](Codec::extension), and
-/// the file is created (truncating any existing file). Equivalent to Go's
-/// `persist.SaveState`.
+/// The filename is `basename` + the codec's [`extension`](Codec::extension),
+/// and the file is created (truncating any existing file).
 ///
 /// # Errors
 ///
@@ -123,7 +118,6 @@ where
 /// Loads state from a file in `dir` into `state`.
 ///
 /// The filename is `basename` + the codec's [`extension`](Codec::extension).
-/// Equivalent to Go's `persist.LoadState`.
 ///
 /// # Errors
 ///
@@ -148,9 +142,9 @@ where
 
 /// Handles I/O for a specific state type `T` using a [`Codec`] `C`.
 ///
-/// Equivalent to Go's generic `persist.Persister[T]`. The codec is owned by the
-/// persister; `T` is captured as a type parameter so [`save`](Persister::save)
-/// and [`load`](Persister::load) read like the Go closures-based API.
+/// The codec is owned by the persister; `T` is captured as a type parameter so
+/// [`save`](Persister::save) and [`load`](Persister::load) work with
+/// build/restore closures.
 #[derive(Debug, Clone)]
 pub struct Persister<T, C: Codec> {
     basename: String,
@@ -160,10 +154,8 @@ pub struct Persister<T, C: Codec> {
 
 impl<T, C: Codec> Persister<T, C> {
     /// Creates a persister with the given `basename` and `codec`.
-    ///
-    /// Equivalent to Go's `NewPersister[T](basename, codec)`.
     pub fn new(basename: impl Into<String>, codec: C) -> Self {
-        Persister {
+        Self {
             basename: basename.into(),
             codec,
             _state: PhantomData,
@@ -171,8 +163,6 @@ impl<T, C: Codec> Persister<T, C> {
     }
 
     /// Writes state to `dir` using the value produced by `build_state`.
-    ///
-    /// Equivalent to Go's `Persister.Save(dir, buildState)`.
     ///
     /// # Errors
     ///
@@ -187,8 +177,6 @@ impl<T, C: Codec> Persister<T, C> {
     }
 
     /// Restores state from `dir` and hands it to `restore_state`.
-    ///
-    /// Equivalent to Go's `Persister.Load(dir, restoreState)`.
     ///
     /// # Errors
     ///
@@ -228,7 +216,7 @@ mod tests {
         }
     }
 
-    // ---- save_state / load_state (ports of the Go SaveState/LoadState tests) -
+    // ---- save_state / load_state -------------------------------------------
 
     #[test]
     fn save_state_json_writes_file() {
@@ -321,7 +309,7 @@ mod tests {
         assert!(err.to_string().contains("decode"));
     }
 
-    // ---- Persister (ports of persister_test.go) ------------------------------
+    // ---- Persister -----------------------------------------------------------
 
     #[test]
     fn persister_save_load_json() {

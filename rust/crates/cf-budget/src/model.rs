@@ -1,18 +1,16 @@
 //! Component memory cost model and libgit2 native memory limits.
-//!
-//! Port of `internal/budget/model.go`.
 
 use crate::units::{GIB, KIB, MIB};
 use crate::PERCENT_DIVISOR;
 
 // --- Component memory sizes (empirically measured) ---
 
-/// The fixed Go runtime + libgit2 overhead.
+/// The fixed runtime + libgit2 overhead.
 ///
 /// Includes shared mmap of pack files (~200 MB for large repos).
 pub const BASE_OVERHEAD: i64 = 250 * MIB;
 
-/// The Go-visible memory per worker for the libgit2 repository handle.
+/// The heap memory per worker for the libgit2 repository handle.
 pub const REPO_HANDLE_SIZE: i64 = 10 * MIB;
 
 /// The per-worker C/mmap overhead from libgit2.
@@ -49,7 +47,7 @@ pub const DEFAULT_LIBGIT2_CACHE_SIZE: i64 = 256 * MIB;
 /// The fraction (percent) of the budget reserved for libgit2 native memory
 /// (mwindow + object cache + decompression buffers).
 ///
-/// The rest is available to Go heap, caches, and buffers.
+/// The rest is available to the heap, caches, and buffers.
 pub const NATIVE_MEMORY_PERCENT: i64 = 25;
 
 /// Controls how the native allocation is split: 30% for mwindow (mmap'd pack
@@ -102,13 +100,11 @@ pub fn native_limits_for_budget(budget: i64) -> NativeLimits {
 
 /// Calculates the estimated memory usage for a given configuration.
 ///
-/// Ported from the `EstimateMemoryUsage` helper in `model_test.go`. It is the
-/// inverse of the solver's cost model and is used by the solver tests to verify
-/// that derived configs never exceed their budget. Exposed publicly because the
-/// Go helper is exported-cased and is genuinely useful for callers that want to
+/// The inverse of the solver's cost model; the solver tests use it to verify
+/// that derived configs never exceed their budget, and callers can use it to
 /// estimate a config's footprint.
 #[must_use]
-pub fn estimate_memory_usage(cfg: &crate::framework::CoordinatorConfig) -> i64 {
+pub const fn estimate_memory_usage(cfg: &crate::framework::CoordinatorConfig) -> i64 {
     let worker_memory = cfg.workers * (REPO_HANDLE_SIZE + cfg.blob_arena_size);
     let native_memory = cfg.workers * WORKER_NATIVE_OVERHEAD;
     let cache_memory = cfg.blob_cache_size + cfg.diff_cache_size * AVG_DIFF_SIZE;

@@ -1,9 +1,7 @@
-//! Ported from Go `internal/streaming/planner_test.go`.
-//!
-//! Every Go test function is reproduced one-to-one. The Go `assert.InDelta`
-//! becomes an explicit absolute-difference check; `assert.Equal` becomes
-//! `assert_eq!`; `require.Greater`/`Len`/etc. become asserts that panic the test
-//! the same way.
+//! Planner conformance tests, reproducing the reference implementation's
+//! planner suite one-to-one. The reference `assert.InDelta` becomes an
+//! explicit absolute-difference check; equality/length assertions become
+//! `assert_eq!`/`assert!` checks that fail the test the same way.
 
 use cf_streaming::{
     check_memory_pressure, compute_schedule, AdaptivePlanner, ChunkBounds, MemoryPressureLevel,

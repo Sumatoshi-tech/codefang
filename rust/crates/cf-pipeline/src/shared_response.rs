@@ -1,28 +1,28 @@
-//! `SharedResponse` — evaluate a computation exactly once
-//! (`shared_response.go`).
+//! `SharedResponse` — evaluate a computation exactly once.
 
 use crate::context::Ctx;
 use std::sync::Mutex;
 use std::sync::Once;
 
+/// The deferred computation a [`SharedResponse`] evaluates on first access.
+type ComputeFn<T, E> = Box<dyn FnOnce(&Ctx) -> Result<T, E> + Send>;
+
 /// Evaluates a computation exactly once and caches the result for concurrent
 /// access by multiple threads. The computation receives a [`Ctx`] for
 /// cancellation support.
 ///
-/// Mirrors Go's `SharedResponse[T]` built on `sync.Once`. As in Go, the context
-/// passed to subsequent [`SharedResponse::get`] calls after the first is
+/// The context passed to [`SharedResponse::get`] calls after the first is
 /// ignored: only the first caller's context drives the computation.
 ///
 /// The result and error are required to be [`Clone`] so that each caller gets
-/// the cached `(result, error)` pair by value — the analogue of Go returning
-/// the stored `(T, error)` to every caller.
+/// the cached outcome by value.
 pub struct SharedResponse<T, E> {
     once: Once,
     // `Mutex<Option<...>>` holds the memoized outcome. It is written exactly
     // once (inside `once.call_once`) and only read afterwards, so contention is
     // limited to the cloning copy-out.
     result: Mutex<Option<Result<T, E>>>,
-    compute: Mutex<Option<Box<dyn FnOnce(&Ctx) -> Result<T, E> + Send>>>,
+    compute: Mutex<Option<ComputeFn<T, E>>>,
 }
 
 impl<T, E> SharedResponse<T, E>
@@ -31,7 +31,7 @@ where
     E: Clone + Send,
 {
     /// Creates a [`SharedResponse`] that will evaluate `compute` on the first
-    /// call to [`SharedResponse::get`]. Mirrors Go's `NewSharedResponse`.
+    /// call to [`SharedResponse::get`].
     pub fn new<F>(compute: F) -> Self
     where
         F: FnOnce(&Ctx) -> Result<T, E> + Send + 'static,
@@ -43,14 +43,21 @@ where
         }
     }
 
-    /// Evaluates the compute function exactly once (via [`Once`]) and returns a
-    /// clone of the cached `(result, error)` pair. Subsequent calls return the
-    /// same value without re-evaluation, regardless of the context passed.
+    /// Evaluates the compute function exactly once (via [`Once`]) and returns
+    /// a clone of the cached outcome. Subsequent calls return the same value
+    /// without re-evaluation, regardless of the context passed.
+    ///
+    /// # Errors
+    ///
+    /// Returns a clone of the cached error when the computation failed.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an internal mutex was poisoned, which can only happen when a
+    /// previous `compute` call panicked.
     pub fn get(&self, ctx: &Ctx) -> Result<T, E> {
         self.once.call_once(|| {
-            // `take` the closure so it is consumed exactly once, mirroring the
-            // FnOnce semantics of Go's `compute func(...)` invoked inside
-            // `once.Do`.
+            // `take` the closure so it is consumed exactly once.
             let compute = self
                 .compute
                 .lock()

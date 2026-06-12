@@ -1,7 +1,7 @@
 //! Static-analysis-phase budget solver.
 //!
-//! Port of `internal/budget/static_solver.go`. Derives the worker cap and spill
-//! threshold for the static (no-libgit2) analysis phase from a memory budget.
+//! Derives the worker cap and spill threshold for the static (no-libgit2)
+//! analysis phase from a memory budget.
 
 use crate::solver::SLACK_PERCENT;
 use crate::units::MIB;
@@ -9,16 +9,16 @@ use crate::{num_cpu, PERCENT_DIVISOR};
 
 // --- Static analysis cost model constants (empirically measured) ---
 
-/// The fixed Go runtime + loaded-analyzers overhead.
+/// The fixed runtime + loaded-analyzers overhead.
 ///
 /// Lower than history's `BASE_OVERHEAD` because no libgit2 repo is opened.
 pub const STATIC_BASE_OVERHEAD: i64 = 150 * MIB;
 
-/// The per-worker memory for parser + tree-sitter native tree + Go-side node
+/// The per-worker memory for parser + tree-sitter native tree + UAST node
 /// tree + file content buffer.
 pub const STATIC_WORKER_FOOTPRINT: i64 = 50 * MIB;
 
-/// The average gob-encoded size of a report item (`map[string]any` with ~8
+/// The average serialized size of a report item (a string-keyed map with ~8
 /// keys). Used to estimate the spill threshold.
 pub const STATIC_AVG_ITEM_BYTES: i64 = 512;
 
@@ -38,7 +38,7 @@ pub const MAX_STATIC_WORKERS: i64 = 16;
 pub const MIN_STATIC_SPILL_THRESHOLD: i64 = 1000;
 
 /// The ceiling for the spill threshold.
-pub const MAX_STATIC_SPILL_THRESHOLD: i64 = 100000;
+pub const MAX_STATIC_SPILL_THRESHOLD: i64 = 100_000;
 
 /// Budget-derived parameters for the static analysis phase.
 ///

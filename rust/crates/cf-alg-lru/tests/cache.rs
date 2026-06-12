@@ -1,6 +1,5 @@
-//! Integration tests ported one-to-one from the Go `cache_test.go`
-//! (`pkg/alg/lru/cache_test.go`). Each test mirrors its Go counterpart's name,
-//! setup, and assertions.
+//! Integration tests for the LRU cache: lookups, eviction policies, Bloom
+//! pre-filtering, batch operations, stats, and concurrency.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -8,7 +7,7 @@ use std::thread;
 
 use cf_alg_lru::{Cache, Stats};
 
-// --- constants mirroring the Go test file ---
+// --- test constants ---
 
 /// Default max entries for count-based tests.
 const TEST_MAX_ENTRIES: i64 = 100;
@@ -22,21 +21,19 @@ const TEST_BLOOM_INSERT_COUNT: i64 = 100;
 const TEST_BLOOM_PROBE_COUNT: i64 = 200;
 /// Small byte limit for size-based tests.
 const TEST_MAX_BYTES: i64 = 100;
-/// Number of goroutines (threads) for concurrency tests.
-const TEST_CONCURRENT_GOROUTINES: i64 = 50;
-/// Number of operations per goroutine (thread).
+/// Number of threads for concurrency tests.
+const TEST_CONCURRENT_THREADS: i64 = 50;
+/// Number of operations per thread.
 const TEST_CONCURRENT_OPS: i64 = 100;
 /// Sample size for cost-based eviction tests.
 const TEST_EVICTION_SAMPLE_SIZE: i64 = 5;
 
-/// Converts an int key to bytes for Bloom filter tests (big-endian u64),
-/// mirroring the Go `intToBytes`.
+/// Converts an int key to bytes for Bloom filter tests (big-endian u64).
 fn int_to_bytes(k: &i64) -> Vec<u8> {
     (*k as u64).to_be_bytes().to_vec()
 }
 
-/// Returns the "size" of an int value for size-based tests, mirroring Go's
-/// `intValueSize`.
+/// Returns the "size" of an int value for size-based tests.
 fn int_value_size(v: &i64) -> i64 {
     *v
 }
@@ -445,9 +442,9 @@ fn test_cache_concurrent_access() {
         c.with_max_entries(TEST_MAX_ENTRIES);
     }));
 
-    let mut handles = Vec::with_capacity(TEST_CONCURRENT_GOROUTINES as usize);
+    let mut handles = Vec::with_capacity(TEST_CONCURRENT_THREADS as usize);
 
-    for g in 0..TEST_CONCURRENT_GOROUTINES {
+    for g in 0..TEST_CONCURRENT_THREADS {
         let cache = Arc::clone(&cache);
         handles.push(thread::spawn(move || {
             for i in 0..TEST_CONCURRENT_OPS {
@@ -517,7 +514,7 @@ fn test_cache_len() {
 
 #[test]
 fn test_cache_put_multi_owned() {
-    // PutMultiOwned has no dedicated Go test; verify it stores values without a
+    // Verify put_multi_owned stores values without a
     // configured clone function (matching put_multi behavior for owned values).
     let cache: Cache<i64, String> = Cache::new(|c| {
         c.with_max_entries(TEST_MAX_ENTRIES);

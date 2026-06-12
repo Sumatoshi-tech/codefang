@@ -1,27 +1,28 @@
-//! Structured JSON output model. Port of the Go `renderer/json.go`.
+//! Structured JSON output model.
 //!
-//! These structs are the machine model for the static-analysis report. Two Go
-//! behaviors are reproduced exactly because they are the explicit reason this
-//! logic lives in the renderer:
+//! These structs are the machine model for the static-analysis report. Two
+//! report-format behaviors are load-bearing here (pinned by
+//! `rust/tests/compat`):
 //!
-//! 1. **Score-last field ordering.** In every Go struct here, `Score` /
-//!    `OverallScore` is declared *last*, so it is emitted last in JSON. The
+//! 1. **Score-last field ordering.** `score` / `overall_score` is always the
+//!    *last* field emitted in JSON. The
 //!    [`to_go_value`](JsonSection::to_go_value)-family methods preserve that
 //!    declaration order via [`GoValue::Object`](crate::gocompat::GoValue::Object).
-//! 2. **Initialized-empty `[]` vs `omitempty`.** `Metrics` and `Issues` are
-//!    always-present arrays (empty rather than `null`), while `Distribution`,
-//!    `Files` use `omitempty` (omitted when empty/absent). This is reproduced
-//!    by always pushing `metrics`/`issues` entries and conditionally pushing
+//! 2. **Initialized-empty `[]` vs `omitempty`.** `metrics` and `issues` are
+//!    always-present arrays (empty rather than `null`), while `distribution`
+//!    and `files` are omitted when empty/absent. This is reproduced by always
+//!    pushing `metrics`/`issues` entries and conditionally pushing
 //!    `distribution`/`files`.
 //!
-//! Serialization routes through the Go-byte-compatible [`gocompat`](crate::gocompat)
-//! encoder, never `serde_json`, so the bytes match Go's `encoding/json`.
+//! Serialization routes through the byte-compatible
+//! [`gocompat`](crate::gocompat) encoder, never `serde_json`, so the bytes
+//! match the report-format contract.
 
 use crate::analyze::ReportSection;
 use crate::gocompat::{Encoder, GoValue};
 use crate::summary::ExecutiveSummary;
 
-/// One key-value metric in JSON output. Go `JSONMetric`.
+/// One key-value metric in JSON output.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct JsonMetric {
     /// Metric label.
@@ -39,7 +40,7 @@ impl JsonMetric {
     }
 }
 
-/// One distribution category in JSON output. Go `JSONDistribution`.
+/// One distribution category in JSON output.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct JsonDistribution {
     /// Category label.
@@ -60,7 +61,7 @@ impl JsonDistribution {
     }
 }
 
-/// One issue in JSON output. Go `JSONIssue`.
+/// One issue in JSON output.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct JsonIssue {
     /// Item name.
@@ -96,7 +97,7 @@ fn distribution_array(dist: &[JsonDistribution]) -> GoValue {
     GoValue::Array(dist.iter().map(JsonDistribution::to_go_value).collect())
 }
 
-/// One file's analysis results within a section. Go `JSONFileEntry`.
+/// One file's analysis results within a section.
 ///
 /// Field order (and thus JSON order): `file_path`, `score_label`, `status`,
 /// `metrics`, `distribution` (omitempty), `issues`, `score` (last).
@@ -140,7 +141,7 @@ impl JsonFileEntry {
     }
 }
 
-/// One analyzer's output in JSON. Go `JSONSection`.
+/// One analyzer's output in JSON.
 ///
 /// Field order: `title`, `score_label`, `status`, `metrics`,
 /// `distribution` (omitempty), `issues`, `files` (omitempty), `score` (last).
@@ -159,8 +160,8 @@ pub struct JsonSection {
     /// Always-present issues array.
     pub issues: Vec<JsonIssue>,
     /// Optional per-file entries. `None` => the `files` key is omitted;
-    /// `Some(_)` (even empty) => the key is present, matching Go's `*[]T`
-    /// pointer-with-omitempty semantics.
+    /// `Some(_)` (even empty) => the key is present (report-format
+    /// optional-pointer semantics).
     pub files: Option<Vec<JsonFileEntry>>,
     /// Numeric score (emitted last).
     pub score: f64,
@@ -194,7 +195,7 @@ impl JsonSection {
     }
 }
 
-/// The top-level structured JSON output. Go `JSONReport`.
+/// The top-level structured JSON output.
 ///
 /// Field order: `overall_score_label`, `sections`, `overall_score` (last).
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -209,6 +210,7 @@ pub struct JsonReport {
 
 impl JsonReport {
     /// Converts the report into a [`GoValue`] preserving score-last field order.
+    #[must_use]
     pub fn to_go_value(&self) -> GoValue {
         GoValue::Object(vec![
             (
@@ -226,21 +228,22 @@ impl JsonReport {
         ])
     }
 
-    /// Serializes the report to compact Go-compatible JSON bytes.
+    /// Serializes the report to compact report-contract JSON bytes.
     ///
     /// Routes through [`gocompat::Encoder`](crate::gocompat::Encoder) (HTML
-    /// escape on, no trailing newline), matching Go's `json.Marshal`.
+    /// escape on, no trailing newline) — the report-format marshal defaults.
+    #[must_use]
     pub fn to_json(&self) -> String {
         Encoder::default().encode(&self.to_go_value())
     }
 }
 
-/// Converts a [`ReportSection`] to a [`JsonSection`]. Port of `SectionToJSON`.
+/// Converts a [`ReportSection`] to a [`JsonSection`].
 ///
 /// `metrics`, `distribution`, and `issues` are always initialized to (possibly
 /// empty) vectors so JSON output contains `[]`, never `null` — except
 /// `distribution` which is then conditionally omitted by [`JsonSection::to_go_value`]
-/// when empty (matching the Go `omitempty` tag).
+/// when empty (report-format `omitempty` semantics).
 pub fn section_to_json(section: &dyn ReportSection) -> JsonSection {
     let metrics = section
         .key_metrics()
@@ -285,7 +288,6 @@ pub fn section_to_json(section: &dyn ReportSection) -> JsonSection {
 }
 
 /// Converts a [`ReportSection`] to a [`JsonFileEntry`] for per-file output.
-/// Port of `SectionToJSONFileEntry`.
 pub fn section_to_json_file_entry(section: &dyn ReportSection, file_path: &str) -> JsonFileEntry {
     let base = section_to_json(section);
     JsonFileEntry {
@@ -300,7 +302,7 @@ pub fn section_to_json_file_entry(section: &dyn ReportSection, file_path: &str) 
 }
 
 /// Converts multiple [`ReportSection`]s to a [`JsonReport`] with an overall
-/// score. Port of `SectionsToJSON`.
+/// score.
 pub fn sections_to_json(sections: &[&dyn ReportSection]) -> JsonReport {
     let summary = ExecutiveSummary::new(sections);
 
@@ -323,8 +325,7 @@ mod tests {
         severity, BaseReportSection, DistributionItem, Issue, Metric, ReportSection, SCORE_INFO_ONLY,
     };
 
-    /// A ReportSection backed by explicit metric/distribution/issue lists,
-    /// mirroring the Go `jsonMockSection`.
+    /// A ReportSection backed by explicit metric/distribution/issue lists.
     struct MockSection {
         base: BaseReportSection,
         metrics: Vec<Metric>,
@@ -334,7 +335,7 @@ mod tests {
 
     impl MockSection {
         fn new(title: &str, score: f64, msg: &str) -> Self {
-            MockSection {
+            Self {
                 base: BaseReportSection {
                     title: title.into(),
                     message: msg.into(),
@@ -375,7 +376,7 @@ mod tests {
         }
     }
 
-    /// Port of `TestSectionToJSON_Fields`.
+    /// Mirrors reference test `TestSectionToJSON_Fields`.
     #[test]
     fn section_to_json_fields() {
         let mut mock = MockSection::new("COMPLEXITY", 0.8, "Good - reasonable complexity");
@@ -427,7 +428,7 @@ mod tests {
         assert_eq!(result.issues[0].severity, severity::POOR);
     }
 
-    /// Port of `TestSectionToJSON_InfoOnly`.
+    /// Mirrors reference test `TestSectionToJSON_InfoOnly`.
     #[test]
     fn section_to_json_info_only() {
         let mock = MockSection::new("IMPORTS", SCORE_INFO_ONLY, "5 unique imports found");
@@ -438,7 +439,7 @@ mod tests {
         assert_eq!(result.status, "5 unique imports found");
     }
 
-    /// Port of `TestSectionToJSON_EmptyIssues` / `_EmptyMetrics`: empty arrays,
+    /// Mirrors reference test `TestSectionToJSON_EmptyIssues` / `_EmptyMetrics`: empty arrays,
     /// not null.
     #[test]
     fn section_to_json_empty_arrays() {
@@ -458,7 +459,7 @@ mod tests {
         assert!(!json.contains("distribution"));
     }
 
-    /// Port of `TestSectionsToJSON_MultipleSections`.
+    /// Mirrors reference test `TestSectionsToJSON_MultipleSections`.
     #[test]
     fn sections_to_json_multiple() {
         let a = MockSection::new("COMPLEXITY", 0.8, "Good");
@@ -470,7 +471,7 @@ mod tests {
         assert_eq!(result.sections[1].title, "COMMENTS");
     }
 
-    /// Port of `TestSectionsToJSON_IncludesOverall`.
+    /// Mirrors reference test `TestSectionsToJSON_IncludesOverall`.
     #[test]
     fn sections_to_json_includes_overall() {
         let a = MockSection::new("COMPLEXITY", 0.8, "Good");
@@ -481,7 +482,7 @@ mod tests {
         assert_eq!(result.overall_score_label, "7/10");
     }
 
-    /// Port of `TestSectionsToJSON_OverallExcludesInfoOnly`.
+    /// Mirrors reference test `TestSectionsToJSON_OverallExcludesInfoOnly`.
     #[test]
     fn sections_to_json_excludes_info_only() {
         let a = MockSection::new("COMPLEXITY", 0.8, "Good");
@@ -491,7 +492,7 @@ mod tests {
         assert!((result.overall_score - 0.8).abs() < 0.001);
     }
 
-    /// Port of `TestSectionsToJSON_AllInfoOnly`.
+    /// Mirrors reference test `TestSectionsToJSON_AllInfoOnly`.
     #[test]
     fn sections_to_json_all_info_only() {
         let a = MockSection::new("IMPORTS", SCORE_INFO_ONLY, "Info");
@@ -501,7 +502,7 @@ mod tests {
         assert_eq!(result.overall_score_label, "Info");
     }
 
-    /// Port of `TestSectionsToJSON_Serializable`: byte-level JSON shape.
+    /// Mirrors reference test `TestSectionsToJSON_Serializable`: byte-level JSON shape.
     #[test]
     fn sections_to_json_serializable() {
         let a = MockSection::new("COMPLEXITY", 0.8, "Good");
@@ -511,7 +512,7 @@ mod tests {
         assert!(json.contains(r#""overall_score":0.8"#));
     }
 
-    /// Port of `TestJSONSection_NoFiles_OmittedFromJSON`.
+    /// Mirrors reference test `TestJSONSection_NoFiles_OmittedFromJSON`.
     #[test]
     fn json_section_no_files_omitted() {
         let section = JsonSection {
@@ -531,7 +532,7 @@ mod tests {
         assert!(!json.contains(r#""files""#));
     }
 
-    /// Port of `TestJSONSection_WithFiles_IncludedInJSON`.
+    /// Mirrors reference test `TestJSONSection_WithFiles_IncludedInJSON`.
     #[test]
     fn json_section_with_files_included() {
         let section = JsonSection {

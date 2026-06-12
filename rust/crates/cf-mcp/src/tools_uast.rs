@@ -1,8 +1,8 @@
 //! `uast_parse` tool handler.
 //!
-//! Ports `internal/mcp/tools_uast.go`. Validates the inline code, parses it into
-//! a UAST, optionally filters nodes by type, and returns the (possibly filtered)
-//! root as Go-compatible pretty JSON.
+//! Validates the inline code, parses it into a UAST, optionally filters nodes
+//! by type, and returns the (possibly filtered) root as report-compatible
+//! pretty JSON.
 
 use cf_uast_node::Node;
 
@@ -12,13 +12,13 @@ use crate::providers::UastParser;
 use crate::result::{ToolOutput, ToolResult};
 use crate::tools::{synthetic_filename, validate_code_input, UastParseInput};
 
-/// The synthetic node type used to wrap query matches. Go `"filtered_results"`.
+/// The synthetic node type used to wrap query matches.
 pub const FILTERED_RESULTS_TYPE: &str = "filtered_results";
 
 /// Processes a `uast_parse` tool call.
 ///
-/// Reproduces Go `handleUASTParse`:
-/// 1. `validateCodeInput`.
+/// The step order is observable through the returned errors, so keep it:
+/// 1. validate the code input.
 /// 2. unsupported language → error.
 /// 3. parse (wrapped `parse code: <err>`).
 /// 4. if `query` non-empty, replace the root with a `filtered_results` node
@@ -57,9 +57,9 @@ pub fn handle_uast_parse(parser: &dyn UastParser, input: &UastParseInput) -> (To
 
 /// Builds a filtered tree containing only nodes whose type equals `node_type`.
 ///
-/// Reproduces Go `filterNodesByType`: returns a node of type
-/// `"filtered_results"` whose children are the matches (in document order; a
-/// matched node is not descended into — see [`collect_matching_nodes`]).
+/// Returns a node of type `"filtered_results"` whose children are the matches
+/// (in document order; a matched node is not descended into — see
+/// [`collect_matching_nodes`]).
 #[must_use]
 pub fn filter_nodes_by_type(root: &Node, node_type: &str) -> Node {
     let mut matches: Vec<Node> = Vec::new();
@@ -72,9 +72,9 @@ pub fn filter_nodes_by_type(root: &Node, node_type: &str) -> Node {
 
 /// Walks the tree collecting nodes whose type equals `node_type`.
 ///
-/// Reproduces Go `collectMatchingNodes`: when a node matches, it is collected and
-/// its subtree is **not** descended (the Go code `return`s after appending);
-/// otherwise it recurses into the children in order.
+/// When a node matches, it is collected and its subtree is **not** descended
+/// (tool contract: an outer match shadows nested matches); otherwise it
+/// recurses into the children in order.
 pub fn collect_matching_nodes(current: &Node, node_type: &str, matches: &mut Vec<Node>) {
     if current.node_type == node_type {
         matches.push(current.clone());

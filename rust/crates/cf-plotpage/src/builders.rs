@@ -1,4 +1,4 @@
-//! Standard chart constructors — port of Go `plotpage/builders.go`.
+//! Standard chart constructors.
 
 use cf_gojson::GoValue;
 
@@ -8,8 +8,7 @@ use crate::echarts::{
     TextStyle,
 };
 
-/// A single numeric value in a chart series (Go `plotpage.SeriesData` is `any`
-/// holding ints or floats).
+/// A single numeric value in a chart series (int or float).
 #[derive(Debug, Clone, Copy)]
 pub enum SeriesValue {
     /// An integer value.
@@ -21,15 +20,15 @@ pub enum SeriesValue {
 impl SeriesValue {
     /// The underlying [`GoValue`].
     #[must_use]
-    pub fn go_value(self) -> GoValue {
+    pub const fn go_value(self) -> GoValue {
         match self {
-            SeriesValue::Int(i) => GoValue::Int(i),
-            SeriesValue::Float(f) => GoValue::Float(f),
+            Self::Int(i) => GoValue::Int(i),
+            Self::Float(f) => GoValue::Float(f),
         }
     }
 }
 
-/// Properties and data for a single bar series (Go `plotpage.BarSeries`).
+/// Properties and data for a single bar series.
 #[derive(Debug, Clone, Default)]
 pub struct BarSeries {
     /// Series name.
@@ -42,7 +41,7 @@ pub struct BarSeries {
     pub stack: String,
 }
 
-/// Properties and data for a single line series (Go `plotpage.LineSeries`).
+/// Properties and data for a single line series.
 #[derive(Debug, Clone, Default)]
 pub struct LineSeries {
     /// Series name.
@@ -57,15 +56,15 @@ pub struct LineSeries {
     pub area_opacity: f64,
 }
 
-/// Pie chart defaults (builders.go:29).
+/// Pie chart defaults.
 const PIE_DEFAULT_WIDTH: &str = "600px";
 const PIE_DEFAULT_HEIGHT: &str = "400px";
 const PIE_DEFAULT_RADIUS: &str = "60%";
 const PIE_DEFAULT_LABEL: &str = "{b}: {c} ({d}%)";
 
-/// Constructs a fully configured pie chart (Go `plotpage.BuildPieChart`):
-/// 600x400 canvas, bottom legend, the given radius (default 60%), and the
-/// `{b}: {c} ({d}%)` label formatter. `c_opts == None` uses the dark default.
+/// Constructs a fully configured pie chart: 600x400 canvas, bottom legend,
+/// the given radius (default 60%), and the `{b}: {c} ({d}%)` label formatter.
+/// `c_opts == None` uses the dark default.
 #[must_use]
 pub fn build_pie_chart(
     c_opts: Option<&ChartOpts>,
@@ -104,7 +103,7 @@ pub fn build_pie_chart(
     pie
 }
 
-/// Constructs a fully configured bar chart (Go `plotpage.BuildBarChart`).
+/// Constructs a fully configured bar chart.
 #[must_use]
 pub fn build_bar_chart(
     c_opts: Option<&ChartOpts>,
@@ -151,7 +150,7 @@ pub fn build_bar_chart(
     bar
 }
 
-/// Constructs a fully configured line chart (Go `plotpage.BuildLineChart`).
+/// Constructs a fully configured line chart.
 #[must_use]
 pub fn build_line_chart(
     c_opts: Option<&ChartOpts>,

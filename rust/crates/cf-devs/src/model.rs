@@ -1,18 +1,17 @@
 //! Core data types for the devs analyzer.
 //!
-//! These mirror the Go structs in `internal/analyzers/devs/analyzer.go` and
-//! `metrics.go`. Field declaration order is preserved exactly because the
-//! wrapper structs are emitted in source order by [`cf_gojson`] (DESIGN §2.2):
-//! a `GoMap` built field-by-field reproduces Go's struct-origin ordering, while
-//! dynamic `map[string]any` payloads are byte-sorted on encode.
+//! Field declaration order is part of the report-format contract: the wrapper
+//! structs are emitted in source order by [`cf_gojson`] (a `GoMap` built
+//! field-by-field reproduces struct-origin ordering, while dynamic map
+//! payloads are byte-sorted on encode). Pinned by `rust/tests/compat`.
 
 use std::collections::BTreeMap;
 
-/// Line statistics for a change, mirroring `internal/plumbing.LineStats`.
+/// Line statistics for a change.
 ///
-/// Go declares the JSON tags lowercase (`added`/`removed`/`changed`); when this
-/// appears inside a `map[string]LineStats` value it is emitted as a
-/// struct-origin object in that field order.
+/// Serializes with lowercase keys (`added`/`removed`/`changed`); when this
+/// appears as a per-language map value it is emitted as a struct-origin
+/// object in that field order.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct LineStats {
     /// Lines added.
@@ -26,8 +25,8 @@ pub struct LineStats {
 impl LineStats {
     /// Adds another [`LineStats`] component-wise (additive merge).
     #[must_use]
-    pub fn plus(self, other: LineStats) -> LineStats {
-        LineStats {
+    pub const fn plus(self, other: Self) -> Self {
+        Self {
             added: self.added + other.added,
             removed: self.removed + other.removed,
             changed: self.changed + other.changed,
@@ -35,11 +34,11 @@ impl LineStats {
     }
 }
 
-/// Aggregate dev stats for a single commit (`CommitDevData`).
+/// Aggregate dev stats for a single commit.
 ///
-/// JSON field order in Go: `commits, lines_added, lines_removed, lines_changed,
-/// author_id, languages` (with `languages` `omitempty`). `Languages` is keyed
-/// by language name.
+/// JSON field order: `commits, lines_added, lines_removed, lines_changed,
+/// author_id, languages` (with `languages` omitted when empty). `languages`
+/// is keyed by language name.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CommitDevData {
     /// Number of commits represented (1 for a single commit, summed on merge).
@@ -57,8 +56,8 @@ pub struct CommitDevData {
 }
 
 impl CommitDevData {
-    /// Additively merges `incoming` into `self`, mirroring `mergeCommitDevData`.
-    pub fn merge(&mut self, incoming: &CommitDevData) {
+    /// Additively merges `incoming` into `self`.
+    pub fn merge(&mut self, incoming: &Self) {
         self.commits += incoming.commits;
         self.added += incoming.added;
         self.removed += incoming.removed;
@@ -71,10 +70,9 @@ impl CommitDevData {
     }
 }
 
-/// Per-tick, per-developer accumulated statistics (`DevTick`).
+/// Per-tick, per-developer accumulated statistics.
 ///
-/// Embeds [`LineStats`] (Go embeds `pkgplumbing.LineStats`) plus a per-language
-/// breakdown and a commit counter.
+/// Aggregate [`LineStats`] plus a per-language breakdown and a commit counter.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DevTick {
     /// Embedded aggregate line stats.
@@ -85,8 +83,8 @@ pub struct DevTick {
     pub commits: i64,
 }
 
-/// Line stats for a single language inside a developer record
-/// (`LanguageStatsEntry`). JSON order: `language, added, removed, changed`.
+/// Line stats for a single language inside a developer record.
+/// JSON order: `language, added, removed, changed`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LanguageStatsEntry {
     /// Language name (empty → rendered as `"Other"` upstream of this type).
@@ -99,7 +97,7 @@ pub struct LanguageStatsEntry {
     pub changed: i64,
 }
 
-/// Computed per-developer statistics (`DeveloperData`).
+/// Computed per-developer statistics.
 ///
 /// JSON field order: `id, name, email(omitempty), commits, lines_added,
 /// lines_removed, lines_changed, net_lines, languages, first_tick, last_tick,
@@ -132,11 +130,11 @@ pub struct DeveloperData {
     pub active_ticks: i64,
 }
 
-/// Computed per-language statistics (`LanguageData`).
+/// Computed per-language statistics.
 ///
 /// JSON field order: `name, total_lines, total_contribution, contributors`.
-/// `contributors` is a `map[int]int` → byte-sorted-by-stringified-key on encode
-/// (Go encodes integer map keys as decimal strings, sorted as strings).
+/// `contributors` has integer keys, which serialize as decimal strings sorted
+/// lexicographically (report-format contract).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LanguageData {
     /// Language name.
@@ -149,10 +147,10 @@ pub struct LanguageData {
     pub contributors: BTreeMap<i64, i64>,
 }
 
-/// Bus-factor / knowledge-concentration risk for a language (`BusFactorData`).
+/// Bus-factor / knowledge-concentration risk for a language.
 ///
-/// JSON field order matches the Go struct exactly; several secondary fields are
-/// `omitempty`.
+/// JSON field order is fixed by the report-format contract; several secondary
+/// fields are omitted when empty/zero.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct BusFactorData {
     /// Language name.
@@ -181,7 +179,7 @@ pub struct BusFactorData {
     pub risk_level: String,
 }
 
-/// A developer's commit count within a single tick (`DeveloperCommits`).
+/// A developer's commit count within a single tick.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct DeveloperCommits {
     /// Developer id.
@@ -190,7 +188,7 @@ pub struct DeveloperCommits {
     pub commits: i64,
 }
 
-/// Per-tick commit activity (`ActivityData`).
+/// Per-tick commit activity.
 ///
 /// JSON order: `tick, start_time(omitempty), end_time(omitempty), by_developer,
 /// total_commits`.
@@ -208,7 +206,7 @@ pub struct ActivityData {
     pub total_commits: i64,
 }
 
-/// Per-tick code churn (`ChurnData`).
+/// Per-tick code churn.
 ///
 /// JSON order: `tick, start_time(omitempty), end_time(omitempty), lines_added,
 /// lines_removed, net_change`.
@@ -228,10 +226,10 @@ pub struct ChurnData {
     pub net: i64,
 }
 
-/// Aggregate summary statistics (`AggregateData`).
+/// Aggregate summary statistics.
 ///
-/// JSON field order matches the Go struct exactly. `estimated_*` fields are
-/// HLL-derived `uint64`.
+/// JSON field order is fixed by the report-format contract. `estimated_*`
+/// fields are HLL-derived unsigned integers.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AggregateData {
     /// Total commits across all developers.
@@ -256,10 +254,9 @@ pub struct AggregateData {
     pub total_languages: i64,
 }
 
-/// All computed metric results for the devs analyzer (`ComputedMetrics`).
+/// All computed metric results for the devs analyzer.
 ///
 /// JSON order: `aggregate, developers, languages, busfactor, activity, churn`.
-/// (`Ticks`/`TickSize`/`metricNames` are `json:"-"` in Go and omitted here.)
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ComputedMetrics {
     /// Aggregate summary.
@@ -277,9 +274,9 @@ pub struct ComputedMetrics {
 }
 
 impl ComputedMetrics {
-    /// Analyzer identifier, mirroring `ComputedMetrics.AnalyzerName()`.
+    /// Short analyzer identifier used in report metadata.
     #[must_use]
-    pub fn analyzer_name(&self) -> &'static str {
+    pub const fn analyzer_name(&self) -> &'static str {
         "devs"
     }
 }

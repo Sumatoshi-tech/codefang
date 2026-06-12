@@ -1,19 +1,20 @@
-//! The dynamic Go value model: [`GoValue`], [`GoMap`], and [`MapOrigin`].
+//! The dynamic report value model: [`GoValue`], [`GoMap`], and [`MapOrigin`].
 //!
-//! This is the Rust analogue of the Go values that `encoding/json.Marshal`
-//! serializes from `any` — `null`, `bool`, integers, `float64`, `string`,
-//! slices, and maps/structs. It is the single value model the whole report
-//! layer builds and that the [`crate::marshal`] encoder consumes.
+//! A [`GoValue`] covers every shape a report can carry — `null`, `bool`,
+//! integers, floats, strings, arrays, and objects. It is the single value
+//! model the whole report layer builds and that the [`crate::marshal`] encoder
+//! consumes.
 //!
 //! # The dual-mode container is load-bearing
 //!
-//! Go's `encoding/json` has two ordering rules that depend on the *origin* of a
-//! JSON object:
+//! The report format has two object-ordering rules, decided by the *origin* of
+//! the JSON object (report-format contract; pinned by `rust/tests/compat`):
 //!
-//! * a Go **struct** serializes its fields in source **declaration order**
-//!   (honoring `json:"name,omitempty"`); and
-//! * a Go **map** (`map[string]any`, `map[string]int`, …) serializes its keys
-//!   **byte-sorted** by the runtime at encode time.
+//! * a **struct-origin** object serializes its fields in **declaration
+//!   order** (each field pushed once, in order; empty fields may be skipped by
+//!   the builder — the `omitempty` convention); and
+//! * a **map-origin** object serializes its keys **byte-sorted** at encode
+//!   time.
 //!
 //! [`GoMap`] carries a [`MapOrigin`] tag so the encoder applies the right rule:
 //! [`MapOrigin::Struct`] keeps insertion order, [`MapOrigin::Map`] byte-sorts on
@@ -23,60 +24,60 @@
 
 use std::cmp::Ordering;
 
-/// Whether a [`GoMap`] originated from a Go struct or a Go map.
+/// Whether a [`GoMap`] is a struct-origin or map-origin object.
 ///
 /// This decides the key ordering the encoder applies (see the module docs).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MapOrigin {
-    /// A Go struct: fields keep source **declaration order**; the encoder does
-    /// **not** sort them. `omitempty` is the caller's responsibility (skip the
-    /// `push`/`insert` when the value is empty).
+    /// A struct-origin object: fields keep source **declaration order**; the
+    /// encoder does **not** sort them. The `omitempty` convention is the
+    /// caller's responsibility (skip the `push`/`insert` when the value is
+    /// empty).
     Struct,
-    /// A Go map: keys are **byte-sorted** by the encoder at marshal time, exactly
-    /// as the Go runtime sorts `map[string]…` keys when encoding JSON.
+    /// A map-origin object: keys are **byte-sorted** by the encoder at marshal
+    /// time (report-format contract).
     Map,
-    /// A Go map with **integer keys** (`map[int]…`), whose decimal-string keys
-    /// are stored here but originate from an integer type. The encoders sort
-    /// these keys **numerically** (Go orders integer map keys by value, not
-    /// lexicographically), and the YAML emitter writes them as **plain `!!int`
-    /// scalars** (unquoted), matching `gopkg.in/yaml.v3`'s `map[int]…` output.
-    /// JSON keys are always quoted strings regardless, so JSON output differs
-    /// from [`MapOrigin::Map`] only in the numeric key ordering.
+    /// A map-origin object with **integer keys**, stored here as their
+    /// decimal-string forms. JSON always quotes keys and sorts the *strings*
+    /// lexicographically — identical to [`MapOrigin::Map`] — while the YAML
+    /// emitter sorts these keys **numerically** and writes them as **plain
+    /// `!!int` scalars** (unquoted). Both are reference-implementation
+    /// behavior, pinned by the differential gate.
     IntMap,
 }
 
-/// A dynamic Go value, covering every shape `encoding/json` marshals from `any`.
+/// A dynamic report value, covering every shape the report format marshals.
 ///
-/// Integers are split into [`GoValue::Int`] (`i64`, covering Go `int`/`int64`/…)
-/// and [`GoValue::Uint`] (`u64`, covering Go `uint`/`uint64`) so they never pass
-/// through the float formatter — Go encodes integers with `strconv.AppendInt`,
-/// not the float path. [`GoValue::Float`] is rendered by [`crate::ftoa`] to match
-/// Go's `encoding/json` float encoder byte-for-byte.
+/// Integers are split into [`GoValue::Int`] (`i64`) and [`GoValue::Uint`]
+/// (`u64`) so they never pass through the float formatter — integers encode as
+/// plain decimal, never the float path. [`GoValue::Float`] is rendered by
+/// [`crate::ftoa`] (contract float layout).
 #[derive(Debug, Clone, PartialEq)]
 pub enum GoValue {
-    /// JSON `null` (Go `nil`).
+    /// JSON `null`.
     Null,
-    /// A **nil slice** (`var s []T` with no allocation). Go marshals this
-    /// asymmetrically by encoder: `encoding/json` writes `null`, but
-    /// `gopkg.in/yaml.v3` writes `[]`. A distinct variant is required because
-    /// neither [`GoValue::Null`] (which YAML renders `null`) nor
-    /// [`GoValue::Array`]`(vec![])` (which JSON renders `[]`) reproduces both
-    /// behaviors. An *initialized-but-empty* slice (`[]T{}` / `make([]T,0)`)
-    /// renders `[]` in both encoders and stays [`GoValue::Array`]`(vec![])`.
+    /// A **nil slice** — an absent collection, as opposed to a present-but-
+    /// empty one. The report contract marshals this asymmetrically by encoder:
+    /// JSON writes `null`, YAML writes `[]` (reference-implementation
+    /// behavior). A distinct variant is required because neither
+    /// [`GoValue::Null`] (which YAML renders `null`) nor
+    /// [`GoValue::Array`]`(vec![])` (which JSON renders `[]`) reproduces both.
+    /// An *initialized-but-empty* collection renders `[]` in both encoders and
+    /// stays [`GoValue::Array`]`(vec![])`.
     NilSlice,
-    /// Go `bool`.
+    /// A boolean.
     Bool(bool),
-    /// A signed integer (Go `int`, `int8`..`int64`).
+    /// A signed integer.
     Int(i64),
-    /// An unsigned integer (Go `uint`, `uint8`..`uint64`).
+    /// An unsigned integer.
     Uint(u64),
-    /// A 64-bit float (Go `float32` promoted to `f64`, or `float64`).
+    /// A 64-bit float.
     Float(f64),
-    /// A UTF-8 string (Go `string`).
+    /// A UTF-8 string.
     Str(String),
-    /// A JSON array (Go slice/array).
+    /// A JSON array.
     Array(Vec<GoValue>),
-    /// A JSON object (Go struct or map); see [`GoMap`] / [`MapOrigin`].
+    /// A JSON object (struct- or map-origin); see [`GoMap`] / [`MapOrigin`].
     Map(GoMap),
 }
 
@@ -120,12 +121,12 @@ impl GoValue {
         }
     }
 
-    /// Returns `true` for the empty/zero JSON shapes that Go's `omitempty`
-    /// would drop: `null`, `false`, `0`, `0.0`, `""`, `[]`, and the empty map.
+    /// Returns `true` for the empty/zero JSON shapes the `omitempty` convention
+    /// drops: `null`, `false`, `0`, `0.0`, `""`, `[]`, and the empty map.
     ///
     /// Provided as a convenience for callers building struct-origin maps; the
     /// encoder itself never consults it (struct field skipping is decided when
-    /// the field is `push`ed, exactly as Go decides it at compile time).
+    /// the field is `push`ed).
     #[must_use]
     pub fn is_go_empty(&self) -> bool {
         match self {
@@ -148,11 +149,11 @@ impl GoValue {
 ///   iteration via [`GoMap::iter`] / [`GoMap::entries`] is stable.
 /// * [`GoMap::encode_order`] returns the entries in the order the encoder will
 ///   write them: insertion order for [`MapOrigin::Struct`], byte-sorted keys for
-///   [`MapOrigin::Map`] (Go runtime behavior).
+///   [`MapOrigin::Map`] (report-format contract).
 ///
-/// Insert semantics mirror Go: re-inserting an existing key **updates in place**
-/// (keeping its original position), so a struct field is never duplicated and a
-/// map key is unique — matching `map[k] = v`.
+/// Re-inserting an existing key **updates in place** (keeping its original
+/// position), so a struct field is never duplicated and a map key is unique —
+/// plain last-wins map semantics.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct GoMap {
     origin: MapOrigin,
@@ -161,7 +162,7 @@ pub struct GoMap {
 
 impl Default for MapOrigin {
     /// Defaults to [`MapOrigin::Map`] so a `GoMap::default()` byte-sorts keys —
-    /// the safe choice for the dominant `map[string]any` report shape.
+    /// the safe choice for the dominant report-object shape.
     fn default() -> Self {
         MapOrigin::Map
     }
@@ -178,18 +179,16 @@ impl GoMap {
     }
 
     /// Creates an empty **map-origin** object (keys byte-sorted on encode).
-    ///
-    /// Use this for Go `map[string]…` values.
     #[must_use]
     pub fn new_map() -> Self {
         GoMap::new(MapOrigin::Map)
     }
 
-    /// Creates an empty **int-map-origin** object (decimal-string keys that
-    /// originate from an integer type; sorted numerically on encode, emitted as
-    /// plain `!!int` YAML scalars).
+    /// Creates an empty **int-map-origin** object: decimal-string keys that
+    /// originate from an integer type (see [`MapOrigin::IntMap`]; YAML sorts
+    /// them numerically and emits plain `!!int` scalars).
     ///
-    /// Use this for Go `map[int]…` values. Insert keys via `i.to_string()`.
+    /// Insert keys via `i.to_string()`.
     #[must_use]
     pub fn new_int_map() -> Self {
         GoMap::new(MapOrigin::IntMap)
@@ -197,7 +196,7 @@ impl GoMap {
 
     /// Creates an empty **struct-origin** object (fields keep declaration order).
     ///
-    /// Use this for Go structs; `push` fields in source declaration order.
+    /// `push` fields in declaration order.
     #[must_use]
     pub fn new_struct() -> Self {
         GoMap::new(MapOrigin::Struct)
@@ -205,11 +204,9 @@ impl GoMap {
 
     /// Builds a **map-origin** object from `(key, value)` pairs.
     ///
-    /// Mirrors constructing a Go `map[string]any` from entries: keys byte-sort at
-    /// encode time (the [`MapOrigin::Map`] rule), and a repeated key keeps its
-    /// **last** value (last-wins), exactly like successive `m[k] = v` assignments.
-    /// Storage stays insertion-ordered; the sort happens only in
-    /// [`GoMap::encode_order`].
+    /// Keys byte-sort at encode time (the [`MapOrigin::Map`] rule), and a
+    /// repeated key keeps its **last** value (last-wins). Storage stays
+    /// insertion-ordered; the sort happens only in [`GoMap::encode_order`].
     #[must_use]
     pub fn from_map(entries: Vec<(String, GoValue)>) -> Self {
         let mut m = GoMap::new(MapOrigin::Map);
@@ -228,8 +225,8 @@ impl GoMap {
     /// Inserts or updates `key`.
     ///
     /// If `key` is already present its value is replaced **in place** (the entry
-    /// keeps its original position), mirroring Go's `m[key] = value`. Otherwise
-    /// the entry is appended (insertion order).
+    /// keeps its original position). Otherwise the entry is appended
+    /// (insertion order).
     pub fn insert(&mut self, key: impl Into<String>, value: GoValue) {
         let key = key.into();
         if let Some(slot) = self.entries.iter_mut().find(|(k, _)| *k == key) {
@@ -299,21 +296,19 @@ impl GoMap {
     /// Returns the entries in the exact order the encoder will write them.
     ///
     /// * [`MapOrigin::Struct`] → insertion order (a borrow of the storage).
-    /// * [`MapOrigin::Map`] → keys byte-sorted (`key.as_bytes()` lexicographic),
-    ///   exactly how Go's runtime orders `map[string]…` keys for JSON.
+    /// * [`MapOrigin::Map`] → keys byte-sorted (`key.as_bytes()` lexicographic;
+    ///   report-format contract).
     ///
     /// The returned vector borrows the entries, so no values are cloned.
     #[must_use]
     pub fn encode_order(&self) -> Vec<&(String, GoValue)> {
         let mut refs: Vec<&(String, GoValue)> = self.entries.iter().collect();
         match self.origin {
-            // Go sorts map keys by raw byte order. `str`'s `Ord` is byte-wise
-            // (it compares `as_bytes()`), so this matches Go exactly. This also
-            // covers `IntMap`: `encoding/json` stringifies integer keys and then
-            // sorts the STRINGS lexically — `{"10":…,"2":…}` — so for JSON an
-            // int-keyed map orders exactly like a string-keyed one. (Only the
-            // YAML encoder treats `IntMap` differently: numeric sort + unquoted
-            // keys, matching yaml.v3.)
+            // Map keys sort by raw byte order. This also covers `IntMap`: the
+            // JSON contract stringifies integer keys and sorts the STRINGS
+            // lexically — `{"10":…,"2":…}` — so for JSON an int-keyed map
+            // orders exactly like a string-keyed one. (Only the YAML encoder
+            // treats `IntMap` differently: numeric sort + unquoted keys.)
             MapOrigin::Map | MapOrigin::IntMap => refs.sort_by(|a, b| cmp_keys(&a.0, &b.0)),
             MapOrigin::Struct => {}
         }
@@ -321,8 +316,8 @@ impl GoMap {
     }
 }
 
-/// Compares two object keys the way Go orders map keys for JSON: by raw UTF-8
-/// byte sequence (`bytes.Compare` semantics).
+/// Compares two object keys by raw UTF-8 byte sequence (bytewise
+/// lexicographic — the report-format key order).
 fn cmp_keys(a: &str, b: &str) -> Ordering {
     a.as_bytes().cmp(b.as_bytes())
 }
@@ -398,7 +393,7 @@ mod tests {
 
     #[test]
     fn nil_slice_is_go_empty() {
-        // A nil slice is an `omitempty` zero (Go drops it like any empty slice).
+        // A nil slice is an `omitempty` zero (dropped like any empty slice).
         assert!(GoValue::NilSlice.is_go_empty());
     }
 

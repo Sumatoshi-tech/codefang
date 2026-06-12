@@ -1,10 +1,11 @@
-//! Vendor-path detection ported from `src-d/enry` v2.1.0 (`IsVendor`).
+//! Vendor-path detection reproducing `src-d/enry` v2.1.0's `IsVendor`.
 //!
-//! DESIGN §2.6 marks enry classification as decision-parity-critical: the set of
-//! files included in an analysis selects which bytes appear in machine reports.
-//! Per port rule (7) we therefore vendor the **same** regex table enry embeds in
-//! its generated `data/vendor.go` (itself extracted from GitHub Linguist's
-//! `vendor.yml`), instead of swapping to a different detector.
+//! enry classification is decision-parity-critical (DESIGN §2.6): the set of
+//! files included in an analysis selects which bytes appear in machine reports,
+//! which `rust/tests/compat` pins against the reference binary. We therefore
+//! vendor the **same** regex table enry embeds in its generated
+//! `data/vendor.go` (itself extracted from GitHub Linguist's `vendor.yml`),
+//! instead of swapping to a different detector.
 //!
 //! ## Data source
 //!
@@ -19,22 +20,23 @@
 //! ## How enry matches
 //!
 //! enry's `IsVendor` is `data.VendorMatchers.Match(path)` where `VendorMatchers`
-//! is `substring.Or(substring.Regexp(p1), substring.Regexp(p2), …)`. A
-//! `substring.regexpMatcher` calls Go `regexp.MatchString`, an **unanchored**
-//! search (the pattern may match anywhere in the path); `Or` returns true if
-//! ANY matcher matches. We reproduce this as a single combined [`Regex`] formed
-//! by `(?:p1)|(?:p2)|…` searched unanchored — equivalent because Go's
-//! per-pattern anchors (`^`, `$`) are preserved inside each `(?:…)` group and
-//! the alternation matches iff any branch matches somewhere in the path.
+//! is `substring.Or(substring.Regexp(p1), substring.Regexp(p2), …)`: each
+//! pattern is searched **unanchored** (it may match anywhere in the path), and
+//! `Or` returns true if ANY matcher matches. We reproduce this as a single
+//! combined [`Regex`] formed by `(?:p1)|(?:p2)|…` searched unanchored —
+//! equivalent because per-pattern anchors (`^`, `$`) are preserved inside each
+//! `(?:…)` group and the alternation matches iff any branch matches somewhere
+//! in the path.
 //!
 //! ## Engine note
 //!
-//! Go's `regexp` and the Rust `regex` crate are both RE2-lineage (linear-time,
-//! no backreferences). The `vendor.yml` patterns use only features common to
-//! both (character classes, alternation, anchors, `?`/`*`/`+`, groups, lazy
-//! `*?`), so the match set is identical.
+//! enry's regexp engine and the Rust `regex` crate are both RE2-lineage
+//! (linear-time, no backreferences). The `vendor.yml` patterns use only
+//! features common to both (character classes, alternation, anchors,
+//! `?`/`*`/`+`, groups, lazy `*?`), so the match set is identical.
 
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
+
 use regex::Regex;
 
 use crate::vendor_data;
@@ -63,7 +65,7 @@ fn vendor_patterns() -> &'static [&'static str] {
 /// enry searches each path against the union of all patterns with an unanchored
 /// match. Wrapping every pattern in a non-capturing group preserves per-pattern
 /// anchors (`^`, `$`) while letting the alternation as a whole match anywhere.
-static VENDOR_RE: Lazy<Regex> = Lazy::new(|| {
+static VENDOR_RE: LazyLock<Regex> = LazyLock::new(|| {
     let joined = vendor_patterns()
         .iter()
         .map(|p| format!("(?:{p})"))
@@ -72,12 +74,12 @@ static VENDOR_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(&joined).expect("enry vendor patterns must compile")
 });
 
-/// Reports whether `path` is a vendored / third-party path, mirroring
+/// Reports whether `path` is a vendored / third-party path, reproducing
 /// `enry.IsVendor`.
 ///
 /// The match is unanchored (the combined pattern may match any substring of
-/// `path`), exactly as Go's `regexp.MatchString` behaves over each
-/// `substring.Regexp` matcher in `VendorMatchers`.
+/// `path`), exactly as enry searches each `substring.Regexp` matcher in
+/// `VendorMatchers`.
 #[must_use]
 pub fn is_vendor(path: &str) -> bool {
     VENDOR_RE.is_match(path)

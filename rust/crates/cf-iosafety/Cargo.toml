@@ -1,14 +1,11 @@
-# cf-iosafety — Safe/bounded I/O wrappers.
+# cf-iosafety — Safe/bounded I/O wrappers: defensive file reading and
+# terminal-output sanitization for user-supplied paths and strings. Used by
+# the uast library and the uast command. See specs/rust-rewrite/DESIGN.md.
 #
-# Port of the Go package pkg/iosafety: defensive file reading and
-# terminal-output sanitization for user-supplied paths and strings. Used by the
-# uast library and the uast command. See specs/rust-rewrite/DESIGN.md.
-#
-# The library has NO runtime dependencies (pure std). SanitizeForTerminal is
-# cosmetic/non-binding terminal output per DESIGN §2.7, but reproduces Go's
-# html.EscapeString + control-stripping byte-for-byte for caller alignment, so
-# it does not route through the cf-gojson/cf-goyaml serialization crates (it
-# emits no machine-format report bytes).
+# sanitize_for_terminal is cosmetic/non-binding terminal output per DESIGN
+# §2.7, but its HTML escaping + control-stripping is byte-exact for caller
+# alignment, so it does not route through the cf-gojson/cf-goyaml
+# serialization crates (it emits no machine-format report bytes).
 [package]
 name = "cf-iosafety"
 version.workspace = true
@@ -19,6 +16,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+thiserror = "1"
 
 [dev-dependencies]
 tempfile = { workspace = true }

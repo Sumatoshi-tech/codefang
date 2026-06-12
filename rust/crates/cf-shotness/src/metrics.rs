@@ -1,14 +1,14 @@
 //! Pure metric functions for the shotness analyzer.
 //!
-//! Direct port of `internal/analyzers/shotness/metrics.go`. Every function
-//! reproduces the Go control flow, sort ordering, and arithmetic exactly so the
-//! computed metrics — and therefore the machine-format report bytes — match.
+//! Control flow, sort ordering, and arithmetic are part of the report
+//! contract: the computed metrics — and therefore the machine-format report
+//! bytes — are pinned by the differential gate.
 
 use std::collections::HashMap;
 
 use crate::types::ReportData;
 
-/// Hotness information for a single code node. Mirrors Go `NodeHotnessData`.
+/// Hotness information for a single code node.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeHotnessData {
     /// Node display name.
@@ -25,7 +25,7 @@ pub struct NodeHotnessData {
     pub hotness_score: f64,
 }
 
-/// Coupling between two code nodes. Mirrors Go `NodeCouplingData`.
+/// Coupling between two code nodes.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeCouplingData {
     /// First node name.
@@ -42,8 +42,8 @@ pub struct NodeCouplingData {
     pub strength: f64,
 }
 
-/// A hotspot node (MEDIUM or HIGH risk). Mirrors Go `HotspotNodeData`.
-#[derive(Debug, Clone, PartialEq)]
+/// A hotspot node (MEDIUM or HIGH risk).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HotspotNodeData {
     /// Node name.
     pub name: String,
@@ -57,7 +57,7 @@ pub struct HotspotNodeData {
     pub risk_level: String,
 }
 
-/// Summary statistics. Mirrors Go `AggregateData`.
+/// Summary statistics.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct AggregateData {
     /// Total number of nodes.
@@ -74,7 +74,7 @@ pub struct AggregateData {
     pub hot_nodes: i64,
 }
 
-/// All computed metric results. Mirrors Go `ComputedMetrics`.
+/// All computed metric results.
 ///
 /// Field declaration order is load-bearing: the machine-format JSON/YAML emits
 /// `node_hotness`, `node_coupling`, `hotspot_nodes`, `aggregate` in this order.
@@ -90,29 +90,29 @@ pub struct ComputedMetrics {
     pub aggregate: AggregateData,
 }
 
-/// Self-change threshold for HIGH risk. Mirrors `HotspotThresholdHigh`.
+/// Self-change threshold for HIGH risk.
 pub const HOTSPOT_THRESHOLD_HIGH: i64 = 20;
-/// Self-change threshold for MEDIUM risk. Mirrors `HotspotThresholdMedium`.
+/// Self-change threshold for MEDIUM risk.
 pub const HOTSPOT_THRESHOLD_MEDIUM: i64 = 10;
 
-/// Risk level label: HIGH. Mirrors `RiskLevelHigh`.
+/// Risk level label: HIGH.
 pub const RISK_LEVEL_HIGH: &str = "HIGH";
-/// Risk level label: MEDIUM. Mirrors `RiskLevelMedium`.
+/// Risk level label: MEDIUM.
 pub const RISK_LEVEL_MEDIUM: &str = "MEDIUM";
-/// Risk level label: LOW. Mirrors `RiskLevelLow`.
+/// Risk level label: LOW.
 pub const RISK_LEVEL_LOW: &str = "LOW";
 
-/// Looks up `row[idx]`, returning 0 when absent (Go map zero-value semantics).
+/// Looks up `row[idx]`, returning 0 when absent.
 fn counter_at(row: &HashMap<usize, i64>, idx: usize) -> i64 {
     row.get(&idx).copied().unwrap_or(0)
 }
 
 /// Computes per-node hotness data.
 ///
-/// Port of Go `computeNodeHotness`. Normalizes the self-change count against the
-/// maximum self-change count across all nodes and sorts by change count
-/// descending.
+/// Normalizes the self-change count against the maximum self-change count
+/// across all nodes and sorts by change count descending.
 #[must_use]
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_wrap)] // contractual count math
 pub fn compute_node_hotness(input: &ReportData) -> Vec<NodeHotnessData> {
     let mut result: Vec<NodeHotnessData> = Vec::with_capacity(input.nodes.len());
 
@@ -158,9 +158,8 @@ pub fn compute_node_hotness(input: &ReportData) -> Vec<NodeHotnessData> {
 
 /// Computes coupling rows with normalized strength.
 ///
-/// Port of Go `computeNodeCoupling`. Iterates the upper triangle of the
-/// co-change matrix (`j > i`), skipping zero co-changes, and sorts by co-change
-/// count descending.
+/// Iterates the upper triangle of the co-change matrix (`j > i`), skipping
+/// zero co-changes, and sorts by co-change count descending.
 #[must_use]
 pub fn compute_node_coupling(input: &ReportData) -> Vec<NodeCouplingData> {
     let mut result: Vec<NodeCouplingData> = Vec::new();
@@ -208,10 +207,10 @@ pub fn compute_node_coupling(input: &ReportData) -> Vec<NodeCouplingData> {
 
 /// Normalized coupling confidence in `[0, 1]`.
 ///
-/// Port of Go `computeCouplingStrength`. Formula:
-/// `co_changes / max(co_changes, changes_a, changes_b)`. Including `co_changes`
-/// in the denominator guarantees the result never exceeds 1.
+/// Formula: `co_changes / max(co_changes, changes_a, changes_b)`. Including
+/// `co_changes` in the denominator guarantees the result never exceeds 1.
 #[must_use]
+#[allow(clippy::cast_precision_loss)] // contractual float math on counts
 pub fn compute_coupling_strength(co_changes: i64, changes_a: i64, changes_b: i64) -> f64 {
     let max_changes = co_changes.max(changes_a.max(changes_b));
     if max_changes <= 0 {
@@ -220,12 +219,10 @@ pub fn compute_coupling_strength(co_changes: i64, changes_a: i64, changes_b: i64
     co_changes as f64 / max_changes as f64
 }
 
-/// Classifies a self-change count into a risk level.
-///
-/// Mirrors the Go `changeRiskClassifier` (thresholds sorted descending; returns
-/// the first whose limit is `<=` the value): HIGH≥20, MEDIUM≥10, else LOW.
+/// Classifies a self-change count into a risk level: HIGH≥20, MEDIUM≥10,
+/// else LOW.
 #[must_use]
-pub fn classify_change_risk(change_count: i64) -> &'static str {
+pub const fn classify_change_risk(change_count: i64) -> &'static str {
     if change_count >= HOTSPOT_THRESHOLD_HIGH {
         RISK_LEVEL_HIGH
     } else if change_count >= HOTSPOT_THRESHOLD_MEDIUM {
@@ -236,8 +233,6 @@ pub fn classify_change_risk(change_count: i64) -> &'static str {
 }
 
 /// Computes hotspot nodes (MEDIUM and HIGH risk only).
-///
-/// Port of Go `computeHotspotNodes`.
 #[must_use]
 pub fn compute_hotspot_nodes(input: &ReportData) -> Vec<HotspotNodeData> {
     let mut result: Vec<HotspotNodeData> = Vec::new();
@@ -271,10 +266,11 @@ pub fn compute_hotspot_nodes(input: &ReportData) -> Vec<HotspotNodeData> {
 
 /// Computes aggregate statistics.
 ///
-/// Port of Go `computeAggregate`. The pair iteration walks the upper triangle of
-/// every counter row (`j > i`, nonzero); the set of `(j, co_changes)` pairs is
-/// independent of map iteration order, so the result is deterministic.
+/// The pair iteration walks the upper triangle of every counter row (`j > i`,
+/// nonzero); the set of `(j, co_changes)` pairs is independent of map
+/// iteration order, so the result is deterministic.
 #[must_use]
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_wrap)] // contractual count math
 pub fn compute_aggregate(input: &ReportData) -> AggregateData {
     let mut agg = AggregateData {
         total_nodes: input.nodes.len() as i64,
@@ -333,7 +329,7 @@ pub fn compute_aggregate(input: &ReportData) -> AggregateData {
     agg
 }
 
-/// Runs all shotness metrics over the parsed report. Port of `ComputeAllMetrics`.
+/// Runs all shotness metrics over the parsed report.
 #[must_use]
 pub fn compute_all_metrics(input: &ReportData) -> ComputedMetrics {
     ComputedMetrics {
@@ -346,13 +342,12 @@ pub fn compute_all_metrics(input: &ReportData) -> ComputedMetrics {
 
 /// Stable descending sort by an integer key.
 ///
-/// Go's `sort.Slice` with a strict `a > b` comparator is unstable in general,
-/// but the shotness comparators only compare the count, and the upstream input
-/// order (report node order / matrix order) is deterministic. A stable sort
-/// keeps equal-count rows in that deterministic order, which the byte-identity
-/// goldens require.
+/// The reference binary sorts these rows with an unstable count-only
+/// comparator, but the upstream input order (report node order / matrix
+/// order) is deterministic. A stable sort keeps equal-count rows in that
+/// deterministic order, which the byte-identity goldens require.
 fn sort_by_desc_stable<T, F: Fn(&T) -> i64>(v: &mut [T], key: F) {
-    v.sort_by(|a, b| key(b).cmp(&key(a)));
+    v.sort_by_key(|x| std::cmp::Reverse(key(x)));
 }
 
 #[cfg(test)]
@@ -364,13 +359,13 @@ mod tests {
         pairs.iter().copied().collect()
     }
 
-    // Ported from TestNodeHotnessMetric_Empty.
+    // Mirrors reference test TestNodeHotnessMetric_Empty.
     #[test]
     fn compute_node_hotness_empty() {
         assert_eq!(compute_node_hotness(&ReportData::default()), vec![]);
     }
 
-    // Ported from TestNodeHotnessMetric_ValidData.
+    // Mirrors reference test TestNodeHotnessMetric_ValidData.
     #[test]
     fn compute_node_hotness_valid_data() {
         let input = ReportData {
@@ -392,7 +387,7 @@ mod tests {
         assert!((result[1].hotness_score - 0.5).abs() < 0.01);
     }
 
-    // Ported from TestNodeHotnessMetric_OutOfBounds.
+    // Mirrors reference test TestNodeHotnessMetric_OutOfBounds.
     #[test]
     fn compute_node_hotness_out_of_bounds() {
         let input = ReportData {
@@ -407,13 +402,13 @@ mod tests {
         assert_eq!(result[0].name, "TestFunc1");
     }
 
-    // Ported from TestNodeCouplingMetric_Empty.
+    // Mirrors reference test TestNodeCouplingMetric_Empty.
     #[test]
     fn compute_node_coupling_empty() {
         assert_eq!(compute_node_coupling(&ReportData::default()), vec![]);
     }
 
-    // Ported from TestNodeCouplingMetric_ValidData.
+    // Mirrors reference test TestNodeCouplingMetric_ValidData.
     #[test]
     fn compute_node_coupling_valid_data() {
         let input = ReportData {
@@ -442,7 +437,7 @@ mod tests {
         assert_eq!(result[2].co_changes, 2);
     }
 
-    // Ported from TestNodeCouplingMetric_ZeroCoupling.
+    // Mirrors reference test TestNodeCouplingMetric_ZeroCoupling.
     #[test]
     fn compute_node_coupling_zero_omitted() {
         let input = ReportData {
@@ -455,7 +450,7 @@ mod tests {
         assert_eq!(compute_node_coupling(&input), vec![]);
     }
 
-    // Ported from TestNodeCouplingMetric_IncludesStrength.
+    // Mirrors reference test TestNodeCouplingMetric_IncludesStrength.
     #[test]
     fn compute_node_coupling_includes_strength() {
         let input = ReportData {
@@ -471,7 +466,7 @@ mod tests {
         assert!((result[0].strength - 0.25).abs() < 0.01);
     }
 
-    // Ported from TestComputeCouplingStrength_Basic.
+    // Mirrors reference test TestComputeCouplingStrength_Basic.
     #[test]
     fn compute_coupling_strength_cases() {
         assert!((compute_coupling_strength(5, 5, 5) - 1.0).abs() < 0.01);
@@ -481,13 +476,13 @@ mod tests {
         assert!((compute_coupling_strength(5, 3, 4) - 1.0).abs() < 0.01);
     }
 
-    // Ported from TestHotspotNodeMetric_Empty.
+    // Mirrors reference test TestHotspotNodeMetric_Empty.
     #[test]
     fn compute_hotspot_nodes_empty() {
         assert_eq!(compute_hotspot_nodes(&ReportData::default()), vec![]);
     }
 
-    // Ported from TestHotspotNodeMetric_ValidData.
+    // Mirrors reference test TestHotspotNodeMetric_ValidData.
     #[test]
     fn compute_hotspot_nodes_valid_data() {
         let input = ReportData {
@@ -512,7 +507,7 @@ mod tests {
         assert_eq!(result[1].change_count, HOTSPOT_THRESHOLD_MEDIUM);
     }
 
-    // Ported from TestClassifyChangeRisk.
+    // Mirrors reference test TestClassifyChangeRisk.
     #[test]
     fn classify_change_risk_thresholds() {
         assert_eq!(classify_change_risk(HOTSPOT_THRESHOLD_MEDIUM - 1), RISK_LEVEL_LOW);
@@ -522,13 +517,13 @@ mod tests {
         assert_eq!(classify_change_risk(HOTSPOT_THRESHOLD_HIGH + 100), RISK_LEVEL_HIGH);
     }
 
-    // Ported from TestAggregateMetric_Empty.
+    // Mirrors reference test TestAggregateMetric_Empty.
     #[test]
     fn compute_aggregate_empty() {
         assert_eq!(compute_aggregate(&ReportData::default()), AggregateData::default());
     }
 
-    // Ported from TestAggregateMetric_ValidData.
+    // Mirrors reference test TestAggregateMetric_ValidData.
     #[test]
     fn compute_aggregate_valid_data() {
         let input = ReportData {
@@ -550,7 +545,7 @@ mod tests {
         assert!((result.avg_coupling_strength - 0.25).abs() < 0.01);
     }
 
-    // Ported from TestAggregateMetric_IncludesAvgCouplingStrength.
+    // Mirrors reference test TestAggregateMetric_IncludesAvgCouplingStrength.
     #[test]
     fn compute_aggregate_avg_coupling_strength() {
         let input = ReportData {

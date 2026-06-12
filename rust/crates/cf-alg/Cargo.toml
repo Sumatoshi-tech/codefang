@@ -8,6 +8,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+thiserror = "1"
 
 [lib]
 doctest = false

@@ -1,22 +1,23 @@
-//! Report serialization (DESIGN §2).
+//! Report serialization.
 //!
 //! All MACHINE-format report bytes (json, yaml, ndjson, timeseries, compact,
-//! bin) must be byte-identical to Go. Every report-bearing value is built as a
+//! bin) are a frozen contract, pinned against the reference implementation by
+//! `rust/tests/compat`. Every report-bearing value is built as a
 //! [`cf_gojson::GoValue`] tree and serialized through [`cf_gojson::marshal`] /
-//! [`cf_gojson::marshal_indent`], never through `serde_json` (which differs from
-//! Go's `encoding/json` on map-key ordering, HTML escaping, and float
-//! formatting — see DESIGN §2.1). YAML reuses the same `GoValue` tree through
-//! `cf-goyaml` once that path is wired.
+//! [`cf_gojson::marshal_indent`], never through `serde_json` (which differs
+//! from the report contract on map-key ordering, HTML escaping, and float
+//! formatting). YAML reuses the same `GoValue` tree through `cf-goyaml` once
+//! that path is wired.
 //!
-//! Two payload shapes are produced, matching the two Go code paths:
+//! Two payload shapes are produced:
 //!
-//! * [`computed_metrics_to_value`] — the `ComputedMetrics` **struct**
+//! * [`computed_metrics_to_value`] — the [`ComputedMetrics`] **struct**
 //!   (`file_coupling`, `developer_coupling`, `file_ownership`, `aggregate`),
-//!   emitted in Go field declaration order with `omitempty` honored
-//!   ([`MapOrigin::Struct`]).
-//! * [`dense_report_to_value`] — the raw analyzer `Report`, a Go
-//!   `map[string]any` whose keys (and the `map[int]int64` matrix rows) Go
-//!   byte-sorts at encode time ([`MapOrigin::Map`]).
+//!   emitted in declaration order with omit-when-empty honored (struct
+//!   origin).
+//! * [`dense_report_to_value`] — the raw analyzer report, a dynamic map whose
+//!   keys (and the integer-keyed matrix rows) are byte-sorted at encode time
+//!   (map origin).
 
 use crate::metrics::{
     AggregateData, ComputedMetrics, DeveloperCouplingData, FileCouplingData, FileOwnershipData,
@@ -25,11 +26,11 @@ use crate::metrics::{
 use cf_gojson::{marshal, marshal_indent, GoMap, GoValue};
 use std::collections::BTreeMap;
 
-/// Builds the `GoValue` tree for [`ComputedMetrics`] (struct origin).
+/// Builds the [`GoValue`] tree for [`ComputedMetrics`] (struct origin).
 ///
-/// Field order matches the Go struct declaration order; `omitempty` string
-/// fields (`developer*_email`, `top_contributor`) are skipped when empty,
-/// reproducing `encoding/json`.
+/// Field order is the contractual declaration order; omit-when-empty string
+/// fields (`developer*_email`, `top_contributor`) are skipped when empty.
+#[must_use]
 pub fn computed_metrics_to_value(m: &ComputedMetrics) -> GoValue {
     let mut obj = GoMap::new_struct();
     obj.push(
@@ -75,8 +76,8 @@ fn developer_coupling_to_value(d: &DeveloperCouplingData) -> GoValue {
 fn file_ownership_to_value(d: &FileOwnershipData) -> GoValue {
     let mut o = GoMap::new_struct();
     o.push("file", GoValue::Str(d.file.clone()));
-    o.push("lines", GoValue::Int(d.lines as i64));
-    o.push("contributors", GoValue::Int(d.contributors as i64));
+    o.push("lines", GoValue::Int(i64::from(d.lines)));
+    o.push("contributors", GoValue::Int(i64::from(d.contributors)));
     if !d.top_contributor.is_empty() {
         o.push("top_contributor", GoValue::Str(d.top_contributor.clone()));
     }
@@ -85,21 +86,22 @@ fn file_ownership_to_value(d: &FileOwnershipData) -> GoValue {
 
 fn aggregate_to_value(d: &AggregateData) -> GoValue {
     let mut o = GoMap::new_struct();
-    o.push("total_files", GoValue::Int(d.total_files as i64));
-    o.push("total_developers", GoValue::Int(d.total_developers as i64));
+    o.push("total_files", GoValue::Int(i64::from(d.total_files)));
+    o.push("total_developers", GoValue::Int(i64::from(d.total_developers)));
     o.push("total_co_changes", GoValue::Int(d.total_co_changes));
     o.push("avg_coupling_strength", GoValue::Float(d.avg_coupling_strength));
-    o.push("highly_coupled_pairs", GoValue::Int(d.highly_coupled_pairs as i64));
+    o.push("highly_coupled_pairs", GoValue::Int(i64::from(d.highly_coupled_pairs)));
     GoValue::Object(o)
 }
 
-/// Builds the `GoValue` tree for the raw dense analyzer report (Go: the
-/// `analyze.Report` map built by `buildReport`).
+/// Builds the [`GoValue`] tree for the raw dense analyzer report.
 ///
-/// This is a Go `map[string]any`, so it is map-origin: `cf-gojson` byte-sorts
+/// The report is a dynamic map, so it is map-origin: `cf-gojson` byte-sorts
 /// the keys at encode time, and insertion order here is not load-bearing.
-/// Matrix rows are Go `map[int]int64`, also map-origin, rendering with
-/// stringified, byte-sorted integer keys exactly like Go.
+/// Matrix rows are integer-keyed maps, also map-origin, rendering with
+/// stringified, byte-sorted integer keys (report-format contract).
+#[must_use]
+#[allow(clippy::cast_possible_wrap)] // file indices are small
 pub fn dense_report_to_value(r: &ReportData) -> GoValue {
     let mut obj = GoMap::new_map();
     obj.push("PeopleMatrix", matrix_to_value(&r.people_matrix));
@@ -118,7 +120,7 @@ pub fn dense_report_to_value(r: &ReportData) -> GoValue {
     );
     obj.push(
         "FilesLines",
-        GoValue::Array(r.files_lines.iter().map(|&l| GoValue::Int(l as i64)).collect()),
+        GoValue::Array(r.files_lines.iter().map(|&l| GoValue::Int(i64::from(l))).collect()),
     );
     obj.push("FilesMatrix", matrix_to_value(&r.files_matrix));
     obj.push(
@@ -129,7 +131,7 @@ pub fn dense_report_to_value(r: &ReportData) -> GoValue {
 }
 
 /// Converts a slice of index-keyed matrix rows to an array of map-origin
-/// objects with stringified integer keys (Go `[]map[int]int64`).
+/// objects with stringified integer keys (report-format contract).
 fn matrix_to_value(matrix: &[BTreeMap<usize, i64>]) -> GoValue {
     GoValue::Array(
         matrix
@@ -145,15 +147,16 @@ fn matrix_to_value(matrix: &[BTreeMap<usize, i64>]) -> GoValue {
     )
 }
 
-/// Serializes a `GoValue` to compact Go-JSON bytes (mirrors `json.Marshal`:
-/// no insignificant whitespace, HTML escaping on, no trailing newline).
+/// Serializes a [`GoValue`] to compact report-contract JSON bytes (no
+/// insignificant whitespace, HTML escaping on, no trailing newline).
+#[must_use]
 pub fn to_go_json(value: &GoValue) -> Vec<u8> {
     marshal(value)
 }
 
-/// Serializes a `GoValue` to two-space-indented Go-JSON bytes (mirrors
-/// `json.Encoder` with `SetIndent("", "  ")`; the caller appends the trailing
-/// newline the run/render path emits).
+/// Serializes a [`GoValue`] to two-space-indented report-contract JSON bytes
+/// (the caller appends the trailing newline the run/render path emits).
+#[must_use]
 pub fn to_go_json_indent(value: &GoValue) -> Vec<u8> {
     marshal_indent(value)
 }
@@ -212,7 +215,7 @@ mod tests {
         };
         let bytes = to_go_json(&computed_metrics_to_value(&m));
         let s = String::from_utf8(bytes).unwrap();
-        // Struct field declaration order, compact (no spaces), Go float "0.5".
+        // Struct field declaration order, compact (no spaces), float "0.5".
         assert!(s.starts_with(r#"{"file_coupling":[{"file1":"a.go","file2":"b.go","co_changes":2,"coupling_strength":0.5}]"#));
         assert!(s.contains(r#""aggregate":{"total_files":2,"total_developers":1,"total_co_changes":2,"avg_coupling_strength":0.5,"highly_coupled_pairs":0}"#));
     }
@@ -229,10 +232,10 @@ mod tests {
         };
         let bytes = to_go_json(&dense_report_to_value(&r));
         let s = String::from_utf8(bytes).unwrap();
-        // map[string]any keys byte-sorted: Files < FilesLines < FilesMatrix <
+        // dynamic-map keys byte-sorted: Files < FilesLines < FilesMatrix <
         // PeopleFiles < PeopleMatrix < ReversedPeopleDict.
         assert!(s.starts_with(r#"{"Files":["a.go"],"FilesLines":[5],"FilesMatrix":[{"0":4}]"#));
-        // matrix row map[int]int64 stringified key.
+        // matrix-row integer key stringified.
         assert!(s.contains(r#""PeopleMatrix":[{"0":2}]"#));
     }
 }

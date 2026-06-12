@@ -6,6 +6,6 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "Levenshtein edit distance (Myers bit-parallel + DP fallback), ported from pkg/alg/levenshtein."
+description = "Levenshtein edit distance (Myers bit-parallel + DP fallback)."
 
 [dependencies]

@@ -1,9 +1,8 @@
 //! `cf-devs` — developer activity / per-developer line statistics with
-//! HyperLogLog developer-cardinality estimation.
+//! `HyperLogLog` developer-cardinality estimation.
 //!
-//! Port of the Go package `internal/analyzers/devs` (analyzer id
-//! `history/devs`, Sequential). It computes, from per-commit developer data
-//! grouped into time buckets ("ticks"):
+//! Implements the `history/devs` analyzer (sequential-only). It computes, from
+//! per-commit developer data grouped into time buckets ("ticks"):
 //!
 //! - per-developer commit / lines-added / removed / changed totals, language
 //!   breakdowns, and activity span ([`metrics::compute_developers`]);
@@ -17,14 +16,15 @@
 //!
 //! ## Determinism and byte-identity
 //!
-//! Scoring reads **no wall clock** (`time.Now` is never consulted); the only
-//! time input is the configured tick size. Merges are purely additive
-//! ([`model::CommitDevData::merge`], [`aggregate::merge_dev_data`]). All ordered
-//! results iterate sorted keys / sort explicitly so the output is reproducible.
+//! Scoring reads **no wall clock**; the only time input is the configured tick
+//! size. Merges are purely additive ([`model::CommitDevData::merge`],
+//! [`aggregate::merge_dev_data`]). All ordered results iterate sorted keys /
+//! sort explicitly so the output is reproducible.
 //!
 //! Machine-format report bytes (json/yaml/ndjson/timeseries/compact/bin) are
 //! produced via [`cf_gojson`] in [`serialize`]; this crate never uses
-//! `serde_json` for output. See `specs/rust-rewrite/DESIGN.md` §2.
+//! `serde_json` for output. Compatibility: output bytes are pinned against the
+//! reference implementation by `rust/tests/compat`.
 
 #![forbid(unsafe_code)]
 
@@ -33,7 +33,7 @@ pub mod metrics;
 pub mod model;
 pub mod serialize;
 
-/// Store record kind constants (`internal/analyzers/devs/store_writer.go`).
+/// Store record kind constants used by the devs store writer.
 pub mod kinds {
     /// Per-developer records.
     pub const DEVELOPER: &str = "developer";
@@ -49,7 +49,7 @@ pub mod kinds {
     pub const AGGREGATE: &str = "aggregate";
 }
 
-/// Analyzer descriptor constants (`NewAnalyzer`).
+/// Analyzer descriptor constants.
 pub mod descriptor {
     /// Analyzer id.
     pub const ID: &str = "history/devs";
@@ -136,7 +136,7 @@ mod tests {
         }
     }
 
-    // --- dev_id_bytes (hll_test.go) ---
+    // --- dev_id_bytes ---
 
     #[test]
     fn dev_id_bytes_deterministic() {
@@ -161,7 +161,7 @@ mod tests {
         assert_ne!(b0, b2);
     }
 
-    // --- aggregate_commits_to_ticks (analyzer_test.go) ---
+    // --- aggregate_commits_to_ticks ---
 
     #[test]
     fn aggregate_commits_to_ticks_basic() {
@@ -219,7 +219,7 @@ mod tests {
         assert!(aggregate_commits_to_ticks(&one_cdd, &empty_cbt).is_empty());
     }
 
-    // --- merge_dev_data / CommitDevData::merge (analyzer_test.go) ---
+    // --- merge_dev_data / CommitDevData::merge ---
 
     #[test]
     fn merge_commit_dev_data() {
@@ -243,7 +243,7 @@ mod tests {
         assert_eq!(s1.len(), 2);
     }
 
-    // --- DevelopersMetric (metrics_test.go) ---
+    // --- compute_developers ---
 
     #[test]
     fn developers_metric_single_developer() {
@@ -334,7 +334,7 @@ mod tests {
         assert_eq!(py.changed, 2);
     }
 
-    // --- LanguagesMetric (metrics_test.go) ---
+    // --- compute_languages ---
 
     #[test]
     fn languages_metric_contribution_includes_removed() {
@@ -385,7 +385,7 @@ mod tests {
         assert_eq!(result[0].name, "Other");
     }
 
-    // --- BusFactorMetric (metrics_test.go) ---
+    // --- compute_bus_factor ---
 
     fn lang_with_contribs(name: &str, total: i64, contribs: &[(i64, i64)]) -> LanguageData {
         let mut c = BTreeMap::new();
@@ -511,7 +511,7 @@ mod tests {
         assert_eq!(result[2].risk_level, cf_metrics::RISK_LOW);
     }
 
-    // --- ActivityMetric / ChurnMetric (metrics_test.go) ---
+    // --- compute_activity / compute_churn ---
 
     #[test]
     fn activity_metric_single_tick() {
@@ -564,7 +564,7 @@ mod tests {
         assert_eq!(result[0].net, 100);
     }
 
-    // --- AggregateMetric (metrics_test.go, hll integration) ---
+    // --- compute_aggregate (HLL integration) ---
 
     #[test]
     fn aggregate_metric_compute() {
@@ -752,7 +752,7 @@ mod tests {
         assert!(err <= 0.03, "HLL error {err} exceeds bound");
     }
 
-    // --- dev_name_and_email (metrics_test.go) ---
+    // --- dev_name_and_email ---
 
     #[test]
     fn dev_name_and_email_variants() {
@@ -762,7 +762,7 @@ mod tests {
         assert!(dev_name_and_email(99, &names).0.contains("dev_99"));
     }
 
-    // --- compute_all_metrics end-to-end (analyzer_test.go) ---
+    // --- compute_all_metrics end-to-end ---
 
     #[test]
     fn compute_all_metrics_from_commit_data() {
@@ -805,8 +805,8 @@ mod tests {
 
     #[test]
     fn serialize_language_contributors_decimal_string_keys_sorted() {
-        // Go encodes map[int]int keys as decimal strings sorted lexically:
-        // "10" < "2". Verify the JSON bytes reflect that.
+        // Integer map keys serialize as decimal strings sorted lexicographically
+        // (report-format contract): "10" < "2". Verify the JSON bytes reflect that.
         let mut contributors = BTreeMap::new();
         contributors.insert(2i64, 5i64);
         contributors.insert(10i64, 7i64);

@@ -1,55 +1,54 @@
-//! The metrics-first output pipeline. Port of the Go `renderer/metrics_output.go`.
+//! The metrics-first output pipeline.
 //!
 //! Analyzer "computed metrics" implement [`MetricsOutput`] to provide
-//! serializable output for the JSON and YAML renderers. The Go interface
-//! returns `any` from `ToJSON`/`ToYAML` (later passed to `json.Marshal` /
-//! `yaml.Marshal`); the Rust port returns a [`GoValue`](crate::gocompat::GoValue)
-//! so serialization routes through the Go-byte-compatible encoders rather than
-//! `serde_json`.
+//! serializable output for the JSON and YAML renderers. The trait returns a
+//! [`GoValue`](crate::gocompat::GoValue) so serialization routes through the
+//! report-format byte-compatible encoders rather than `serde_json` (output
+//! bytes are pinned by `rust/tests/compat`).
 
 use crate::gocompat::{Encoder, GoValue};
 
-/// Returned when `None` is passed to the render functions. Mirrors Go's
-/// `ErrNilMetricsOutput`.
-#[derive(Debug, PartialEq, Eq)]
+/// Returned when `None` is passed to the render functions.
+///
+/// The error text is part of the CLI contract; keep it byte-identical.
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
+#[error("metrics output is nil")]
 pub struct NilMetricsOutput;
 
-impl std::fmt::Display for NilMetricsOutput {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "metrics output is nil")
-    }
-}
-
-impl std::error::Error for NilMetricsOutput {}
-
 /// Implemented by analyzer computed-metrics types to provide serializable
-/// output for JSON and YAML. Mirrors Go's `MetricsOutput` interface.
+/// output for JSON and YAML.
 pub trait MetricsOutput {
-    /// The analyzer identifier (e.g. "devs", "burndown"). Mirrors `AnalyzerName`.
+    /// The analyzer identifier (e.g. "devs", "burndown").
     fn analyzer_name(&self) -> String;
 
-    /// A value suitable for JSON marshaling. Mirrors `ToJSON`.
+    /// A value suitable for JSON marshaling.
     fn to_json(&self) -> GoValue;
 
-    /// A value suitable for YAML marshaling. Mirrors `ToYAML`. For most
-    /// analyzers this returns the same value as [`MetricsOutput::to_json`].
+    /// A value suitable for YAML marshaling. For most analyzers this returns
+    /// the same value as [`MetricsOutput::to_json`].
     fn to_yaml(&self) -> GoValue;
 }
 
-/// Serializes metrics output to Go-compatible JSON bytes. Port of
-/// `RenderMetricsJSON`. Returns [`NilMetricsOutput`] when `m` is `None`.
+/// Serializes metrics output to report-contract JSON bytes.
+///
+/// # Errors
+///
+/// Returns [`NilMetricsOutput`] when `m` is `None`.
 pub fn render_metrics_json(m: Option<&dyn MetricsOutput>) -> Result<String, NilMetricsOutput> {
     let m = m.ok_or(NilMetricsOutput)?;
     Ok(Encoder::default().encode(&m.to_json()))
 }
 
-/// Serializes metrics output to YAML bytes. Port of `RenderMetricsYAML`.
+/// Produces the metrics output's YAML-marshalable value.
 ///
-/// The design routes YAML through `cf-goyaml` (DESIGN.md §2.4) for byte
-/// identity with `gopkg.in/yaml.v3`. That crate is still a scaffold, so this
-/// returns the value's [`GoValue`] structure rendered via the JSON encoder's
-/// data model as a stand-in until `cf-goyaml` is wired in; the function
-/// signature and nil-handling match Go so call sites are stable.
+/// The design routes YAML bytes through `cf-goyaml` (DESIGN.md §2.4) for
+/// report-format byte identity. This returns the value's [`GoValue`] structure
+/// for that emitter to consume; the signature and nil-handling are stable for
+/// call sites.
+///
+/// # Errors
+///
+/// Returns [`NilMetricsOutput`] when `m` is `None`.
 pub fn render_metrics_yaml(m: Option<&dyn MetricsOutput>) -> Result<GoValue, NilMetricsOutput> {
     let m = m.ok_or(NilMetricsOutput)?;
     Ok(m.to_yaml())
@@ -77,7 +76,7 @@ mod tests {
         }
     }
 
-    /// Port of `TestMetricsOutput_AnalyzerName/ToJSON/ToYAML`.
+    /// Mirrors reference test `TestMetricsOutput_AnalyzerName/ToJSON/ToYAML`.
     #[test]
     fn metrics_output_accessors() {
         let m = MockMetrics {
@@ -99,7 +98,7 @@ mod tests {
         );
     }
 
-    /// Port of `TestRenderMetricsJSON` + `_NilInput`.
+    /// Mirrors reference test `TestRenderMetricsJSON` + `_NilInput`.
     #[test]
     fn render_metrics_json_cases() {
         let m = MockMetrics {
@@ -113,7 +112,7 @@ mod tests {
         assert_eq!(render_metrics_json(None), Err(NilMetricsOutput));
     }
 
-    /// Port of `TestRenderMetricsYAML` + `_NilInput`.
+    /// Mirrors reference test `TestRenderMetricsYAML` + `_NilInput`.
     #[test]
     fn render_metrics_yaml_cases() {
         let m = MockMetrics {

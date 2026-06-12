@@ -1,7 +1,7 @@
 //! Tick → commit-hashes index construction.
 //!
-//! Port of `internal/analyzers/analyze/commits_by_tick.go`. Go's generic
-//! `BuildCommitsByTick[V]` takes an `extract` callback that type-asserts
+//! The generic
+//! [`build_commits_by_tick`] takes an `extract` callback that inspects
 //! `tick.Data`; in Rust the extractor is a closure returning the per-tick
 //! commit-keyed map (or `None` when the data is not the expected shape).
 
@@ -9,13 +9,13 @@ use crate::tc::{CommitHash, Tick};
 
 /// Builds a map from tick index to the commit hashes recorded in that tick.
 ///
-/// Mirrors `BuildCommitsByTick` (commits_by_tick.go:11). `extract` inspects a
+/// `extract` inspects a
 /// tick's `Data` and returns the commit-hash-keyed entries, or `None`/empty to
 /// skip the tick. Within a tick the hashes follow the iteration order the
 /// extractor yields; ticks accumulate in input order.
 ///
 /// The result is returned as ordered `(tick, hashes)` pairs (a `Vec`) rather
-/// than a Go-style map, since the only consumer needs deterministic iteration.
+/// than a hash map, since the only consumer needs deterministic iteration.
 #[must_use]
 pub fn build_commits_by_tick<F>(ticks: &[Tick], extract: F) -> Vec<(i32, Vec<CommitHash>)>
 where

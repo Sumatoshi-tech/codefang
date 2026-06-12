@@ -1,25 +1,19 @@
-//! Cross-analyzer enrichment orchestration.
+//! Cross-analyzer enrichment orchestration (the pure detection logic).
 //!
-//! Ports the pure logic of `runStoreEnrichment` from
-//! `internal/analyzers/anomaly/enrich_store.go`. The store-IO wrapper
-//! (`EnrichAndRewrite`, `extractFromStoreOnly`) belongs to the `cf-analyze`
-//! store layer and is tracked as a framework dependency (see crate todos).
+//! The store-IO wrapper belongs to the `cf-analyze` store layer and is
+//! tracked as a framework dependency (see crate todos).
 
 use std::collections::BTreeMap;
 
 use crate::detect::{detect_external_anomalies, sort_external_results};
 use crate::model::{ExternalAnomaly, ExternalSummary};
 
-/// Analyzer ID that is excluded from enrichment (the anomaly analyzer itself).
-///
-/// Mirrors Go `analyzerNameAnomaly` used in `runStoreEnrichment`.
+/// Analyzer ID that is excluded from enrichment (the anomaly analyzer
+/// itself).
 pub const ANALYZER_NAME_ANOMALY: &str = "anomaly";
 
 /// One analyzer's extracted time series: the tick axis plus a map of named
 /// dimensions to per-tick values.
-///
-/// Mirrors the `(ticks []int, dimensions map[string][]float64)` pair returned by
-/// Go's `StoreTimeSeriesExtractor`.
 #[derive(Debug, Clone, Default)]
 pub struct ExtractedSeries {
     /// Tick axis shared by every dimension.
@@ -30,14 +24,13 @@ pub struct ExtractedSeries {
 
 /// Runs cross-analyzer enrichment over already-extracted time series.
 ///
-/// Mirrors Go `runStoreEnrichment`. For each `(analyzer_id, series)` (skipping
-/// the anomaly analyzer itself and any empty series), it detects external
-/// anomalies and summaries, accumulates them, then sorts: anomalies by
-/// descending absolute Z-score and summaries by `(source, dimension)`.
+/// For each `(analyzer_id, series)` (skipping the anomaly analyzer itself and
+/// any empty series), it detects external anomalies and summaries,
+/// accumulates them, then sorts: anomalies by descending absolute Z-score and
+/// summaries by `(source, dimension)`.
 ///
-/// In Go the series come from store readers via registered extractors; here the
-/// caller supplies the already-extracted series so this function stays pure and
-/// independent of the not-yet-ported store layer.
+/// The caller supplies the already-extracted series so this function stays
+/// pure and independent of the store layer.
 #[must_use]
 pub fn run_store_enrichment(
     extracted: &BTreeMap<String, ExtractedSeries>,
@@ -89,7 +82,7 @@ mod tests {
 
     #[test]
     fn basic_detects_spike() {
-        // Mirrors Go TestEnrichFromStore_Basic.
+        // Mirrors reference test TestEnrichFromStore_Basic.
         let extracted = BTreeMap::from([(
             "test-source".to_string(),
             series(vec![0, 1, 2, 3, 4], &[("metric_a", vec![1.0, 1.0, 1.0, 1.0, 100.0])]),
@@ -110,7 +103,7 @@ mod tests {
 
     #[test]
     fn empty_store_yields_nothing() {
-        // Mirrors Go TestEnrichFromStore_EmptyStore (no matching analyzers).
+        // Mirrors reference test TestEnrichFromStore_EmptyStore (no matching analyzers).
         let extracted: BTreeMap<String, ExtractedSeries> = BTreeMap::new();
         let (anomalies, summaries) = run_store_enrichment(&extracted, 3, 2.0);
         assert!(anomalies.is_empty());
@@ -119,7 +112,7 @@ mod tests {
 
     #[test]
     fn skips_anomaly_analyzer() {
-        // Mirrors Go TestEnrichFromStore_SkipsAnomalyAnalyzer.
+        // Mirrors reference test TestEnrichFromStore_SkipsAnomalyAnalyzer.
         let extracted = BTreeMap::from([(
             "anomaly".to_string(),
             series(vec![0, 1], &[("dim", vec![1.0, 100.0])]),
@@ -131,7 +124,7 @@ mod tests {
 
     #[test]
     fn equivalence_to_direct_detection() {
-        // Mirrors Go TestEnrichFromStore_Equivalence.
+        // Mirrors reference test TestEnrichFromStore_Equivalence.
         let ticks = vec![0, 1, 2, 3, 4, 5];
         let dims = BTreeMap::from([
             ("dim_a".to_string(), vec![1.0, 1.0, 1.0, 1.0, 50.0, 1.0]),

@@ -1,5 +1,4 @@
-//! cf-spillstore — port of the Go package
-//! `internal/analyzers/common/spillstore`.
+//! cf-spillstore — disk-backed spill storage for streaming analyzers.
 //!
 //! Provides a generic, disk-backed key/value store ([`SpillStore`]) that spills
 //! accumulated data to temporary files during streaming hibernation, freeing
@@ -11,9 +10,9 @@
 //! cleared. [`SpillStore::collect`] merges every spilled chunk and the current
 //! buffer back into a single map.
 //!
-//! # Behavioral parity with the Go original
+//! # Behavioral contract
 //!
-//! Every observable behavior of the Go `SpillStore[V]` is reproduced exactly:
+//! The store's observable behavior is part of the compatibility contract:
 //!
 //! - The temp directory is created lazily on the first non-empty spill, under
 //!   `base_dir` when set (otherwise the system temp dir), with the name prefix
@@ -31,20 +30,15 @@
 //!
 //! # Byte-identity note (DESIGN.md §3)
 //!
-//! The spilled chunk files are intermediate, never-user-visible state. The Go
-//! original encodes them with `encoding/gob`, which is dropped in the Rust tree
-//! because gob is not byte-portable. This crate uses a Rust-native `serde`
-//! codec ([`serde_json`]) for the chunk files. None of these bytes appear in a
-//! MACHINE-format report, so the shared `cf-gojson` encoder is intentionally
-//! not used here. The chunk file format is an internal implementation detail
-//! and carries no cross-language byte-identity guarantee.
-//!
-//! Ported from Go. See `specs/rust-rewrite/DESIGN.md`.
+//! The spilled chunk files are intermediate, never-user-visible state, encoded
+//! with a Rust-native `serde` codec ([`serde_json`]). None of these bytes
+//! appear in a MACHINE-format report, so the shared `cf-gojson` encoder is
+//! intentionally not used here. The chunk file format is an internal
+//! implementation detail and carries no cross-version byte-identity guarantee.
 
 #![forbid(unsafe_code)]
 
 use std::collections::HashMap;
-use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -53,69 +47,44 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 /// Filename prefix for the lazily-created spill temp directory.
-///
-/// Mirrors the Go pattern `"codefang-spill-*"` passed to `os.MkdirTemp`.
 const SPILL_DIR_PREFIX: &str = "codefang-spill-";
 
-/// Builds the chunk filename for a given spill index.
-///
-/// Mirrors the Go `fmt.Sprintf("chunk_%03d.gob", index)` zero-padded numbering.
-/// The Rust codec is JSON rather than gob, so the extension is `.json`; the file
-/// is purely internal state and never user-visible (see the crate-level
-/// byte-identity note).
+/// Builds the zero-padded chunk filename for a given spill index
+/// (`chunk_000.json`, `chunk_001.json`, ...). The file is purely internal
+/// state and never user-visible (see the crate-level byte-identity note).
 fn chunk_file_name(index: usize) -> String {
     format!("chunk_{index:03}.json")
 }
 
 /// Errors returned by [`SpillStore`] operations.
 ///
-/// The variants mirror the failure points of the Go implementation
-/// (`create temp dir`, `create/encode/close spill`, `open/decode spill`) so
-/// callers can distinguish where a spill round-trip failed.
-#[derive(Debug)]
+/// The variants name the failure points of a spill round-trip (`create temp
+/// dir`, `create/encode spill`, `open/decode spill`) so callers can
+/// distinguish where it failed.
+#[derive(Debug, thiserror::Error)]
 pub enum SpillError {
     /// Failed to create the lazily-allocated temp directory.
-    CreateTempDir(io::Error),
+    #[error("spillstore: create temp dir: {0}")]
+    CreateTempDir(#[source] io::Error),
     /// Failed to create a spill chunk file. Carries the zero-based spill index.
-    CreateSpill(usize, io::Error),
+    #[error("spillstore: create spill file: {1} (chunk {0})")]
+    CreateSpill(usize, #[source] io::Error),
     /// Failed to encode (serialize + write) a spill chunk.
-    EncodeSpill(usize, io::Error),
+    #[error("spillstore: encode spill {0}: {1}")]
+    EncodeSpill(usize, #[source] io::Error),
     /// Failed to open a spill chunk for reading.
-    OpenSpill(usize, io::Error),
+    #[error("spillstore: open spill {0}: {1}")]
+    OpenSpill(usize, #[source] io::Error),
     /// Failed to decode (read + deserialize) a spill chunk.
-    DecodeSpill(usize, io::Error),
-}
-
-impl fmt::Display for SpillError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::CreateTempDir(e) => write!(f, "spillstore: create temp dir: {e}"),
-            Self::CreateSpill(i, e) => write!(f, "spillstore: create spill file: {e} (chunk {i})"),
-            Self::EncodeSpill(i, e) => write!(f, "spillstore: encode spill {i}: {e}"),
-            Self::OpenSpill(i, e) => write!(f, "spillstore: open spill {i}: {e}"),
-            Self::DecodeSpill(i, e) => write!(f, "spillstore: decode spill {i}: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for SpillError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::CreateTempDir(e)
-            | Self::CreateSpill(_, e)
-            | Self::EncodeSpill(_, e)
-            | Self::OpenSpill(_, e)
-            | Self::DecodeSpill(_, e) => Some(e),
-        }
-    }
+    #[error("spillstore: decode spill {0}: {1}")]
+    DecodeSpill(usize, #[source] io::Error),
 }
 
 /// A `HashMap<String, V>` with transparent disk spilling.
 ///
 /// See the crate-level documentation for the full behavioral contract. `V` must
-/// be `serde`-serializable so chunks can be written to and read back from disk;
-/// this is the Rust analogue of the Go original's reliance on `encoding/gob`
-/// being able to encode any registered value type.
+/// be `serde`-serializable so chunks can be written to and read back from
+/// disk.
 ///
 /// # Examples
 ///
@@ -151,7 +120,7 @@ impl<V> SpillStore<V> {
     /// Creates a `SpillStore` with an empty in-memory buffer.
     ///
     /// When `base_dir` is non-empty, temp dirs for spill files are created under
-    /// it; otherwise the system default temp dir is used. Mirrors Go `New`.
+    /// it; otherwise the system default temp dir is used.
     pub fn new(base_dir: impl Into<String>) -> Self {
         Self {
             current: HashMap::new(),
@@ -161,65 +130,60 @@ impl<V> SpillStore<V> {
         }
     }
 
-    /// Stores a key/value pair in the current in-memory buffer. Mirrors Go `Put`.
+    /// Stores a key/value pair in the current in-memory buffer.
     pub fn put(&mut self, key: String, val: V) {
         self.current.insert(key, val);
     }
 
     /// Returns a reference to a value from the current in-memory buffer.
     ///
-    /// Does **not** read from spilled files (parity with Go `Get`). Returns
-    /// `None` when the key is absent from the live buffer.
+    /// Does **not** read from spilled files. Returns `None` when the key is
+    /// absent from the live buffer.
+    #[must_use]
     pub fn get(&self, key: &str) -> Option<&V> {
         self.current.get(key)
     }
 
     /// Returns the number of entries in the current in-memory buffer.
-    ///
-    /// Mirrors Go `Len`. (The Go nil-receiver-returns-0 convention is expressed
-    /// in Rust by `Option<SpillStore<V>>`; an absent store contributes 0.)
+    #[must_use]
     pub fn len(&self) -> usize {
         self.current.len()
     }
 
     /// Reports whether the in-memory buffer is empty.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.current.is_empty()
     }
 
-    /// Returns the current in-memory buffer. The caller must not mutate it
-    /// through this borrow in a way that violates store invariants.
-    ///
-    /// Mirrors Go `Current`.
-    pub fn current(&self) -> &HashMap<String, V> {
+    /// Returns the current in-memory buffer.
+    #[must_use]
+    pub const fn current(&self) -> &HashMap<String, V> {
         &self.current
     }
 
-    /// Returns the number of spill files written. Mirrors Go `SpillCount`.
-    pub fn spill_count(&self) -> usize {
+    /// Returns the number of spill files written.
+    #[must_use]
+    pub const fn spill_count(&self) -> usize {
         self.spill_n
     }
 
     /// Returns the temp directory path, or `None` if no spills have occurred.
-    ///
-    /// Mirrors Go `SpillDir` (which returns "" when empty).
+    #[must_use]
     pub fn spill_dir(&self) -> Option<&Path> {
         self.dir.as_deref()
     }
 
     /// Points the store at an existing spill directory with the given number of
-    /// spill files. Used for checkpoint restoration. Mirrors Go `RestoreFromDir`.
+    /// spill files. Used for checkpoint restoration.
     pub fn restore_from_dir(&mut self, dir: impl Into<PathBuf>, count: usize) {
         self.dir = Some(dir.into());
         self.spill_n = count;
-        // `current` is always initialized in Rust; nothing to lazily allocate.
     }
 
-    /// Removes the temp directory. Safe to call multiple times. Mirrors Go
-    /// `Cleanup`.
+    /// Removes the temp directory. Safe to call multiple times.
     ///
-    /// Removal errors are ignored, matching Go's `os.RemoveAll` whose error is
-    /// discarded by the original `Cleanup`.
+    /// Removal errors are deliberately ignored (best-effort cleanup).
     pub fn cleanup(&mut self) {
         if let Some(dir) = self.dir.take() {
             let _ = fs::remove_dir_all(&dir);
@@ -227,7 +191,7 @@ impl<V> SpillStore<V> {
     }
 
     /// Lazily creates the temp directory if it does not yet exist, returning its
-    /// path. Mirrors the lazy-`os.MkdirTemp` block at the top of Go `Spill`.
+    /// path.
     fn ensure_dir(&mut self) -> Result<&Path, SpillError> {
         if self.dir.is_none() {
             let mut builder = tempfile::Builder::new();
@@ -240,8 +204,8 @@ impl<V> SpillStore<V> {
             }
             .map_err(SpillError::CreateTempDir)?;
 
-            // Persist the directory: the Go store owns the lifecycle explicitly
-            // via Cleanup/Collect, not via RAII. keep() disables tempfile's
+            // Persist the directory: the store owns the lifecycle explicitly
+            // via cleanup()/collect(), not via RAII. keep() disables tempfile's
             // automatic deletion so the directory survives until we remove it.
             self.dir = Some(created.keep());
         }
@@ -258,7 +222,12 @@ where
     /// Writes the current buffer to a numbered chunk file and clears the map.
     ///
     /// No-op when the buffer is empty. The temp directory is created lazily on
-    /// the first non-empty spill. Mirrors Go `Spill`.
+    /// the first non-empty spill.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`SpillError`] if the temp directory or chunk file cannot be
+    /// created, or if encoding the buffer fails.
     pub fn spill(&mut self) -> Result<(), SpillError> {
         if self.current.is_empty() {
             return Ok(());
@@ -273,8 +242,8 @@ where
         let file = fs::File::create(&path).map_err(|e| SpillError::CreateSpill(index, e))?;
         serde_json::to_writer(&file, &self.current)
             .map_err(|e| SpillError::EncodeSpill(index, io::Error::from(e)))?;
-        // Flush/close: dropping the File closes it; the Go original likewise
-        // relies on Close() rather than an explicit fsync.
+        // Flush/close: dropping the File closes it; spill files are not
+        // durability-critical, so no explicit fsync.
         drop(file);
 
         self.spill_n += 1;
@@ -286,8 +255,11 @@ where
     /// Returns all data (spilled + in-memory) merged into one map, then cleans
     /// up spill files and resets the store.
     ///
-    /// Later entries overwrite earlier ones for the same key. Mirrors Go
-    /// `Collect` (which delegates to `CollectWith(nil)`).
+    /// Later entries overwrite earlier ones for the same key.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`SpillError`] if a spilled chunk cannot be read back.
     pub fn collect(&mut self) -> Result<HashMap<String, V>, SpillError> {
         self.collect_with::<fn(V, V) -> V>(None)
     }
@@ -297,7 +269,11 @@ where
     ///
     /// When `merge` is `None`, later values overwrite earlier ones for duplicate
     /// keys (last-write-wins). When `merge` is `Some(f)`, it is called as
-    /// `f(existing, incoming)` for conflicting keys. Mirrors Go `CollectWith`.
+    /// `f(existing, incoming)` for conflicting keys.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`SpillError`] if a spilled chunk cannot be read back.
     pub fn collect_with<F>(&mut self, merge: Option<F>) -> Result<HashMap<String, V>, SpillError>
     where
         F: Fn(V, V) -> V,
@@ -322,8 +298,12 @@ where
 
     /// Iterates through all spill files, calling `f` for each decoded chunk.
     ///
-    /// Does not clean up spill files or modify the current buffer. Mirrors Go
-    /// `ForEachSpill`.
+    /// Does not clean up spill files or modify the current buffer.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`SpillError`] if a chunk cannot be read, or propagates the
+    /// first error returned by `f`.
     pub fn for_each_spill<F>(&self, mut f: F) -> Result<(), SpillError>
     where
         F: FnMut(HashMap<String, V>) -> Result<(), SpillError>,
@@ -336,8 +316,7 @@ where
         Ok(())
     }
 
-    /// Reads and decodes a single spill chunk by index. Mirrors Go
-    /// `readSpillFile`.
+    /// Reads and decodes a single spill chunk by index.
     fn read_spill_file(&self, index: usize) -> Result<HashMap<String, V>, SpillError> {
         let dir = self
             .dir
@@ -356,9 +335,9 @@ where
 
 /// Merges `src` into `dst` using an optional conflict-resolution function.
 ///
-/// With `merge == None`, this is last-write-wins (`src` overwrites `dst`),
-/// matching Go's `maps.Copy(dst, src)`. With `merge == Some(f)`, conflicting
-/// keys are resolved by `f(existing, incoming)`. Mirrors Go `mergeInto`.
+/// With `merge == None`, this is last-write-wins (`src` overwrites `dst`).
+/// With `merge == Some(f)`, conflicting keys are resolved by
+/// `f(existing, incoming)`.
 fn merge_into<V, F>(dst: &mut HashMap<String, V>, src: HashMap<String, V>, merge: Option<&F>)
 where
     F: Fn(V, V) -> V,
@@ -386,12 +365,12 @@ mod tests {
     use super::*;
     use serde::Deserialize;
 
-    /// Helper mirroring the Go tests' `map[string]int{...}` literal comparisons.
+    /// Helper building a `HashMap<String, i64>` from literal pairs.
     fn map_int(pairs: &[(&str, i64)]) -> HashMap<String, i64> {
-        pairs.iter().map(|(k, v)| (k.to_string(), *v)).collect()
+        pairs.iter().map(|&(k, v)| (k.to_string(), v)).collect()
     }
 
-    /// Port of Go `TestSpillStore_NoSpill`.
+    /// Mirrors the reference test `TestSpillStore_NoSpill`.
     #[test]
     fn no_spill() {
         let mut s: SpillStore<i64> = SpillStore::new("");
@@ -406,7 +385,7 @@ mod tests {
         assert_eq!(collected, map_int(&[("a", 1), ("b", 2)]));
     }
 
-    /// Port of Go `TestSpillStore_SingleSpill`.
+    /// Mirrors the reference test `TestSpillStore_SingleSpill`.
     #[test]
     fn single_spill() {
         let mut s: SpillStore<String> = SpillStore::new("");
@@ -422,14 +401,14 @@ mod tests {
         let collected = s.collect().unwrap();
         let want: HashMap<String, String> = [("k1", "v1"), ("k2", "v2"), ("k3", "v3")]
             .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .map(|&(k, v)| (k.to_string(), v.to_string()))
             .collect();
         assert_eq!(collected, want);
         // Cleaned up.
         assert!(s.spill_dir().is_none());
     }
 
-    /// Port of Go `TestSpillStore_MultipleSpills`.
+    /// Mirrors the reference test `TestSpillStore_MultipleSpills`.
     #[test]
     fn multiple_spills() {
         let mut s: SpillStore<i64> = SpillStore::new("");
@@ -454,7 +433,7 @@ mod tests {
         );
     }
 
-    /// Port of Go `TestSpillStore_SpillEmpty`.
+    /// Mirrors the reference test `TestSpillStore_SpillEmpty`.
     #[test]
     fn spill_empty() {
         let mut s: SpillStore<i64> = SpillStore::new("");
@@ -464,7 +443,7 @@ mod tests {
         assert!(s.spill_dir().is_none());
     }
 
-    /// Port of Go `TestSpillStore_CollectWith`.
+    /// Mirrors the reference test `TestSpillStore_CollectWith`.
     #[test]
     fn collect_with() {
         let mut s: SpillStore<HashMap<String, i64>> = SpillStore::new("");
@@ -490,7 +469,7 @@ mod tests {
         );
     }
 
-    /// Port of Go `TestSpillStore_Cleanup`.
+    /// Mirrors the reference test `TestSpillStore_Cleanup`.
     #[test]
     fn cleanup() {
         let mut s: SpillStore<i64> = SpillStore::new("");
@@ -507,7 +486,7 @@ mod tests {
         s.cleanup();
     }
 
-    /// Port of Go `TestSpillStore_RestoreFromDir`.
+    /// Mirrors the reference test `TestSpillStore_RestoreFromDir`.
     #[test]
     fn restore_from_dir() {
         // Write spill files via one store.
@@ -535,7 +514,7 @@ mod tests {
         value: i64,
     }
 
-    /// Port of Go `TestSpillStore_StructValues`.
+    /// Mirrors the reference test `TestSpillStore_StructValues`.
     #[test]
     fn struct_values() {
         let mut s: SpillStore<TestStruct> = SpillStore::new("");
@@ -573,8 +552,8 @@ mod tests {
         );
     }
 
-    /// Port of Go `TestSpillStore_PointerValues`. In Rust we model the Go
-    /// `*testStruct` value type with `Box<TestStruct>`; round-trip equality is
+    /// Mirrors the reference test `TestSpillStore_PointerValues`, with the
+    /// pointer value type modeled as `Box<TestStruct>`; round-trip equality is
     /// preserved.
     #[test]
     fn pointer_values() {
@@ -598,14 +577,14 @@ mod tests {
 
         let collected = s.collect().unwrap();
         assert_eq!(
-            collected.get("x").map(|b| b.as_ref()),
+            collected.get("x").map(Box::as_ref),
             Some(&TestStruct {
                 name: "hello".to_string(),
                 value: 42
             })
         );
         assert_eq!(
-            collected.get("y").map(|b| b.as_ref()),
+            collected.get("y").map(Box::as_ref),
             Some(&TestStruct {
                 name: "world".to_string(),
                 value: 99
@@ -613,8 +592,8 @@ mod tests {
         );
     }
 
-    /// Additional coverage: collect resets spill_n and clears the buffer so the
-    /// store is reusable (parity with Go Collect's tail reset).
+    /// Additional coverage: collect resets `spill_n` and clears the buffer so
+    /// the store is reusable.
     #[test]
     fn collect_resets_store() {
         let mut s: SpillStore<i64> = SpillStore::new("");
@@ -632,8 +611,8 @@ mod tests {
         assert_eq!(again, map_int(&[("b", 2)]));
     }
 
-    /// Additional coverage: for_each_spill visits chunks in ascending order and
-    /// does not clean up the spill directory.
+    /// Additional coverage: `for_each_spill` visits chunks in ascending order
+    /// and does not clean up the spill directory.
     #[test]
     fn for_each_spill_iterates_without_cleanup() {
         let mut s: SpillStore<i64> = SpillStore::new("");

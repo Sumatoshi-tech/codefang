@@ -1,19 +1,14 @@
 //! `LanguagesDetection` provider.
 //!
-//! Port of `internal/analyzers/plumbing/languages.go`.
+//! Produces a map from blob [`struct@Hash`] to detected language name.
+//! Detection runs in a frozen order (language names flow into report output):
+//! 1. a binary guard (binary blob -> `""`);
+//! 2. a fast-path extension table ([`language_by_extension`]);
+//! 3. a content-analysis fallback for unmatched extensions.
 //!
-//! Produces a map from blob [`struct@Hash`] to detected
-//! language name. Detection is a
-//! two-stage process exactly mirroring the Go code:
-//! 1. a binary guard (`CountLines` returning `ErrBinary` -> `""`);
-//! 2. a fast-path extension table ([`language_by_extension`]) ported verbatim
-//!    from Go's `extensionToLanguage`;
-//! 3. a content-analysis fallback (`enry.GetLanguage`) for unmatched
-//!    extensions.
-//!
-//! The fallback must match go-enry/v2 byte-for-byte (DESIGN §2.6 mandates
-//! porting enry's own data tables rather than swapping detectors); it is
-//! injected via the [`EnryClassifier`] trait. See the crate `todos`.
+//! The fallback must match the enry classifier byte-for-byte (DESIGN §2.6
+//! mandates carrying enry's own data tables rather than swapping detectors);
+//! it is injected via the [`EnryClassifier`] trait.
 
 use std::collections::HashMap;
 
@@ -21,30 +16,28 @@ use crate::analyzer::{dep, Analyzer, AnalyzerError, ValueMap};
 use crate::blob_cache::{is_binary, CachedBlob};
 use crate::git_model::{Action, Changes, Hash};
 
-/// Content-analysis language classifier, abstracting `enry.GetLanguage`.
+/// Content-analysis language classifier boundary.
 ///
-/// The contract mirrors `enry.GetLanguage(filepath.Base(name), data)`: it takes
-/// the base file name and the file bytes and returns the language name, or an
-/// empty string when undetermined. For byte-identity the implementation must
-/// carry go-enry's own data tables (DESIGN §2.6); none was available to the
-/// build, so it is injected (port rule 5). See the crate `todos`.
+/// Takes the base file name and the file bytes and returns the language name,
+/// or an empty string when undetermined. For byte-identity the implementation
+/// must carry the enry data tables (DESIGN §2.6); it is injected.
 pub trait EnryClassifier {
     /// Detect the language for a file given its base name and content.
     fn get_language(&self, base_name: &str, content: &[u8]) -> String;
 }
 
-/// `LanguagesDetection` provider, mirroring Go's `LanguagesDetectionAnalyzer`.
+/// `LanguagesDetection` provider.
 pub struct LanguagesDetection<C: EnryClassifier> {
     classifier: C,
 }
 
 impl<C: EnryClassifier> LanguagesDetection<C> {
     /// Construct with the given content-analysis classifier.
-    pub fn new(classifier: C) -> Self {
-        LanguagesDetection { classifier }
+    pub const fn new(classifier: C) -> Self {
+        Self { classifier }
     }
 
-    /// Detect the language for a single blob, mirroring Go's `detectLanguage`.
+    /// Detect the language for a single blob.
     ///
     /// Returns `""` for a binary blob, then tries the extension fast path,
     /// then falls back to content analysis.
@@ -52,7 +45,7 @@ impl<C: EnryClassifier> LanguagesDetection<C> {
         let Some(blob) = blob else {
             return String::new();
         };
-        // Go: `_, err := blob.CountLines(); if errors.Is(err, ErrBinary) { return "" }`.
+        // Binary guard: a binary blob yields the empty language.
         if is_binary(&blob.data) {
             return String::new();
         }
@@ -65,9 +58,8 @@ impl<C: EnryClassifier> LanguagesDetection<C> {
         self.classifier.get_language(base_name(name), &blob.data)
     }
 
-    /// Build the blob-hash -> language map for one commit, mirroring Go's
-    /// `Languages()`: inserts/modifies key the `To` side, deletes the `From`
-    /// side, and modifies key both sides.
+    /// Build the blob-hash -> language map for one commit: inserts key the
+    /// `to` side, deletes the `from` side, and modifies key both sides.
     pub fn build(
         &self,
         changes: &Changes,
@@ -128,25 +120,22 @@ impl<C: EnryClassifier> Analyzer for LanguagesDetection<C> {
     }
 }
 
-/// Base file name, mirroring Go's `path.Base` (libgit2 paths use `/`).
+/// Base file name (libgit2 paths always use `/`).
 fn base_name(path: &str) -> &str {
-    match path.rfind('/') {
-        Some(i) => &path[i + 1..],
-        None => path,
-    }
+    path.rfind('/').map_or(path, |i| &path[i + 1..])
 }
 
-/// Programming language for a filename by extension, mirroring Go's
-/// `languageByExtension` over the `extensionToLanguage` table. The extension is
-/// lowercased before lookup (`strings.ToLower(path.Ext(filename))`); the table
-/// keys are all lowercase. Returns `""` when there is no extension or no match.
+/// Programming language for a filename by extension. The extension is
+/// lowercased before lookup; the table keys are all lowercase. Returns `""`
+/// when there is no extension or no match.
 ///
-/// The table below is ported verbatim from `languages.go`.
+/// The table is frozen (language-detection contract).
+#[must_use]
 pub fn language_by_extension(filename: &str) -> &'static str {
     let ext = match filename.rfind('.') {
-        // path.Ext returns from the last dot of the final element; a leading
-        // dot (dotfile with no other dot) yields an extension in Go too, so we
-        // keep the raw last-dot behavior which matches for the cases here.
+        // The extension starts at the last dot; a dotfile with no other dot
+        // yields an "extension" as well (reference-implementation behavior),
+        // so keep the raw last-dot rule, which matches for the cases here.
         Some(i) => &filename[i..],
         None => return "",
     };
@@ -154,13 +143,13 @@ pub fn language_by_extension(filename: &str) -> &'static str {
     EXTENSION_TO_LANGUAGE
         .iter()
         .find(|(k, _)| *k == ext)
-        .map(|(_, v)| *v)
-        .unwrap_or("")
+        .map_or("", |(_, v)| *v)
 }
 
-/// Verbatim port of Go's `extensionToLanguage` map (languages.go). Stored as a
-/// sorted-by-construction slice; lookups are linear but the table is small and
-/// this avoids a non-deterministic `HashMap` literal. Keys are lowercase.
+/// The frozen extension fast-path table (language-detection contract; pinned
+/// by the differential gate). Stored as a slice: lookups are linear but the
+/// table is small, and this keeps iteration order deterministic. Keys are
+/// lowercase.
 static EXTENSION_TO_LANGUAGE: &[(&str, &str)] = &[
     (".go", "Go"),
     (".py", "Python"),
@@ -235,8 +224,9 @@ static EXTENSION_TO_LANGUAGE: &[(&str, &str)] = &[
     (".pod", "Perl"),
     (".t", "Perl"),
     (".lua", "Lua"),
-    // Go has both ".r" and ".R" keys mapping to "R"; after lowercasing the
-    // lookup, ".r" covers both. ".rmd"/".Rmd" likewise both lowercase to ".rmd".
+    // The reference table has both ".r" and ".R" keys mapping to "R"; after
+    // lowercasing the lookup, ".r" covers both. ".rmd"/".Rmd" likewise both
+    // lowercase to ".rmd".
     (".r", "R"),
     (".rmd", "RMarkdown"),
     (".swift", "Swift"),

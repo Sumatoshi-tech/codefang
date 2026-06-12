@@ -1,26 +1,25 @@
 //! `codefang_analyze` tool handler.
 //!
-//! Ports `internal/mcp/tools_analyze.go`. Validates the inline code, parses it
-//! into a UAST, runs the selected (or all default) static analyzers, and returns
-//! the result map as Go-compatible pretty JSON.
+//! Validates the inline code, parses it into a UAST, runs the selected (or all
+//! default) static analyzers, and returns the result map as report-compatible
+//! pretty JSON.
 //!
 //! The concrete UAST parser and analyzer factory are taken behind the
-//! [`UastParser`] / [`StaticAnalysisProvider`] traits (see [`crate::providers`]);
-//! the handler logic, ordering, default-analyzer set, and error wording are
-//! fully ported here.
+//! [`UastParser`] / [`StaticAnalysisProvider`] traits (see
+//! [`crate::providers`]); the handler logic, ordering, default-analyzer set,
+//! and error wording all live here and are part of the tool contract.
 
 use crate::errors::ToolError;
 use crate::providers::{StaticAnalysisProvider, UastParser};
 use crate::result::{ToolOutput, ToolResult};
 use crate::tools::{synthetic_filename, validate_code_input, AnalyzeInput};
 
-/// Names of the default static analyzers, in the exact order the Go
-/// `defaultStaticAnalyzers()` constructs them: `complexity, comments, halstead,
-/// cohesion, imports`. Go derives the name list from each `Analyzer.Name()`.
+/// Names of the default static analyzers, in their fixed registration order:
+/// `complexity, comments, halstead, cohesion, imports`.
 pub const DEFAULT_STATIC_ANALYZER_NAMES: &[&str] =
     &["complexity", "comments", "halstead", "cohesion", "imports"];
 
-/// Returns the default static-analyzer name list (Go `allStaticAnalyzerNames`).
+/// Returns the default static-analyzer name list as owned strings.
 #[must_use]
 pub fn all_static_analyzer_names() -> Vec<String> {
     DEFAULT_STATIC_ANALYZER_NAMES
@@ -31,8 +30,8 @@ pub fn all_static_analyzer_names() -> Vec<String> {
 
 /// Processes a `codefang_analyze` tool call.
 ///
-/// Reproduces Go `handleAnalyze` step-for-step:
-/// 1. `validateCodeInput` → error result on failure.
+/// The step order is observable through the returned errors, so keep it:
+/// 1. validate the code input → error result on failure.
 /// 2. unsupported language → `unsupported language: <lang>`.
 /// 3. parse the code (wrapped `parse code: <err>` on failure).
 /// 4. default to all analyzer names when none requested.
@@ -101,7 +100,7 @@ mod tests {
     }
 
     /// Test double returning a map containing a `complexity` key, so JSON output
-    /// contains the substring the Go tests assert on.
+    /// contains the substring the tests assert on.
     struct FakeProvider;
     impl StaticAnalysisProvider for FakeProvider {
         fn run(&self, _root: &Node, names: &[String]) -> Result<JsonValue, ToolError> {
@@ -187,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn default_names_match_go_order() {
+    fn default_names_match_registration_order() {
         assert_eq!(
             DEFAULT_STATIC_ANALYZER_NAMES,
             &["complexity", "comments", "halstead", "cohesion", "imports"]

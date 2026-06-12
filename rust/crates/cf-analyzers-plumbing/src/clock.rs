@@ -1,12 +1,12 @@
 //! Injectable wall clock for the tick anomaly window.
 //!
-//! `ticks.go` computes its upper bound as `time.Now().Add(maxClockSkew)`
-//! (ticks.go:163). Per DESIGN §2.8 this wall-clock read is a byte-identity
-//! hazard and must be made deterministic through an injectable clock (the Go
-//! ldflags/`CODEFANG_NOW` pattern). This module provides that seam.
+//! The tick sanitizer computes its upper bound as now + max clock skew. Per
+//! DESIGN §2.8 this wall-clock read is a byte-identity hazard and must be
+//! made deterministic through an injectable clock (the `CODEFANG_NOW`
+//! pattern). This module provides that seam.
 
-/// A source of "now" as a unix timestamp in seconds, mirroring the injectable
-/// clock the design mandates for `time.Now()` (DESIGN §2.8).
+/// A source of "now" as a unix timestamp in seconds — the injectable clock
+/// the design mandates for wall-clock reads (DESIGN §2.8).
 pub trait Clock: Send + Sync {
     /// Current wall-clock time as whole seconds since the unix epoch (UTC).
     fn now_unix(&self) -> i64;

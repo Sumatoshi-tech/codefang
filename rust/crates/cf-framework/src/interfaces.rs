@@ -1,48 +1,40 @@
-//! Minimal cross-crate interfaces for the not-yet-ported dependencies.
+//! Minimal cross-crate interface shapes shared with the pipeline stages.
 //!
-//! The framework's concrete pipeline stages reference types owned by other Go
-//! packages that are still stubs in the Rust workspace (`cf-gitlib`,
-//! `cf-cache`, `cf-uast`, `cf-plumbing`, `cf-analyze`). Until those crates
-//! land, the dependency-light modules in this crate need just enough of those
-//! shapes to compile and be tested. The definitions here mirror the Go shapes
-//! exactly so that, when the upstream crates are ported, callers can switch
-//! `use cf_framework::interfaces::Hash` to `use cf_gitlib::Hash` mechanically.
+//! The dependency-light modules in this crate need just enough of the
+//! git/cache shapes to compile and be tested without pulling in the heavier
+//! crates. The byte layouts match the owning crates' types exactly (e.g.
+//! [`Hash`] is layout-identical to `cf_gitlib::Hash`), so values convert
+//! mechanically at the boundary.
 //!
 //! These are intentionally NOT re-exported as the crate's public model; they
-//! are a temporary seam (see the crate-level "Port status" docs).
+//! are a boundary seam.
 
-/// Number of bytes in a git object hash (SHA-1). Mirrors `gitlib.HashSize`.
+/// Number of bytes in a git object hash (SHA-1).
 pub const HASH_SIZE: usize = 20;
 
-/// A git object hash. Mirrors Go `gitlib.Hash` (`type Hash [20]byte`).
+/// A git object hash (raw SHA-1 bytes).
 ///
-/// This is the only `cf-gitlib` shape the ported modules need (it is the key
-/// material for [`crate::diff_cache::DiffKey`]). The real `cf-gitlib::Hash`
-/// will replace this with an identical byte layout.
+/// This is the only git shape these modules need (it is the key material for
+/// [`crate::diff_cache::DiffKey`]); it is layout-identical to the gitlib hash
+/// type.
 pub type Hash = [u8; HASH_SIZE];
 
-/// Cache hit/miss counter provider. Mirrors Go's private `cacheStatsProvider`
-/// interface in `coordinator.go`, used by the generic `cacheStats` helper.
+/// Cache hit/miss counter provider.
 ///
-/// Both the blob cache (`cf-cache::LRUBlobCache`) and the [`crate::diff_cache`]
-/// implement this; the coordinator reads deltas across a run.
+/// Both the blob cache and the [`crate::diff_cache`] implement this; the
+/// coordinator reads deltas across a run.
 pub trait CacheStatsProvider {
-    /// Total cache hits (atomic, lock-free in the Go impl).
+    /// Total cache hits.
     fn cache_hits(&self) -> i64;
-    /// Total cache misses (atomic, lock-free in the Go impl).
+    /// Total cache misses.
     fn cache_misses(&self) -> i64;
 }
 
-/// Returns the current hit/miss counters, or `(0, 0)` when absent.
-///
-/// Mirrors Go's `cacheStats[T cacheStatsProvider](c T)`: a nil cache reports
-/// zero. In Rust the "nil" case is modeled by `Option`.
+/// Returns the current hit/miss counters, or `(0, 0)` when no cache is
+/// configured.
 #[must_use]
 pub fn cache_stats<C: CacheStatsProvider>(cache: Option<&C>) -> (i64, i64) {
-    match cache {
-        Some(c) => (c.cache_hits(), c.cache_misses()),
-        None => (0, 0),
-    }
+    cache.map_or((0, 0), |c| (c.cache_hits(), c.cache_misses()))
 }
 
 #[cfg(test)]

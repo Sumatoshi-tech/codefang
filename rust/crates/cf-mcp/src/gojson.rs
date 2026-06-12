@@ -1,38 +1,45 @@
-//! Go-`encoding/json`-compatible value model and encoder for tool results.
+//! Report-compatible JSON value model and encoder for tool results.
 //!
-//! **Temporary in-crate shim, not the real serialization crate.** DESIGN.md §2.2
-//! mandates that all report serialization route through the shared `cf-gojson`
-//! crate. At the time `cf-mcp` was ported, `cf-gojson` was a bare scaffold and
-//! the only implemented Go-byte-compatible value model in the workspace
-//! (`cf-uast-node`'s) kept its map entries private with no accessor and exposed
-//! only a *compact* encoder. The Go MCP handlers use `json.MarshalIndent(value,
-//! "", "  ")` (the *indent* profile) and serialize whole trees built from
-//! `Node.ToMap()` plus analyzer report maps, so this module defines a small
-//! self-contained value model ([`JsonValue`]) and a faithful Go-compatible
+//! This encoder reproduces the report-format serialization contract: the
+//! output bytes are pinned against the reference implementation
+//! (rust/tests/compat). Its rules are frozen — tidy internals only, never the
+//! emitted bytes.
+//!
+//! **Temporary in-crate shim, not the real serialization crate.** DESIGN.md
+//! §2.2 mandates that all report serialization route through the shared
+//! `cf-gojson` crate, but `cf-gojson` does not yet expose a public indent
+//! encoder, and the workspace's only implemented report-byte-compatible value
+//! model (`cf-uast-node`'s) keeps its map entries private and exposes only a
+//! *compact* encoder. The MCP tool output uses the *indent* profile over whole
+//! trees built from node maps plus analyzer report maps, so this module
+//! defines a small self-contained value model ([`JsonValue`]) and a faithful
 //! [`Encoder`] (compact + indent). When `cf-gojson` lands with a public indent
 //! `Encoder` and an inspectable `GoValue`, delete this file and re-point
 //! [`crate::result`] to it (DESIGN rule 5).
 //!
-//! What is reproduced (the parts the MCP tool output exercises):
-//! - **Map-key byte ordering** for map-origin objects (Go `map[string]any`).
-//! - **Struct-origin** objects keep declaration order and honor `omitempty`
-//!   (handled by the builder simply not inserting omitted fields).
-//! - **HTML escaping ON** (`<`, `>`, `&`, `U+2028`, `U+2029`), as Go's
-//!   `encoding/json` does by default — the repo never calls `SetEscapeHTML(false)`.
+//! The frozen rules (the parts the MCP tool output exercises):
+//! - **Map-key byte ordering** for map-origin objects (string-keyed maps
+//!   serialize in byte-sorted key order).
+//! - **Struct-origin** objects keep declaration order and honor
+//!   omit-when-empty (handled by the builder simply not inserting omitted
+//!   fields).
+//! - **HTML escaping ON** (`<`, `>`, `&`, `U+2028`, `U+2029`) — the reference
+//!   encoder's default, never disabled anywhere in the report surface.
 //! - **Compact vs indent framing**: compact `{"a":1,"b":2}` (no spaces); indent
 //!   `{\n  "a": 1\n}` with one space after the colon and empty containers
-//!   collapsed to `{}` / `[]` (Go's `Indent` semantics).
-//! - **No trailing newline** (matching `json.MarshalIndent` / `json.Marshal`).
-//! - **Float formatting** via Go's `strconv.AppendFloat(f, 'g', -1, 64)` rules
-//!   for the analyzer-report floats that flow through `tools/call` (DESIGN §2.2).
+//!   collapsed to `{}` / `[]`.
+//! - **No trailing newline** in either profile.
+//! - **Float formatting** via the reference shortest-round-trip (`'g'/-1`)
+//!   rules for the analyzer-report floats that flow through `tools/call`
+//!   (DESIGN §2.2).
 
 use std::collections::BTreeMap;
 
 /// A JSON value mirroring the planned `cf-gojson::GoValue`.
 ///
 /// Objects carry their origin: [`JsonValue::sorted_object`] (map-origin,
-/// byte-sorted on encode, Go `map[string]any`) vs [`JsonValue::struct_object`]
-/// (declaration order preserved).
+/// byte-sorted on encode) vs [`JsonValue::struct_object`] (declaration order
+/// preserved).
 #[derive(Debug, Clone, PartialEq)]
 pub enum JsonValue {
     /// JSON `null`.
@@ -43,7 +50,7 @@ pub enum JsonValue {
     Int(i64),
     /// Unsigned integer (never routed through the float path).
     Uint(u64),
-    /// IEEE-754 double, rendered via Go's `'g'/-1` rules.
+    /// IEEE-754 double, rendered via the frozen `'g'/-1` report rules.
     Float(f64),
     /// A string (HTML-escaped on encode).
     Str(String),
@@ -63,24 +70,24 @@ impl JsonValue {
     /// Builds a **map-origin** object (byte-sorted keys on encode).
     #[must_use]
     pub fn sorted_object(entries: Vec<(String, JsonValue)>) -> Self {
-        JsonValue::Object { entries, sorted: true }
+        Self::Object { entries, sorted: true }
     }
 
     /// Builds a **struct-origin** object (declaration order preserved).
     #[must_use]
     pub fn struct_object(entries: Vec<(String, JsonValue)>) -> Self {
-        JsonValue::Object { entries, sorted: false }
+        Self::Object { entries, sorted: false }
     }
 }
 
 /// Converts a [`cf_uast_node::Node`] subtree directly into a [`JsonValue`],
-/// reproducing Go `Node.ToMap()` byte-for-byte (DESIGN §2.2).
+/// reproducing the node-map report shape byte-for-byte (DESIGN §2.2).
 ///
 /// This bypasses the opaque `GoMap` by reading the node's public fields. The full
 /// key set is `children, id, pos, props, roles, token, type` and is emitted as a
 /// map-origin (byte-sorted) object, matching `tomap.rs` in `cf-uast-node`:
 /// - `type` always present;
-/// - `id` only when non-empty, hex-encoded (`fmt.Sprintf("%x", id)`);
+/// - `id` only when non-empty, lowercase-hex-encoded;
 /// - `token` only when non-empty;
 /// - `props` only when non-empty (its keys byte-sort too);
 /// - `roles` always present (possibly empty array);
@@ -93,9 +100,10 @@ pub fn node_to_json(node: &cf_uast_node::Node) -> JsonValue {
     entries.push(("type".to_string(), JsonValue::Str(node.node_type.clone())));
 
     if !node.id.is_empty() {
+        use std::fmt::Write as _;
         let mut hex = String::with_capacity(node.id.len() * 2);
         for b in &node.id {
-            hex.push_str(&format!("{b:02x}"));
+            let _ = write!(hex, "{b:02x}");
         }
         entries.push(("id".to_string(), JsonValue::Str(hex)));
     }
@@ -105,7 +113,7 @@ pub fn node_to_json(node: &cf_uast_node::Node) -> JsonValue {
     }
 
     if !node.props.is_empty() {
-        // props is a Go map → byte-sorted; BTreeMap gives a stable sorted order.
+        // props is map-origin → byte-sorted; BTreeMap gives the sorted order.
         let sorted: BTreeMap<&String, &String> = node.props.iter().collect();
         let prop_entries: Vec<(String, JsonValue)> = sorted
             .into_iter()
@@ -141,17 +149,17 @@ fn position_json(pos: Option<&cf_uast_node::Positions>) -> JsonValue {
     ])
 }
 
-/// Encoder mode mirroring the two Go `encoding/json` profiles this crate needs.
+/// Encoder mode: the two report-format profiles this crate needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
-    /// `json.Marshal` profile: no spaces, e.g. `{"a":1}`.
+    /// Compact profile: no spaces, e.g. `{"a":1}`.
     Compact,
-    /// `json.MarshalIndent(v, "", indent)`: newlines + `indent` per level and one
-    /// space after each colon.
+    /// Indent profile: newlines + `indent` per level and one space after each
+    /// colon.
     Indent,
 }
 
-/// A Go-`encoding/json`-compatible encoder over [`JsonValue`].
+/// A report-format-compatible encoder over [`JsonValue`].
 #[derive(Debug, Clone)]
 pub struct Encoder {
     mode: Mode,
@@ -159,17 +167,17 @@ pub struct Encoder {
 }
 
 impl Encoder {
-    /// The `json.Marshal` profile: compact, HTML-escape on, no trailing newline.
+    /// The compact profile: no spaces, HTML-escape on, no trailing newline.
     #[must_use]
     pub fn compact() -> Self {
-        Encoder { mode: Mode::Compact, indent: String::new() }
+        Self { mode: Mode::Compact, indent: String::new() }
     }
 
-    /// The `json.MarshalIndent(v, "", indent)` profile: indented, HTML-escape on,
-    /// no trailing newline. This is what Go `jsonResult` used (`indent = "  "`).
+    /// The indent profile: indented, HTML-escape on, no trailing newline. The
+    /// tool results use `indent = "  "` (two spaces).
     #[must_use]
     pub fn indented(indent: &str) -> Self {
-        Encoder { mode: Mode::Indent, indent: indent.to_string() }
+        Self { mode: Mode::Indent, indent: indent.to_string() }
     }
 
     /// Encodes `value` to a UTF-8 byte vector. No trailing newline is appended.
@@ -261,9 +269,9 @@ impl Encoder {
     }
 }
 
-/// Writes a JSON string reproducing Go's `encodeState.string` escaping (quotes,
-/// backslash, control chars as `\u00XX` with `\n \r \t` shortcuts, plus HTML and
-/// line/paragraph separators — escaping is always ON, as Go's default).
+/// Writes a JSON string with the frozen report escaping rules: quotes,
+/// backslash, control chars as `\u00XX` with `\n \r \t` shortcuts, plus HTML
+/// and line/paragraph separators — escaping is always ON.
 fn write_string(out: &mut String, s: &str) {
     out.push('"');
     for ch in s.chars() {
@@ -278,50 +286,54 @@ fn write_string(out: &mut String, s: &str) {
             '&' => out.push_str("\\u0026"),
             '\u{2028}' => out.push_str("\\u2028"),
             '\u{2029}' => out.push_str("\\u2029"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c if (c as u32) < 0x20 => {
+                use std::fmt::Write as _;
+                let _ = write!(out, "\\u{:04x}", c as u32);
+            }
             c => out.push(c),
         }
     }
     out.push('"');
 }
 
-/// Renders an `f64` the way Go's `encoding/json` does
-/// (`strconv.AppendFloat(b, f, 'g', -1, 64)` with the json exponent-threshold
-/// tweak): integer-valued floats print without a decimal point, the exponential
-/// form is chosen when `exp < -4 || exp >= 21`, and the exponent is rendered
-/// `e±NN` with a sign and ≥2 digits.
+/// Renders an `f64` with the frozen report float-formatting rules (shortest
+/// round-trip, `'g'/-1` style, with the JSON exponent-threshold tweak):
+/// integer-valued floats print without a decimal point, the exponential form
+/// is chosen when `exp < -4 || exp >= 21`, and the exponent is rendered `e±NN`
+/// with a sign and ≥2 digits.
 ///
 /// This is a pragmatic subset (DESIGN §2.2 calls for the full millions-value
 /// fuzz against the real `cf-gojson::go_float`). It is correct for the common
 /// finite values analyzer reports emit; full edge-case parity moves to
-/// `cf-gojson`. Non-finite values are rendered as `null` defensively (Go errors;
-/// reports never contain NaN/Inf).
+/// `cf-gojson`. Non-finite values are rendered as `null` defensively (the
+/// reference encoder errors out; reports never contain NaN/Inf).
 #[must_use]
 pub fn format_go_float(f: f64) -> String {
     if !f.is_finite() {
         return "null".to_string();
     }
     if f == 0.0 {
-        // Preserve -0.0 like Go (which prints "0" for both; Go's json prints "0").
+        // Both 0.0 and -0.0 print as "0" (frozen report rule).
         return "0".to_string();
     }
     // Use Rust's shortest round-trip ("{}") to get the unique digit sequence,
-    // then adjust to Go's exponent thresholds and exponent rendering.
+    // then adjust to the contract's exponent thresholds and rendering.
     let shortest = format!("{f}");
     go_style_from_shortest(&shortest, f)
 }
 
-/// Adjusts Rust's shortest representation to Go's `'g'/-1` rendering.
+/// Adjusts Rust's shortest representation to the frozen `'g'/-1` rendering.
 fn go_style_from_shortest(shortest: &str, f: f64) -> String {
     // Rust never emits exponent for moderate magnitudes and prints e.g. "1" for
-    // 1.0, which already matches Go for the common case. The remaining
-    // divergence is the exponential threshold and the `e±NN` exponent shape.
+    // 1.0, which already matches the contract for the common case. The
+    // remaining divergence is the exponential threshold and the `e±NN`
+    // exponent shape.
     let abs = f.abs();
     // Decimal exponent of the value (floor(log10(abs))).
     let exp = abs.log10().floor() as i32;
-    // Go's json float threshold: exponential when exp < -4 || exp >= 21. Written
-    // as the two explicit bounds (not a `!Range::contains`) to mirror the Go
-    // condition verbatim.
+    // Frozen JSON float threshold: exponential when exp < -4 || exp >= 21.
+    // Written as the two explicit bounds (not a `!Range::contains`) to mirror
+    // the contract condition verbatim.
     #[allow(clippy::manual_range_contains)]
     let use_exp = exp < -4 || exp >= 21;
 
@@ -333,7 +345,7 @@ fn go_style_from_shortest(shortest: &str, f: f64) -> String {
         return shortest.to_string();
     }
 
-    // Build mantissa + Go-style exponent.
+    // Build mantissa + contract-style exponent.
     let mut mantissa = abs;
     let mut e = 0i32;
     while mantissa >= 10.0 {
@@ -398,9 +410,8 @@ mod tests {
 
     #[test]
     fn html_escaping_on() {
-        // Go's encoding/json escapes <, >, & by default (HTML-escape ON); the
-        // repo never calls SetEscapeHTML(false). DESIGN §2.1. So "a<b>&c"
-        // encodes with < / > / & escapes.
+        // The report contract escapes <, >, & (HTML-escape ON, never disabled).
+        // DESIGN §2.1. So "a<b>&c" encodes with < / > / & escapes.
         let v = JsonValue::Str("a<b>&c".into());
         assert_eq!(
             Encoder::compact().encode_to_string(&v),
@@ -421,7 +432,7 @@ mod tests {
     }
 
     #[test]
-    fn node_to_json_matches_go_to_map_key_order() {
+    fn node_to_json_matches_node_map_key_order() {
         // Reproduces cf-uast-node's to_map_basic_fields expectation.
         let n = cf_uast_node::Builder::new()
             .with_type("Function")

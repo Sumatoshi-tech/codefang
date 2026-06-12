@@ -1,39 +1,41 @@
 //! Minimal go-echarts v2.6.7 model — enough to reproduce, byte for byte, the
-//! chart `option_*` JSON and `<div>`/`<script>` snippet that Go's
-//! `--format plot` pages embed.
+//! chart `option_*` JSON and `<div>`/`<script>` snippet that `--format plot`
+//! pages embed (pinned against the reference binary by `rust/tests/compat`).
 //!
-//! # How Go produces these bytes
+//! # How the reference bytes are produced
 //!
 //! go-echarts renders a chart as a full HTML page (`render/chart.go`
-//! `RenderContent`); `plotpage.extractChartContent` (plotpage.go:244) then
-//! slices out everything from `<div class="container">` to `</body>`, renames
-//! the class to `echart-box`, and strips `<style>` blocks. The embedded option
-//! is `BaseConfiguration.JSONNotEscaped` (charts/base.go:115): the option map
-//! is built by `BaseConfiguration.json()` (a Go `map[string]interface{}`, so
-//! the **top-level keys byte-sort**) whose values are the go-echarts `opts`
-//! structs (so **nested keys keep struct declaration order** with `omitempty`),
-//! encoded by `json.Encoder` with `SetEscapeHTML(false)` — which appends a
+//! `RenderContent`); the page renderer's chart extraction (see
+//! `plotpage.extractChartContent` in the reference source, plotpage.go:244)
+//! then slices out everything from `<div class="container">` to `</body>`,
+//! renames the class to `echart-box`, and strips `<style>` blocks. The
+//! embedded option is `BaseConfiguration.JSONNotEscaped` (charts/base.go:115):
+//! the option map is built by `BaseConfiguration.json()` as a string-keyed map
+//! (so the **top-level keys byte-sort**) whose values are the go-echarts
+//! `opts` structs (so **nested keys keep struct declaration order** with
+//! `omitempty`), encoded compactly with HTML escaping off — which appends a
 //! trailing newline.
 //!
 //! This module rebuilds exactly that: each `opts` struct used by the plot
-//! sections has a Rust mirror whose `value()` emits a struct-origin
-//! [`GoMap`] in the Go declaration order, honoring Go's `omitempty` semantics
-//! (zero numerics/strings skipped; `interface{}` fields skipped only when
-//! unset; `types.Bool`/`types.Float` pointers skipped only when `None`). The
-//! mirrors carry only the fields the codefang plot builders set; when a later
-//! analyzer port needs another field, add it **at its Go declaration position**
-//! (cite the go-echarts source line) so the emission order stays exact.
+//! sections has a mirror here whose `value()` emits a struct-origin [`GoMap`]
+//! in the go-echarts declaration order, honoring `omitempty` semantics (zero
+//! numerics/strings skipped; `interface{}` fields skipped only when unset;
+//! `types.Bool`/`types.Float` pointers skipped only when `None`). The mirrors
+//! carry only the fields the codefang plot builders set; when a later
+//! analyzer needs another field, add it **at its go-echarts declaration
+//! position** (cite the go-echarts source line) so the emission order stays
+//! exact.
 //!
 //! # Chart IDs
 //!
-//! Go assigns each chart a random 12-char `[A-Za-z]` ID
+//! go-echarts assigns each chart a random 12-char `[A-Za-z]` ID
 //! (`util.GenerateUniqueID`), which is the ONLY run-to-run nondeterminism in a
-//! plot page. The Rust side must be deterministic, so [`ChartIdGen`] yields a
-//! per-page sequential ID of the same shape.
+//! reference plot page. This crate must be deterministic, so [`ChartIdGen`]
+//! yields a per-page sequential ID of the same shape.
 
 use cf_gojson::{Encoder, GoMap, GoValue, MapOrigin};
 
-/// Letters used for chart IDs (the Go generator draws from `[A-Za-z]`).
+/// Letters used for chart IDs (the go-echarts generator draws from `[A-Za-z]`).
 const ID_ALPHABET: &[u8; 52] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 /// Chart-ID length (go-echarts `util.chartIDSize`).
@@ -41,7 +43,7 @@ const ID_LEN: usize = 12;
 
 /// Deterministic replacement for go-echarts' random chart-ID generator: yields
 /// `[A-Za-z]{12}` IDs in a fixed per-page sequence (base-52 counter, most
-/// significant letter first), so two Rust runs render byte-identical pages.
+/// significant letter first), so two runs render byte-identical pages.
 #[derive(Debug, Default)]
 pub struct ChartIdGen {
     next: u64,
@@ -51,7 +53,7 @@ impl ChartIdGen {
     /// New generator starting at the first ID (`AAAAAAAAAAAA`).
     #[must_use]
     pub fn new() -> Self {
-        ChartIdGen::default()
+        Self::default()
     }
 
     /// Returns the next deterministic 12-letter chart ID.
@@ -68,10 +70,10 @@ impl ChartIdGen {
 }
 
 // ---------------------------------------------------------------------------
-// omitempty helpers (Go encoding/json semantics over the modeled field kinds).
+// omitempty helpers (reference-encoder semantics over the modeled field kinds).
 // ---------------------------------------------------------------------------
 
-/// Pushes a string field, skipping the Go `omitempty` empty string.
+/// Pushes a string field, skipping the `omitempty` empty string.
 fn push_str(m: &mut GoMap, key: &str, v: &str) {
     if !v.is_empty() {
         m.push(key, GoValue::Str(v.to_string()));
@@ -85,15 +87,16 @@ fn push_bool(m: &mut GoMap, key: &str, v: Option<bool>) {
     }
 }
 
-/// Pushes a numeric field, skipping the Go `omitempty` zero (int/float alike;
-/// Go floats marshal via the shared go-float formatter, so `45.0` → `45`).
+/// Pushes a numeric field, skipping the `omitempty` zero (int/float alike;
+/// floats marshal via the shared report-contract float formatter, so
+/// `45.0` → `45`).
 fn push_num(m: &mut GoMap, key: &str, v: f64) {
     if v != 0.0 {
         m.push(key, GoValue::Float(v));
     }
 }
 
-/// Pushes an integer field, skipping the Go `omitempty` zero.
+/// Pushes an integer field, skipping the `omitempty` zero.
 fn push_int(m: &mut GoMap, key: &str, v: i64) {
     if v != 0 {
         m.push(key, GoValue::Int(v));
@@ -108,14 +111,14 @@ fn push_iface(m: &mut GoMap, key: &str, v: &Option<GoValue>) {
     }
 }
 
-/// New struct-origin object map (Go struct field ordering).
+/// New struct-origin object map (declaration-ordered fields).
 fn struct_map() -> GoMap {
     GoMap::new(MapOrigin::Struct)
 }
 
 // ---------------------------------------------------------------------------
 // opts struct mirrors. Field ORDER inside each `value()` is the go-echarts
-// struct declaration order — it decides the JSON byte order, do not reorder.
+// struct declaration order — it decides the JSON byte order; do not reorder.
 // ---------------------------------------------------------------------------
 
 /// `opts.TextStyle` (text_style.go) — only the fields the plot builders set.
@@ -231,8 +234,8 @@ impl Title {
     }
 }
 
-/// `opts.DataZoom` (data_zoom.go). `Type` carries NO `omitempty` in Go, so it
-/// is always emitted (empty string included).
+/// `opts.DataZoom` (data_zoom.go). `Type` carries NO `omitempty` upstream, so
+/// it is always emitted (empty string included).
 #[derive(Debug, Clone, Default)]
 pub struct DataZoom {
     /// Zoom type (`"slider"` / `"inside"`); always emitted.
@@ -340,7 +343,7 @@ impl AreaStyle {
 pub struct AxisLine {
     /// Whether to show the axis line (`types.Bool`).
     pub show: Option<bool>,
-    /// Line style (declared LAST in the Go struct).
+    /// Line style (declared LAST in the upstream struct).
     pub line_style: Option<LineStyle>,
 }
 
@@ -397,7 +400,7 @@ impl SplitArea {
 }
 
 /// `opts.AxisLabel` (x_axis.go). `ShowMinLabel` / `ShowMaxLabel` carry **no**
-/// `omitempty` in Go, so an unset (`nil`) value marshals as `null` — they are
+/// `omitempty` upstream, so an unset value marshals as `null` — they are
 /// always present in the JSON.
 #[derive(Debug, Clone, Default)]
 pub struct AxisLabel {
@@ -662,8 +665,8 @@ impl TreeMapLevel {
     }
 }
 
-/// `opts.TreeMapNode` (charts.go:506) — one treemap tree node. `Value` is an
-/// `int` with `omitempty` (zero skipped); `Children` is `omitempty` too.
+/// `opts.TreeMapNode` (charts.go:506) — one treemap tree node. `value` is an
+/// `omitempty` int (zero skipped); `children` is `omitempty` too.
 #[derive(Debug, Clone, Default)]
 pub struct TreeMapNode {
     /// Node name (`json:"name"`, no omitempty — always emitted).
@@ -671,7 +674,7 @@ pub struct TreeMapNode {
     /// Node value (omitempty int).
     pub value: i64,
     /// Child nodes (omitempty slice).
-    pub children: Vec<TreeMapNode>,
+    pub children: Vec<Self>,
 }
 
 impl TreeMapNode {
@@ -684,7 +687,7 @@ impl TreeMapNode {
         if !self.children.is_empty() {
             m.push(
                 "children",
-                GoValue::Array(self.children.iter().map(TreeMapNode::value).collect()),
+                GoValue::Array(self.children.iter().map(Self::value).collect()),
             );
         }
         GoValue::Map(m)
@@ -714,7 +717,7 @@ impl VisualMapInRange {
 }
 
 /// `opts.VisualMap` (visual_map.go). `Calculable` carries **no** `omitempty`,
-/// so an unset (`nil`) value marshals as `null` — always present.
+/// so an unset value marshals as `null` — always present.
 #[derive(Debug, Clone, Default)]
 pub struct VisualMap {
     /// Whether handles are shown — ALWAYS emitted (`null` when unset).
@@ -868,16 +871,16 @@ pub enum MarkLineItem {
 }
 
 impl MarkLineItem {
-    /// Serializes the item per its Go struct: name, xAxis|yAxis, valueDim.
+    /// Serializes the item per its upstream struct: name, xAxis|yAxis, valueDim.
     #[must_use]
     pub fn value(&self) -> GoValue {
         let mut m = struct_map();
         match self {
-            MarkLineItem::XAxis { name, value } => {
+            Self::XAxis { name, value } => {
                 push_str(&mut m, "name", name);
                 m.push("xAxis", value.clone());
             }
-            MarkLineItem::YAxis { name, value } => {
+            Self::YAxis { name, value } => {
                 push_str(&mut m, "name", name);
                 m.push("yAxis", value.clone());
             }
@@ -1083,7 +1086,7 @@ impl PieData {
 
 /// `charts.SingleSeries` (series.go:9) — the per-series option object. Only
 /// the fields the codefang plot builders set are modeled; each is emitted at
-/// its Go declaration position.
+/// its go-echarts declaration position.
 #[derive(Debug, Clone, Default)]
 pub struct SingleSeries {
     /// Series name.
@@ -1141,7 +1144,7 @@ pub struct SingleSeries {
 }
 
 impl SingleSeries {
-    /// Serializes the modeled fields at their Go declaration positions:
+    /// Serializes the modeled fields at their go-echarts declaration positions:
     /// name, type, …, stack, xAxisIndex, yAxisIndex, …, roam, …, step, smooth,
     /// connectNulls, showSymbol, symbol, color, …, radius, symbolSize, …,
     /// left, right, top, bottom, …, leafDepth, levels, upperLabel, …, data, …,
@@ -1232,26 +1235,26 @@ pub enum ChartKind {
 impl ChartKind {
     /// The go-echarts series type string (`types.Chart*`).
     #[must_use]
-    pub fn series_type(self) -> &'static str {
+    pub const fn series_type(self) -> &'static str {
         match self {
-            ChartKind::Bar => "bar",
-            ChartKind::Line => "line",
-            ChartKind::Scatter => "scatter",
-            ChartKind::BoxPlot => "boxplot",
-            ChartKind::Pie => "pie",
-            ChartKind::Liquid => "liquidFill",
-            ChartKind::HeatMap => "heatmap",
-            ChartKind::TreeMap => "treemap",
-            ChartKind::Radar => "radar",
+            Self::Bar => "bar",
+            Self::Line => "line",
+            Self::Scatter => "scatter",
+            Self::BoxPlot => "boxplot",
+            Self::Pie => "pie",
+            Self::Liquid => "liquidFill",
+            Self::HeatMap => "heatmap",
+            Self::TreeMap => "treemap",
+            Self::Radar => "radar",
         }
     }
 
     /// Whether this chart family carries XY axes (go-echarts `hasXYAxis`).
     #[must_use]
-    pub fn has_xy_axis(self) -> bool {
+    pub const fn has_xy_axis(self) -> bool {
         !matches!(
             self,
-            ChartKind::Pie | ChartKind::Liquid | ChartKind::TreeMap | ChartKind::Radar
+            Self::Pie | Self::Liquid | Self::TreeMap | Self::Radar
         )
     }
 }
@@ -1263,7 +1266,7 @@ const DEFAULT_COLORS: [&str; 9] = [
     "#ea7ccc",
 ];
 
-/// A chart — the Rust analogue of a configured go-echarts chart instance
+/// A chart — models a configured go-echarts chart instance
 /// (`BaseConfiguration` + the per-family `charts.*` wrapper).
 #[derive(Debug, Clone)]
 pub struct Chart {
@@ -1303,7 +1306,7 @@ pub struct Chart {
     /// Palette override (`charts.WithColorsOpts` replaces `bc.Colors`); `None`
     /// keeps the go-echarts default palette.
     pub colors: Option<Vec<String>>,
-    /// Series list (`series: null` when empty — Go nil `MultiSeries`).
+    /// Series list (`series: null` when empty — upstream nil `MultiSeries`).
     pub series: Vec<SingleSeries>,
 }
 
@@ -1312,7 +1315,7 @@ impl Chart {
     /// (`initBaseConfiguration` + `Initialization.Validate`).
     #[must_use]
     pub fn new(kind: ChartKind) -> Self {
-        Chart {
+        Self {
             kind,
             width: "900px".to_string(),
             height: "500px".to_string(),
@@ -1351,7 +1354,7 @@ impl Chart {
     }
 
     /// `AddSeries` — appends a series of this chart's type and returns it for
-    /// option configuration (the Go `SeriesOpts` are field assignments).
+    /// option configuration (the upstream `SeriesOpts` are field assignments).
     pub fn add_series(&mut self, name: &str, data: GoValue) -> &mut SingleSeries {
         self.series.push(SingleSeries {
             name: name.to_string(),
@@ -1363,7 +1366,7 @@ impl Chart {
     }
 
     /// Builds the option object exactly as `BaseConfiguration.json()`
-    /// (charts/base.go:125) does: a Go `map[string]interface{}` (top-level keys
+    /// (charts/base.go:125) does: a string-keyed map (top-level keys
     /// byte-sorted at encode time) with the struct-valued components.
     #[must_use]
     pub fn option_value(&self) -> GoValue {
@@ -1380,8 +1383,8 @@ impl Chart {
             obj.push("legend", self.legend.value());
         }
         obj.push("tooltip", self.tooltip.value());
-        // MultiSeries is a nil slice when no series were added — Go marshals
-        // that as `null` (the empty-chart pages show "series":null).
+        // MultiSeries is a nil slice when no series were added — it marshals
+        // as `null` (the empty-chart pages show "series":null).
         if self.series.is_empty() {
             obj.push("series", GoValue::NilSlice);
         } else {
@@ -1442,9 +1445,8 @@ impl Chart {
         GoValue::Map(obj)
     }
 
-    /// The option JSON exactly as `JSONNotEscaped` emits it: compact
-    /// `encoding/json` with `SetEscapeHTML(false)` and the `Encode` trailing
-    /// newline.
+    /// The option JSON exactly as `JSONNotEscaped` emits it: compact, HTML
+    /// escaping off, with the stream-encode trailing newline.
     #[must_use]
     pub fn option_json(&self) -> String {
         Encoder::compact()
@@ -1453,8 +1455,8 @@ impl Chart {
             .encode_to_string(&self.option_value())
     }
 
-    /// Renders the extracted chart snippet — the bytes
-    /// `plotpage.extractChartContent` produces from the go-echarts chart page:
+    /// Renders the extracted chart snippet — the bytes the reference page
+    /// extraction produces from the go-echarts chart page:
     /// the `echart-box` element, the init/option/setOption script, and the
     /// trailing blank line left where the `<style>` block was stripped.
     #[must_use]
@@ -1488,7 +1490,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_pie_option_matches_go_shape() {
+    fn empty_pie_option_matches_reference_shape() {
         // createEmptyComplexityPie-style chart: title only, no series.
         let mut c = Chart::new(ChartKind::Pie);
         c.set_init("600px", "400px", "transparent", "");

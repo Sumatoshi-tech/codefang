@@ -1,7 +1,5 @@
 //! `BlobCache` provider and the [`CachedBlob`] value it produces.
 //!
-//! Port of `internal/analyzers/plumbing/blob_cache.go`.
-//!
 //! The provider reads `"changes"` and `"commit"` and produces `"blob_cache"`,
 //! a map from blob [`struct@Hash`] to [`CachedBlob`] holding
 //! the raw bytes of every blob touched by the commit.
@@ -11,13 +9,13 @@ use std::collections::HashMap;
 use crate::analyzer::{dep, Analyzer, AnalyzerError, ValueMap};
 use crate::git_model::{Action, Changes, Hash};
 
-/// Sentinel error indicating a blob is binary, mirroring Go's `ErrorBinary`
-/// (`var ErrorBinary = fmt.Errorf("binary")`).
+/// Sentinel error indicating a blob is binary. The `"binary"` message is part
+/// of the error-text contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("binary")]
 pub struct ErrorBinary;
 
-/// A blob with its raw bytes cached in memory, mirroring Go's `CachedBlob`.
+/// A blob with its raw bytes cached in memory.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CachedBlob {
     /// Raw blob contents.
@@ -26,26 +24,32 @@ pub struct CachedBlob {
 
 impl CachedBlob {
     /// Construct a cached blob from raw bytes.
-    pub fn new(data: Vec<u8>) -> Self {
-        CachedBlob { data }
+    #[must_use]
+    pub const fn new(data: Vec<u8>) -> Self {
+        Self { data }
     }
 
-    /// Return the blob contents as a string, mirroring Go's `(*CachedBlob).Str`.
+    /// Return the blob contents as a string.
     ///
-    /// Go's `string([]byte)` performs no validation; invalid UTF-8 is preserved
-    /// lossily. We mirror that with [`String::from_utf8_lossy`]. Callers that
-    /// need exact bytes should use [`CachedBlob::data`] directly.
+    /// Invalid UTF-8 is replaced lossily ([`String::from_utf8_lossy`]);
+    /// callers that need exact bytes should use [`CachedBlob::data`]
+    /// directly.
+    #[must_use]
     pub fn str(&self) -> std::borrow::Cow<'_, str> {
         String::from_utf8_lossy(&self.data)
     }
 
-    /// Count the number of lines, mirroring Go's `(*CachedBlob).CountLines`.
+    /// Count the number of lines.
     ///
-    /// Semantics (byte-for-byte with Go):
+    /// Semantics (frozen contract):
     /// * empty data -> `Ok(0)`.
     /// * binary data (contains a NUL byte) -> `Err(ErrorBinary)`.
     /// * otherwise count `\n`-separated segments; a trailing newline does not
     ///   add a final empty line.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ErrorBinary`] when the data contains a NUL byte.
     pub fn count_lines(&self) -> Result<usize, ErrorBinary> {
         if self.data.is_empty() {
             return Ok(0);
@@ -57,14 +61,14 @@ impl CachedBlob {
     }
 }
 
-/// Whether the byte slice looks binary, mirroring Go's `isBinary`
-/// (a NUL byte anywhere marks the content as binary).
+/// Whether the byte slice looks binary (a NUL byte anywhere marks the content
+/// as binary).
 pub(crate) fn is_binary(data: &[u8]) -> bool {
     data.contains(&0)
 }
 
-/// Count `\n`-delimited lines the way Go's `strings.Split(s, "\n")` does,
-/// then trims a single trailing-newline empty segment.
+/// Count `\n`-delimited segments, trimming a single trailing-newline empty
+/// segment.
 ///
 /// For non-empty input this equals the number of `\n` bytes when the data ends
 /// in `\n`, and that plus one otherwise.
@@ -81,12 +85,15 @@ pub(crate) fn count_lines_bytes(data: &[u8]) -> usize {
 /// Abstraction over blob fetching, decoupling the provider from the concrete
 /// repository handle.
 ///
-/// In Go this is `(*git.Repository).BlobObject(hash).Reader()`. Here it is a
-/// trait so the provider can be unit-tested without a real repository and so a
-/// `git2::Repository` (which is not `Send`/`Sync`) does not have to live inside
-/// the provider struct.
+/// A trait so the provider can be unit-tested without a real repository and
+/// so a `git2::Repository` (which is not `Send`/`Sync`) does not have to live
+/// inside the provider struct.
 pub trait BlobSource {
     /// Read the raw bytes of the blob with the given hash.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`AnalyzerError`] when the blob cannot be read.
     fn read_blob(&self, hash: Hash) -> Result<Vec<u8>, AnalyzerError>;
 }
 
@@ -97,8 +104,9 @@ pub struct GitBlobSource<'r> {
 
 impl<'r> GitBlobSource<'r> {
     /// Wrap a borrowed repository as a blob source.
-    pub fn new(repo: &'r git2::Repository) -> Self {
-        GitBlobSource { repo }
+    #[must_use]
+    pub const fn new(repo: &'r git2::Repository) -> Self {
+        Self { repo }
     }
 }
 
@@ -111,12 +119,12 @@ impl BlobSource for GitBlobSource<'_> {
     }
 }
 
-/// `BlobCache` provider, mirroring Go's `BlobCacheAnalyzer`.
+/// `BlobCache` provider.
 ///
 /// Holds the [`BlobSource`] used to fetch blob contents and the previous
-/// commit's cache, which Go reuses to avoid re-reading unchanged from-side
-/// blobs across commits (`previousCache`). On a failed read Go inserts an empty
-/// placeholder blob rather than dropping the entry; this port mirrors that.
+/// commit's cache, reused to avoid re-reading unchanged from-side blobs
+/// across commits. On a failed read an empty placeholder blob is inserted
+/// rather than dropping the entry (reference-implementation behavior).
 pub struct BlobCache<S: BlobSource> {
     source: S,
     previous_cache: HashMap<Hash, CachedBlob>,
@@ -131,11 +139,12 @@ impl<S: BlobSource> BlobCache<S> {
         }
     }
 
-    /// Build the cache for one commit's changes, mirroring Go's
-    /// `consumeParallel` (run sequentially): each side that should be cached is
-    /// read fresh, except a modify/delete from-side that is already present in
-    /// the previous commit's cache, which is reused. Read failures store an
-    /// empty placeholder blob. The previous cache is then advanced.
+    /// Build the cache for one commit's changes: each side that should be
+    /// cached is read fresh, except a modify/delete from-side that is already
+    /// present in the previous commit's cache, which is reused. Read failures
+    /// store an empty placeholder blob. The previous cache is then advanced.
+    /// (The reference implementation parallelizes this loop; the result is
+    /// order-independent, so it runs sequentially here.)
     pub fn build(&mut self, changes: &Changes) -> HashMap<Hash, CachedBlob> {
         let mut cache: HashMap<Hash, CachedBlob> = HashMap::new();
         let mut new_cache: HashMap<Hash, CachedBlob> = HashMap::new();
@@ -158,8 +167,8 @@ impl<S: BlobSource> BlobCache<S> {
         cache
     }
 
-    /// Mirror Go's `handleInsert`: read the to-side, placeholder on failure,
-    /// record in both the working cache and the next-commit cache.
+    /// Insert handling: read the to-side, placeholder on failure, record in
+    /// both the working cache and the next-commit cache.
     fn handle_insert(
         &self,
         hash: Hash,
@@ -179,8 +188,8 @@ impl<S: BlobSource> BlobCache<S> {
         }
     }
 
-    /// Mirror Go's `handleDelete`: reuse the previous cache if present, else
-    /// read fresh (placeholder on failure).
+    /// Delete handling: reuse the previous cache if present, else read fresh
+    /// (placeholder on failure).
     fn handle_delete(&self, hash: Hash, cache: &mut HashMap<Hash, CachedBlob>) {
         if let Some(existing) = self.previous_cache.get(&hash) {
             cache.insert(hash, existing.clone());
@@ -192,7 +201,7 @@ impl<S: BlobSource> BlobCache<S> {
         };
     }
 
-    /// Mirror the from-side of Go's `handleModify`: reuse the previous cache if
+    /// Modify handling for the from-side: reuse the previous cache if
     /// present, else read fresh (placeholder on failure).
     fn handle_modify_from(&self, hash: Hash, cache: &mut HashMap<Hash, CachedBlob>) {
         self.handle_delete(hash, cache);
@@ -226,7 +235,7 @@ mod tests {
     use super::*;
     use crate::git_model::Change;
 
-    // Port of TestCachedBlob_CountLines (blob_cache_test.go).
+    // Mirrors reference test TestCachedBlob_CountLines.
     #[test]
     fn count_lines_table() {
         let cases: &[(&str, Vec<u8>, usize, bool)] = &[
@@ -251,7 +260,7 @@ mod tests {
         }
     }
 
-    // Port of TestCachedBlob_Str (blob_cache_test.go).
+    // Mirrors reference test TestCachedBlob_Str.
     #[test]
     fn str_round_trips() {
         let b = CachedBlob::new(b"hello world".to_vec());
@@ -286,7 +295,7 @@ mod tests {
         let changes: Changes = vec![
             // insert: from empty, to h(1)
             Change {
-                from: Default::default(),
+                from: crate::git_model::ChangeEntry::default(),
                 to: crate::git_model::ChangeEntry { name: "a".into(), hash: h(1) },
             },
             // modify: from h(2) to h(3)
@@ -297,7 +306,7 @@ mod tests {
             // delete: from h(4), to empty
             Change {
                 from: crate::git_model::ChangeEntry { name: "c".into(), hash: h(4) },
-                to: Default::default(),
+                to: crate::git_model::ChangeEntry::default(),
             },
         ];
 
@@ -305,8 +314,8 @@ mod tests {
         assert_eq!(result.get(&h(1)).unwrap().data, b"added\n");
         assert_eq!(result.get(&h(3)).unwrap().data, b"new\n"); // to-hash for modify
         assert_eq!(result.get(&h(4)).unwrap().data, b"gone\n"); // from-hash for delete
-        // Go's handleModify ALSO caches the from-side of a modify (read fresh
-        // when not in the previous cache); h(2) is therefore present.
+        // The from-side of a modify is ALSO cached (read fresh when not in
+        // the previous cache); h(2) is therefore present.
         assert_eq!(result.get(&h(2)).unwrap().data, b"old\n");
     }
 

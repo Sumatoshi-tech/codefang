@@ -1,9 +1,10 @@
-//! Bounded store-record computation (port of `store_writer.go`).
+//! Bounded store-record computation.
 //!
 //! The store path emits compact, bounded records instead of dense matrices:
 //! top-K file coupling pairs, a bounded developer matrix, per-file ownership,
 //! and an aggregate summary. The sparse computations here avoid materializing
-//! the dense `O(N²)` matrices, matching the Go store writer exactly.
+//! the dense `O(N²)` matrices while producing the same numbers as the dense
+//! path.
 
 use crate::matrix::RawFiles;
 use crate::metrics::{
@@ -11,14 +12,14 @@ use crate::metrics::{
 };
 use std::collections::HashMap;
 
-/// Store record kinds (Go constants `KindFileCoupling` …).
+/// Store record kinds.
 pub const KIND_FILE_COUPLING: &str = "file_coupling";
 pub const KIND_DEV_MATRIX: &str = "dev_matrix";
 pub const KIND_OWNERSHIP: &str = "ownership";
 pub const KIND_AGGREGATE: &str = "aggregate";
 
-/// A bounded developer coupling matrix for store serialization
-/// (Go: `StoreDevMatrix`). JSON tags: `names`, `matrix`.
+/// A bounded developer coupling matrix for store serialization.
+/// JSON keys: `names`, `matrix`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoreDevMatrix {
     pub names: Vec<String>,
@@ -26,11 +27,13 @@ pub struct StoreDevMatrix {
 }
 
 /// Extracts file coupling pairs from the sparse coupling map without
-/// materializing a dense matrix (Go: `computeSparseCoupling`).
+/// materializing a dense matrix.
 ///
 /// Only upper-triangle pairs (`j > i`) with `count >= min_weight` are kept.
-/// Result is unsorted (the caller sorts by `co_changes` descending and applies
-/// the top-K limit, matching `writeFileCoupling`).
+/// Result is unsorted (the caller sorts by `co_changes` descending and
+/// applies the top-K limit; see [`top_k_file_coupling`]).
+#[must_use]
+#[allow(clippy::implicit_hasher)] // public signature is frozen
 pub fn compute_sparse_coupling(
     reduced_files: &RawFiles,
     files_sequence: &[String],
@@ -73,7 +76,8 @@ pub fn compute_sparse_coupling(
 }
 
 /// Sorts sparse coupling pairs by `co_changes` descending and truncates to
-/// `top_k` (Go: `writeFileCoupling`).
+/// `top_k`.
+#[must_use]
 pub fn top_k_file_coupling(mut pairs: Vec<FileCouplingData>, top_k: usize) -> Vec<FileCouplingData> {
     pairs.sort_by(|a, b| b.co_changes.cmp(&a.co_changes));
     let limit = pairs.len().min(top_k);
@@ -81,8 +85,11 @@ pub fn top_k_file_coupling(mut pairs: Vec<FileCouplingData>, top_k: usize) -> Ve
     pairs
 }
 
-/// Computes aggregate statistics directly from the sparse coupling map
-/// (Go: `computeSparseAggregate`).
+/// Computes aggregate statistics directly from the sparse coupling map.
+#[must_use]
+#[allow(clippy::implicit_hasher)] // public signature is frozen
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)] // report fields are i32
+#[allow(clippy::cast_precision_loss)] // contractual float math on counts
 pub fn compute_sparse_aggregate(
     reduced_files: &RawFiles,
     files_sequence: &[String],
@@ -145,8 +152,8 @@ mod tests {
             .iter()
             .map(|(f, inner)| {
                 (
-                    f.to_string(),
-                    inner.iter().map(|(o, c)| (o.to_string(), *c)).collect::<BTreeMap<_, _>>(),
+                    (*f).to_string(),
+                    inner.iter().map(|(o, c)| ((*o).to_string(), *c)).collect::<BTreeMap<_, _>>(),
                 )
             })
             .collect()

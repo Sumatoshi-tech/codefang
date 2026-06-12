@@ -8,16 +8,16 @@ repository.workspace = true
 publish.workspace = true
 
 # cf-shotness — structural hotspots: co-change of DSL-selected UAST entities
-# (analyzer id history/shotness). Ports internal/analyzers/shotness.
+# (analyzer id: history/shotness).
 #
-# All machine-format report serialization routes through cf-gojson so the
-# json/yaml/ndjson/timeseries/compact/bin bytes match Go's encoding/json
-# byte-for-byte. See specs/rust-rewrite/DESIGN.md §2. NEVER serde_json for output.
+# All machine-format report serialization routes through cf-gojson; the
+# json/yaml/ndjson/timeseries/compact/bin bytes are pinned against the
+# reference implementation by rust/tests/compat. NEVER serde_json for output.
 
 [dependencies]
-# Go encoding/json-byte-compatible value model + encoder (DESIGN §2.2). The
-# analyzer builds its report as a GoValue tree; serialization is owned by the
-# report layer. NEVER serde_json.
+# Report-format-compatible value model + encoder. The analyzer builds its
+# report as a GoValue tree; serialization is owned by the report layer.
+# NEVER serde_json.
 cf-gojson = { workspace = true }
 
 [lints.clippy]

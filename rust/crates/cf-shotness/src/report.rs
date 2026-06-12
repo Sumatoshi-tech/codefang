@@ -1,18 +1,17 @@
 //! Machine-format report assembly for the shotness analyzer.
 //!
 //! The serialized machine output of the shotness analyzer is its
-//! [`ComputedMetrics`](crate::metrics::ComputedMetrics) (Go `ComputedMetrics`,
-//! the value returned by `ToJSON()`/`ToYAML()`). This module assembles the
-//! ordered [`GoValue`] tree so cf-gojson renders byte-identical output to Go's
-//! `encoding/json`:
+//! [`ComputedMetrics`](crate::metrics::ComputedMetrics). This module assembles
+//! the ordered [`GoValue`] tree so cf-gojson renders the contractual report
+//! bytes (pinned by `rust/tests/compat`):
 //!
-//! - `ComputedMetrics` is a struct → keys in declaration order
+//! - [`ComputedMetrics`] is struct-origin → keys in declaration order
 //!   (`node_hotness`, `node_coupling`, `hotspot_nodes`, `aggregate`);
-//! - each row struct emits its JSON-tagged fields in declaration order;
-//! - the per-commit timeseries `CommitSummary.toMap()` is a `map[string]any`
-//!   → keys byte-sorted (`coupling_pairs` before `nodes_touched`).
+//! - each row struct emits its fields in declaration order;
+//! - the per-commit timeseries summary is map-origin → keys byte-sorted
+//!   (`coupling_pairs` before `nodes_touched`).
 //!
-//! All serialization routes through cf-gojson per DESIGN §2; never serde.
+//! All serialization routes through cf-gojson; never serde.
 
 use cf_gojson::{GoMap, GoValue};
 
@@ -20,8 +19,8 @@ use crate::metrics::{
     AggregateData, ComputedMetrics, HotspotNodeData, NodeCouplingData, NodeHotnessData,
 };
 
-/// Per-commit summary for timeseries output. Mirrors Go `CommitSummary`.
-#[derive(Debug, Clone, PartialEq)]
+/// Per-commit summary for timeseries output.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommitSummary {
     /// Number of nodes touched in the commit.
     pub nodes_touched: i64,
@@ -30,10 +29,10 @@ pub struct CommitSummary {
 }
 
 impl CommitSummary {
-    /// JSON-friendly map representation. Mirrors Go `(*CommitSummary).toMap()`.
+    /// JSON-friendly map representation.
     ///
-    /// Built as a **map-origin** object so cf-gojson byte-sorts the keys exactly
-    /// as Go's `map[string]any` encoding does: `coupling_pairs` sorts before
+    /// Built as a **map-origin** object so cf-gojson byte-sorts the keys
+    /// (report-format contract): `coupling_pairs` sorts before
     /// `nodes_touched`.
     #[must_use]
     pub fn to_go_value(&self) -> GoValue {
@@ -90,9 +89,8 @@ pub fn aggregate_to_value(a: &AggregateData) -> GoValue {
 }
 
 impl ComputedMetrics {
-    /// Build the ordered [`GoValue`] tree for the machine-format report.
-    ///
-    /// Mirrors Go `ComputedMetrics` JSON layout (struct declaration order).
+    /// Builds the ordered [`GoValue`] tree for the machine-format report
+    /// (struct declaration order).
     #[must_use]
     pub fn to_go_value(&self) -> GoValue {
         let mut root = GoMap::new_struct();

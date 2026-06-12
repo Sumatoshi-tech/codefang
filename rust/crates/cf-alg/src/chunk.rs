@@ -1,9 +1,7 @@
-//! Range chunking. Port of `pkg/alg/chunk.go`.
+//! Range chunking.
 
-/// A half-open interval `[start, end)`.
-///
-/// Mirrors the Go `alg.Range` struct: `start` is the inclusive lower bound and
-/// `end` is the exclusive upper bound.
+/// A half-open interval `[start, end)`: `start` is the inclusive lower bound
+/// and `end` is the exclusive upper bound.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Range {
     /// Inclusive start index.
@@ -14,14 +12,9 @@ pub struct Range {
 
 /// Splits the range `[0, total)` into chunks of the given `size`.
 ///
-/// The last chunk may be smaller than `size`. Returns an empty vector when
-/// `total` or `size` is zero (the Go original additionally guards against
-/// negative inputs, which are unrepresentable here because the parameters are
-/// unsigned).
-///
-/// This reproduces the Go `alg.Chunk` behavior exactly: a non-positive `total`
-/// or `size` yields the empty result, and otherwise the chunks tile `[0, total)`
-/// contiguously with the final chunk clamped to `total`.
+/// The last chunk may be smaller than `size`. A zero `total` or `size` yields
+/// an empty vector; otherwise the chunks tile `[0, total)` contiguously with
+/// the final chunk clamped to `total`.
 ///
 /// # Examples
 ///
@@ -62,25 +55,23 @@ mod tests {
 
     #[test]
     fn zero_total() {
-        // Go: TestChunk_ZeroTotal — alg.Chunk(0, 5) is nil.
+        // alg.Chunk(0, 5) is nil.
         assert!(chunk(0, 5).is_empty());
     }
 
     #[test]
     fn zero_size() {
-        // Go: TestChunk_ZeroSize — alg.Chunk(10, 0) is nil.
+        // alg.Chunk(10, 0) is nil.
         assert!(chunk(10, 0).is_empty());
     }
 
     #[test]
     fn size_greater_than_total() {
-        // Go: TestChunk_SizeGreaterThanTotal.
         assert_eq!(chunk(5, 10), vec![Range { start: 0, end: 5 }]);
     }
 
     #[test]
     fn exact_division() {
-        // Go: TestChunk_ExactDivision.
         assert_eq!(
             chunk(10, 5),
             vec![Range { start: 0, end: 5 }, Range { start: 5, end: 10 }],
@@ -89,7 +80,6 @@ mod tests {
 
     #[test]
     fn remainder() {
-        // Go: TestChunk_Remainder.
         assert_eq!(
             chunk(7, 3),
             vec![
@@ -102,19 +92,16 @@ mod tests {
 
     #[test]
     fn single_element() {
-        // Go: TestChunk_SingleElement.
         assert_eq!(chunk(1, 1), vec![Range { start: 0, end: 1 }]);
     }
 
     #[test]
     fn size_equals_total() {
-        // Go: TestChunk_SizeEqualsTotal.
         assert_eq!(chunk(5, 5), vec![Range { start: 0, end: 5 }]);
     }
 
     #[test]
     fn contiguous() {
-        // Go: TestChunk_Contiguous.
         const TOTAL: usize = 100;
         const SIZE: usize = 7;
 

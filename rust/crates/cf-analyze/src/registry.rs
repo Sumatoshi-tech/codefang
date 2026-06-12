@@ -1,6 +1,6 @@
 //! Analyzer-descriptor registry with deterministic ordering and glob expansion.
 //!
-//! Port of `internal/analyzers/analyze/registry.go`. The [`Registry`] stores
+//! The [`Registry`] stores
 //! [`Descriptor`]s in registration order plus a name index, splits IDs by mode,
 //! and expands glob patterns (`*`, `history/*`, …) against registered IDs.
 
@@ -12,7 +12,7 @@ use crate::descriptor::{AnalyzerMode, Descriptor};
 use crate::error::AnalyzeError;
 use crate::glob::path_match;
 
-/// Stores analyzer metadata with deterministic ordering. Port of Go `Registry`.
+/// Stores analyzer metadata with deterministic ordering.
 #[derive(Debug, Clone, Default)]
 pub struct Registry {
     ordered: Vec<Descriptor>,
@@ -21,18 +21,18 @@ pub struct Registry {
 
 impl Registry {
     /// Creates a registry from descriptor groups, validating modes and
-    /// uniqueness. Port of Go `NewRegistry`.
+    /// uniqueness.
     ///
     /// Each group's descriptors must declare (or default to) the group's mode;
     /// `static` and `raw` analyzers both register under [`AnalyzerMode::Static`]
-    /// (matching the Go source, which passes `ModeStatic` for both), and
+    /// (reference-implementation behavior: static mode is passed for both), and
     /// `history` analyzers under [`AnalyzerMode::History`]. Descriptors with an
     /// empty mode inherit the group mode.
     pub fn new(
         static_descs: &[Descriptor],
         raw_descs: &[Descriptor],
         history_descs: &[Descriptor],
-    ) -> Result<Registry, AnalyzeError> {
+    ) -> Result<Self, AnalyzeError> {
         let cap = static_descs.len() + raw_descs.len() + history_descs.len();
         let mut ordered: Vec<Descriptor> = Vec::with_capacity(cap);
         let mut index: BTreeMap<String, Descriptor> = BTreeMap::new();
@@ -41,15 +41,17 @@ impl Registry {
         append_descriptors(AnalyzerMode::Static, raw_descs, &mut index, &mut ordered)?;
         append_descriptors(AnalyzerMode::History, history_descs, &mut index, &mut ordered)?;
 
-        Ok(Registry { ordered, index })
+        Ok(Self { ordered, index })
     }
 
-    /// Returns all descriptors in stable (registration) order. Port of Go `All`.
+    /// Returns all descriptors in stable (registration) order.
+    #[must_use] 
     pub fn all(&self) -> Vec<Descriptor> {
         self.ordered.clone()
     }
 
-    /// Returns IDs for the given mode in stable order. Port of Go `IDsByMode`.
+    /// Returns IDs for the given mode in stable order.
+    #[must_use] 
     pub fn ids_by_mode(&self, mode: AnalyzerMode) -> Vec<String> {
         self.ordered
             .iter()
@@ -58,12 +60,13 @@ impl Registry {
             .collect()
     }
 
-    /// Returns metadata for the given ID. Port of Go `Descriptor`.
+    /// Returns metadata for the given ID.
+    #[must_use] 
     pub fn descriptor(&self, id: &str) -> Option<Descriptor> {
         self.index.get(id).cloned()
     }
 
-    /// Divides IDs by mode, preserving input order. Port of Go `Split`.
+    /// Divides IDs by mode, preserving input order.
     ///
     /// Returns `(static_ids, history_ids)`. Unknown IDs yield
     /// [`AnalyzeError::UnknownAnalyzerId`].
@@ -84,7 +87,7 @@ impl Registry {
     }
 
     /// Expands glob patterns against registered IDs, de-duplicating
-    /// first-occurrence-wins. Port of Go `ExpandPatterns`.
+    /// first-occurrence-wins.
     pub fn expand_patterns(&self, patterns: &[String]) -> Result<Vec<String>, AnalyzeError> {
         let mut selected: Vec<String> = Vec::with_capacity(self.ordered.len());
         for raw in patterns {
@@ -94,8 +97,7 @@ impl Registry {
         Ok(unique(Some(&selected)).unwrap_or_default())
     }
 
-    /// Returns IDs for the patterns, or all IDs when none are specified. Port of
-    /// Go `SelectedIDs`.
+    /// Returns IDs for the patterns, or all IDs when none are specified.
     pub fn selected_ids(&self, patterns: &[String]) -> Result<Vec<String>, AnalyzeError> {
         if patterns.is_empty() {
             return Ok(self.all_ids());
@@ -149,9 +151,9 @@ fn append_descriptors(
     ordered: &mut Vec<Descriptor>,
 ) -> Result<(), AnalyzeError> {
     for descriptor in descs {
-        // Go defaults an empty mode to the group mode. Our AnalyzerMode enum
+        // The reference registry defaults an empty mode to the group mode. The AnalyzerMode enum
         // cannot be empty, so callers pass the correct mode; we still validate
-        // it matches the group, reproducing Go's mode-mismatch error.
+        // it matches the group, reproducing the contract mode-mismatch error.
         if descriptor.mode != mode {
             return Err(AnalyzeError::InvalidAnalyzerMode {
                 id: descriptor.id.clone(),
@@ -168,8 +170,7 @@ fn append_descriptors(
     Ok(())
 }
 
-/// Maps history analyzer IDs to their pipeline keys. Port of Go
-/// `HistoryKeysByID`. `leaves` maps a pipeline key to a descriptor; the result
+/// Maps history analyzer IDs to their pipeline keys. `leaves` maps a pipeline key to a descriptor; the result
 /// preserves `ids` order. Unknown IDs yield [`AnalyzeError::UnknownAnalyzerId`].
 pub fn history_keys_by_id(
     leaves: &BTreeMap<String, Descriptor>,
@@ -231,7 +232,7 @@ mod tests {
         assert!(matches!(err, AnalyzeError::InvalidAnalyzerMode { .. }));
     }
 
-    // Port of TestRegistrySplit.
+    // Mirrors reference test TestRegistrySplit.
     #[test]
     fn split_by_mode() {
         let reg = registry();

@@ -1,17 +1,13 @@
-//! Commit batching for the pipeline front-end — port of
-//! `internal/framework/commit_streamer.go`.
+//! Commit batching for the pipeline front-end.
 //!
-//! The Go `CommitStreamer` takes a slice of commits and emits them as batches
-//! over a buffered channel (a background goroutine, with `Lookahead`
-//! pre-fetched batches). The Rust port is generic over the commit item type so
-//! it does not depend on the not-yet-ported `cf-gitlib::Commit`; when that
-//! crate lands, callers instantiate `CommitStreamer` with `Arc<Commit>` (the
-//! Go `*Commit`).
+//! [`CommitStreamer`] takes a slice of commits and emits them as batches over
+//! a bounded channel, with `lookahead` pre-fetched batches. It is generic over
+//! the commit item type; pipeline callers typically instantiate it with
+//! `Arc<Commit>`.
 //!
-//! Backpressure is preserved exactly: the producer thread blocks on a bounded
-//! channel of capacity `lookahead`, mirroring Go's `make(chan CommitBatch,
-//! Lookahead)`. Cancellation is modeled with an `AtomicBool` stop flag
-//! (mirroring `<-ctx.Done()`), so a consumer that stops reading and signals
+//! Backpressure comes from the producer thread blocking on the bounded
+//! channel of capacity `lookahead`. Cancellation is modeled with an
+//! `AtomicBool` stop flag, so a consumer that stops reading and signals
 //! cancellation lets the producer exit promptly.
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -19,13 +15,13 @@ use std::sync::mpsc::{sync_channel, Receiver};
 use std::sync::Arc;
 use std::thread;
 
-/// Default number of commits per batch. Mirrors Go `defaultBatchSize`.
+/// Default number of commits per batch.
 pub const DEFAULT_BATCH_SIZE: usize = 10;
 
-/// Default number of batches to prefetch. Mirrors Go `defaultLookahead`.
+/// Default number of batches to prefetch.
 pub const DEFAULT_LOOKAHEAD: usize = 2;
 
-/// A batch of commits for processing. Mirrors Go `framework.CommitBatch`.
+/// A batch of commits for processing.
 #[derive(Debug, Clone)]
 pub struct CommitBatch<T> {
     /// Commits in this batch.
@@ -37,9 +33,6 @@ pub struct CommitBatch<T> {
 }
 
 /// Iterates commits and groups them into batches for efficient processing.
-///
-/// Mirrors Go `framework.CommitStreamer`. `batch_size` and `lookahead` map to
-/// the Go fields `BatchSize`/`Lookahead`.
 #[derive(Debug, Clone, Copy)]
 pub struct CommitStreamer {
     /// Number of commits per batch.
@@ -60,7 +53,7 @@ impl Default for CommitStreamer {
 impl CommitStreamer {
     /// Creates a streamer with the given batch size and lookahead.
     #[must_use]
-    pub fn new(batch_size: usize, lookahead: usize) -> Self {
+    pub const fn new(batch_size: usize, lookahead: usize) -> Self {
         Self {
             batch_size,
             lookahead,
@@ -69,12 +62,12 @@ impl CommitStreamer {
 
     /// Computes the batches for a slice without spawning a thread.
     ///
-    /// This is the deterministic core of `Stream`, extracted for testing and
-    /// for callers that prefer a pull model. Batch `i` covers
+    /// This is the deterministic core of [`stream`](Self::stream), extracted
+    /// for testing and for callers that prefer a pull model. Batch `i` covers
     /// `commits[i*batch_size .. min((i+1)*batch_size, len)]`, with
     /// `start_index` = the absolute index of the first commit and a monotonic
-    /// `batch_id` starting at 0. A `batch_size` of 0 is treated as 1 to avoid a
-    /// zero-stride loop (the Go coordinator clamps this upstream).
+    /// `batch_id` starting at 0. A `batch_size` of 0 is treated as 1 to avoid
+    /// a zero-stride loop (the coordinator clamps this upstream).
     #[must_use]
     pub fn batches<T: Clone>(&self, commits: &[T]) -> Vec<CommitBatch<T>> {
         let step = self.batch_size.max(1);
@@ -96,14 +89,14 @@ impl CommitStreamer {
 
     /// Streams the commits as batches over a bounded channel.
     ///
-    /// Mirrors Go `Stream(ctx, commits)`: a background thread sends each batch,
-    /// closing the channel (dropping the sender) when done. The returned
-    /// `stop` flag mirrors `ctx.Done()` — set it to `true` to ask the producer
-    /// to stop early. The channel capacity is `lookahead`, preserving the Go
-    /// prefetch/backpressure behavior.
+    /// A background thread sends each batch, closing the channel (dropping
+    /// the sender) when done. Set the returned `stop` flag to `true` to ask
+    /// the producer to stop early. The channel capacity is `lookahead`, which
+    /// provides the prefetch/backpressure behavior.
     ///
     /// Returns the receiver plus the shared stop flag and the producer's
     /// `JoinHandle` (so callers can join on shutdown).
+    #[must_use]
     pub fn stream<T: Clone + Send + 'static>(
         &self,
         commits: Vec<T>,
@@ -118,8 +111,8 @@ impl CommitStreamer {
                 if stop_producer.load(Ordering::SeqCst) {
                     return;
                 }
-                // A send error means the receiver was dropped (consumer gone),
-                // which is the Rust analogue of ctx cancellation — stop.
+                // A send error means the receiver was dropped (consumer
+                // gone) — stop producing.
                 if tx.send(batch).is_err() {
                     return;
                 }
