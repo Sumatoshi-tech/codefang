@@ -58,6 +58,13 @@ impl ClonePair {
 /// Determines the clone type from a similarity score: descending thresholds
 /// `{1.0 -> Type-1, 0.8 -> Type-2}` with default `Type-3`; the first threshold
 /// whose limit `similarity` meets (`>=`) wins.
+///
+/// ```
+/// use cf_clones::{classify_clone_type, CLONE_TYPE1, CLONE_TYPE2, CLONE_TYPE3};
+/// assert_eq!(classify_clone_type(1.0), CLONE_TYPE1);
+/// assert_eq!(classify_clone_type(0.8), CLONE_TYPE2);
+/// assert_eq!(classify_clone_type(0.79), CLONE_TYPE3);
+/// ```
 #[must_use]
 pub fn classify_clone_type(similarity: f64) -> &'static str {
     if similarity >= SIMILARITY_EXACT {

@@ -26,6 +26,22 @@
 //! (FNV-1a + SplitMix64-seeded mixing) are bit-identical to the reference
 //! implementation (verified against goldens), so the detection results are
 //! pinned by the differential gate in `rust/tests/compat`.
+//!
+//! # Example
+//!
+//! With no AST the analyzer returns the "No AST provided" empty report:
+//!
+//! ```
+//! use cf_clones::Analyzer;
+//! use cf_gojson::GoValue;
+//!
+//! let report = Analyzer::new().analyze_node(None);
+//! assert_eq!(report.get("total_clone_pairs"), Some(&GoValue::Int(0)));
+//! assert_eq!(
+//!     report.get("message"),
+//!     Some(&GoValue::Str(cf_clones::MSG_EMPTY_AST.to_string())),
+//! );
+//! ```
 
 #![forbid(unsafe_code)]
 #![allow(clippy::module_name_repetitions)]
@@ -136,6 +152,16 @@ pub const KEY_FUNC_SIGNATURES: &str = "_func_signatures";
 pub const KEY_CLONE_TYPE_DISTRIBUTION: &str = "clone_type_distribution";
 
 /// Returns the human-readable message for a given clone-pair count.
+///
+/// `0` pairs is "no clones", `<= 5` is low, `<= 15` is moderate, else high:
+///
+/// ```
+/// use cf_clones::{clone_message, MSG_NO_CLONES, MSG_LOW_CLONES, MSG_MOD_CLONES, MSG_HIGH_CLONES};
+/// assert_eq!(clone_message(0), MSG_NO_CLONES);
+/// assert_eq!(clone_message(5), MSG_LOW_CLONES);
+/// assert_eq!(clone_message(15), MSG_MOD_CLONES);
+/// assert_eq!(clone_message(16), MSG_HIGH_CLONES);
+/// ```
 #[must_use]
 pub fn clone_message(pair_count: usize) -> &'static str {
     if pair_count == 0 {
@@ -151,6 +177,13 @@ pub fn clone_message(pair_count: usize) -> &'static str {
 
 /// Computes the fraction of functions involved in at least one clone pair:
 /// `0.0` when either argument is `0`, else `cloned_funcs / total_functions`.
+///
+/// ```
+/// use cf_clones::compute_clone_ratio;
+/// assert_eq!(compute_clone_ratio(0, 10), 0.0);
+/// assert_eq!(compute_clone_ratio(5, 0), 0.0);
+/// assert!((compute_clone_ratio(1, 4) - 0.25).abs() < 1e-12);
+/// ```
 #[must_use]
 pub fn compute_clone_ratio(cloned_funcs: usize, total_functions: usize) -> f64 {
     if total_functions == 0 || cloned_funcs == 0 {

@@ -27,6 +27,29 @@
 //!
 //! Compatibility: output bytes are pinned against the reference implementation
 //! by `rust/tests/compat`.
+//!
+//! # Example
+//!
+//! ```
+//! use cf_cache::{key, is_stale, IncrementalMeta, LruBlobCache, CachedBlob, GitHash};
+//!
+//! // Cache keys are deterministic from (root SHA, branch).
+//! let k = key("rootsha", "main");
+//! assert_eq!(k, key("rootsha", "main"));
+//! assert_ne!(k, key("rootsha", "dev"));
+//!
+//! // Staleness is detected when the recorded root SHA diverges from current.
+//! let meta = IncrementalMeta { root_sha: "abc".into(), ..Default::default() };
+//! assert!(!is_stale(&meta, "abc"));
+//! assert!(is_stale(&meta, "xyz")); // force-push / history rewrite
+//!
+//! // The LRU blob cache stores and retrieves blobs keyed by git hash.
+//! let cache = LruBlobCache::new(1 << 20);
+//! let hash = GitHash([1u8; 20]);
+//! assert!(cache.get(&hash).is_none());
+//! cache.put(hash, Some(CachedBlob::with_hash_for_test(hash, b"hello".to_vec())));
+//! assert_eq!(cache.get(&hash).unwrap().data, b"hello");
+//! ```
 
 pub mod gitlib;
 pub mod lru_blob;

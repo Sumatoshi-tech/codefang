@@ -55,6 +55,20 @@ impl Config {
 
     /// Applies optional threshold/window overrides then validates. Only
     /// present values override the current setting.
+    ///
+    /// ```
+    /// use cf_anomaly::config::{Config, DEFAULT_ANOMALY_WINDOW_SIZE};
+    ///
+    /// let mut cfg = Config::default();
+    /// // `None` leaves the field untouched; present values override then validate.
+    /// cfg.apply(Some(3.0), None);
+    /// assert_eq!(cfg.threshold, 3.0);
+    /// assert_eq!(cfg.window_size, DEFAULT_ANOMALY_WINDOW_SIZE);
+    ///
+    /// // An out-of-range window clamps back to the default.
+    /// cfg.apply(None, Some(0));
+    /// assert_eq!(cfg.window_size, DEFAULT_ANOMALY_WINDOW_SIZE);
+    /// ```
     pub fn apply(&mut self, threshold: Option<f32>, window_size: Option<usize>) {
         if let Some(t) = threshold {
             self.threshold = t;

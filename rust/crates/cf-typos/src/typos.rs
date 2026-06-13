@@ -45,6 +45,24 @@ pub struct TickData {
 /// The dedup is intentionally only on the `wrong|correct` pair (not
 /// file/commit/line) — pinned analyzer behaviour: the first occurrence of a
 /// given pair wins and later occurrences are dropped.
+///
+/// ```
+/// use cf_typos::typos::{deduplicate_typos, Typo};
+/// use cf_typos::compat::Hash;
+///
+/// let mk = |wrong: &str, file: &str| Typo {
+///     wrong: wrong.to_string(),
+///     correct: "receive".to_string(),
+///     file: file.to_string(),
+///     commit: Hash::default(),
+///     line: 0,
+/// };
+/// // Two entries share the same `wrong|correct` pair but differ in file:
+/// // only the first survives.
+/// let out = deduplicate_typos(&[mk("recieve", "a.go"), mk("recieve", "b.go")]);
+/// assert_eq!(out.len(), 1);
+/// assert_eq!(out[0].file, "a.go");
+/// ```
 #[must_use]
 pub fn deduplicate_typos(typos: &[Typo]) -> Vec<Typo> {
     use std::collections::HashSet;

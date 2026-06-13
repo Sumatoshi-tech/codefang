@@ -134,8 +134,20 @@ pub struct ComputedMetrics {
 
 /// Coupling strength: `co_changes / avg(self_i, self_j)`, capped at `1.0`.
 ///
-/// Public re-export of [`coupling_strength`] for the [`crate::store`] module so
-/// the sparse store path reuses the identical formula.
+/// Public wrapper over the crate-private `coupling_strength` helper, exposed for
+/// the [`crate::store`] module so the sparse store path reuses the identical
+/// formula.
+///
+/// ```
+/// use cf_couples::metrics::coupling_strength_pub;
+///
+/// // co_changes / avg(self_i, self_j): 4 / avg(8, 8) = 0.5.
+/// assert_eq!(coupling_strength_pub(4, 8, 8), 0.5);
+/// // Capped at 1.0 even when co_changes exceeds the average.
+/// assert_eq!(coupling_strength_pub(100, 2, 2), 1.0);
+/// // avg_revs <= 0 guard yields 0.0.
+/// assert_eq!(coupling_strength_pub(5, 0, 0), 0.0);
+/// ```
 #[must_use]
 pub fn coupling_strength_pub(co_changes: i64, self_i: i64, self_j: i64) -> f64 {
     coupling_strength(co_changes, self_i, self_j)

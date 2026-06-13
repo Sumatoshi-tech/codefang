@@ -43,6 +43,25 @@
 //! engines are defined locally and injected, keeping this crate decoupled
 //! from the heavier framework/UAST/git crates. They should collapse into
 //! re-exports of the canonical crates as those stabilize.
+//!
+//! # Example
+//!
+//! Two of the pure, self-contained helpers this crate exposes: the frozen
+//! extension-to-language fast path and the injectable clock seam used to keep
+//! tick computation deterministic.
+//!
+//! ```
+//! use cf_analyzers_plumbing::{language_by_extension, Clock, FixedClock};
+//!
+//! // Extension lookup is case-insensitive and returns "" on no match.
+//! assert_eq!(language_by_extension("main.rs"), "Rust");
+//! assert_eq!(language_by_extension("App.PY"), "Python");
+//! assert_eq!(language_by_extension("README"), "");
+//!
+//! // A FixedClock yields a deterministic "now" for reproducible goldens.
+//! let clock = FixedClock(1_700_000_000);
+//! assert_eq!(clock.now_unix(), 1_700_000_000);
+//! ```
 
 pub mod analyzer;
 pub mod blob_cache;

@@ -414,6 +414,18 @@ impl SentimentIntensityAnalyzer {
     }
 
     /// Returns a sentiment score for `text`.
+    ///
+    /// ```
+    /// use cf_sentiment::SentimentIntensityAnalyzer;
+    ///
+    /// let sia = SentimentIntensityAnalyzer::new();
+    /// // A strongly positive sentence scores a high positive compound.
+    /// let pos = sia.polarity_scores("VADER is smart, handsome, and funny!");
+    /// assert!(pos.compound > 0.8, "compound = {}", pos.compound);
+    /// // Negation flips the polarity negative.
+    /// let neg = sia.polarity_scores("VADER is not smart, handsome, nor funny.");
+    /// assert!(neg.compound < 0.0, "compound = {}", neg.compound);
+    /// ```
     #[must_use]
     pub fn polarity_scores(&self, text: &str) -> Sentiment {
         // Replace emoji with their textual descriptions.

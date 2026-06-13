@@ -27,6 +27,23 @@ pub use cf_alg_stats::Z_SCORE_MAX_SENTINEL as Z_SCORE_SENTINEL;
 /// * mean/std come from [`cf_alg_stats::mean_std_dev`];
 /// * zero-std yields `0` when the value equals the mean, else
 ///   `copysign(Z_SCORE_MAX_SENTINEL, value - mean)`.
+///
+/// ```
+/// use cf_anomaly::zscore::{compute_z_scores, Z_SCORE_SENTINEL};
+///
+/// // Index 0 always has an empty trailing window → 0.
+/// let z = compute_z_scores(&[1.0, 1.0, 1.0, 9.0], 3);
+/// assert_eq!(z[0], 0.0);
+/// // A flat window then a larger value → +sentinel (zero variance).
+/// assert_eq!(z[3], Z_SCORE_SENTINEL);
+///
+/// // A smaller value than a flat window → -sentinel (copysign).
+/// let z2 = compute_z_scores(&[9.0, 9.0, 9.0, 1.0], 3);
+/// assert_eq!(z2[3], -Z_SCORE_SENTINEL);
+///
+/// // Empty input → empty output.
+/// assert!(compute_z_scores(&[], 5).is_empty());
+/// ```
 #[must_use]
 pub fn compute_z_scores(values: &[f64], window: usize) -> Vec<f64> {
     let count = values.len();

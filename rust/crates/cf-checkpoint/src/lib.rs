@@ -34,21 +34,30 @@
 //!
 //! # Example
 //!
-//! ```no_run
+//! The checkpoint base directory and the `repo_path` are independent: the repo
+//! path is only hashed and recorded, never opened, so this example runs fully
+//! against a temporary directory.
+//!
+//! ```
 //! use cf_checkpoint::{Manager, StreamingState, repo_hash};
 //!
+//! let base = tempfile::tempdir().unwrap();
 //! let repo = "/path/to/repo";
-//! let mgr = Manager::new("/tmp/checkpoints", repo_hash(repo));
+//! let mgr = Manager::new(base.path(), repo_hash(repo));
 //! let state = StreamingState { total_commits: 100, processed_commits: 40, ..Default::default() };
+//!
+//! // No checkpoint exists yet.
+//! assert!(!mgr.exists());
 //!
 //! // Save (no checkpointable analyzers in this minimal example).
 //! mgr.save_now(&mut [], state, repo, &["burndown".to_string()]).unwrap();
+//! assert!(mgr.exists());
 //!
-//! // Later, after a restart:
-//! if mgr.exists() && mgr.validate(repo, &["burndown".to_string()]).is_ok() {
-//!     let resumed = mgr.load(&mut []).unwrap();
-//!     println!("resume from commit {}", resumed.processed_commits);
-//! }
+//! // Later, after a restart: validate matches the same repo/analyzer set,
+//! // then resume from the saved progress.
+//! assert!(mgr.validate(repo, &["burndown".to_string()]).is_ok());
+//! let resumed = mgr.load(&mut []).unwrap();
+//! assert_eq!(resumed.processed_commits, 40);
 //! ```
 
 #![forbid(unsafe_code)]

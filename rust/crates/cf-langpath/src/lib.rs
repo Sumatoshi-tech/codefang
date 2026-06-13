@@ -38,6 +38,16 @@ pub mod content_heuristics;
 ///
 /// Public so the content classifier can normalize candidates exactly as
 /// enry's `(*classifier).Classify` does.
+///
+/// # Examples
+///
+/// ```
+/// use cf_langpath::canonical_language;
+///
+/// assert_eq!(canonical_language("go").as_deref(), Some("Go"));
+/// assert_eq!(canonical_language("Python").as_deref(), Some("Python"));
+/// assert_eq!(canonical_language("notalang"), None);
+/// ```
 #[must_use]
 pub fn canonical_language(token: &str) -> Option<String> {
     get_language_by_alias(token).map(str::to_string)
@@ -58,6 +68,16 @@ pub struct UnknownLanguage {
 }
 
 impl std::fmt::Display for UnknownLanguage {
+    /// Renders the CLI error contract `unknown language: "<raw>"`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cf_langpath::UnknownLanguage;
+    ///
+    /// let err = UnknownLanguage { raw: "notalang".to_string() };
+    /// assert_eq!(err.to_string(), r#"unknown language: "notalang""#);
+    /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // CLI contract: `unknown language: "<raw>"` (raw token double-quoted).
         write!(f, "unknown language: {}", quote_token(&self.raw))
@@ -358,6 +378,20 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 /// Returns `None` only when EVERY strategy yields no candidate (enry's
 /// `firstLanguage` would then return `"Other"`; the caller maps `None` to the
 /// same `""`/`"Other"` bucket).
+///
+/// # Examples
+///
+/// ```
+/// use cf_langpath::language_by_path_with_content;
+///
+/// // Extension resolves Go even with empty content.
+/// assert_eq!(language_by_path_with_content("main.go", b"").as_deref(), Some("Go"));
+/// // A shebang resolves an extensionless script via the interpreter strategy.
+/// assert_eq!(
+///     language_by_path_with_content("script", b"#!/usr/bin/env python3\n").as_deref(),
+///     Some("Python"),
+/// );
+/// ```
 #[must_use]
 pub fn language_by_path_with_content(filename: &str, content: &[u8]) -> Option<String> {
     let data = enry_data();
@@ -432,6 +466,16 @@ pub fn language_by_path_with_content(filename: &str, content: &[u8]) -> Option<S
 
 /// Path-only convenience over [`language_by_path_with_content`] (no shebang/
 /// classifier content available). Equivalent to passing empty content.
+///
+/// # Examples
+///
+/// ```
+/// use cf_langpath::language_by_path;
+///
+/// assert_eq!(language_by_path("main.go").as_deref(), Some("Go"));
+/// // Resolved by filename, not extension.
+/// assert_eq!(language_by_path("Dockerfile").as_deref(), Some("Dockerfile"));
+/// ```
 #[must_use]
 pub fn language_by_path(filename: &str) -> Option<String> {
     language_by_path_with_content(filename, &[])
@@ -555,6 +599,15 @@ fn modeline_language(content: &[u8]) -> Option<String> {
 /// first non-empty element (`firstLanguage`). Returns `None` when the filename
 /// has no dot or no dotted suffix resolves to a language (enry's
 /// `firstLanguage` would return `"Other"`; callers treat `None` the same).
+///
+/// # Examples
+///
+/// ```
+/// use cf_langpath::language_by_extension;
+///
+/// assert_eq!(language_by_extension("foo.go").as_deref(), Some("Go"));
+/// assert_eq!(language_by_extension("README"), None); // no dotted suffix
+/// ```
 #[must_use]
 pub fn language_by_extension(filename: &str) -> Option<String> {
     if !filename.contains('.') {

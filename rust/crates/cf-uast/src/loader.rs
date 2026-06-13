@@ -107,6 +107,17 @@ impl Loader {
     ///
     /// The extension is lowercased, the bloom filter gives a fast negative
     /// pre-check, then the map is consulted.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cf_uast::{Loader, LanguageParser};
+    ///
+    /// let loader = Loader::new();
+    /// // Lookup is case-insensitive; `.go` is registered by the go mapping.
+    /// assert_eq!(loader.language_parser(".GO").unwrap().language(), "go");
+    /// assert!(loader.language_parser(".no_such_ext_zzz").is_none());
+    /// ```
     #[must_use]
     pub fn language_parser(
         &self,
@@ -341,6 +352,13 @@ fn embedded_mappings_data() -> &'static [PrecompiledMapping] {
 }
 
 /// Whether any embedded mappings are available.
+///
+/// # Examples
+///
+/// ```
+/// // The embedded `.uastmap` table is compiled in, so this is always true.
+/// assert!(cf_uast::embedded_mappings_available());
+/// ```
 #[must_use]
 pub fn embedded_mappings_available() -> bool {
     !embedded_mappings_data().is_empty()

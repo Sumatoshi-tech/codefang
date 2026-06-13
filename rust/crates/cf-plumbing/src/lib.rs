@@ -32,6 +32,32 @@
 //! the binary-blob error, the definitions below collapse into plain
 //! `pub use cf_gitlib::…;` re-exports with no change to this crate's public
 //! API (the names and shapes already match).
+//!
+//! # Example
+//!
+//! The typed accessors read the heterogeneous facts map, returning [`None`] on
+//! both an absent key and a type mismatch; [`CachedBlob::count_lines`] reports
+//! [`ErrBinary`] for NUL-containing blobs.
+//!
+//! ```
+//! use std::time::Duration;
+//! use cf_plumbing::{Facts, FactValue, FACT_TICK_SIZE, get_tick_size};
+//! use cf_plumbing::{CachedBlob, ErrBinary};
+//!
+//! let mut facts = Facts::new();
+//! facts.insert(FACT_TICK_SIZE.to_string(), FactValue::Duration(Duration::from_secs(86_400)));
+//! assert_eq!(get_tick_size(&facts), Some(Duration::from_secs(86_400)));
+//!
+//! // Absent key or wrong type both yield None.
+//! assert_eq!(get_tick_size(&Facts::new()), None);
+//! let mut wrong = Facts::new();
+//! wrong.insert(FACT_TICK_SIZE.to_string(), FactValue::Int(5));
+//! assert_eq!(get_tick_size(&wrong), None);
+//!
+//! // Line counting: text blobs count lines; binary blobs error.
+//! assert_eq!(CachedBlob::from_data(b"a\nb\nc".to_vec()).count_lines(), Ok(3));
+//! assert_eq!(CachedBlob::from_data(b"a\0b".to_vec()).count_lines(), Err(ErrBinary));
+//! ```
 
 #![forbid(unsafe_code)]
 

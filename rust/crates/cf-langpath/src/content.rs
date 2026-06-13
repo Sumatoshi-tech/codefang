@@ -373,6 +373,22 @@ fn first_language(languages: &[String]) -> String {
 /// Returns `None` when there are no candidates (enry returns nil ⇒ the caller's
 /// `firstLanguage` over the empty list yields "Other", which the devs path maps
 /// to the "" / "Other" bucket itself).
+///
+/// # Examples
+///
+/// ```
+/// use cf_langpath::content::classify_language;
+///
+/// // No candidates → None.
+/// assert_eq!(classify_language(b"int main(){}", &[]), None);
+///
+/// // Disambiguates among the supplied candidates using the content.
+/// let candidates = ["C".to_string(), "C++".to_string()];
+/// assert_eq!(
+///     classify_language(b"#include <stdio.h>\nint main(){}\n", &candidates).as_deref(),
+///     Some("C"),
+/// );
+/// ```
 #[must_use]
 pub fn classify_language(content: &[u8], candidates: &[String]) -> Option<String> {
     if candidates.is_empty() {

@@ -24,6 +24,15 @@ pub struct LineStats {
 
 impl LineStats {
     /// Adds another [`LineStats`] component-wise (additive merge).
+    ///
+    /// ```
+    /// use cf_devs::LineStats;
+    ///
+    /// let a = LineStats { added: 10, removed: 2, changed: 1 };
+    /// let b = LineStats { added: 5, removed: 3, changed: 4 };
+    /// let sum = a.plus(b);
+    /// assert_eq!(sum, LineStats { added: 15, removed: 5, changed: 5 });
+    /// ```
     #[must_use]
     pub const fn plus(self, other: Self) -> Self {
         Self {
@@ -57,6 +66,25 @@ pub struct CommitDevData {
 
 impl CommitDevData {
     /// Additively merges `incoming` into `self`.
+    ///
+    /// ```
+    /// use cf_devs::{CommitDevData, LineStats};
+    /// use std::collections::BTreeMap;
+    ///
+    /// let mut acc = CommitDevData {
+    ///     commits: 1, added: 10, removed: 2, changed: 0, author_id: 1,
+    ///     languages: BTreeMap::from([("Go".to_string(), LineStats { added: 10, removed: 2, changed: 0 })]),
+    /// };
+    /// let incoming = CommitDevData {
+    ///     commits: 1, added: 5, removed: 1, changed: 3, author_id: 1,
+    ///     languages: BTreeMap::from([("Go".to_string(), LineStats { added: 5, removed: 1, changed: 3 })]),
+    /// };
+    /// acc.merge(&incoming);
+    /// assert_eq!(acc.commits, 2);
+    /// assert_eq!(acc.added, 15);
+    /// // Per-language stats merge component-wise.
+    /// assert_eq!(acc.languages["Go"], LineStats { added: 15, removed: 3, changed: 3 });
+    /// ```
     pub fn merge(&mut self, incoming: &Self) {
         self.commits += incoming.commits;
         self.added += incoming.added;

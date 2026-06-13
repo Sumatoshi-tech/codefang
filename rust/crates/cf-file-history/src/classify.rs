@@ -43,6 +43,13 @@ pub enum Category {
 
 impl Category {
     /// Returns the lowercase string identifier used in report keys.
+    ///
+    /// ```
+    /// use cf_file_history::Category;
+    ///
+    /// assert_eq!(Category::Source.as_str(), "source");
+    /// assert_eq!(Category::DotFile.as_str(), "dotfile");
+    /// ```
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
@@ -207,6 +214,16 @@ impl Classifier<PlaceholderEnry, PlaceholderGenerated> {
     ///
     /// Pending the vendored enry data tables, this only distinguishes
     /// [`Category::Binary`] (NUL-containing content) from [`Category::Source`].
+    ///
+    /// ```
+    /// use cf_file_history::{Category, Classifier};
+    ///
+    /// let c = Classifier::new();
+    /// // NUL-containing content classifies as Binary, even for a source path.
+    /// assert_eq!(c.classify("main.go", b"hello\x00world"), Category::Binary);
+    /// // Plain text defaults to Source with the placeholder backend.
+    /// assert_eq!(c.classify("main.go", b"package main"), Category::Source);
+    /// ```
     #[must_use]
     pub fn new() -> Self {
         Self::with_backends(PlaceholderEnry, PlaceholderGenerated)

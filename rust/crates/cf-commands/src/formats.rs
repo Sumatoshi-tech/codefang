@@ -91,6 +91,17 @@ pub fn normalize_format(format: &str) -> String {
 ///
 /// Returns [`FormatError`] if the normalized format is not one of the accepted
 /// per-analyzer formats.
+///
+/// ```
+/// use cf_commands::validate_format;
+///
+/// // Accepts per-analyzer machine formats; `bin` normalizes to `binary`.
+/// assert_eq!(validate_format("bin").unwrap(), "binary");
+/// assert_eq!(validate_format("compact").unwrap(), "compact");
+/// // `plot` is routed specially and is intentionally rejected here.
+/// assert!(validate_format("plot").is_err());
+/// assert_eq!(validate_format("plot").unwrap_err().to_string(), "unsupported format: plot");
+/// ```
 pub fn validate_format(format: &str) -> Result<String, FormatError> {
     let normalized = normalize_format(format);
     match normalized.as_str() {
@@ -155,6 +166,18 @@ pub fn validate_universal_format(format: &str) -> Result<String, FormatError> {
 ///
 /// Returns [`FormatError`] when a non-plot `format` fails
 /// [`validate_universal_format`].
+///
+/// ```
+/// use cf_commands::resolve_formats;
+///
+/// // `plot` routes both active phases to the same output dir without validation.
+/// assert_eq!(resolve_formats("plot", true, true).unwrap(), ("plot".to_string(), "plot".to_string()));
+///
+/// // Static-only accepts `compact` (a static output format)...
+/// assert_eq!(resolve_formats("compact", true, false).unwrap(), ("compact".to_string(), String::new()));
+/// // ...but a mixed run validates against the universal set, which excludes it.
+/// assert!(resolve_formats("compact", true, true).is_err());
+/// ```
 pub fn resolve_formats(
     format: &str,
     has_static: bool,
@@ -247,6 +270,15 @@ fn extension_lower(path: &str) -> String {
 /// is `timeseries`, composes it into `timeseries+ndjson`; otherwise returns the
 /// format unchanged. Mirrors the reference composition in
 /// (`if opts.NDJSON && format == FormatTimeSeries { format = FormatTimeSeriesNDJSON }`).
+///
+/// ```
+/// use cf_commands::apply_ndjson_modifier;
+///
+/// // Only `timeseries` composes with the `--ndjson` modifier.
+/// assert_eq!(apply_ndjson_modifier("timeseries", true), "timeseries+ndjson");
+/// assert_eq!(apply_ndjson_modifier("timeseries", false), "timeseries");
+/// assert_eq!(apply_ndjson_modifier("json", true), "json");
+/// ```
 #[must_use]
 pub fn apply_ndjson_modifier(format: &str, ndjson: bool) -> String {
     if ndjson && format == FORMAT_TIMESERIES {

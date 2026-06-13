@@ -26,6 +26,46 @@
 //! empty/zero, per the report-format contract. The resulting `GoValue` is then
 //! encoded by `cf_gojson::{marshal, marshal_indent, Encoder}` (and the `cf-goyaml`
 //! emitter) to obtain byte-identical output.
+//!
+//! # Example
+//!
+//! Define a metric, register it by name, and recover it; then lower a
+//! report-bearing value into its `GoValue` shape and confirm the field order is
+//! declaration order (not byte-sorted):
+//!
+//! ```
+//! use cf_metrics::{Metric, MetricMeta, Registry, TimeSeriesPoint, GoSerialize};
+//! use cf_gojson::marshal;
+//!
+//! struct Doubler {
+//!     meta: MetricMeta,
+//! }
+//! impl Metric for Doubler {
+//!     type In = i64;
+//!     type Out = i64;
+//!     fn name(&self) -> &str { self.meta.name() }
+//!     fn display_name(&self) -> &str { self.meta.display_name() }
+//!     fn description(&self) -> &str { self.meta.description() }
+//!     fn metric_type(&self) -> &str { self.meta.metric_type() }
+//!     fn compute(&self, input: i64) -> i64 { input * 2 }
+//! }
+//!
+//! let metric = Doubler {
+//!     meta: MetricMeta { metric_name: "doubler".into(), ..Default::default() },
+//! };
+//! assert_eq!(metric.compute(21), 42);
+//!
+//! let mut registry = Registry::new();
+//! registry.register(metric.name().to_string(), metric);
+//! let recovered = registry.get("doubler").unwrap().downcast_ref::<Doubler>().unwrap();
+//! assert_eq!(recovered.compute(5), 10);
+//!
+//! // Report types lower to a GoValue in declaration order (`tick`, then `value`),
+//! // which the shared cf-gojson encoder turns into byte-identical JSON.
+//! let point = TimeSeriesPoint { tick: 3, value: 1.5 };
+//! let json = String::from_utf8(marshal(&point.to_go_value())).unwrap();
+//! assert_eq!(json, r#"{"tick":3,"value":1.5}"#);
+//! ```
 
 use std::any::Any;
 use std::collections::HashMap;

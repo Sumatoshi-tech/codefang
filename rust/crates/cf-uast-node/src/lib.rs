@@ -29,6 +29,29 @@
 //! - The query DSL (`map`/`filter`/`reduce`/field-access pipelines) lives in the
 //!   [`dsl`] module; [`dsl::parse`] is a hand-written recursive-descent parser
 //!   for the PEG grammar documented there.
+//!
+//! # Example
+//!
+//! Build a small tree, traverse it, and inspect its byte-sorted map form:
+//!
+//! ```
+//! use cf_uast_node::{GoValue, Node};
+//!
+//! let mut file = Node::with_token("File", "");
+//! file.add_child(Node::with_token("Function", "main"));
+//! file.add_child(Node::literal("42"));
+//!
+//! // Pre-order traversal visits the root, then children left-to-right.
+//! let tokens: Vec<&str> = file.pre_order().iter().map(|n| n.token.as_str()).collect();
+//! assert_eq!(tokens, ["", "main", "42"]);
+//!
+//! // `to_map` returns a map-origin GoValue whose keys serialize in byte order
+//! // (the report-format contract). A node with children emits exactly:
+//! // children, pos, roles, token, type — in that byte-sorted sequence.
+//! let GoValue::Map(map) = file.to_map() else { panic!("expected object") };
+//! let keys: Vec<&str> = map.encode_order().iter().map(|e| e.0.as_str()).collect();
+//! assert_eq!(keys, ["children", "pos", "roles", "type"]);
+//! ```
 
 #![forbid(unsafe_code)]
 

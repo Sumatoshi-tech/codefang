@@ -42,6 +42,14 @@ impl Renderable for crate::echarts::Chart {
 /// `"` `&` `'` `+` `<` `>` become numeric/named entities and NUL becomes
 /// U+FFFD. Note `+` → `&#43;` — this is why the base64 logo data URI carries
 /// `&#43;` in the reference output.
+///
+/// ```
+/// use cf_plotpage::html_escape;
+///
+/// assert_eq!(html_escape("a+b"), "a&#43;b");
+/// assert_eq!(html_escape("<x>&'\""), "&lt;x&gt;&amp;&#39;&#34;");
+/// assert_eq!(html_escape("\0"), "\u{FFFD}");
+/// ```
 #[must_use]
 pub fn html_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -64,6 +72,15 @@ pub fn html_escape(s: &str) -> String {
 /// table: `&` `'` `<` `>` `"` only — no `+`). Used by [`Text`], which the
 /// reference implementation escapes with that function directly
 /// (components.go:261).
+///
+/// Unlike [`html_escape`], `+` is left untouched:
+///
+/// ```
+/// use cf_plotpage::html_escape_string;
+///
+/// assert_eq!(html_escape_string("a+b"), "a+b");
+/// assert_eq!(html_escape_string("<x>&'\""), "&lt;x&gt;&amp;&#39;&#34;");
+/// ```
 #[must_use]
 pub fn html_escape_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len());

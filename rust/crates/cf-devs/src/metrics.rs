@@ -106,6 +106,14 @@ pub struct TickBounds {
 
 /// Converts a developer id to the deterministic byte slice the HLL sketch
 /// hashes (decimal ASCII; part of the cardinality-estimate contract).
+///
+/// ```
+/// use cf_devs::dev_id_bytes;
+///
+/// // The id is hashed as its decimal-ASCII representation, not raw bytes.
+/// assert_eq!(dev_id_bytes(42), b"42".to_vec());
+/// assert_eq!(dev_id_bytes(0), b"0".to_vec());
+/// ```
 #[must_use]
 pub fn dev_id_bytes(id: i64) -> Vec<u8> {
     id.to_string().into_bytes()
@@ -324,6 +332,18 @@ pub fn compute_bus_factor(input: &BusFactorInput, opts: &MetricOptions) -> Vec<B
 
 /// Smallest number of (descending-sorted) contributors covering at least
 /// `threshold` of `total`.
+///
+/// ```
+/// use cf_devs::compute_bus_factor_from_sorted;
+///
+/// // Contributions [50, 30, 20] (already descending), total 100, 50% threshold:
+/// // the top contributor alone (50) reaches the target.
+/// assert_eq!(compute_bus_factor_from_sorted(&[50, 30, 20], 100, 0.5), 1);
+/// // 80% threshold needs the top two (50 + 30 = 80).
+/// assert_eq!(compute_bus_factor_from_sorted(&[50, 30, 20], 100, 0.8), 2);
+/// // Empty / zero-total guards return 0.
+/// assert_eq!(compute_bus_factor_from_sorted(&[], 100, 0.5), 0);
+/// ```
 #[must_use]
 #[allow(clippy::cast_precision_loss)] // contractual float math on line counts
 pub fn compute_bus_factor_from_sorted(sorted: &[i64], total: i64, threshold: f64) -> i64 {
@@ -548,6 +568,19 @@ pub fn relative_error(estimated: u64, exact: u64) -> f64 {
 ///
 /// `AUTHOR_MISSING` → `(AUTHOR_MISSING_NAME, "")`; in-range id → split
 /// identity; out-of-range id → `("dev_<id>", "")`.
+///
+/// ```
+/// use cf_devs::dev_name_and_email;
+///
+/// let names = vec!["Ada Lovelace|ada@example.com".to_string()];
+/// // In-range id splits the "name|email" identity.
+/// assert_eq!(
+///     dev_name_and_email(0, &names),
+///     ("Ada Lovelace".to_string(), "ada@example.com".to_string()),
+/// );
+/// // An id past the end of the name list falls back to "dev_<id>".
+/// assert_eq!(dev_name_and_email(7, &names), ("dev_7".to_string(), String::new()));
+/// ```
 #[must_use]
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // 0 <= id < len checked
 pub fn dev_name_and_email(id: i64, names: &[String]) -> (String, String) {

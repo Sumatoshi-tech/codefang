@@ -175,6 +175,18 @@ pub static ALL: &[(&str, &LanguageMapping)] = &[
 ///
 /// Matches `cf_uast_uastmaps::supported_languages()` exactly while both
 /// crates coexist (asserted by the equality gate).
+///
+/// # Examples
+///
+/// ```
+/// let langs = cf_uast_mappings::supported_languages();
+/// assert!(langs.contains(&"go"));
+/// assert!(langs.contains(&"rust"));
+/// // The registry is sorted by name.
+/// let mut sorted = langs.clone();
+/// sorted.sort_unstable();
+/// assert_eq!(langs, sorted);
+/// ```
 #[must_use]
 pub fn supported_languages() -> Vec<&'static str> {
     ALL.iter().map(|(key, _)| *key).collect()
@@ -182,6 +194,16 @@ pub fn supported_languages() -> Vec<&'static str> {
 
 /// Looks up a language mapping by its registry key (binary search over the
 /// key-sorted registry).
+///
+/// # Examples
+///
+/// ```
+/// let go = cf_uast_mappings::by_name("go").expect("go is registered");
+/// assert_eq!(go.name, "go");
+/// assert!(go.extensions.contains(&".go"));
+///
+/// assert!(cf_uast_mappings::by_name("cobol").is_none());
+/// ```
 #[must_use]
 pub fn by_name(name: &str) -> Option<&'static LanguageMapping> {
     ALL.binary_search_by(|(key, _)| key.cmp(&name))
@@ -191,6 +213,16 @@ pub fn by_name(name: &str) -> Option<&'static LanguageMapping> {
 
 /// Returns the file extensions registered for a language (empty when the
 /// language is unknown or, like `gosum`, matches by file name only).
+///
+/// # Examples
+///
+/// ```
+/// use cf_uast_mappings::extensions_of;
+///
+/// assert!(extensions_of("go").contains(&".go"));
+/// // Unknown languages yield an empty slice.
+/// assert!(extensions_of("cobol").is_empty());
+/// ```
 #[must_use]
 pub fn extensions_of(name: &str) -> &'static [&'static str] {
     by_name(name).map_or(&[], |m| m.extensions)

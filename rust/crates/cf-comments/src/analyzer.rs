@@ -67,7 +67,20 @@ impl Analyzer {
 
     /// Performs comment analysis.
     ///
-    /// With no comments found, returns the empty result.
+    /// With no comments found, returns the empty result (all counts zero,
+    /// `overall_score` 0.0):
+    ///
+    /// ```
+    /// use cf_comments::Analyzer;
+    /// use cf_gojson::GoValue;
+    /// use cf_uast_node::Builder;
+    ///
+    /// let root = Builder::new().with_type("File").build();
+    /// let report = Analyzer::new().analyze(Some(&root)).unwrap();
+    /// let m = report.as_map().unwrap();
+    /// assert_eq!(m.get("total_comments"), Some(&GoValue::Int(0)));
+    /// assert_eq!(m.get("overall_score"), Some(&GoValue::Float(0.0)));
+    /// ```
     ///
     /// # Errors
     ///

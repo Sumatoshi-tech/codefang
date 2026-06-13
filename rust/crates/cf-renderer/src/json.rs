@@ -232,6 +232,31 @@ impl JsonReport {
     ///
     /// Routes through [`gocompat::Encoder`](crate::gocompat::Encoder) (HTML
     /// escape on, no trailing newline) — the report-format marshal defaults.
+    /// `metrics`/`issues` always serialize as `[]` (never `null`), an empty
+    /// `distribution` is omitted, and `overall_score` is emitted last:
+    ///
+    /// ```
+    /// use cf_renderer::{JsonReport, JsonSection};
+    ///
+    /// let report = JsonReport {
+    ///     overall_score_label: "8/10".to_string(),
+    ///     sections: vec![JsonSection {
+    ///         title: "COMPLEXITY".to_string(),
+    ///         score_label: "8/10".to_string(),
+    ///         status: "Good".to_string(),
+    ///         score: 0.8,
+    ///         ..JsonSection::default()
+    ///     }],
+    ///     overall_score: 0.8,
+    /// };
+    ///
+    /// let json = report.to_json();
+    /// assert!(json.contains(r#""metrics":[]"#));
+    /// assert!(json.contains(r#""issues":[]"#));
+    /// assert!(!json.contains("distribution"));
+    /// // overall_score is the last field.
+    /// assert!(json.ends_with(r#""overall_score":0.8}"#));
+    /// ```
     #[must_use]
     pub fn to_json(&self) -> String {
         Encoder::default().encode(&self.to_go_value())

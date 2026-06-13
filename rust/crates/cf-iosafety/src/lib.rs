@@ -111,10 +111,17 @@ impl IoSafetyError {
 ///
 /// # Examples
 ///
-/// ```no_run
-/// let (content, resolved) = cf_iosafety::read_file("./README.md").unwrap();
+/// ```
+/// # use std::io::Write;
+/// // Create a real file in a temp dir, then read it back.
+/// let dir = tempfile::tempdir().unwrap();
+/// let path = dir.path().join("greeting.txt");
+/// std::fs::write(&path, b"hello").unwrap();
+///
+/// let (content, resolved) = cf_iosafety::read_file(&path).unwrap();
+/// assert_eq!(content, b"hello");
+/// // The returned path is absolute and lexically cleaned (symlinks untouched).
 /// assert!(resolved.is_absolute());
-/// let _ = content;
 /// ```
 pub fn read_file<P: AsRef<Path>>(path: P) -> Result<(Vec<u8>, PathBuf), IoSafetyError> {
     let resolved = resolve_path(&path)?;
@@ -146,6 +153,25 @@ pub fn read_file<P: AsRef<Path>>(path: P) -> Result<(Vec<u8>, PathBuf), IoSafety
 /// - [`IoSafetyError::ResolveAbsolute`] if the current directory cannot be read.
 /// - [`IoSafetyError::Stat`] if the resolved path cannot be `stat`ed.
 /// - [`IoSafetyError::DirectoryPath`] if the resolved path is a directory.
+///
+/// # Examples
+///
+/// ```
+/// use cf_iosafety::resolve_path;
+///
+/// // Empty/whitespace-only paths are rejected.
+/// assert!(resolve_path("   ").unwrap_err().is_empty_path());
+///
+/// // NUL bytes are rejected.
+/// assert!(resolve_path("a\0b").unwrap_err().is_path_contains_nul());
+///
+/// // A real file resolves to its absolute, lexically-cleaned path.
+/// let dir = tempfile::tempdir().unwrap();
+/// std::fs::write(dir.path().join("f.txt"), b"x").unwrap();
+/// let resolved = resolve_path(dir.path().join("sub").join("..").join("f.txt")).unwrap();
+/// assert!(resolved.is_absolute());
+/// assert!(!resolved.to_string_lossy().contains(".."));
+/// ```
 pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<PathBuf, IoSafetyError> {
     let raw = path.as_ref().to_string_lossy();
 

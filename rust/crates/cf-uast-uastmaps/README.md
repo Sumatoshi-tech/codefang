@@ -10,6 +10,21 @@ This crate embeds **68** per-language mapping files at compile time and exposes 
 small accessor API (`embedded_mappings`, `get`, `contains`, `supported_languages`,
 `len`, `is_empty`, `EMBEDDED_MAPPING_COUNT`).
 
+## Usage
+
+```rust
+// Look up one language's verbatim `.uastmap` content.
+let go = cf_uast_uastmaps::get("go").expect("go is embedded");
+assert!(go.starts_with("[language \"go\""));
+
+// Or enumerate every embedded language (sorted, UTF-8 byte order).
+let langs = cf_uast_uastmaps::supported_languages();
+assert!(langs.contains(&"rust"));
+```
+
+This snippet is the compile-checked doctest on
+[`get`](src/lib.rs) / [`supported_languages`](src/lib.rs).
+
 ## Data provenance
 
 The `mappings/*.uastmap` files are **vendored byte-for-byte** from the Go module

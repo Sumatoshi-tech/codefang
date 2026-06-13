@@ -80,6 +80,18 @@ static VENDOR_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// The match is unanchored (the combined pattern may match any substring of
 /// `path`), exactly as enry searches each `substring.Regexp` matcher in
 /// `VendorMatchers`.
+///
+/// # Examples
+///
+/// ```
+/// use cf_pathfilter::is_vendor;
+///
+/// assert!(is_vendor("vendor/github.com/foo/bar.go"));
+/// assert!(is_vendor("node_modules/lodash/index.js"));
+/// // Unanchored: a vendor dir nested anywhere still matches.
+/// assert!(is_vendor("pkg/internal/vendor/foo/bar.go"));
+/// assert!(!is_vendor("internal/server/handler.go"));
+/// ```
 #[must_use]
 pub fn is_vendor(path: &str) -> bool {
     VENDOR_RE.is_match(path)

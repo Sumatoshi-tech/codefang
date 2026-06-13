@@ -1,4 +1,5 @@
-//! The [`uast_language!`] declarative macro — the Rust-native syntax for one
+//! The [`uast_language!`](crate::uast_language) declarative macro — the
+//! Rust-native syntax for one
 //! language's mapping table (specs/uastmap-rust-macros).
 //!
 //! The macro is an EXPRESSION expanding to a [`crate::LanguageMapping`] literal,

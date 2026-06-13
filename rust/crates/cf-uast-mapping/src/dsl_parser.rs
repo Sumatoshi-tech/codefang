@@ -16,7 +16,7 @@
 //!
 //! Rules capture the raw pattern text; per-field value handling covers
 //! identifier/capture passthrough, condition splitting, and quoted-string
-//! unescaping ([`go_unquote`]).
+//! unescaping (`go_unquote`).
 
 use std::collections::BTreeMap;
 
@@ -77,6 +77,30 @@ impl Parser {
     ///
     /// Line endings are normalized (`\r\n` and `\r` → `\n`) before parsing, then
     /// rules are extracted and the language declaration is read.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cf_uast_mapping::Parser;
+    ///
+    /// let dsl = "[language \"go\", extensions: \".go\"]\n\
+    ///            identifier <- (identifier) => uast(type: \"Identifier\")";
+    /// let (rules, lang) = Parser::new().parse_mapping(dsl).unwrap();
+    ///
+    /// assert_eq!(lang.name, "go");
+    /// assert_eq!(lang.extensions, vec![".go".to_string()]);
+    /// assert_eq!(rules.len(), 1);
+    /// assert_eq!(rules[0].name, "identifier");
+    /// ```
+    ///
+    /// A missing language declaration is an error:
+    ///
+    /// ```
+    /// use cf_uast_mapping::Parser;
+    ///
+    /// let rule_only = "identifier <- (identifier) => uast(type: \"Identifier\")";
+    /// assert!(Parser::new().parse_mapping(rule_only).is_err());
+    /// ```
     ///
     /// # Errors
     ///
@@ -794,7 +818,7 @@ fn extract_uast_spec(fields: &[(Span, FieldValue)], src: &[char]) -> UastSpec {
 }
 
 /// Extracts a field's value list: identifiers/captures pass through verbatim;
-/// strings are unquoted via [`go_unquote`].
+/// strings are unquoted via `go_unquote`.
 fn field_values(value: &FieldValue, src: &[char]) -> Vec<String> {
     match value {
         FieldValue::Identifier(span) | FieldValue::Capture(span) => vec![slice(src, *span)],

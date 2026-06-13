@@ -74,6 +74,13 @@ pub enum ToolError {
 
 impl ToolError {
     /// Wraps an arbitrary error message under a `<prefix>: <msg>` chain.
+    ///
+    /// ```
+    /// use cf_mcp::ToolError;
+    ///
+    /// let err = ToolError::wrap("create parser", "boom");
+    /// assert_eq!(err.to_string(), "create parser: boom");
+    /// ```
     pub fn wrap(prefix: impl Into<String>, message: impl Into<String>) -> Self {
         Self::Wrapped {
             prefix: prefix.into(),

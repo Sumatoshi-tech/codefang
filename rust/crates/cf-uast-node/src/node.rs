@@ -6,7 +6,10 @@ use sha1::{Digest, Sha1};
 /// A type label for a node (e.g. `"Function"`, `"Identifier"`).
 pub type Type = String;
 
-/// A syntactic/semantic label for a node (see [`roles`]).
+/// A syntactic/semantic label for a node.
+///
+/// The role constants (e.g. [`ROLE_FUNCTION`](crate::ROLE_FUNCTION)) are
+/// re-exported at the crate root.
 pub type Role = String;
 
 /// UAST node type constants.

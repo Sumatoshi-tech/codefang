@@ -42,6 +42,28 @@ impl Shingler {
     /// Each shingle is the UTF-8 bytes of `k` consecutive node types joined by
     /// [`SHINGLE_SEPARATOR`]. Returns an empty vector if the subtree has fewer
     /// than `k` typed nodes.
+    ///
+    /// ```
+    /// use cf_clones::Shingler;
+    /// use cf_uast_node::Builder;
+    ///
+    /// // A left-deep chain A -> B -> C so pre-order yields [A, B, C].
+    /// let c = Builder::new().with_type("C").build();
+    /// let mut b = Builder::new().with_type("B").build();
+    /// b.add_child(c);
+    /// let mut a = Builder::new().with_type("A").build();
+    /// a.add_child(b);
+    ///
+    /// let shingles = Shingler::new(2).extract_shingles(&a);
+    /// let strings: Vec<String> = shingles
+    ///     .iter()
+    ///     .map(|s| String::from_utf8(s.clone()).unwrap())
+    ///     .collect();
+    /// assert_eq!(strings, vec!["A|B".to_string(), "B|C".to_string()]);
+    ///
+    /// // Fewer than k typed nodes -> no shingles.
+    /// assert!(Shingler::new(5).extract_shingles(&a).is_empty());
+    /// ```
     #[must_use]
     pub fn extract_shingles(&self, func_node: &Node) -> Vec<Vec<u8>> {
         let types = collect_node_types(func_node);

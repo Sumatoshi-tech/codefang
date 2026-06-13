@@ -1,7 +1,7 @@
 //! Machine-format report assembly for the shotness analyzer.
 //!
 //! The serialized machine output of the shotness analyzer is its
-//! [`ComputedMetrics`](crate::metrics::ComputedMetrics). This module assembles
+//! [`crate::metrics::ComputedMetrics`]. This module assembles
 //! the ordered [`GoValue`] tree so cf-gojson renders the contractual report
 //! bytes (pinned by `rust/tests/compat`):
 //!

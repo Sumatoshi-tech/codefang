@@ -16,10 +16,15 @@ byte slice, so the caller can stream serialization directly into the file:
 ```rust
 use std::io::Write;
 
+let serialized_bytes: &[u8] = b"{}\n";
 cf_storage::write_atomic("out/report.json", 0o640, |w| {
-    w.write_all(&serialized_bytes)
-})?;
+    w.write_all(serialized_bytes)
+})
+.unwrap();
 ```
+
+This same call is exercised as a runnable doctest on `write_atomic` in
+`src/lib.rs` (against a tempdir).
 
 On error, `write_atomic` returns an `AtomicWriteError` whose `Display` wording
 is part of the CLI compatibility contract (e.g. `atomic create /x/y.tmp: ...`,

@@ -29,6 +29,3 @@ unsafe_code = "forbid"
 cf-gojson = { path = "../cf-gojson" }
 
 [dev-dependencies]
-
-[lib]
-doctest = false

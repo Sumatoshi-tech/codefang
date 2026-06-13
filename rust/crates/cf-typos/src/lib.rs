@@ -27,6 +27,17 @@ pub const CRATE_NAME: &str = "cf-typos";
 ///
 /// This is the exact serialization the `run/history_typos.json` golden
 /// captures: the metric-set map (byte-sorted keys) marshaled compactly.
+///
+/// ```
+/// use cf_typos::report_json;
+///
+/// // An empty typo list still produces the full metric-set skeleton.
+/// let json = report_json(&[]);
+/// assert!(json.contains(r#""total_typos":0"#));
+/// assert!(json.contains(r#""typo_list":[]"#));
+/// // Keys are byte-sorted: `aggregate` precedes `file_typos`.
+/// assert!(json.find("aggregate").unwrap() < json.find("file_typos").unwrap());
+/// ```
 #[must_use]
 pub fn report_json(typos: &[Typo]) -> String {
     let input = ReportData { typos: typos.to_vec() };

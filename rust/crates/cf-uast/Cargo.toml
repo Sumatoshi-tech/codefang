@@ -15,8 +15,9 @@
 # first end-to-end-shippable artifact (DESIGN §1.1).
 #
 # Per DESIGN rule (1) any MACHINE-format report bytes (e.g. `uast parse --format
-# json`) route through cf-gojson via cf-uast-node's `encode_compact`/`to_go_value`
-# — never serde_json.
+# json`) route through cf-gojson: build the node's map-origin GoValue with
+# cf-uast-node's `Node::to_map`, then encode it with the cf-gojson marshaller —
+# never serde_json.
 [package]
 name = "cf-uast"
 version.workspace = true

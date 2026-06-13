@@ -17,6 +17,24 @@
 //! - [`File::query_range`] answers line-ownership overlap queries via a lazily
 //!   built interval tree.
 //!
+//! # Example
+//!
+//! ```
+//! use cf_burndown_core::File;
+//!
+//! // A file that starts at tick 0 with 100 lines and no updaters.
+//! let mut file = File::new(0, 100, Vec::new());
+//! assert_eq!(file.len(), 100);
+//! assert!(!file.is_empty());
+//!
+//! // At tick 1, insert 10 lines at position 50 and delete 5 there.
+//! file.update(1, 50, 10, 5);
+//! assert_eq!(file.len(), 100 + 10 - 5);
+//!
+//! // The treap shape is deterministic, so integrity always validates.
+//! file.validate();
+//! ```
+//!
 //! # Compatibility note
 //!
 //! This crate performs no report serialization itself; it only exposes a debug

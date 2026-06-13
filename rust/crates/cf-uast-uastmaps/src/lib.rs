@@ -72,11 +72,28 @@ pub fn embedded_mappings() -> &'static BTreeMap<&'static str, &'static str> {
 ///
 /// Equivalent to indexing the Go `EmbeddedMappings` map, expressed as an
 /// [`Option`]. This mirrors `Loader.LoadMapping`'s `(content, ok)` shape.
+///
+/// # Examples
+///
+/// ```
+/// // Each value is a verbatim `.uastmap` file beginning with its header.
+/// let go = cf_uast_uastmaps::get("go").expect("go is embedded");
+/// assert!(go.starts_with("[language \"go\""));
+///
+/// assert!(cf_uast_uastmaps::get("cobol").is_none());
+/// ```
 pub fn get(language: &str) -> Option<&'static str> {
     map().get(language).copied()
 }
 
 /// Returns whether a mapping is embedded for the given language name.
+///
+/// # Examples
+///
+/// ```
+/// assert!(cf_uast_uastmaps::contains("rust"));
+/// assert!(!cf_uast_uastmaps::contains("cobol"));
+/// ```
 pub fn contains(language: &str) -> bool {
     map().contains_key(language)
 }
@@ -86,6 +103,17 @@ pub fn contains(language: &str) -> bool {
 /// Port of `pkg/uast.SupportedLanguages`, which ranges over `EmbeddedMappings`
 /// and sorts the keys with `sort.Strings`. Because the backing store is a
 /// [`BTreeMap`], the keys are already in sorted (UTF-8 byte) order.
+///
+/// # Examples
+///
+/// ```
+/// let langs = cf_uast_uastmaps::supported_languages();
+/// assert!(langs.contains(&"go"));
+/// // Keys come out in sorted (UTF-8 byte) order.
+/// let mut sorted = langs.clone();
+/// sorted.sort_unstable();
+/// assert_eq!(langs, sorted);
+/// ```
 pub fn supported_languages() -> Vec<&'static str> {
     map().keys().copied().collect()
 }

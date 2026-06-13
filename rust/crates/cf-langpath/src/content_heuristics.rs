@@ -102,6 +102,20 @@ fn match_heuristics(rules: &[Heuristic], data: &[u8]) -> Vec<String> {
 ///
 /// Upstream's incoming-candidates argument is ignored (its signature discards
 /// it): the result depends only on `(filename, content)`.
+///
+/// # Examples
+///
+/// ```
+/// use cf_langpath::content_heuristics::languages_by_content;
+///
+/// // A `.h` header with an Objective-C `@interface` resolves to Objective-C.
+/// assert_eq!(
+///     languages_by_content("foo.h", b"@interface Foo\n"),
+///     vec!["Objective-C".to_string()],
+/// );
+/// // An empty filename (no extension) yields no candidates.
+/// assert!(languages_by_content("", b"anything").is_empty());
+/// ```
 #[must_use]
 pub fn languages_by_content(filename: &str, content: &[u8]) -> Vec<String> {
     if filename.is_empty() {

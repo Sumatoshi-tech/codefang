@@ -49,7 +49,15 @@ impl Category {
 
     /// Parses a wire string back into a [`Category`].
     ///
-    /// Returns `None` for any string that is not a known category.
+    /// Returns `None` for any string that is not a known category. Round-trips
+    /// with [`Category::as_str`]:
+    ///
+    /// ```
+    /// use cf_composition::Category;
+    /// assert_eq!(Category::from_str("source"), Some(Category::Source));
+    /// assert_eq!(Category::from_str(Category::Binary.as_str()), Some(Category::Binary));
+    /// assert_eq!(Category::from_str("nope"), None);
+    /// ```
     #[must_use]
     // The lookup is fallible-by-`Option` (not `Result`), so the inherent
     // method intentionally does not implement `std::str::FromStr`.

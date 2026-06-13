@@ -23,7 +23,6 @@ The heavy lifter for your codebase — deep code analysis through structure and 
 <div class="cf-hero-badges" markdown>
 
 [![CI](https://github.com/Sumatoshi-tech/codefang/actions/workflows/ci.yml/badge.svg)](https://github.com/Sumatoshi-tech/codefang/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/Sumatoshi-tech/codefang.svg)](https://pkg.go.dev/github.com/Sumatoshi-tech/codefang)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Sumatoshi-tech/codefang/blob/main/LICENSE)
 
 </div>
@@ -98,34 +97,31 @@ analysis of entire repositories. One tool, one config, complete understanding.
 
 ## Quick install
 
-=== "Go Install"
-
-    ```bash
-    go install github.com/Sumatoshi-tech/codefang/cmd/codefang@latest
-    go install github.com/Sumatoshi-tech/codefang/cmd/uast@latest
-    ```
-
 === "Build from Source"
 
     ```bash
-    git clone https://github.com/Sumatoshi-tech/codefang.git
-    cd codefang
-    make build
-    make install
+    git clone --recurse-submodules https://github.com/Sumatoshi-tech/codefang.git
+    cd codefang/rust
+    cargo build --release -p codefang -p uast
     ```
+
+    The binaries land in `rust/target/release/`.
 
 === "Docker"
 
     ```bash
     docker build -t codefang .
-    docker run --rm -v "$(pwd):/repo" codefang run -a static/complexity /repo
+    docker run --rm -v "$(pwd):/repo" codefang run -a static/complexity --head /repo
     ```
 
-Verify the installation:
+Verify the build:
 
-```bash
-codefang --version
-uast --version
+```console
+$ codefang version
+```
+
+```console
+$ uast version
 ```
 
 ---

@@ -94,6 +94,33 @@ pub struct LanguageMapping {
 impl LanguageMapping {
     /// Converts to the `(Vec<Rule>, LanguageInfo)` pair
     /// [`crate::Parser::parse_mapping`] returns for the equivalent DSL text.
+    ///
+    /// # Examples
+    ///
+    /// A static table built with [`uast_language!`] converts to exactly what
+    /// the DSL parser produces for the equivalent text:
+    ///
+    /// ```
+    /// use cf_uast_mapping::{uast_language, LanguageMapping, Parser};
+    ///
+    /// static TABLE: LanguageMapping = uast_language! {
+    ///     name: "go",
+    ///     extensions: [".go"],
+    ///     rules: {
+    ///         identifier => { type: Identifier, },
+    ///     }
+    /// };
+    ///
+    /// let (rules, info) = TABLE.to_rules();
+    /// assert_eq!(info.name, "go");
+    /// assert_eq!(info.extensions, vec![".go".to_string()]);
+    /// assert_eq!(rules.len(), 1);
+    ///
+    /// // Same output as parsing the equivalent DSL text.
+    /// let dsl = "[language \"go\", extensions: \".go\"]\n\
+    ///            identifier <- (identifier) => uast(type: \"Identifier\")";
+    /// assert_eq!(TABLE.to_rules(), Parser::new().parse_mapping(dsl).unwrap());
+    /// ```
     #[must_use]
     pub fn to_rules(&self) -> (Vec<Rule>, LanguageInfo) {
         let rules = self.rules.iter().map(MappingRule::to_rule).collect();

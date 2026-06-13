@@ -11,6 +11,24 @@ use crate::{TREE_END, TREE_MERGE_MARK};
 /// Callback invoked on [`File::update`] with `(current, previous, delta)`.
 ///
 /// The boxed `dyn FnMut` lets a [`File`] own a heterogeneous set of updaters.
+///
+/// ```
+/// use cf_burndown_core::{File, Updater};
+/// use std::cell::RefCell;
+/// use std::rc::Rc;
+///
+/// // Accumulate the signed deltas the updater is notified about.
+/// let net = Rc::new(RefCell::new(0i64));
+/// let net_w = Rc::clone(&net);
+/// let updater: Updater = Box::new(move |_current, _previous, delta| {
+///     *net_w.borrow_mut() += delta;
+/// });
+///
+/// let mut file = File::new(0, 0, vec![updater]);
+/// // Insert 10 lines at tick 1; the updater sees a positive net delta.
+/// file.update(1, 0, 10, 0);
+/// assert_eq!(*net.borrow(), 10);
+/// ```
 pub type Updater = Box<dyn FnMut(i64, i64, i64)>;
 
 /// Encapsulates a [`TreapTimeline`] (line-interval storage) and cumulative

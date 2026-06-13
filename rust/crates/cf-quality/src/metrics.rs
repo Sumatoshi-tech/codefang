@@ -89,6 +89,20 @@ pub struct TickStats {
 ///
 /// Returns the zero value when no files were analyzed (pinned report
 /// behaviour for empty ticks).
+///
+/// ```
+/// use cf_quality::data::TickQuality;
+/// use cf_quality::metrics::{compute_tick_stats, TickStats};
+///
+/// // Two files with complexities 10 and 20.
+/// let tq = TickQuality { complexities: vec![10.0, 20.0], ..TickQuality::default() };
+/// let stats = compute_tick_stats(&tq);
+/// assert_eq!(stats.files_analyzed, 2);
+/// assert_eq!(stats.complexity_mean, 15.0);
+///
+/// // An empty tick yields the zero value.
+/// assert_eq!(compute_tick_stats(&TickQuality::default()), TickStats::default());
+/// ```
 #[must_use]
 pub fn compute_tick_stats(tq: &TickQuality) -> TickStats {
     let n = tq.files_analyzed();
@@ -207,6 +221,27 @@ pub struct ReportData {
 /// the order given by `commits_by_tick`), skipping hashes absent from
 /// `commit_quality`. Ticks with no present commits are omitted. Returns an
 /// empty map when either input is empty.
+///
+/// ```
+/// use cf_quality::data::TickQuality;
+/// use cf_quality::metrics::aggregate_commits_to_ticks;
+/// use std::collections::BTreeMap;
+///
+/// let commit_quality = BTreeMap::from([
+///     ("aaa".to_string(), TickQuality { complexities: vec![1.0], ..Default::default() }),
+///     ("bbb".to_string(), TickQuality { complexities: vec![2.0], ..Default::default() }),
+/// ]);
+/// // Tick 0 references "aaa", "bbb", and an absent "ccc" (skipped).
+/// let commits_by_tick = BTreeMap::from([(0i64, vec![
+///     "aaa".to_string(), "bbb".to_string(), "ccc".to_string(),
+/// ])]);
+///
+/// let per_tick = aggregate_commits_to_ticks(&commit_quality, &commits_by_tick);
+/// assert_eq!(per_tick[&0].complexities, vec![1.0, 2.0]);
+///
+/// // Either input empty → empty result.
+/// assert!(aggregate_commits_to_ticks(&BTreeMap::new(), &commits_by_tick).is_empty());
+/// ```
 #[must_use]
 pub fn aggregate_commits_to_ticks(
     commit_quality: &BTreeMap<String, TickQuality>,

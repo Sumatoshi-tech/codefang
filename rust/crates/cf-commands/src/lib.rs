@@ -38,6 +38,23 @@
 //! Compatibility: every machine-report surface this crate emits is pinned
 //! byte-for-byte against the reference binary by the differential gate in
 //! `rust/tests/compat`.
+//!
+//! # Example: resolve the run-command output format
+//!
+//! The format gate drives the `run` command: a user-supplied `--format` string
+//! is normalized, validated, and split into per-phase formats. The `bin` alias
+//! normalizes to `binary`, and a static-only run resolves an empty history
+//! format:
+//!
+//! ```
+//! use cf_commands::{normalize_format, resolve_formats};
+//!
+//! assert_eq!(normalize_format(" BIN "), "binary");
+//!
+//! let (static_fmt, history_fmt) = resolve_formats("bin", true, false).unwrap();
+//! assert_eq!(static_fmt, "binary");
+//! assert_eq!(history_fmt, "");
+//! ```
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

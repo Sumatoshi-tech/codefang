@@ -92,6 +92,16 @@ pub const SUPPORTED_LANGUAGES: &[&str] = &[
 ];
 
 /// Returns whether `name` is a supported language.
+///
+/// # Examples
+///
+/// ```
+/// use cf_uast::languages::is_supported_language;
+///
+/// assert!(is_supported_language("go"));
+/// assert!(is_supported_language("rust"));
+/// assert!(!is_supported_language("cobol"));
+/// ```
 #[must_use]
 pub fn is_supported_language(name: &str) -> bool {
     SUPPORTED_LANGUAGES.contains(&name)

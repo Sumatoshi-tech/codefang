@@ -49,6 +49,16 @@ impl CommentConfig {
     /// `reward_score = 1.0`, `max_comment_length = 500`, penalties
     /// `Function/Method -0.5`, `Class/Interface/Struct -0.3`,
     /// `Variable/Assignment/Call -0.1`.
+    ///
+    /// ```
+    /// use cf_comments::CommentConfig;
+    /// let cfg = CommentConfig::default_config();
+    /// assert_eq!(cfg.reward_score, 1.0);
+    /// assert_eq!(cfg.max_comment_length, 500);
+    /// assert_eq!(cfg.penalty_scores.get("Function"), Some(&-0.5));
+    /// assert_eq!(cfg.penalty_scores.get("Class"), Some(&-0.3));
+    /// assert_eq!(cfg.penalty_scores.get("Variable"), Some(&-0.1));
+    /// ```
     pub fn default_config() -> Self {
         let mut penalty_scores = BTreeMap::new();
         penalty_scores.insert(uast::FUNCTION.to_string(), -0.5);

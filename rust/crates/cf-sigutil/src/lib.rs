@@ -24,20 +24,27 @@
 //!
 //! # Example
 //!
-//! ```no_run
+//! ```
+//! use std::sync::Arc;
+//! use std::sync::atomic::{AtomicBool, Ordering};
 //! use cf_sigutil::SignalCleanupGuard;
 //!
+//! let ran = Arc::new(AtomicBool::new(false));
+//! let flag = Arc::clone(&ran);
+//!
 //! let mut guard = SignalCleanupGuard::new(
-//!     Some(Box::new(|| {
+//!     Some(Box::new(move || {
 //!         // ... release resources, flush state, remove temp dirs ...
+//!         flag.store(true, Ordering::SeqCst);
 //!     })),
 //!     None, // discard logger
 //! );
 //!
 //! // ... do work; if SIGINT/SIGTERM arrives the cleanup runs automatically ...
 //!
-//! // Run cleanup now (Drop would also do it).
+//! // Run cleanup now (Drop would also do it). Cleanup runs exactly once.
 //! guard.close();
+//! assert!(ran.load(Ordering::SeqCst));
 //! ```
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -184,6 +191,24 @@ impl SignalCleanupGuard {
 
     /// Performs cleanup (if not already done) and deregisters the signal
     /// handler. Safe to call multiple times; cleanup still runs only once.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use std::sync::atomic::{AtomicUsize, Ordering};
+    /// use cf_sigutil::SignalCleanupGuard;
+    ///
+    /// let calls = Arc::new(AtomicUsize::new(0));
+    /// let c = Arc::clone(&calls);
+    /// let mut guard =
+    ///     SignalCleanupGuard::new(Some(Box::new(move || { c.fetch_add(1, Ordering::SeqCst); })), None);
+    ///
+    /// // Calling close repeatedly is safe; cleanup still runs exactly once.
+    /// guard.close();
+    /// guard.close();
+    /// assert_eq!(calls.load(Ordering::SeqCst), 1);
+    /// ```
     pub fn close(&mut self) {
         if self.closed {
             return;

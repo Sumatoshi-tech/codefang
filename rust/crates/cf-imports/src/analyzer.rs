@@ -118,6 +118,23 @@ impl Analyzer {
 /// Pre-order traversal; a node contributes when its type is
 /// [`node::uast::IMPORT`] or it has the [`node::role::IMPORT`] role.
 /// Duplicates (by extracted path) are dropped, preserving first-seen order.
+///
+/// The path is recovered from common statement shapes — `import os` -> `os`,
+/// `from x import y` -> `x`, `import React from 'react'` -> `react`:
+///
+/// ```
+/// use cf_imports::analyzer::extract_imports_from_uast;
+/// use cf_imports::node::{uast, Node};
+///
+/// let root = Node::new("File").with_children(vec![
+///     Node::new(uast::IMPORT).with_token("import os"),
+///     Node::new(uast::IMPORT).with_token("from x import y"),
+///     Node::new(uast::IMPORT).with_token("import React from 'react'"),
+///     // Duplicate of the first; dropped.
+///     Node::new(uast::IMPORT).with_token("import os"),
+/// ]);
+/// assert_eq!(extract_imports_from_uast(&root), vec!["os", "x", "react"]);
+/// ```
 #[must_use]
 pub fn extract_imports_from_uast(root: &Node) -> Vec<String> {
     let mut imports: Vec<String> = Vec::new();

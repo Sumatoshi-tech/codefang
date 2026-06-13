@@ -51,7 +51,24 @@ pub fn to_vec(value: &GoValue) -> Vec<u8> {
 ///
 /// No trailing newline is emitted; callers add one where the report surface
 /// expects it (or use [`Encoder::indented`] with
-/// [`Encoder::with_trailing_newline`]).
+/// [`Encoder::with_trailing_newline`]). Non-empty containers put one element
+/// per line with a `": "` separator after object keys; empty containers stay
+/// `{}` / `[]` on one line.
+///
+/// # Examples
+///
+/// ```
+/// use cf_gojson::{GoMap, GoValue, MapOrigin, marshal_indent};
+///
+/// let mut m = GoMap::new(MapOrigin::Map);
+/// m.push("a", GoValue::Int(1));
+/// assert_eq!(
+///     String::from_utf8(marshal_indent(&GoValue::Map(m))).unwrap(),
+///     "{\n  \"a\": 1\n}",
+/// );
+/// // Empty containers stay on one line.
+/// assert_eq!(marshal_indent(&GoValue::Array(vec![])), b"[]");
+/// ```
 #[must_use]
 pub fn marshal_indent(value: &GoValue) -> Vec<u8> {
     let mut buf = Vec::new();
@@ -92,6 +109,25 @@ pub fn go_float(f: f64) -> String {
 /// | [`compact`](Encoder::compact) | none | no |
 /// | [`encoder`](Encoder::encoder) | none | **yes** |
 /// | [`indented`](Encoder::indented) | given | no |
+///
+/// # Examples
+///
+/// ```
+/// use cf_gojson::{Encoder, GoValue};
+///
+/// // The streaming shape appends one trailing newline.
+/// assert_eq!(Encoder::encoder().encode(&GoValue::Int(7)), b"7\n");
+///
+/// // HTML escaping is on by default; turn it off for the chart-option surface.
+/// let v = GoValue::Str("a<b".into());
+/// // ON (default): '<' becomes the six-byte < escape.
+/// assert!(Encoder::marshal().encode_to_string(&v).contains("\\u003c"));
+/// // OFF: '<' passes through verbatim.
+/// assert_eq!(
+///     Encoder::marshal().with_html_escaping(false).encode_to_string(&v),
+///     "\"a<b\"",
+/// );
+/// ```
 #[derive(Debug, Clone)]
 pub struct Encoder {
     indent: Option<String>,

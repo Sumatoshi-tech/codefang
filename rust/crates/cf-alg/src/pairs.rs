@@ -5,6 +5,15 @@
 /// The total number of calls is `C(n, 2) = n*(n-1)/2`. Does nothing when
 /// `n < 2`. Pairs are visited in ascending `i`, then ascending `j` order;
 /// downstream callers rely on this order.
+///
+/// # Examples
+///
+/// ```
+/// use cf_alg::for_each_pair;
+/// let mut pairs = Vec::new();
+/// for_each_pair(3, |i, j| pairs.push((i, j)));
+/// assert_eq!(pairs, vec![(0, 1), (0, 2), (1, 2)]);
+/// ```
 pub fn for_each_pair<F: FnMut(usize, usize)>(n: usize, mut visit: F) {
     for i in 0..n {
         for j in (i + 1)..n {

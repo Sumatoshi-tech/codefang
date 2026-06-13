@@ -3,7 +3,7 @@
 //! All MACHINE-format report bytes (json, yaml, ndjson, timeseries, compact,
 //! bin) are a frozen contract, pinned against the reference implementation by
 //! `rust/tests/compat`. Every report-bearing value is built as a
-//! [`cf_gojson::GoValue`] tree and serialized through [`cf_gojson::marshal`] /
+//! [`cf_gojson::GoValue`] tree and serialized through [`cf_gojson::marshal()`] /
 //! [`cf_gojson::marshal_indent`], never through `serde_json` (which differs
 //! from the report contract on map-key ordering, HTML escaping, and float
 //! formatting). YAML reuses the same `GoValue` tree through `cf-goyaml` once

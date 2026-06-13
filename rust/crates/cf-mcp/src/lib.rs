@@ -36,6 +36,34 @@
 //! `serde` / `serde_json` appear in this crate **only** for decoding inbound
 //! tool arguments and for the (non-binding) JSON-RPC transport envelope. They are
 //! never used to encode the machine-format report bytes.
+//!
+//! # Example (requires `--features mcp`)
+//!
+//! Validate a tool's code input and build the byte-exact JSON result an MCP
+//! client would receive. The example below runs under
+//! `cargo test --doc -p cf-mcp --features mcp`:
+#![cfg_attr(
+    feature = "mcp",
+    doc = r#"
+```
+use cf_mcp::{ToolError, ToolResult};
+use cf_mcp::tools::validate_code_input;
+use cf_mcp::gojson::JsonValue;
+
+// Inputs are validated before analysis runs.
+assert!(validate_code_input("package main", "go").is_ok());
+assert_eq!(validate_code_input("", "go"), Err(ToolError::EmptyCode));
+
+// Tool results serialize with the frozen two-space-indent profile.
+let value = JsonValue::sorted_object(vec![
+    ("score".to_string(), JsonValue::Int(7)),
+]);
+let res = ToolResult::json(&value);
+assert!(!res.is_error);
+assert_eq!(res.first_text(), "{\n  \"score\": 7\n}");
+```
+"#
+)]
 
 #![cfg_attr(not(feature = "mcp"), allow(unused))]
 

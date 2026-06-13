@@ -19,7 +19,25 @@ use cf_gojson::{GoMap, GoValue};
 pub type Report = GoMap;
 
 /// Creates an empty report (map-origin, keys byte-sorted on encode).
-#[must_use] 
+///
+/// Because a report is a map-origin [`GoMap`], its keys serialize in
+/// byte-sorted order regardless of insertion order, matching the report
+/// contract for dynamic maps:
+///
+/// ```
+/// use cf_analyze::report::new_report;
+/// use cf_analyze::GoValue;
+/// use cf_gojson::Encoder;
+///
+/// let mut report = new_report();
+/// report.push("zebra", GoValue::Int(1));
+/// report.push("apple", GoValue::Int(2));
+///
+/// let json = Encoder::default().encode_to_string(&GoValue::Map(report));
+/// // Keys come out byte-sorted ("apple" before "zebra"), not insertion order.
+/// assert_eq!(json, r#"{"apple":2,"zebra":1}"#);
+/// ```
+#[must_use]
 pub fn new_report() -> Report {
     GoMap::new_map()
 }

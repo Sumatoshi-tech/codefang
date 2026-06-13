@@ -30,6 +30,29 @@
 //! (the dynamic [`report::ReportValue`] model plus a deterministic compact-JSON
 //! / CFB1 encoder). The analyzer logic depends only on the documented shim
 //! contracts.
+//!
+//! # Example
+//!
+//! Static analysis of a tree with two import nodes yields the deduplicated
+//! `imports` list and its `count`:
+//!
+//! ```
+//! use cf_imports::Analyzer;
+//! use cf_imports::node::{uast, Node};
+//! use cf_imports::report::ReportValue;
+//!
+//! let root = Node::new("File").with_children(vec![
+//!     Node::new(uast::IMPORT).with_token("import os"),
+//!     Node::new(uast::IMPORT).with_token("from sys import argv"),
+//! ]);
+//!
+//! let report = Analyzer::new().analyze(&root).unwrap();
+//! let m = report.as_map().unwrap();
+//! assert_eq!(m.get("count"), Some(&ReportValue::Int(2)));
+//! let imports = m.get("imports").unwrap().as_list().unwrap();
+//! assert_eq!(imports[0], ReportValue::Str("os".into()));
+//! assert_eq!(imports[1], ReportValue::Str("sys".into()));
+//! ```
 
 pub mod aggregator;
 pub mod analyzer;

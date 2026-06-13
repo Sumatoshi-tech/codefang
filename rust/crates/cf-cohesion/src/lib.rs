@@ -26,6 +26,30 @@
 //! Compatibility: output bytes are pinned against the reference implementation
 //! by the differential gate in `rust/tests/compat`. See the module-level docs
 //! of [`calc`], [`metrics`], [`report_section`] and [`aggregator`].
+//!
+//! # Example
+//!
+//! Analyze a two-function module and read the stable scalars. With `f` using
+//! `{x, y}` and `g` using `{x}`, LCOM-HS is `0.25`, so the cohesion score
+//! (`1 - lcom`) is `0.75`:
+//!
+//! ```
+//! use cf_cohesion::Analyzer;
+//! use cf_cohesion::report_value::ReportValue;
+//! use cf_cohesion::uast::TestNode;
+//!
+//! let f = TestNode::function("f", 5, vec![TestNode::variable("x"), TestNode::variable("y")]);
+//! let g = TestNode::function("g", 3, vec![TestNode::variable("x")]);
+//! let root = TestNode::block(vec![f, g]);
+//!
+//! let report = Analyzer::new().analyze(&root).unwrap();
+//! assert_eq!(report.get("total_functions"), Some(&ReportValue::Int(2)));
+//!
+//! let lcom = report.get("lcom").unwrap().as_float().unwrap();
+//! assert!((lcom - 0.25).abs() < 1e-9);
+//! let score = report.get("cohesion_score").unwrap().as_float().unwrap();
+//! assert!((score - 0.75).abs() < 1e-9);
+//! ```
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 

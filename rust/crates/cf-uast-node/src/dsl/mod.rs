@@ -37,6 +37,24 @@ impl Node {
     /// Runs a DSL query string against this node's subtree, returning the
     /// matching nodes (cloned).
     ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cf_uast_node::Node;
+    ///
+    /// let mut root = Node::with_token("File", "");
+    /// root.add_child(Node::with_token("Function", "a"));
+    /// root.add_child(Node::with_token("Function", "b"));
+    /// root.add_child(Node::with_token("Variable", "c"));
+    ///
+    /// let functions = root.find_dsl("filter(.type == 'Function')").unwrap();
+    /// assert_eq!(functions.len(), 2);
+    /// assert!(functions.iter().all(|n| n.node_type == "Function"));
+    ///
+    /// // An empty query is an error.
+    /// assert!(root.find_dsl("").is_err());
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns an error for an empty query (`"query string is empty"`), a parse

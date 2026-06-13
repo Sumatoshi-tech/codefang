@@ -31,6 +31,36 @@
 //! The renderer-facing subsets of the analysis model and the terminal helpers
 //! live in the local [`analyze`] and [`terminal`] modules (see the crate
 //! `Cargo.toml` for the consolidation plan with `cf-analyze`/`cf-terminal`).
+//!
+//! # Example: render sections to report-contract JSON
+//!
+//! Build report sections, convert them to the structured JSON model, and emit
+//! the byte-exact JSON. The overall score averages the scored sections, and
+//! `metrics`/`issues` always serialize as `[]`:
+//!
+//! ```
+//! use cf_renderer::sections_to_json;
+//! use cf_renderer::analyze::{BaseReportSection, ReportSection};
+//!
+//! let complexity = BaseReportSection {
+//!     title: "COMPLEXITY".to_string(),
+//!     message: "Good".to_string(),
+//!     score_value: 0.8,
+//! };
+//! let comments = BaseReportSection {
+//!     title: "COMMENTS".to_string(),
+//!     message: "Fair".to_string(),
+//!     score_value: 0.6,
+//! };
+//!
+//! let sections: Vec<&dyn ReportSection> = vec![&complexity, &comments];
+//! let json = sections_to_json(&sections).to_json();
+//!
+//! assert!(json.contains(r#""title":"COMPLEXITY""#));
+//! assert!(json.contains(r#""metrics":[]"#));
+//! // Overall score is the mean (0.7) and is emitted last.
+//! assert!(json.ends_with(r#""overall_score":0.7}"#));
+//! ```
 
 #![forbid(unsafe_code)]
 

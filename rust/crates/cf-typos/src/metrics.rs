@@ -171,6 +171,31 @@ pub fn compute_typo_list(input: &ReportData) -> Vec<TypoData> {
 /// frequency descending. The reference implementation leaves equal-frequency
 /// tie order unspecified (unstable sort); this implementation breaks ties by
 /// the `wrong|correct` key for determinism.
+///
+/// ```
+/// use cf_typos::metrics::{compute_typo_patterns, ReportData};
+/// use cf_typos::typos::Typo;
+/// use cf_typos::compat::Hash;
+///
+/// let mk = |wrong: &str, correct: &str| Typo {
+///     wrong: wrong.to_string(),
+///     correct: correct.to_string(),
+///     file: "x.go".to_string(),
+///     commit: Hash::default(),
+///     line: 0,
+/// };
+/// let input = ReportData {
+///     typos: vec![
+///         mk("recieve", "receive"),
+///         mk("recieve", "receive"), // freq 2 -> kept
+///         mk("seperate", "separate"), // freq 1 -> filtered out
+///     ],
+/// };
+/// let patterns = compute_typo_patterns(&input);
+/// assert_eq!(patterns.len(), 1);
+/// assert_eq!(patterns[0].wrong, "recieve");
+/// assert_eq!(patterns[0].frequency, 2);
+/// ```
 #[must_use]
 pub fn compute_typo_patterns(input: &ReportData) -> Vec<TypoPatternData> {
     let mut counts: BTreeMap<String, i64> = BTreeMap::new();

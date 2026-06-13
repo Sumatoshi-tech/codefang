@@ -28,7 +28,7 @@
 //! 5. Aggregate / time-series outputs are produced ([`metrics::compute_all_metrics`]).
 //!
 //! When a trailing window has zero variance and the current value differs, a
-//! sentinel Z-score of `100.0` ([`cf_alg_stats::ZSCORE_MAX_SENTINEL`]) is
+//! sentinel Z-score of `100.0` ([`cf_alg_stats::Z_SCORE_MAX_SENTINEL`]) is
 //! assigned (reference-implementation behavior).
 
 pub mod aggregate;

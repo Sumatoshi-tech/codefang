@@ -27,6 +27,37 @@
 //! Compatibility: configuration defaults and parsing semantics feed analyzer
 //! output paths indirectly; output bytes are pinned against the reference
 //! implementation by `rust/tests/compat`.
+//!
+//! # Example
+//!
+//! The CLI-input parsers and the diff-cache key/stats helpers are pure and
+//! self-contained:
+//!
+//! ```
+//! use std::time::Duration;
+//! use cf_framework::{parse_bytes, parse_go_duration};
+//! use cf_framework::{DiffKey, diff_key_to_bytes, DiffCacheStats, HASH_SIZE};
+//!
+//! // Humanized byte sizes: SI (MB) vs IEC (MiB) multipliers.
+//! assert_eq!(parse_bytes("42 MB").unwrap(), 42_000_000);
+//! assert_eq!(parse_bytes("42 mib").unwrap(), 44_040_192);
+//! assert!(parse_bytes("not-a-size").is_err());
+//!
+//! // Go-style durations.
+//! assert_eq!(parse_go_duration("500ms").unwrap(), Duration::from_millis(500));
+//! assert_eq!(parse_go_duration("0").unwrap(), Duration::ZERO);
+//!
+//! // A diff-cache key serializes old_hash then new_hash into a 2*HASH_SIZE buffer.
+//! let key = DiffKey { old_hash: [0xAA; HASH_SIZE], new_hash: [0xBB; HASH_SIZE] };
+//! let bytes = diff_key_to_bytes(&key);
+//! assert_eq!(&bytes[..HASH_SIZE], &[0xAA; HASH_SIZE]);
+//! assert_eq!(&bytes[HASH_SIZE..], &[0xBB; HASH_SIZE]);
+//!
+//! // Hit rate is hits / (hits + misses), or 0 with no lookups.
+//! assert_eq!(DiffCacheStats::default().hit_rate(), 0.0);
+//! let stats = DiffCacheStats { hits: 3, misses: 1, ..Default::default() };
+//! assert_eq!(stats.hit_rate(), 0.75);
+//! ```
 
 #![forbid(unsafe_code)]
 

@@ -18,6 +18,22 @@ use crate::types::{get_file_extension, LanguageParser, Map, ParseError};
 ///
 /// Holds the language [`Loader`] and any custom mappings installed via
 /// [`Parser::with_map`].
+///
+/// # Examples
+///
+/// Detect support and resolve a language from a filename:
+///
+/// ```
+/// use cf_uast::Parser;
+///
+/// let parser = Parser::new();
+/// assert!(parser.is_supported("main.go"));
+/// assert_eq!(parser.get_language("lib.rs"), "rust");
+///
+/// // A filename with no extension is unsupported.
+/// assert!(!parser.is_supported("Makefile"));
+/// assert_eq!(parser.get_language("Makefile"), "");
+/// ```
 pub struct Parser {
     loader: Loader,
     custom_maps: HashMap<String, Map>,

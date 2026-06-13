@@ -35,6 +35,16 @@
 //! is configured; `FileDiff` sets a 1000 ms default timeout, so half-match is
 //! active and is implemented. The Myers bisect deadline bail-out is a no-op for
 //! the small diffs exercised here and is therefore not time-gated.
+//!
+//! # Quick start
+//!
+//! ```
+//! use cf_godiff::added_removed;
+//!
+//! // Replacing one line counts as one added and one removed line.
+//! let (added, removed) = added_removed(b"a\nb\nc\n", b"a\nX\nc\n", true);
+//! assert_eq!((added, removed), (1, 1));
+//! ```
 
 #![forbid(unsafe_code)]
 
@@ -106,6 +116,23 @@ fn find_newline(text: &[u8], from: usize) -> Option<usize> {
 /// Computes the line-level diff between `old` and `new`, returning the merged
 /// diff segments. `timeout_active` mirrors `DiffTimeout > 0` (controls whether
 /// `diffHalfMatch` may fire); FileDiff's default is `true`.
+///
+/// Each [`Segment`] carries its [`Op`] and the encoded line indices it covers
+/// (one `u32` per source line); `seg.lines.len()` is its line count.
+///
+/// # Examples
+///
+/// ```
+/// use cf_godiff::{line_diff, Op};
+///
+/// // Inserting one line between two equal lines yields Equal/Insert/Equal,
+/// // with the inserted segment spanning exactly one line.
+/// let segs = line_diff(b"a\nb\n", b"a\nx\nb\n", true);
+/// let ops: Vec<Op> = segs.iter().map(|s| s.op).collect();
+/// assert_eq!(ops, [Op::Equal, Op::Insert, Op::Equal]);
+/// let inserted = segs.iter().find(|s| s.op == Op::Insert).unwrap();
+/// assert_eq!(inserted.lines.len(), 1);
+/// ```
 pub fn line_diff(old: &[u8], new: &[u8], timeout_active: bool) -> Vec<Segment> {
     let mut line_array: Vec<&[u8]> = vec![&b""[..]];
     let mut line_hash: std::collections::HashMap<&[u8], u32> = std::collections::HashMap::new();
@@ -122,6 +149,19 @@ pub fn line_diff(old: &[u8], new: &[u8], timeout_active: bool) -> Vec<Segment> {
 /// and deleted line counts. This is how burndown derives per-file deltas —
 /// every inserted line contributes +1 added, every deleted line contributes +1
 /// removed.
+///
+/// # Examples
+///
+/// ```
+/// use cf_godiff::added_removed;
+///
+/// // Identical text: no changes.
+/// assert_eq!(added_removed(b"a\nb\n", b"a\nb\n", true), (0, 0));
+/// // Appending two lines: two added, none removed.
+/// assert_eq!(added_removed(b"a\n", b"a\nb\nc\n", true), (2, 0));
+/// // Deleting one line: none added, one removed.
+/// assert_eq!(added_removed(b"a\nb\nc\n", b"a\nc\n", true), (0, 1));
+/// ```
 pub fn added_removed(old: &[u8], new: &[u8], timeout_active: bool) -> (i64, i64) {
     let mut added = 0i64;
     let mut removed = 0i64;

@@ -72,6 +72,34 @@ impl MetricsCalculator {
     /// The zero-guards are part of the report contract: estimated length is 0
     /// unless both distinct counts are positive; volume is 0 when vocabulary
     /// is 0; difficulty is 0 when distinct operands is 0.
+    ///
+    /// Vocabulary (`n1 + n2`) and length (`N1 + N2`) are exact sums:
+    ///
+    /// ```
+    /// use cf_halstead::calculator::{HalsteadCounts, MetricsCalculator};
+    ///
+    /// let d = MetricsCalculator::new().calculate(HalsteadCounts {
+    ///     distinct_operators: 3,
+    ///     distinct_operands: 4,
+    ///     total_operators: 6,
+    ///     total_operands: 8,
+    /// });
+    /// assert_eq!(d.vocabulary, 7); // 3 + 4
+    /// assert_eq!(d.length, 14);    // 6 + 8
+    /// assert!(d.volume > 0.0);
+    /// assert!(d.difficulty > 0.0);
+    /// ```
+    ///
+    /// All-zero counts produce all-zero measures (no division by zero):
+    ///
+    /// ```
+    /// use cf_halstead::calculator::{HalsteadCounts, MetricsCalculator};
+    ///
+    /// let d = MetricsCalculator::new().calculate(HalsteadCounts::default());
+    /// assert_eq!(d.volume, 0.0);
+    /// assert_eq!(d.difficulty, 0.0);
+    /// assert_eq!(d.estimated_length, 0.0);
+    /// ```
     #[must_use]
     #[allow(clippy::cast_precision_loss)] // token counts are far below 2^52
     pub fn calculate(&self, counts: HalsteadCounts) -> DerivedMetrics {
@@ -200,6 +228,16 @@ fn go_log(x: f64) -> f64 {
 }
 
 /// Bit-exact base-2 logarithm (Frexp + pinned polynomial log).
+///
+/// Exact powers of two return exact integers; non-powers match the reference
+/// implementation bit-for-bit (which can differ from the platform
+/// [`f64::log2`] in the last ULP, e.g. for `3.0`):
+///
+/// ```
+/// use cf_halstead::calculator::go_log2;
+/// assert_eq!(go_log2(8.0), 3.0);
+/// assert_eq!(go_log2(3.0).to_bits(), 0x3ff9_5c01_a39f_bd69);
+/// ```
 #[must_use]
 pub fn go_log2(x: f64) -> f64 {
     let (frac, exp) = go_frexp(x);

@@ -9,6 +9,60 @@
 //!
 //! Compatibility: output bytes are pinned against the reference implementation
 //! by the differential gate in `rust/tests/compat`.
+//!
+//! # Example
+//!
+//! Run the standalone file-level analysis over a one-function UAST and read the
+//! file-level measures. The function body `x = y + 5` contributes the operators
+//! `=`/`+` and the operands `x`/`y`/`5`, so the volume is positive:
+//!
+//! ```
+//! use cf_halstead::analyze;
+//! use cf_uast_node::Node;
+//!
+//! fn id(token: &str) -> Node {
+//!     let mut n = Node::with_token("Identifier", token);
+//!     n.roles = vec!["Variable".into()];
+//!     n
+//! }
+//! fn lit(token: &str) -> Node {
+//!     let mut n = Node::with_token("Literal", token);
+//!     n.roles = vec!["Literal".into()];
+//!     n
+//! }
+//!
+//! // function f() { x = y + 5 }
+//! let mut plus = Node::with_token("BinaryOp", "+");
+//! plus.props.insert("operator".into(), "+".into());
+//! plus.add_child(id("y"));
+//! plus.add_child(lit("5"));
+//!
+//! let mut assign = Node::with_token("Assignment", "=");
+//! assign.props.insert("operator".into(), "=".into());
+//! assign.add_child(id("x"));
+//! assign.add_child(plus);
+//!
+//! let mut func = Node::with_token("Function", "");
+//! func.roles = vec!["Function".into(), "Declaration".into()];
+//! func.add_child(assign);
+//!
+//! let mut root = Node::with_token("File", "");
+//! root.add_child(func);
+//!
+//! let h = analyze(&root);
+//! assert!(h.volume > 0.0, "non-empty function has positive volume");
+//! assert!(h.effort > 0.0);
+//! ```
+//!
+//! A tree with no functions yields all-zero measures:
+//!
+//! ```
+//! use cf_halstead::{analyze, FileHalstead};
+//! use cf_uast_node::Node;
+//!
+//! let root = Node::with_token("File", "");
+//! assert_eq!(analyze(&root), FileHalstead::default());
+//! ```
 
 /// Crate name, used by smoke tests to confirm the module links.
 pub const CRATE_NAME: &str = "cf-halstead";

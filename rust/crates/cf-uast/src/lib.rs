@@ -30,9 +30,10 @@
 //! # Byte-identity
 //!
 //! Any MACHINE-format report bytes produced from a parsed [`Node`] (e.g. `uast
-//! parse --format json`) must route through `cf-gojson` via
-//! [`cf_uast_node::encode_compact`] / the node's map-origin
-//! [`GoValue`](cf_uast_node::GoValue) — never `serde_json` (DESIGN §2).
+//! parse --format json`) must route through `cf-gojson`: build the node's
+//! map-origin [`GoValue`](cf_uast_node::GoValue) with
+//! [`Node::to_map`](cf_uast_node::Node::to_map), then encode it with the
+//! `cf-gojson` marshaller — never `serde_json` (DESIGN §2).
 
 // `deny` rather than `forbid`: the only `unsafe` in this crate is the FFI call
 // into the vendored tree-sitter grammar C entry points in `languages.rs`, which

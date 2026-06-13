@@ -15,6 +15,23 @@
 //!
 //! Compatibility: machine-format report bytes are pinned against the reference
 //! implementation by the differential gate in `rust/tests/compat`.
+//!
+//! # Examples
+//!
+//! ```
+//! use cf_textutil::{count_lines, is_binary, marshal_json};
+//! use cf_textutil::{GoMap, GoValue};
+//!
+//! // Byte text helpers operate on raw `&[u8]`.
+//! assert_eq!(count_lines(b"a\nb\nc"), 3);
+//! assert!(is_binary(b"x\x00y"));
+//!
+//! // Canonical compact report JSON, with a trailing newline.
+//! let mut m = GoMap::new_struct();
+//! m.push("lines", GoValue::Int(3));
+//! let bytes = marshal_json(&GoValue::Map(m), false).unwrap();
+//! assert_eq!(bytes, b"{\"lines\":3}\n");
+//! ```
 
 /// Re-export of the shared contract encoder's surface.
 ///

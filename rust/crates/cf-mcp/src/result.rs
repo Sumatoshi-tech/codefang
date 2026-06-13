@@ -65,6 +65,19 @@ impl ToolResult {
     /// **no** trailing newline (the frozen tool-output profile). Routed through
     /// [`crate::gojson`], never `serde_json`, to preserve byte-identity. See
     /// `DESIGN.md` §2.3.
+    ///
+    /// ```
+    /// use cf_mcp::ToolResult;
+    /// use cf_mcp::gojson::JsonValue;
+    ///
+    /// let value = JsonValue::sorted_object(vec![
+    ///     ("k".to_string(), JsonValue::Str("a<b>".to_string())),
+    /// ]);
+    /// let res = ToolResult::json(&value);
+    /// assert!(!res.is_error);
+    /// // Two-space indent, HTML-escaped `<` and `>`, no trailing newline.
+    /// assert_eq!(res.first_text(), "{\n  \"k\": \"a\\u003cb\\u003e\"\n}");
+    /// ```
     #[must_use]
     pub fn json(value: &JsonValue) -> Self {
         let bytes = Encoder::indented("  ").encode(value);

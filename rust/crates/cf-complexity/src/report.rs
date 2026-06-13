@@ -311,6 +311,38 @@ fn build_aggregate(scalars: &ReportScalars) -> GoMap {
 /// `functions` is the aggregation-order list (walk order × per-file analyzer
 /// order); the per-metric unstable sorts are applied here exactly as the
 /// report contract pins them.
+///
+/// The returned struct-origin map carries, in declaration order,
+/// `function_complexity`, `distribution`, `high_risk_functions`, and
+/// `aggregate`:
+///
+/// ```
+/// use cf_complexity::report::{computed_metrics, FunctionInput, ReportScalars};
+///
+/// let funcs = vec![FunctionInput {
+///     name: "foo".into(),
+///     source_file: "a.go".into(),
+///     language: "go".into(),
+///     directory: ".".into(),
+///     cyclomatic_complexity: 2,
+///     cognitive_complexity: 1,
+///     nesting_depth: 1,
+///     lines_of_code: 10,
+/// }];
+/// let scalars = ReportScalars {
+///     total_functions: 1,
+///     average_complexity: 2.0,
+///     max_complexity: 2,
+///     total_complexity: 2,
+///     decision_points: 1,
+/// };
+///
+/// let value = computed_metrics(&funcs, &scalars);
+/// let m = value.as_map().unwrap();
+/// for key in ["function_complexity", "distribution", "high_risk_functions", "aggregate"] {
+///     assert!(m.contains_key(key), "missing {key}");
+/// }
+/// ```
 #[must_use]
 pub fn computed_metrics(functions: &[FunctionInput], scalars: &ReportScalars) -> GoValue {
     let mut root = GoMap::new(MapOrigin::Struct);

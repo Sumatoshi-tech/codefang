@@ -31,6 +31,15 @@ impl NodeSummary {
     }
 
     /// Canonical node key: `Type + "_" + Name + "_" + File`.
+    ///
+    /// ```
+    /// use cf_shotness::types::NodeSummary;
+    ///
+    /// let ns = NodeSummary::new("Function", "foo", "a.go");
+    /// assert_eq!(ns.key(), "Function_foo_a.go");
+    /// // Empty fields still produce the two separators.
+    /// assert_eq!(NodeSummary::new("", "", "").key(), "__");
+    /// ```
     #[must_use]
     pub fn key(&self) -> String {
         format!("{}_{}_{}", self.type_, self.name, self.file)

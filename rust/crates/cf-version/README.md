@@ -26,9 +26,15 @@ reference binary by `rust/tests/compat`.
 
 ## Usage
 
+With no build-time injection the defaults (`dev` / `none` / `unknown`) are used.
+This exact behavior is pinned by the crate doctest and unit tests on
+[`banner`](src/lib.rs):
+
 ```rust
-println!("{}", cf_version::banner("codefang"));
-// codefang dev (commit: none, built: unknown)   (with no injection)
+assert_eq!(
+    cf_version::banner("codefang"),
+    "codefang dev (commit: none, built: unknown)",
+);
 ```
 
 Build with injected metadata:

@@ -22,6 +22,18 @@ pub enum ChangeType {
 
 impl ChangeType {
     /// Returns the canonical rendering: `added`, `removed`, or `modified`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cf_uast::ChangeType;
+    ///
+    /// assert_eq!(ChangeType::Added.as_str(), "added");
+    /// assert_eq!(ChangeType::Removed.as_str(), "removed");
+    /// assert_eq!(ChangeType::Modified.as_str(), "modified");
+    /// // `Display` uses the same rendering.
+    /// assert_eq!(ChangeType::Modified.to_string(), "modified");
+    /// ```
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -95,6 +107,18 @@ const MIN_EXT_PARTS: usize = 2;
 /// * `".gitignore"` → `".gitignore"` (split yields `["", "gitignore"]`)
 /// * the last `.`-segment is taken verbatim even across path separators, so
 ///   e.g. `"a.b/c"` → `".b/c"`.
+///
+/// # Examples
+///
+/// ```
+/// use cf_uast::get_file_extension;
+///
+/// assert_eq!(get_file_extension("main.go"), ".go");
+/// assert_eq!(get_file_extension("archive.tar.gz"), ".gz");
+/// assert_eq!(get_file_extension("Makefile"), "");
+/// assert_eq!(get_file_extension(".gitignore"), ".gitignore");
+/// assert_eq!(get_file_extension("a.b/c"), ".b/c");
+/// ```
 #[must_use]
 pub fn get_file_extension(filename: &str) -> String {
     let parts: Vec<&str> = filename.split('.').collect();

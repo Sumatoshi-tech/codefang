@@ -23,6 +23,32 @@
 //!
 //! This crate emits no machine-format report bytes, so — unlike the report
 //! crates — it does not route through `cf-gojson` / `cf-goyaml`.
+//!
+//! # Example
+//!
+//! Accumulate items into fixed-size batches and observe cancellation through a
+//! [`Ctx`]:
+//!
+//! ```
+//! use cf_pipeline::{Batcher, ThresholdBatcher, Ctx};
+//!
+//! // add() returns true once the batch reaches the threshold; flush() drains it.
+//! let mut batcher = ThresholdBatcher::new(2);
+//! assert!(!batcher.add("a"));
+//! assert!(batcher.add("b")); // reached threshold of 2
+//! assert_eq!(batcher.flush(), Some(vec!["a", "b"]));
+//! assert_eq!(batcher.flush(), None); // reset after flush
+//!
+//! // A background context starts live; cancelling it (and any clone) flips the
+//! // guard and surfaces the cancellation error.
+//! let ctx = Ctx::background();
+//! assert!(!ctx.is_cancelled());
+//! assert!(ctx.err().is_none());
+//! let clone = ctx.clone();
+//! ctx.cancel();
+//! assert!(clone.is_cancelled());
+//! assert!(clone.err().is_some());
+//! ```
 
 mod batcher;
 mod context;

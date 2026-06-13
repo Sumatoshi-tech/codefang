@@ -24,6 +24,23 @@
 //! Compatibility: output bytes are pinned against the reference implementation
 //! (`gopkg.in/yaml.v3` v3.0.1 `Marshal`) by this crate's oracle tests and the
 //! differential gate in `rust/tests/compat`.
+//!
+//! # Quick start
+//!
+//! ```
+//! use cf_gojson::GoValue;
+//! use cf_goyaml::marshal;
+//!
+//! // A struct-origin object keeps declaration order; the document ends in a
+//! // single trailing newline and carries no leading `---`.
+//! let mut m = cf_gojson::GoMap::new_struct();
+//! m.push("total_commits", GoValue::Int(1));
+//! m.push("ratio", GoValue::Float(0.5));
+//! assert_eq!(
+//!     marshal(&GoValue::Map(m)),
+//!     b"total_commits: 1\nratio: 0.5\n",
+//! );
+//! ```
 
 use cf_gojson::GoValue;
 
@@ -37,6 +54,36 @@ pub const CRATE_NAME: &str = "cf-goyaml";
 
 /// Serializes a [`GoValue`] to report-contract block YAML with the default
 /// 4-space indent.
+///
+/// The document has no leading `---` and a single trailing `\n`. Map-origin
+/// objects sort their keys; struct-origin objects keep declaration order; a
+/// nested sequence of objects indents 4 spaces per level (with the reference
+/// emitter's "skip the `- `" rule).
+///
+/// # Examples
+///
+/// ```
+/// use cf_gojson::{GoMap, GoValue};
+/// use cf_goyaml::marshal;
+///
+/// // A map-origin object byte-sorts its keys on emit.
+/// let m = GoMap::from_map(vec![
+///     ("b".into(), GoValue::Int(2)),
+///     ("a".into(), GoValue::Int(1)),
+/// ]);
+/// assert_eq!(marshal(&GoValue::Map(m)), b"a: 1\nb: 2\n");
+///
+/// // A nested sequence of struct objects indents four spaces.
+/// let mut item = GoMap::new_struct();
+/// item.push("name", GoValue::Str("X".into()));
+/// item.push("v", GoValue::Int(17));
+/// let mut top = GoMap::new_struct();
+/// top.push("function_complexity", GoValue::Array(vec![GoValue::Map(item)]));
+/// assert_eq!(
+///     String::from_utf8(marshal(&GoValue::Map(top))).unwrap(),
+///     "function_complexity:\n    - name: X\n      v: 17\n",
+/// );
+/// ```
 #[must_use]
 pub fn marshal(value: &GoValue) -> Vec<u8> {
     marshal_indent(value, 4)
@@ -44,6 +91,29 @@ pub fn marshal(value: &GoValue) -> Vec<u8> {
 
 /// Like [`marshal`] but with a caller-chosen indent (clamped to `2..=9`,
 /// defaulting to 2 outside that range — reference-emitter behavior).
+///
+/// # Examples
+///
+/// ```
+/// use cf_gojson::{GoMap, GoValue};
+/// use cf_goyaml::marshal_indent;
+///
+/// let mut item = GoMap::new_struct();
+/// item.push("k", GoValue::Int(1));
+/// let mut top = GoMap::new_struct();
+/// top.push("seq", GoValue::Array(vec![GoValue::Map(item)]));
+///
+/// // A 2-space indent.
+/// assert_eq!(
+///     String::from_utf8(marshal_indent(&GoValue::Map(top.clone()), 2)).unwrap(),
+///     "seq:\n  - k: 1\n",
+/// );
+/// // An out-of-range indent (e.g. 1) falls back to 2.
+/// assert_eq!(
+///     marshal_indent(&GoValue::Map(top.clone()), 1),
+///     marshal_indent(&GoValue::Map(top), 2),
+/// );
+/// ```
 #[must_use]
 pub fn marshal_indent(value: &GoValue, indent: i32) -> Vec<u8> {
     let mut e = emitter::Emitter::new(indent);

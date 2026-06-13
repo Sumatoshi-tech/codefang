@@ -101,6 +101,18 @@ impl CategoryCounts {
     }
 
     /// Adds one to the count for the given category.
+    ///
+    /// ```
+    /// use cf_file_history::{Category, CategoryCounts};
+    ///
+    /// let mut counts = CategoryCounts::default();
+    /// counts.increment(Category::Source);
+    /// counts.increment(Category::Source);
+    /// counts.increment(Category::Binary);
+    /// assert_eq!(counts.get(Category::Source), 2);
+    /// assert_eq!(counts.get(Category::Binary), 1);
+    /// assert_eq!(counts.total(), 3);
+    /// ```
     pub fn increment(&mut self, cat: Category) {
         match cat {
             Category::Source => self.source += 1,

@@ -5,181 +5,154 @@
 </p>
 
 [![CI](https://github.com/Sumatoshi-tech/codefang/actions/workflows/ci.yml/badge.svg)](https://github.com/Sumatoshi-tech/codefang/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/Sumatoshi-tech/codefang.svg)](https://pkg.go.dev/github.com/Sumatoshi-tech/codefang)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-**The heavy lifter for your codebase.**
+**The heavy lifter for your codebase — deep code analysis through structure and history.**
 
-Codefang is a comprehensive code analysis platform that understands your code deeply—not just as text, but as structure (AST) and history (Git). Whether you're tracking technical debt, analyzing developer churn, or feeding context to an AI, Codefang does the heavy lifting so you don't have to.
+Codefang understands your code as structure (an abstract syntax tree) and as
+history (Git), not just as text. It ships two binaries: `uast` parses source
+into a Universal Abstract Syntax Tree across 60+ languages, and `codefang` runs
+static and history analyzers over that structure and over Git repositories.
 
----
-
-## 1. Preface
-
-For detailed technical documentation, architectural decisions, and algorithm deep-dives, please visit our **[Documentation](https://sumatoshi-tech.github.io/codefang/)**.
-
-So, you've stumbled upon Codefang. You might be thinking, *"Wait, didn't `src-d` build something like this years ago?"*
-
-Yes, they did. And it was glorious. But like many great empires, `src-d` faded into the annals of history, and the original `hercules` was left gathering dust in the digital attic.
-
-**This is not that project.**
-
-This is a **reincarnation**. We took the core philosophy, stripped out the obsolete parts, and rebuilt it with a modern engine. It's not a drop-in replacement; it's a spiritual successor with a gym membership and a PhD in Abstract Syntax Trees.
+For deep dives — architecture, per-analyzer references, the metric models — see
+the [documentation site](https://sumatoshi-tech.github.io/codefang/) (built from
+`site/` with MkDocs Material).
 
 ---
 
-## 2. Historical context
+## What it does
 
-Once upon a time, there was a company called **source{d}**. They pioneered "Mining Software Repositories" on a massive scale. Their crown jewel was `hercules`, a tool that could chew through git logs faster than you can say `git blame`.
+- **UAST parsing** — `uast` turns source code into one normalized tree shape,
+  so a single analyzer works across Go, Python, JavaScript, Rust, Java, C++ and
+  more (Tree-sitter under the hood).
+- **Static analysis** — complexity, cohesion, comments, clones, composition,
+  Halstead, and imports, computed from the UAST.
+- **History analysis** — burndown, developers, couples, file-history, imports,
+  quality, sentiment, shotness, typos, and anomaly, computed by walking Git
+  history through libgit2.
+- **Stable machine output** — `--format json` (and `yaml`, `ndjson`,
+  `timeseries`, `bin`, `text`, `compact`, `plot`). The JSON byte stream is a
+  frozen contract, verified by the differential parity gate (see below).
 
-It gave us insights like:
+## Why
 
-- **Burndown Charts**: How much code from 2015 is still surviving today?
-- **Coupling**: If I change `A.go`, does `B.go` always change with it?
-
-When `src-d` ceased operations, the tool became abandonware. But the need to understand code didn't go away.
-
-We revived the project with a new mission: **Combine history with structure.**
-The old `hercules` was great at Git history. Codefang adds **UAST (Universal Abstract Syntax Tree)** powers, allowing it to understand the *meaning* of the code across 60+ languages, not just the diffs.
+The original `hercules` mined Git history at scale but understood code only as
+diffs. Codefang keeps the history mining and adds a structural layer (the UAST),
+so one analyzer reasons about meaning across many languages. The project is now
+a Rust workspace; the original Go implementation has been removed.
 
 ---
 
-## 3. Quickstart
+## Install / build
 
-Enough history class. Let's see some muscles.
+Codefang is a Rust workspace under `rust/`. You need a recent stable Rust
+toolchain and a C toolchain (a C/C++ compiler and CMake) — the `git2` crate
+builds a vendored copy of **libgit2** from `third_party/libgit2`, so no system
+libgit2 is required.
 
-### Installation
-
-You'll need Go installed. Then, just grab the binaries:
-
-```sh
-# The brain: Code analysis and history mining
-go install github.com/Sumatoshi-tech/codefang/cmd/codefang@latest
-
-# The eyes: Universal parser (supports 60+ languages)
-go install github.com/Sumatoshi-tech/codefang/cmd/uast@latest
+```bash
+git clone --recurse-submodules https://github.com/Sumatoshi-tech/codefang.git
+cd codefang/rust
+cargo build --release -p codefang -p uast
 ```
 
-### Let's flex
+The two binaries land at `rust/target/release/codefang` and
+`rust/target/release/uast`. Put that directory on your `PATH`, or invoke them by
+full path.
 
-Codefang follows the UNIX philosophy: small tools, joined by pipes.
+Check the build:
 
-**1. Analyze complexity (Static Analysis):**
-Parse your code and pipe it into the analyzer.
-
-```sh
-# How messy is my main.go?
-uast parse main.go | codefang analyze -a complexity
-
-# ...or my entire codebase?
-uast parse **/*.go | codefang analyze -a complexity
+```console
+$ codefang version
 ```
 
-**2. Analyze history (Git Forensics):**
-See who knows what, and how code is aging.
-
-```sh
-# Generate a burndown chart (lines surviving over time)
-codefang history -a burndown .
-```
-
-**3. Find the experts:**
-Who actually wrote the code that's running in production?
-
-```sh
-codefang history -a devs --head .
+```console
+$ uast version
 ```
 
 ---
 
-## 4. Architecture & design decisions
+## Usage
 
-We made a few bold choices in the rewrite.
+`uast` and `codefang` are separate tools (see [ADR-0002](docs/adr/0002-two-binary-split-uast-codefang.md)).
 
-### The split: `uast` vs `codefang`
+Parse a source file into a UAST:
 
-The original `hercules` was a monolith. We split it in two:
+```console
+$ uast parse main.rs
+```
 
-1. **`uast` (The Parser)**: This tool focuses on one thing—turning source code into a standardized tree structure. It uses **Tree-sitter** under the hood to support practically every language you care about (Go, Python, JS, Rust, C++, Java, and even COBOL... probably).
-2. **`codefang` (The Analyzer)**: This tool consumes the data. It takes UASTs for static analysis or Git repositories for history analysis.
+Run a static analyzer over a checkout (UAST is built internally per file):
 
-### Why UAST?
+```console
+$ codefang run --analyzers static/complexity --format json --head /path/to/repo
+```
 
-Most linters are language-specific. `eslint` for JS, `golangci-lint` for Go. Codefang uses a **Universal** AST. This means we can write a single "Complexity Analyzer" and it immediately works for Python, Go, and TypeScript.
+Run a history analyzer by walking Git history (use `--limit` to cap commits):
 
-### Pluggable analysis
+```console
+$ codefang run --analyzers history/burndown --format json --limit 50 /path/to/repo
+```
 
-Analyzers are modular. You want to measure "Sentiment of Code Comments"? There's an analyzer for that (`sentiment`). You want to find "Typos in Variable Names"? There's one for that (`typos`).
+List every analyzer ID:
 
----
+```console
+$ codefang run --list-analyzers
+```
 
-## 5. Codefang as an AI agent tool
-
-Don't just use AI to write code. Use Codefang to verify it. By giving `codefang` and `uast` to your AI agent as tools (via MCP or shell), you create a self-correcting quality loop.
-
-**1. The Self-Correcting Coder**
-
-- **Scenario:** Agent generates a new function or refactors a file.
-- **Action:** Agent runs `codefang analyze -a complexity` on the new code.
-- **Outcome:** If complexity scores are high (e.g., > 15), the agent self-reflects: *"This is too complex. I need to simplify logic before showing it to the user."*
-- **Result:** Clean, maintainable code *before* it even hits the PR.
-
-**2. Architectural Context Injection**
-
-- **Scenario:** You ask the agent about a high-level architectural change.
-- **Problem:** "Context Window Exceeded" or the agent hallucinates file relationships.
-- **Solution:** Agent runs `uast parse` to get the AST structure or `codefang analyze -a imports` to map the dependency graph. It learns the system architecture without reading every single line of text.
-
-**3. Risk-Aware Refactoring**
-
-- **Scenario:** Agent is asked to refactor a legacy module.
-- **Action:** Agent runs `codefang history -a couples`.
-- **Insight:** *"Warning: Changing `User.go` usually breaks `Billing.go` 80% of the time."*
-- **Result:** Agent proactively checks related files for regressions, preventing bugs that a simple text-based analysis would miss.
-
-**4. Style & Consistency Enforcement**
-
-- **Scenario:** "Make this look like the rest of the project."
-- **Action:** Agent analyzes `cohesion` and `comments` metrics of existing high-quality files to set a baseline.
-- **Result:** Agent generates code that matches the *structural* quality standards of your specific repo, not just generic language syntax.
+Analyzer IDs are `static/<name>` and `history/<name>`; `-a` accepts globs
+(`static/*`, `history/*`, `*`).
 
 ---
 
-## 6. Maintainers
+## Differential parity gate
 
-The dumbbells don't rack themselves. This project is kept in fighting shape by:
+Machine-report output is a frozen contract. The original Go binaries are kept
+solely as a **frozen oracle** at `build/bin/{codefang,uast}` — the Go source is
+gone, only the compiled reference binaries remain. The parity harness under
+`rust/tests/compat/` diffs the Rust binary's bytes against that oracle:
 
-- **Dmytro Gajewski**
+```bash
+cd rust/tests/compat
+python3 oracle/oracle.py --n-go 3 --quiet -- \
+  run --checkpoint=false --resume=false --no-cache --workers 1 \
+  --analyzers history/burndown --format json --limit 50 /path/to/repo
+```
 
----
+The oracle runs the Go reference N≥3 times, classifies each output field as
+stable or run-to-run variant, requires the Rust output to be byte-identical on
+stable fields, and rejects any attempt to blank a stable field. Exit code `0`
+means parity holds. See `rust/tests/compat/README.md` for the full system.
 
-## 7. Contributing
-
-Spotted a bug? Want to teach Codefang a new trick? PRs are very welcome.
-
-Read the [Contributing guide](CONTRIBUTING.md) before you start—it covers the build, the test gauntlet, commit conventions, and how to open a PR that gets merged instead of bounced.
-
----
-
-## 8. Support
-
-Got a question, hit a wall, or think something's broken? The [Support guide](SUPPORT.md) points you to the right door—usage questions and bug reports go to GitHub Issues (discussions are off), and security holes go somewhere private. No more shouting into the void.
-
----
-
-## 9. Security
-
-Found a hole? Don't shout it from the rooftops. Report it privately through GitHub's "Report a vulnerability" button on the repository's Security tab. The [Security policy](SECURITY.md) has the full drill—what to include, what to expect, and why public issues are off-limits for vulnerabilities.
+The CLI examples in this README and in `docs/` are themselves executed against
+the built Rust binary by the `doc-examples` test crate
+(`cargo test -p doc-examples`), so the commands shown here are runnable, not
+illustrative.
 
 ---
 
-## 10. License
+## Documentation
 
-Codefang is released under the [Apache-2.0](LICENSE) license. Use it, fork it, ship it—just keep the notice intact.
+- [Architecture overview](site/architecture/overview.md) and the
+  [UAST system](site/architecture/uast.md).
+- Per-analyzer references under [`site/analyzers/`](site/analyzers/) and the
+  metric models under [`site/explanation/`](site/explanation/).
+- Architecture Decision Records under [`docs/adr/`](docs/adr/).
+- Per-crate Rust API docs: `cd rust && cargo doc --open`.
 
 ---
 
-### Ready to lift?
+## Contributing
 
-Check out the [full documentation](https://sumatoshi-tech.github.io/codefang/) for deep dives, or just start piping commands and see what breaks.
+PRs are welcome. Read the [Contributing guide](CONTRIBUTING.md) for the build,
+the test gates, and commit conventions. Architecturally significant changes are
+recorded as ADRs (see [ADR-0001](docs/adr/0001-record-architecture-decisions.md)).
 
-*Happy Mining!*
+## Security
+
+Report vulnerabilities privately through GitHub's "Report a vulnerability"
+button on the Security tab. See the [Security policy](SECURITY.md).
+
+## License
+
+Codefang is released under the [Apache-2.0](LICENSE) license.

@@ -209,6 +209,17 @@ pub fn compute_node_coupling(input: &ReportData) -> Vec<NodeCouplingData> {
 ///
 /// Formula: `co_changes / max(co_changes, changes_a, changes_b)`. Including
 /// `co_changes` in the denominator guarantees the result never exceeds 1.
+///
+/// ```
+/// use cf_shotness::metrics::compute_coupling_strength;
+///
+/// // 4 / max(4, 8, 10) = 4 / 10 = 0.4.
+/// assert_eq!(compute_coupling_strength(4, 8, 10), 0.4);
+/// // co_changes dominates the denominator, so the result is capped at 1.0.
+/// assert_eq!(compute_coupling_strength(10, 2, 3), 1.0);
+/// // All-zero counts guard to 0.0.
+/// assert_eq!(compute_coupling_strength(0, 0, 0), 0.0);
+/// ```
 #[must_use]
 #[allow(clippy::cast_precision_loss)] // contractual float math on counts
 pub fn compute_coupling_strength(co_changes: i64, changes_a: i64, changes_b: i64) -> f64 {
@@ -221,6 +232,15 @@ pub fn compute_coupling_strength(co_changes: i64, changes_a: i64, changes_b: i64
 
 /// Classifies a self-change count into a risk level: HIGH≥20, MEDIUM≥10,
 /// else LOW.
+///
+/// ```
+/// use cf_shotness::metrics::classify_change_risk;
+///
+/// assert_eq!(classify_change_risk(25), "HIGH");
+/// assert_eq!(classify_change_risk(20), "HIGH");   // boundary
+/// assert_eq!(classify_change_risk(10), "MEDIUM"); // boundary
+/// assert_eq!(classify_change_risk(9), "LOW");
+/// ```
 #[must_use]
 pub const fn classify_change_risk(change_count: i64) -> &'static str {
     if change_count >= HOTSPOT_THRESHOLD_HIGH {

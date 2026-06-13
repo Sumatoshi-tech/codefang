@@ -125,7 +125,24 @@ pub fn add_entries_to_map(m: &mut ImportsMap, entries: &[ImportEntry], author_id
 
 /// Merges `src` into `dst` additively (summing counts) across all four levels.
 ///
-/// This is the additive-merge behaviour central to the analyzer.
+/// This is the additive-merge behaviour central to the analyzer: the same
+/// `author/lang/import/tick` cell in both maps sums its counts.
+///
+/// ```
+/// use cf_imports::history::{add_entries_to_map, merge_import_maps, ImportEntry, ImportsMap};
+///
+/// let entry = ImportEntry { lang: "go".into(), import: "fmt".into() };
+///
+/// // Two ticks each record `fmt` once for author 1.
+/// let mut a: ImportsMap = ImportsMap::new();
+/// add_entries_to_map(&mut a, &[entry.clone()], 1, 0);
+/// let mut b: ImportsMap = ImportsMap::new();
+/// add_entries_to_map(&mut b, &[entry.clone()], 1, 0);
+///
+/// merge_import_maps(&mut a, &b);
+/// // Same author/lang/import/tick -> counts add to 2.
+/// assert_eq!(a[&1]["go"]["fmt"][&0], 2);
+/// ```
 pub fn merge_import_maps(dst: &mut ImportsMap, src: &ImportsMap) {
     for (auth, src_langs) in src {
         let dst_langs = dst.entry(*auth).or_default();
@@ -143,6 +160,19 @@ pub fn merge_import_maps(dst: &mut ImportsMap, src: &ImportsMap) {
 
 /// Aggregates the 4-level map into per-import total counts: sums counts across
 /// all authors, languages, and ticks for each import path.
+///
+/// ```
+/// use cf_imports::history::{add_entries_to_map, aggregate_import_counts, ImportEntry, ImportsMap};
+///
+/// let mut m: ImportsMap = ImportsMap::new();
+/// let fmt = ImportEntry { lang: "go".into(), import: "fmt".into() };
+/// // `fmt` recorded by author 1 (tick 0) and author 2 (tick 1).
+/// add_entries_to_map(&mut m, &[fmt.clone()], 1, 0);
+/// add_entries_to_map(&mut m, &[fmt], 2, 1);
+///
+/// let counts = aggregate_import_counts(&m);
+/// assert_eq!(counts["fmt"], 2);
+/// ```
 #[must_use]
 pub fn aggregate_import_counts(imports: &ImportsMap) -> BTreeMap<String, i64> {
     let mut counts: BTreeMap<String, i64> = BTreeMap::new();
@@ -165,6 +195,20 @@ pub const TOP_IMPORTS_LIMIT: usize = 20;
 /// The reference implementation sorts unstably by count descending with
 /// unspecified tie order; this implementation breaks ties by import name
 /// ascending for determinism. Returns parallel `(labels, data)` vectors.
+///
+/// ```
+/// use std::collections::BTreeMap;
+/// use cf_imports::history::top_imports;
+///
+/// let mut counts = BTreeMap::new();
+/// counts.insert("os".to_string(), 1);
+/// counts.insert("sys".to_string(), 3);
+/// counts.insert("io".to_string(), 1); // ties with `os`; name breaks the tie.
+///
+/// let (labels, data) = top_imports(&counts);
+/// assert_eq!(labels, vec!["sys", "io", "os"]); // count desc, then name asc
+/// assert_eq!(data, vec![3, 1, 1]);
+/// ```
 #[must_use]
 pub fn top_imports(counts: &BTreeMap<String, i64>) -> (Vec<String>, Vec<i64>) {
     let mut items: Vec<(String, i64)> =

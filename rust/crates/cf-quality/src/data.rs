@@ -53,6 +53,19 @@ impl TickQuality {
     ///
     /// Appends each per-file slice in declaration order. An empty `other` is a
     /// no-op.
+    ///
+    /// ```
+    /// use cf_quality::data::TickQuality;
+    ///
+    /// let mut a = TickQuality { complexities: vec![5.0, 10.0], ..TickQuality::default() };
+    /// let b = TickQuality { complexities: vec![15.0], ..TickQuality::default() };
+    /// a.merge(&b);
+    /// assert_eq!(a.complexities, vec![5.0, 10.0, 15.0]);
+    ///
+    /// // Merging an empty tick leaves the receiver unchanged.
+    /// a.merge(&TickQuality::default());
+    /// assert_eq!(a.files_analyzed(), 3);
+    /// ```
     pub fn merge(&mut self, other: &TickQuality) {
         self.complexities.extend_from_slice(&other.complexities);
         self.cognitives.extend_from_slice(&other.cognitives);

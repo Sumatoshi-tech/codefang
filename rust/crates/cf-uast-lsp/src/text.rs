@@ -14,6 +14,16 @@
 ///
 /// Notably this does NOT treat a trailing newline specially: an empty input
 /// yields `[""]`, and a trailing `'\n'` produces a trailing empty element.
+///
+/// # Examples
+///
+/// ```
+/// use cf_uast_lsp::split_lines;
+///
+/// assert_eq!(split_lines("hello\nworld"), ["hello", "world"]);
+/// assert_eq!(split_lines(""), [""]);
+/// assert_eq!(split_lines("hello\n"), ["hello", ""]);
+/// ```
 #[must_use]
 pub fn split_lines(input: &str) -> Vec<&str> {
     input.split('\n').collect()
@@ -22,6 +32,19 @@ pub fn split_lines(input: &str) -> Vec<&str> {
 /// Reports whether `ch` is part of a mapping-DSL "word": ASCII `a-z`, `A-Z`,
 /// `_`, and the operator bytes `<`, `>`, `-`, `=`. Operates on a raw byte so
 /// multi-byte UTF-8 sequences are never word characters.
+///
+/// # Examples
+///
+/// ```
+/// use cf_uast_lsp::is_word_char;
+///
+/// assert!(is_word_char(b'a'));
+/// assert!(is_word_char(b'_'));
+/// // Operator bytes are word bytes so `<-` and `=>` stay single words.
+/// assert!(is_word_char(b'<') && is_word_char(b'-'));
+/// assert!(!is_word_char(b'0'));
+/// assert!(!is_word_char(b' '));
+/// ```
 #[must_use]
 pub const fn is_word_char(ch: u8) -> bool {
     ch.is_ascii_lowercase()
@@ -39,6 +62,20 @@ pub const fn is_word_char(ch: u8) -> bool {
 /// offsets, but this server deliberately treats them as byte offsets —
 /// reference-implementation behavior). Returns `""` when `line` is out of
 /// range or the cursor sits between non-word bytes.
+///
+/// # Examples
+///
+/// ```
+/// use cf_uast_lsp::extract_word_at_position;
+///
+/// assert_eq!(extract_word_at_position("hello world", 0, 2), "hello");
+/// // `<-` is a single word because its bytes are word bytes.
+/// assert_eq!(extract_word_at_position("rule <- pattern", 0, 6), "<-");
+/// // An out-of-range character clamps to the end of the line.
+/// assert_eq!(extract_word_at_position("short", 0, 100), "short");
+/// // An out-of-range line yields the empty string.
+/// assert_eq!(extract_word_at_position("single line", 5, 0), "");
+/// ```
 #[must_use]
 pub fn extract_word_at_position(text: &str, line: usize, character: usize) -> String {
     let lines = split_lines(text);

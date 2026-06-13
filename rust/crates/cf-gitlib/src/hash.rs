@@ -10,6 +10,16 @@
 //! [`Hash::to_hex`] renders a 40-character, lowercase, fixed-width hex string.
 //! Hashes surface into machine reports as these strings, so the rendering is
 //! part of the report contract (pinned by `rust/tests/compat`).
+//!
+//! ```
+//! use cf_gitlib::Hash;
+//!
+//! let h = Hash::new("0123456789ABCDEF0123456789abcdef01234567");
+//! // Rendering is always 40 lowercase hex chars, regardless of input case.
+//! assert_eq!(h.to_string(), "0123456789abcdef0123456789abcdef01234567");
+//! assert!(!h.is_zero());
+//! assert!(Hash::zero().is_zero());
+//! ```
 
 use std::fmt;
 
@@ -89,6 +99,14 @@ impl Hash {
 
     /// Converts this hash to a libgit2 [`git2::Oid`].
     ///
+    /// [`Hash::from_oid`] and `to_oid` round-trip losslessly:
+    ///
+    /// ```
+    /// # use cf_gitlib::Hash;
+    /// let h = Hash::new("0123456789abcdef0123456789abcdef01234567");
+    /// assert_eq!(Hash::from_oid(&h.to_oid()), h);
+    /// ```
+    ///
     /// # Panics
     ///
     /// Never panics for a valid 20-byte SHA-1: [`git2::Oid::from_bytes`] only
@@ -100,6 +118,17 @@ impl Hash {
     }
 
     /// Returns the lowercase 40-character hex representation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cf_gitlib::Hash;
+    /// assert_eq!(Hash::zero().to_hex(), "0".repeat(40));
+    /// assert_eq!(
+    ///     Hash::new("abcdef0123456789abcdef0123456789abcdef01").to_hex(),
+    ///     "abcdef0123456789abcdef0123456789abcdef01",
+    /// );
+    /// ```
     ///
     /// # Panics
     ///

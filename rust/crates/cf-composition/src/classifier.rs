@@ -58,6 +58,18 @@ impl Classifier {
     /// The cascade runs branch-for-branch in the pinned order, including the
     /// non-empty-content guards on the binary and generated-content checks (so
     /// empty content never triggers Binary or content-Generated).
+    ///
+    /// ```
+    /// use cf_composition::{Classifier, Category};
+    ///
+    /// let c = Classifier::new();
+    /// assert_eq!(c.classify("pkg/main.go", b"package main\n"), Category::Source);
+    /// assert_eq!(c.classify("vendor/foo/bar.go", b"package bar\n"), Category::Vendor);
+    /// assert_eq!(c.classify("docs/README.md", b"# Hi\n"), Category::Documentation);
+    /// assert_eq!(c.classify("logo.png", &[]), Category::Image);
+    /// // The binary check requires non-empty content.
+    /// assert_eq!(c.classify("data.bin", &[0, 1, 2, 0xFF, 0, 0]), Category::Binary);
+    /// ```
     #[must_use]
     // Two arms both yield `Category::Generated` (generated-by-path then
     // generated-by-content), which clippy flags but is load-bearing for the

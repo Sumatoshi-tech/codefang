@@ -73,6 +73,22 @@ impl Aggregator {
     ///
     /// Percentages are only emitted when `total_files > 0` (an empty repo
     /// yields an empty `percentages` map — pinned report behaviour).
+    ///
+    /// ```
+    /// use cf_composition::Aggregator;
+    /// use cf_gojson::GoValue;
+    ///
+    /// let mut agg = Aggregator::new();
+    /// agg.aggregate_category("source");
+    /// agg.aggregate_category("source");
+    /// agg.aggregate_category("vendor");
+    ///
+    /// let result = agg.get_result();
+    /// assert_eq!(result.get("total_files"), Some(&GoValue::Int(3)));
+    /// let breakdown = result.get("breakdown").unwrap().as_map().unwrap();
+    /// assert_eq!(breakdown.get("source"), Some(&GoValue::Int(2)));
+    /// assert_eq!(breakdown.get("vendor"), Some(&GoValue::Int(1)));
+    /// ```
     #[must_use]
     pub fn get_result(&self) -> GoMap {
         // All three containers are dynamic maps, so they are map-origin and

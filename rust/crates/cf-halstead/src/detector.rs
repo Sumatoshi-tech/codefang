@@ -106,6 +106,43 @@ impl OperatorOperandDetector {
 
     /// Recursively collects operators and operands from a node, accumulating
     /// counts into the supplied maps.
+    ///
+    /// The classification is by node type/role (see [`OPERATOR_TYPES`] /
+    /// [`OPERAND_TYPES`]); a declaration's own name identifier is never counted
+    /// as an operand. Here `x = y + 5` yields the operators `=`/`+` and the
+    /// operands `x`/`y`/`5`:
+    ///
+    /// ```
+    /// use std::collections::HashMap;
+    /// use cf_halstead::detector::OperatorOperandDetector;
+    /// use cf_uast_node::Node;
+    ///
+    /// fn id(token: &str) -> Node {
+    ///     let mut n = Node::with_token("Identifier", token);
+    ///     n.roles = vec!["Variable".into()];
+    ///     n
+    /// }
+    ///
+    /// let mut lit5 = Node::with_token("Literal", "5");
+    /// lit5.roles = vec!["Literal".into()];
+    ///
+    /// let mut plus = Node::with_token("BinaryOp", "+");
+    /// plus.props.insert("operator".into(), "+".into());
+    /// plus.add_child(id("y"));
+    /// plus.add_child(lit5);
+    ///
+    /// let mut assign = Node::with_token("Assignment", "=");
+    /// assign.props.insert("operator".into(), "=".into());
+    /// assign.add_child(id("x"));
+    /// assign.add_child(plus);
+    ///
+    /// let (mut operators, mut operands) = (HashMap::new(), HashMap::new());
+    /// OperatorOperandDetector::new().collect(&assign, &mut operators, &mut operands);
+    ///
+    /// assert_eq!(operators.get("="), Some(&1));
+    /// assert_eq!(operators.get("+"), Some(&1));
+    /// assert_eq!(operands.len(), 3); // x, y, 5
+    /// ```
     pub fn collect<N: HalNode>(
         &self,
         node: &N,

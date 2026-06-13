@@ -18,7 +18,7 @@ pub struct Range {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use cf_alg::{chunk, Range};
 /// assert_eq!(
 ///     chunk(7, 3),

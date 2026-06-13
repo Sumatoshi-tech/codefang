@@ -240,6 +240,28 @@ pub fn parse_unified_model_json(_data: &[u8]) -> Result<UnifiedModel, Conversion
 /// # Errors
 /// Returns the phase-specific [`ConversionError`] wrapping the underlying
 /// [`FormatError`].
+///
+/// ```
+/// use cf_analyze::resolve_formats;
+///
+/// // Both phases active: one universal-validated format, applied to both.
+/// assert_eq!(
+///     resolve_formats("json", true, true).unwrap(),
+///     ("json".to_string(), "json".to_string()),
+/// );
+/// // Static only: history format is empty.
+/// assert_eq!(
+///     resolve_formats("compact", true, false).unwrap(),
+///     ("compact".to_string(), String::new()),
+/// );
+/// // Neither phase: both empty.
+/// assert_eq!(
+///     resolve_formats("json", false, false).unwrap(),
+///     (String::new(), String::new()),
+/// );
+/// // `compact` is static-only, so it is rejected when history is active.
+/// assert!(resolve_formats("compact", true, true).is_err());
+/// ```
 pub fn resolve_formats(
     format: &str,
     has_static: bool,
@@ -271,6 +293,19 @@ pub fn resolve_formats(
 /// # Errors
 /// Returns [`ConversionError::InvalidInputFormat`] (carrying the original hint)
 /// for any other normalized format.
+///
+/// ```
+/// use cf_analyze::resolve_input_format;
+///
+/// // Auto-detect from extension.
+/// assert_eq!(resolve_input_format("out.bin", "").unwrap(), "binary");
+/// assert_eq!(resolve_input_format("out.json", "auto").unwrap(), "json");
+/// assert_eq!(resolve_input_format("out.txt", "").unwrap(), "json"); // default
+/// // Explicit hint wins (and is normalized).
+/// assert_eq!(resolve_input_format("out.txt", "BIN").unwrap(), "binary");
+/// // An unsupported hint is an error.
+/// assert!(resolve_input_format("out.txt", "yaml").is_err());
+/// ```
 pub fn resolve_input_format(input_path: &str, input_format: &str) -> Result<String, ConversionError> {
     let normalized_hint = input_format.trim();
     if normalized_hint.is_empty() || normalized_hint == INPUT_FORMAT_AUTO {

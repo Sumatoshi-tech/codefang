@@ -22,6 +22,13 @@ pub const BLOOM_GLOBAL_MIN_ELEMS: u64 = 64;
 
 /// Clamps `v` to the inclusive range `[lo, hi]`: returns `lo` if `v < lo`,
 /// `hi` if `v > hi`, else `v`.
+///
+/// ```
+/// use cf_cohesion::calc::clamp;
+/// assert_eq!(clamp(-0.5, 0.0, 1.0), 0.0);
+/// assert_eq!(clamp(0.5, 0.0, 1.0), 0.5);
+/// assert_eq!(clamp(1.5, 0.0, 1.0), 1.0);
+/// ```
 #[must_use]
 pub fn clamp(v: f64, lo: f64, hi: f64) -> f64 {
     if v < lo {
@@ -34,6 +41,12 @@ pub fn clamp(v: f64, lo: f64, hi: f64) -> f64 {
 }
 
 /// Returns the distinct entries of `items`, preserving **first-seen order**.
+///
+/// ```
+/// use cf_cohesion::calc::unique;
+/// let v = vec!["a".to_string(), "b".to_string(), "a".to_string(), "c".to_string()];
+/// assert_eq!(unique(&v), vec!["a", "b", "c"]);
+/// ```
 #[must_use]
 pub fn unique(items: &[String]) -> Vec<String> {
     let mut seen = std::collections::HashSet::with_capacity(items.len());

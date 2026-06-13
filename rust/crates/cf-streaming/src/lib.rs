@@ -23,6 +23,33 @@
 //! identical across platforms. No report serialization happens in this crate —
 //! it produces plans and telemetry, not machine-format output — so the shared
 //! `cf-gojson` / `cf-goyaml` encoders are not needed here.
+//!
+//! # Example
+//!
+//! ```
+//! use cf_streaming::{Planner, check_memory_pressure, MemoryPressureLevel};
+//!
+//! // An unlimited budget (zero) produces a single chunk covering everything.
+//! let planner = Planner { total_commits: 100, ..Default::default() };
+//! let chunks = planner.plan();
+//! assert_eq!(chunks.len(), 1);
+//! assert_eq!(chunks[0].start, 0);
+//! assert_eq!(chunks[0].end, 100);
+//!
+//! // Contiguous, gap-free coverage: chunk ends meet the next chunk's start.
+//! let total: usize = chunks.iter().map(|c| c.end - c.start).sum();
+//! assert_eq!(total, 100);
+//!
+//! // No commits => no chunks.
+//! assert!(Planner { total_commits: 0, ..Default::default() }.plan().is_empty());
+//!
+//! // Memory-pressure detection against a budget. An unlimited (<= 0) budget is
+//! // never under pressure.
+//! assert_eq!(check_memory_pressure(1_000, 0), MemoryPressureLevel::None);
+//! assert_eq!(check_memory_pressure(50, 100), MemoryPressureLevel::None);
+//! assert_eq!(check_memory_pressure(85, 100), MemoryPressureLevel::Warning);
+//! assert_eq!(check_memory_pressure(95, 100), MemoryPressureLevel::Critical);
+//! ```
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

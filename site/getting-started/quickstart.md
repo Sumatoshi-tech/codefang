@@ -70,10 +70,10 @@ codefang run -a static/complexity --format text .
     ===============================
 
     static/complexity:
-      internal/framework/runner.go
-        Function RunPipeline        -- Cyclomatic: 12  Cognitive: 8
-        Function initWorkers        -- Cyclomatic: 4   Cognitive: 3
-      cmd/codefang/commands/run.go
+      crates/cf-framework/src/runner.rs
+        Function run_pipeline       -- Cyclomatic: 12  Cognitive: 8
+        Function init_workers       -- Cyclomatic: 4   Cognitive: 3
+      crates/cf-commands/src/run.rs
         Function run                -- Cyclomatic: 9   Cognitive: 7
     ```
 
@@ -202,18 +202,12 @@ xdg-open burndown.html  # Linux
 
 ---
 
-## 7. Pipe into AI (MCP integration)
+## 7. Pipe into AI
 
-Codefang ships a built-in **Model Context Protocol** server so AI agents can
-query analysis results programmatically:
-
-```bash
-codefang mcp serve
-```
-
-This starts a JSON-RPC server that tools like Claude Desktop, Cursor, and
-other MCP-compatible clients can connect to. See the
-[MCP Integration](../integrations/mcp.md) guide for configuration details.
+Any `--format json` output is machine-friendly and can be fed to an LLM or an
+agent. Codefang also provides a **Model Context Protocol** server (the `cf-mcp`
+crate) so agents can query analysis results programmatically; see the
+[MCP Integration](../integrations/mcp.md) guide for how to wire it up.
 
 !!! note "AI-ready output"
     Any `--format json` output can also be fed directly to an LLM for

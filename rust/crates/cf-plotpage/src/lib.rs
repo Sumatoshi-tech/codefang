@@ -28,6 +28,40 @@
 //! All JSON routes through `cf-gojson` (never serde): the chart option JSON
 //! is report-contract output, byte-compared against the reference binary by
 //! `rust/tests/compat`.
+//!
+//! # Example: build a one-chart page
+//!
+//! Assemble a bar chart into a [`Section`], render the [`Page`], and observe the
+//! deterministic page shell. Rendering is pure and reproducible: the same page
+//! renders byte-identically every run.
+//!
+//! ```
+//! use cf_plotpage::{
+//!     build_bar_chart, BarSeries, SeriesValue, Hint, Page, Section,
+//! };
+//!
+//! let labels = vec!["a".to_string(), "b".to_string()];
+//! let series = vec![BarSeries {
+//!     name: "count".to_string(),
+//!     data: vec![SeriesValue::Int(3), SeriesValue::Int(7)],
+//!     ..BarSeries::default()
+//! }];
+//! let chart = build_bar_chart(None, &labels, &series, "items");
+//!
+//! let mut page = Page::new("static/complexity", "demo");
+//! page.add(vec![Section::new(
+//!     "Top files",
+//!     "by complexity",
+//!     Box::new(chart),
+//!     Hint::default(),
+//! )]);
+//!
+//! let html = page.render();
+//! assert!(html.starts_with("<!doctype html>\n<html class=\"dark\">\n"));
+//! assert!(html.contains("<title>static/complexity - Codefang</title>"));
+//! // Pure render: identical bytes across runs.
+//! assert_eq!(html, page.render());
+//! ```
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

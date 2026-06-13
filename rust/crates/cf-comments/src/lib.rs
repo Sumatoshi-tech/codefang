@@ -22,6 +22,51 @@
 //!
 //! Compatibility: output bytes are pinned against the reference implementation
 //! by the differential gate in `rust/tests/compat`.
+//!
+//! # Example
+//!
+//! A comment placed immediately above a function is scored "good" and counts
+//! that function as documented:
+//!
+//! ```
+//! use cf_comments::Analyzer;
+//! use cf_gojson::GoValue;
+//! use cf_uast_node::{Builder, Node, Positions};
+//!
+//! fn pos(start: u64, end: u64) -> Positions {
+//!     Positions { start_line: start, end_line: end, ..Default::default() }
+//! }
+//!
+//! // // doc comment   (line 1)
+//! // function foo()   (lines 2-4)
+//! let comment = Builder::new()
+//!     .with_type("Comment")
+//!     .with_token("// documents foo")
+//!     .with_position(Some(pos(1, 1)))
+//!     .build();
+//! let name = Builder::new().with_type("Identifier").with_token("foo")
+//!     .with_roles(vec!["Name".into()]).build();
+//! let mut func = Builder::new().with_type("Function")
+//!     .with_position(Some(pos(2, 4))).build();
+//! func.add_child(name);
+//!
+//! let mut root = Builder::new().with_type("File").build();
+//! root.add_child(comment);
+//! root.add_child(func);
+//!
+//! let report = Analyzer::new().analyze(Some(&root)).unwrap();
+//! let m = report.as_map().unwrap();
+//! assert_eq!(m.get("total_comments"), Some(&GoValue::Int(1)));
+//! assert_eq!(m.get("good_comments"), Some(&GoValue::Int(1)));
+//! assert_eq!(m.get("documented_functions"), Some(&GoValue::Int(1)));
+//! ```
+//!
+//! A missing root is an error:
+//!
+//! ```
+//! use cf_comments::Analyzer;
+//! assert!(Analyzer::new().analyze(None).is_err());
+//! ```
 
 pub mod aggregator;
 pub mod analyzer;

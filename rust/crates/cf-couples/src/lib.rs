@@ -74,6 +74,14 @@ pub const COUPLES_MAXIMUM_MEANINGFUL_CONTEXT_SIZE: usize = 200;
 /// Splits an identity string `"name|email"` into its components.
 /// Thin re-export over [`cf_identity`] so the crate's metric code can call
 /// `crate::split_identity`.
+///
+/// ```
+/// use cf_couples::split_identity;
+///
+/// let (name, email) = split_identity("Ada Lovelace|ada@example.com");
+/// assert_eq!(name, "Ada Lovelace");
+/// assert_eq!(email, "ada@example.com");
+/// ```
 #[must_use]
 pub fn split_identity(s: &str) -> (String, String) {
     cf_identity::split_identity(s)

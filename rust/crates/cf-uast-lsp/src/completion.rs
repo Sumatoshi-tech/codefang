@@ -47,6 +47,17 @@ pub fn uast_fields() -> Vec<CompletionItem> {
 
 /// All completion items offered by `textDocument/completion`: keywords
 /// followed by UAST fields, in that order.
+///
+/// # Examples
+///
+/// ```
+/// use cf_uast_lsp::all_completions;
+///
+/// let labels: Vec<String> = all_completions().into_iter().map(|i| i.label).collect();
+/// // Keywords come first, then UAST fields.
+/// assert_eq!(&labels[..3], &["<-", "=>", "uast"]);
+/// assert!(labels.contains(&"type".to_string()));
+/// ```
 #[must_use]
 pub fn all_completions() -> Vec<CompletionItem> {
     let mut items = mapping_dsl_keywords();
@@ -57,6 +68,15 @@ pub fn all_completions() -> Vec<CompletionItem> {
 /// Returns the hover documentation for a DSL keyword/field, if any.
 ///
 /// The keys and Markdown values are frozen strings.
+///
+/// # Examples
+///
+/// ```
+/// use cf_uast_lsp::hover_doc;
+///
+/// assert!(hover_doc("<-").unwrap().contains("pattern"));
+/// assert_eq!(hover_doc("not-a-keyword"), None);
+/// ```
 #[must_use]
 pub fn hover_doc(word: &str) -> Option<&'static str> {
     match word {

@@ -20,6 +20,42 @@ use crate::types::{ChangeType, NodeChange};
 /// * `Some` → `Some` compares the node itself (token, type, position) and its
 ///   children, emitting a [`ChangeType::Modified`] for the pair (when the node
 ///   changed or any child changed) followed by the child changes.
+///
+/// # Examples
+///
+/// Both `None` yields no changes; one side `None` yields a single add/remove:
+///
+/// ```
+/// use cf_uast::{detect_changes, ChangeType, Node};
+///
+/// assert!(detect_changes(None, None).is_empty());
+///
+/// let node = Node::with_token("Identifier", "x");
+/// let added = detect_changes(None, Some(&node));
+/// assert_eq!(added.len(), 1);
+/// assert_eq!(added[0].change_type, ChangeType::Added);
+///
+/// let removed = detect_changes(Some(&node), None);
+/// assert_eq!(removed[0].change_type, ChangeType::Removed);
+/// ```
+///
+/// A changed token is reported as a single `Modified`, and the parent's own
+/// `Modified` is emitted *before* the recursive child changes:
+///
+/// ```
+/// use cf_uast::{detect_changes, ChangeType, Node};
+///
+/// let mut before = Node::with_token("File", "");
+/// before.children.push(Node::with_token("Function", "foo"));
+/// let mut after = Node::with_token("File", "");
+/// after.children.push(Node::with_token("Function", "bar"));
+///
+/// let changes = detect_changes(Some(&before), Some(&after));
+/// // Parent Modified comes first, then the child-level Removed/Added.
+/// assert_eq!(changes[0].change_type, ChangeType::Modified);
+/// assert!(changes.iter().any(|c| c.change_type == ChangeType::Removed));
+/// assert!(changes.iter().any(|c| c.change_type == ChangeType::Added));
+/// ```
 #[must_use]
 pub fn detect_changes(before: Option<&Node>, after: Option<&Node>) -> Vec<NodeChange> {
     match (before, after) {

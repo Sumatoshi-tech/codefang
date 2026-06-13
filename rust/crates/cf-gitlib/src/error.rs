@@ -180,6 +180,15 @@ pub enum GitError {
 impl GitError {
     /// Builds a [`GitError::Lib`] from a context label and a libgit2 error,
     /// rendering as `"<context>: <cause>"`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cf_gitlib::GitError;
+    ///
+    /// let err = GitError::lib("init repository", git2::Error::from_str("boom"));
+    /// assert_eq!(err.to_string(), "init repository: boom");
+    /// ```
     #[must_use]
     pub fn lib(context: impl Into<String>, cause: impl Into<GitCause>) -> Self {
         GitError::Lib { context: context.into(), cause: cause.into() }

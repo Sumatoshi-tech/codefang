@@ -232,6 +232,32 @@ pub fn compute_all_metrics_with_options(
 }
 
 /// Computes per-file churn data, sorted by churn score descending.
+///
+/// ```
+/// use cf_file_history::{FileChurnData, FileHistory, LineStats, ReportData};
+/// use cf_file_history::metrics::compute_file_churn;
+/// use std::collections::BTreeMap;
+///
+/// // "hot.rs" has far more activity than "quiet.rs".
+/// let hot = FileHistory {
+///     people: BTreeMap::from([(1, LineStats { added: 500, removed: 200, changed: 100 })]),
+///     hashes: (0..40).map(|i| format!("{i:040}")).collect(),
+/// };
+/// let quiet = FileHistory {
+///     people: BTreeMap::from([(2, LineStats { added: 5, removed: 1, changed: 0 })]),
+///     hashes: vec!["a".repeat(40)],
+/// };
+/// let input = ReportData {
+///     files: BTreeMap::from([("quiet.rs".into(), quiet), ("hot.rs".into(), hot)]),
+/// };
+///
+/// let churn = compute_file_churn(&input);
+/// // Sorted by churn score descending: the hot file comes first.
+/// assert_eq!(churn[0].path, "hot.rs");
+/// assert_eq!(churn[0].commit_count, 40);
+/// assert_eq!(churn[0].contributor_count, 1);
+/// assert!(churn[0].churn_score > churn[1].churn_score);
+/// ```
 #[must_use]
 pub fn compute_file_churn(input: &ReportData) -> Vec<FileChurnData> {
     let mut result: Vec<FileChurnData> = input

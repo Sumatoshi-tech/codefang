@@ -12,8 +12,24 @@
 //! `rust/tests/compat`; do not swap in `slice::sort_unstable` or alter the
 //! constants.
 //!
-//! Usage: `go_sort_slice(&mut v, |a, b| a.key > b.key)` sorts `v` in place,
-//! where `less(&a, &b)` answers "must `a` sort before `b`?".
+//! # Example
+//!
+//! [`go_sort_slice`] sorts `v` in place, where `less(&a, &b)` answers "must
+//! `a` sort before `b`?".
+//!
+//! ```
+//! use cf_gosort::go_sort_slice;
+//!
+//! // Ascending: `a` sorts before `b` when `a < b`.
+//! let mut v = vec![3, 1, 4, 1, 5, 9, 2, 6];
+//! go_sort_slice(&mut v, |a, b| a < b);
+//! assert_eq!(v, vec![1, 1, 2, 3, 4, 5, 6, 9]);
+//!
+//! // Descending: flip the comparator.
+//! let mut by_key = vec![("x", 3), ("y", 1), ("z", 2)];
+//! go_sort_slice(&mut by_key, |a, b| a.1 > b.1);
+//! assert_eq!(by_key, vec![("x", 3), ("z", 2), ("y", 1)]);
+//! ```
 
 /// Number of bits required to represent `x` (0 for 0).
 fn bit_len(x: u64) -> u32 {
@@ -31,6 +47,25 @@ enum Hint {
 
 /// Sorts `data` in place with the contract-frozen pdqsort using comparator
 /// `less` (`less(&a, &b)` true when `a` must sort before `b`).
+///
+/// The sort is **not stable**: equal elements may be reordered. The resulting
+/// permutation is fixed by the algorithm (frozen pdqsort), so it reproduces
+/// the reference implementation bit-for-bit on the same input.
+///
+/// # Examples
+///
+/// ```
+/// use cf_gosort::go_sort_slice;
+///
+/// let mut v = vec![5, 2, 8, 1, 9, 3];
+/// go_sort_slice(&mut v, |a, b| a < b);
+/// assert_eq!(v, vec![1, 2, 3, 5, 8, 9]);
+///
+/// // Empty and single-element slices are handled.
+/// let mut empty: Vec<i32> = vec![];
+/// go_sort_slice(&mut empty, |a, b| a < b);
+/// assert!(empty.is_empty());
+/// ```
 pub fn go_sort_slice<T, F>(data: &mut [T], less: F)
 where
     F: Fn(&T, &T) -> bool,

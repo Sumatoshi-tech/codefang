@@ -25,6 +25,45 @@
 //!
 //! Compatibility: output bytes are pinned against the reference implementation
 //! by the differential gate in `rust/tests/compat`.
+//!
+//! # Example
+//!
+//! Build a tiny UAST with one function containing an `if`, then read the
+//! aggregate scalars off the returned report value:
+//!
+//! ```
+//! use cf_complexity::Analyzer;
+//! use cf_complexity::node::{uast, role, Node};
+//! use cf_gojson::GoValue;
+//!
+//! // function foo() { if (...) { ... } }
+//! let func = Node::new(uast::FUNCTION)
+//!     .with_roles(vec![role::FUNCTION, role::DECLARATION])
+//!     .with_prop("name", "foo")
+//!     .with_children(vec![Node::new(uast::IF)]);
+//! let root = Node::new(uast::FILE).with_children(vec![func]);
+//!
+//! let report = Analyzer.analyze(Some(&root));
+//! let m = report.as_map().unwrap();
+//! assert_eq!(m.get("total_functions"), Some(&GoValue::Int(1)));
+//! // cyclomatic = 1 (base) + 1 (the `if`) = 2.
+//! assert_eq!(m.get("total_complexity"), Some(&GoValue::Int(2)));
+//! assert_eq!(m.get("analyzer_name").unwrap().as_str(), Some("complexity"));
+//! ```
+//!
+//! A missing root (or a tree with no functions) yields the empty-result shape:
+//!
+//! ```
+//! use cf_complexity::Analyzer;
+//! use cf_gojson::GoValue;
+//!
+//! let report = Analyzer.analyze(None);
+//! let m = report.as_map().unwrap();
+//! assert_eq!(m.get("total_functions"), Some(&GoValue::Int(0)));
+//! assert_eq!(m.get("message").unwrap().as_str(), Some("No AST provided"));
+//! // The empty shape omits the `functions` array and `analyzer_name`.
+//! assert!(m.get("functions").is_none());
+//! ```
 
 // Metric counts (function counts, line counts, complexity sums) are far below
 // the f64 mantissa / i64 range, and the int->float divisions are part of the
@@ -119,6 +158,34 @@ impl Analyzer {
     /// Computes per-function metrics (in the deterministic report sort order)
     /// without building the report map. Useful for the quality analyzer and
     /// for direct testing.
+    ///
+    /// The result is sorted by the report predicate: cyclomatic descending,
+    /// then cognitive descending, then name ascending. A `None` root yields an
+    /// empty vector.
+    ///
+    /// ```
+    /// use cf_complexity::Analyzer;
+    /// use cf_complexity::node::{uast, role, Node};
+    ///
+    /// // `simple` has cyclomatic 1; `branchy` has an `if` (cyclomatic 2).
+    /// let simple = Node::new(uast::FUNCTION)
+    ///     .with_roles(vec![role::FUNCTION, role::DECLARATION])
+    ///     .with_prop("name", "simple");
+    /// let branchy = Node::new(uast::FUNCTION)
+    ///     .with_roles(vec![role::FUNCTION, role::DECLARATION])
+    ///     .with_prop("name", "branchy")
+    ///     .with_children(vec![Node::new(uast::IF)]);
+    /// let root = Node::new(uast::FILE).with_children(vec![simple, branchy]);
+    ///
+    /// let metrics = Analyzer.function_metrics(Some(&root));
+    /// // Higher cyclomatic first.
+    /// assert_eq!(metrics[0].name, "branchy");
+    /// assert_eq!(metrics[0].cyclomatic_complexity, 2);
+    /// assert_eq!(metrics[1].name, "simple");
+    /// assert_eq!(metrics[1].cyclomatic_complexity, 1);
+    ///
+    /// assert!(Analyzer.function_metrics(None).is_empty());
+    /// ```
     #[must_use]
     pub fn function_metrics(&self, root: Option<&Node>) -> Vec<FunctionMetrics> {
         match root {
@@ -795,6 +862,15 @@ fn get_complexity_level(complexity: i64) -> &'static str {
 
 /// Cyclomatic-complexity assessment label — exported for the aggregated
 /// raw-report builder used by `--format plot` / report.json.
+///
+/// `<= 1` is simple, `<= 5` is moderate, otherwise complex:
+///
+/// ```
+/// use cf_complexity::get_complexity_assessment;
+/// assert_eq!(get_complexity_assessment(1), "🟢 Simple");
+/// assert_eq!(get_complexity_assessment(5), "🟡 Moderate");
+/// assert_eq!(get_complexity_assessment(6), "🔴 Complex");
+/// ```
 #[must_use]
 pub fn get_complexity_assessment(complexity: i64) -> &'static str {
     match get_complexity_level(complexity) {
@@ -807,6 +883,15 @@ pub fn get_complexity_assessment(complexity: i64) -> &'static str {
 
 /// Cognitive-complexity assessment label — exported for the aggregated
 /// raw-report builder.
+///
+/// `<= 5` is low, `<= 10` is medium, otherwise high:
+///
+/// ```
+/// use cf_complexity::get_cognitive_assessment;
+/// assert_eq!(get_cognitive_assessment(5), "🟢 Low");
+/// assert_eq!(get_cognitive_assessment(10), "🟡 Medium");
+/// assert_eq!(get_cognitive_assessment(11), "🔴 High");
+/// ```
 #[must_use]
 pub fn get_cognitive_assessment(complexity: i64) -> &'static str {
     if complexity <= COMPLEXITY_THRESHOLD_HIGH {
@@ -820,6 +905,15 @@ pub fn get_cognitive_assessment(complexity: i64) -> &'static str {
 
 /// Nesting-depth assessment label — exported for the aggregated raw-report
 /// builder.
+///
+/// `<= 3` is shallow, `<= 5` is moderate, otherwise deep:
+///
+/// ```
+/// use cf_complexity::get_nesting_assessment;
+/// assert_eq!(get_nesting_assessment(3), "🟢 Shallow");
+/// assert_eq!(get_nesting_assessment(5), "🟡 Moderate");
+/// assert_eq!(get_nesting_assessment(6), "🔴 Deep");
+/// ```
 #[must_use]
 pub fn get_nesting_assessment(depth: i64) -> &'static str {
     if depth <= DEPTH_THRESHOLD_HIGH {

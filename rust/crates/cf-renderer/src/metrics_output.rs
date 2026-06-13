@@ -34,6 +34,24 @@ pub trait MetricsOutput {
 /// # Errors
 ///
 /// Returns [`NilMetricsOutput`] when `m` is `None`.
+///
+/// ```
+/// use cf_renderer::{render_metrics_json, MetricsOutput, NilMetricsOutput};
+/// use cf_renderer::gocompat::GoValue;
+///
+/// struct Devs;
+/// impl MetricsOutput for Devs {
+///     fn analyzer_name(&self) -> String { "devs".to_string() }
+///     fn to_json(&self) -> GoValue {
+///         GoValue::Object(vec![("count".to_string(), GoValue::Int(42))])
+///     }
+///     fn to_yaml(&self) -> GoValue { self.to_json() }
+/// }
+///
+/// assert_eq!(render_metrics_json(Some(&Devs)).unwrap(), r#"{"count":42}"#);
+/// // A nil metrics output is the documented error.
+/// assert_eq!(render_metrics_json(None), Err(NilMetricsOutput));
+/// ```
 pub fn render_metrics_json(m: Option<&dyn MetricsOutput>) -> Result<String, NilMetricsOutput> {
     let m = m.ok_or(NilMetricsOutput)?;
     Ok(Encoder::default().encode(&m.to_json()))

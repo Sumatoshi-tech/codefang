@@ -124,6 +124,19 @@ impl ComputedMetrics {
     }
 
     /// Build the JSON/bin value tree (absent list → `null`).
+    ///
+    /// ```
+    /// use cf_analyzer_burndown::ComputedMetrics;
+    ///
+    /// // A default report leaves `interactions` absent (`None`).
+    /// let m = ComputedMetrics::default();
+    /// let json = String::from_utf8(cf_gojson::marshal(&m.to_go_value())).unwrap();
+    /// // The JSON builder renders an absent list as `null`...
+    /// assert!(json.contains(r#""interactions":null"#));
+    /// // ...while the YAML builder renders it as `[]` (report contract).
+    /// let yaml = String::from_utf8(cf_goyaml::marshal(&m.to_go_value_yaml())).unwrap();
+    /// assert!(yaml.contains("interactions: []"));
+    /// ```
     #[must_use]
     pub fn to_go_value(&self) -> GoValue {
         self.build(false)
@@ -149,6 +162,24 @@ pub type DenseHistory = Vec<Vec<i64>>;
 /// `sampling` and `granularity` are the band/sample sizes (both 30 by
 /// default); `last_tick` is the maximum tick observed across the whole walk
 /// and determines the matrix dimensions.
+///
+/// ```
+/// use cf_analyzer_burndown::{group_sparse_history, SparseHistory};
+/// use std::collections::BTreeMap;
+///
+/// // One commit at tick 0 adds 100 lines authored at tick 0.
+/// let mut history: SparseHistory = BTreeMap::new();
+/// history.insert(0, BTreeMap::from([(0i64, 100i64)]));
+///
+/// // sampling = granularity = 10, last_tick = 0 → a 1x1 matrix.
+/// let dense = group_sparse_history(&history, 10, 10, 0);
+/// assert_eq!(dense.len(), 1);          // 1 sample row
+/// assert_eq!(dense[0].len(), 1);       // 1 cohort band
+/// assert_eq!(dense[0][0], 100);
+///
+/// // An empty history densifies to an empty matrix.
+/// assert!(group_sparse_history(&SparseHistory::new(), 10, 10, 0).is_empty());
+/// ```
 #[must_use]
 pub fn group_sparse_history(history: &SparseHistory, sampling: i64, granularity: i64, last_tick: i64) -> DenseHistory {
     if history.is_empty() {

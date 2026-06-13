@@ -66,6 +66,13 @@ fn inject_multilingual_lexicons(sia: &mut SentimentIntensityAnalyzer) {
 }
 
 /// Returns true if all bytes in `s` are ASCII (`< 128`).
+///
+/// ```
+/// use cf_sentiment::scorer::is_ascii_only;
+///
+/// assert!(is_ascii_only("plain ascii"));
+/// assert!(!is_ascii_only("café"));
+/// ```
 #[must_use]
 pub fn is_ascii_only(s: &str) -> bool {
     s.is_ascii()
@@ -76,6 +83,17 @@ pub fn is_ascii_only(s: &str) -> bool {
 /// The cast to `f32` deliberately truncates precision: the result reaches a
 /// 32-bit float machine-report field, and the truncation point is part of the
 /// report contract.
+///
+/// ```
+/// use cf_sentiment::scorer::vader_compound_to_score;
+///
+/// // Neutral maps to the midpoint; the endpoints map to 0 and 1.
+/// assert_eq!(vader_compound_to_score(0.0), 0.5);
+/// assert_eq!(vader_compound_to_score(1.0), 1.0);
+/// assert_eq!(vader_compound_to_score(-1.0), 0.0);
+/// // Out-of-range inputs clamp.
+/// assert_eq!(vader_compound_to_score(5.0), 1.0);
+/// ```
 #[must_use]
 pub fn vader_compound_to_score(compound: f64) -> f32 {
     let score = (compound + 1.0) / VADER_COMPOUND_RANGE;
@@ -149,6 +167,17 @@ pub fn apply_se_domain_adjustment_with_weight(text: &str, compound: f64, n_weigh
 }
 
 /// Returns a sentiment score in `[0,1]` for `comments` using default options.
+///
+/// ```
+/// use cf_sentiment::scorer::compute_sentiment;
+///
+/// // No comments → neutral 0.0.
+/// assert_eq!(compute_sentiment(&[]), 0.0);
+///
+/// // A clearly positive comment scores above the 0.5 neutral midpoint.
+/// let score = compute_sentiment(&["This is a great, clean fix!".to_string()]);
+/// assert!(score > 0.5, "score = {score}");
+/// ```
 #[must_use]
 pub fn compute_sentiment(comments: &[String]) -> f32 {
     compute_sentiment_with_options(comments, ScorerOptions::default())

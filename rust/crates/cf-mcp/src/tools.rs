@@ -79,6 +79,15 @@ pub struct UastParseInput {
 ///
 /// # Errors
 /// Returns the first failing constraint as a [`ToolError`].
+///
+/// ```
+/// use cf_mcp::tools::validate_code_input;
+/// use cf_mcp::ToolError;
+///
+/// assert!(validate_code_input("package main", "go").is_ok());
+/// assert_eq!(validate_code_input("", "go"), Err(ToolError::EmptyCode));
+/// assert_eq!(validate_code_input("x", ""), Err(ToolError::EmptyLanguage));
+/// ```
 pub fn validate_code_input(code: &str, language: &str) -> Result<(), ToolError> {
     if code.is_empty() {
         return Err(ToolError::EmptyCode);
@@ -97,6 +106,13 @@ pub fn validate_code_input(code: &str, language: &str) -> Result<(), ToolError> 
 
 /// Builds the synthetic filename `"code.<language>"` so the parser can
 /// dispatch by extension.
+///
+/// ```
+/// use cf_mcp::tools::synthetic_filename;
+///
+/// assert_eq!(synthetic_filename("go"), "code.go");
+/// assert_eq!(synthetic_filename("python"), "code.python");
+/// ```
 #[must_use]
 pub fn synthetic_filename(language: &str) -> String {
     format!("code.{language}")

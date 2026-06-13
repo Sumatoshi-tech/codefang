@@ -13,6 +13,36 @@ use crate::model::{CommitAnomalyData, TickMetrics};
 /// `commits_by_tick` preserves the per-tick hash ordering via a `Vec`; the
 /// outer `BTreeMap` keys (ticks) are iterated in ascending order, matching
 /// the deterministic sorted-key consumption downstream.
+///
+/// ```
+/// use cf_anomaly::aggregate::aggregate_commits_to_ticks;
+/// use cf_anomaly::model::CommitAnomalyData;
+/// use std::collections::BTreeMap;
+///
+/// let commit_metrics = BTreeMap::from([
+///     ("aaa".to_string(), CommitAnomalyData {
+///         files_changed: 3, lines_added: 20, lines_removed: 5, author_id: 1,
+///         ..Default::default()
+///     }),
+///     ("bbb".to_string(), CommitAnomalyData {
+///         files_changed: 2, lines_added: 10, lines_removed: 3, author_id: 2,
+///         ..Default::default()
+///     }),
+/// ]);
+/// // Tick 0 references both commits plus a missing "ccc" (skipped).
+/// let commits_by_tick = BTreeMap::from([(0i64, vec![
+///     "aaa".to_string(), "bbb".to_string(), "ccc".to_string(),
+/// ])]);
+///
+/// let ticks = aggregate_commits_to_ticks(&commit_metrics, &commits_by_tick);
+/// let tm = &ticks[&0];
+/// assert_eq!(tm.files_changed, 5);                 // additive merge
+/// assert_eq!(tm.net_churn, 30 - 8);                // added - removed
+/// assert_eq!(tm.author_ids.len(), 2);              // distinct authors
+///
+/// // Either input empty → empty result.
+/// assert!(aggregate_commits_to_ticks(&BTreeMap::new(), &commits_by_tick).is_empty());
+/// ```
 #[must_use]
 pub fn aggregate_commits_to_ticks(
     commit_metrics: &BTreeMap<String, CommitAnomalyData>,

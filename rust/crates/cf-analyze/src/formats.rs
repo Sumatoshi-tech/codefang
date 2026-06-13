@@ -52,7 +52,15 @@ pub const FORMAT_TIMESERIES_NDJSON: &str = "timeseries+ndjson";
 
 /// Canonicalizes a user-provided output format string.
 /// `NormalizeFormat`: lower-cased, trimmed, with the `bin`→`binary` alias.
-#[must_use] 
+///
+/// ```
+/// use cf_analyze::normalize_format;
+///
+/// assert_eq!(normalize_format(" JSON "), "json");
+/// assert_eq!(normalize_format("BIN"), "binary"); // bin -> binary alias
+/// assert_eq!(normalize_format("TimeSeries"), "timeseries");
+/// ```
+#[must_use]
 pub fn normalize_format(format: &str) -> String {
     let normalized = format.trim().to_lowercase();
     if normalized == FORMAT_BIN_ALIAS {
@@ -89,9 +97,21 @@ pub const fn static_output_formats() -> [&'static str; 6] {
     ]
 }
 
-/// Validates `format` against the provided support list. Returns the normalized format or
-/// [`AnalyzeError::UnsupportedFormat`] carrying the **original** (un-normalized)
-/// format string (CLI error contract).
+/// Validates `format` against the provided support list. Returns the normalized
+/// format or a [`FormatError::Unsupported`] carrying the **original**
+/// (un-normalized) format string (CLI error contract).
+///
+/// ```
+/// use cf_analyze::{validate_format, FormatError};
+///
+/// // Normalized on success: " BIN " -> "binary".
+/// assert_eq!(validate_format(" BIN ", &["binary", "json"]).unwrap(), "binary");
+///
+/// // On failure the error carries the original string verbatim.
+/// let err = validate_format("XmL", &["json", "yaml"]).unwrap_err();
+/// assert_eq!(err, FormatError::Unsupported { format: "XmL".to_string() });
+/// assert_eq!(err.to_string(), "unsupported format: XmL");
+/// ```
 pub fn validate_format(format: &str, supported: &[&str]) -> Result<String, FormatError> {
     let normalized = normalize_format(format);
     for candidate in supported {

@@ -57,7 +57,20 @@ const NORMALIZE_EXTRA_CAPACITY: usize = 4;
 
 /// Builds stable analyzer metadata from a mode, name, and description.
 /// The ID is `"{mode}/{normalized-name}"`.
-#[must_use] 
+///
+/// ```
+/// use cf_analyze::new_descriptor;
+/// use cf_analyze::descriptor::AnalyzerMode;
+///
+/// let d = new_descriptor(AnalyzerMode::Static, "Complexity", "Cyclomatic complexity");
+/// assert_eq!(d.id, "static/complexity");
+/// assert_eq!(d.mode, AnalyzerMode::Static);
+///
+/// // The name is normalized into the ID.
+/// let h = new_descriptor(AnalyzerMode::History, "FileHistory", "");
+/// assert_eq!(h.id, "history/file-history");
+/// ```
+#[must_use]
 pub fn new_descriptor(mode: AnalyzerMode, name: &str, description: &str) -> Descriptor {
     Descriptor {
         id: format!("{}/{}", mode.as_str(), normalize_name(name)),
@@ -74,7 +87,17 @@ pub fn new_descriptor(mode: AnalyzerMode, name: &str, description: &str) -> Desc
 ///   a lowercase letter, then lower-cases it (camelCase → kebab boundaries).
 /// * Other runes are lower-cased.
 /// * Leading/trailing `-` are trimmed.
-#[must_use] 
+///
+/// ```
+/// use cf_analyze::normalize_name;
+///
+/// assert_eq!(normalize_name("FileHistory"), "file-history"); // camelCase boundary
+/// assert_eq!(normalize_name("file_history"), "file-history"); // underscores
+/// assert_eq!(normalize_name("file history"), "file-history"); // spaces
+/// assert_eq!(normalize_name("_foo_"), "foo");                 // trimmed dashes
+/// assert_eq!(normalize_name("ABC"), "abc");                   // no lower precedes -> no boundary
+/// ```
+#[must_use]
 pub fn normalize_name(name: &str) -> String {
     let trimmed = name.trim();
     if trimmed.is_empty() {

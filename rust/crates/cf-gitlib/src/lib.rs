@@ -11,6 +11,12 @@
 //! reference implementation exactly; output bytes are pinned against the
 //! reference binary by `rust/tests/compat`.
 
+// Compile the README's usage example as a doctest (without injecting the README
+// into the rendered crate docs, which the `//!` block above already covers).
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
+
 pub mod batch;
 pub mod blob;
 pub mod changes;

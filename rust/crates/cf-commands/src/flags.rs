@@ -194,6 +194,20 @@ pub fn mark_deprecated_exclusion_flags(cmd: Command) -> Command {
 /// Returns the exact cobra deprecation message for a deprecated flag, or `None`
 /// if the flag is not deprecated. Messages copied verbatim from
 /// `markDeprecatedExclusionFlags`.
+///
+/// ```
+/// use cf_commands::deprecated_flag_message;
+///
+/// // The two legacy exclusion flags carry migration guidance.
+/// assert!(deprecated_flag_message("skip-blacklist")
+///     .unwrap()
+///     .contains("--include-vendored=false"));
+/// assert!(deprecated_flag_message("blacklisted-prefixes")
+///     .unwrap()
+///     .contains("--extra-excluded-prefixes"));
+/// // Any other flag is not deprecated.
+/// assert_eq!(deprecated_flag_message("workers"), None);
+/// ```
 #[must_use]
 pub fn deprecated_flag_message(flag: &str) -> Option<&'static str> {
     match flag {

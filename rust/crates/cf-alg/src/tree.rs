@@ -12,6 +12,31 @@ const DEFAULT_TREE_STACK_CAP: usize = 32;
 /// Children are pushed onto the explicit stack in reverse so they are visited
 /// left-to-right (pre-order); downstream callers rely on this order.
 /// `T: Clone` because node values are copied onto the work stack.
+///
+/// # Examples
+///
+/// ```
+/// use cf_alg::traverse_tree;
+///
+/// #[derive(Clone)]
+/// struct Node {
+///     name: &'static str,
+///     children: Vec<Node>,
+/// }
+///
+/// // Tree: a -> {b -> {d}, c}.
+/// let tree = Node {
+///     name: "a",
+///     children: vec![
+///         Node { name: "b", children: vec![Node { name: "d", children: vec![] }] },
+///         Node { name: "c", children: vec![] },
+///     ],
+/// };
+///
+/// let mut order = Vec::new();
+/// traverse_tree(tree, |n| n.children.clone(), |n, depth| order.push((n.name, depth)));
+/// assert_eq!(order, vec![("a", 0), ("b", 1), ("d", 2), ("c", 1)]);
+/// ```
 pub fn traverse_tree<T, C, V>(root: T, mut children: C, mut visit: V)
 where
     T: Clone,

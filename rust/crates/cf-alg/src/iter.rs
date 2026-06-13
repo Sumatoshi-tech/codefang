@@ -45,6 +45,39 @@ pub trait PullIterator<T> {
 ///
 /// Propagates any [`IteratorError::Other`] produced by `iter.next()`. EOF is not
 /// an error here — it terminates collection normally.
+///
+/// # Examples
+///
+/// ```
+/// use cf_alg::{collect_n, IteratorError, PullIterator};
+///
+/// struct Counter {
+///     pos: u32,
+///     end: u32,
+/// }
+///
+/// impl PullIterator<u32> for Counter {
+///     fn next(&mut self) -> Result<u32, IteratorError> {
+///         if self.pos >= self.end {
+///             return Err(IteratorError::Eof);
+///         }
+///         let v = self.pos;
+///         self.pos += 1;
+///         Ok(v)
+///     }
+///     fn close(&mut self) {
+///         self.pos = self.end;
+///     }
+/// }
+///
+/// let mut it = Counter { pos: 0, end: 5 };
+/// // A limit of 0 collects everything.
+/// assert_eq!(collect_n(&mut it, 0).unwrap(), vec![0, 1, 2, 3, 4]);
+///
+/// let mut it = Counter { pos: 0, end: 5 };
+/// // A positive limit caps the output.
+/// assert_eq!(collect_n(&mut it, 2).unwrap(), vec![0, 1]);
+/// ```
 pub fn collect_n<T, I: PullIterator<T> + ?Sized>(
     iter: &mut I,
     limit: usize,

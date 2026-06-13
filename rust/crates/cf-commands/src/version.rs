@@ -16,6 +16,16 @@
 /// including the trailing newline: `codefang <version> (commit: <commit>,
 /// built: <date>)\n`. mirrors the reference implementation `fmt.Fprintf(os.Stdout, "codefang %s (commit:
 /// %s, built: %s)\n", ...)`.
+///
+/// ```
+/// let line = cf_commands::version::version_output();
+/// // Always: the `codefang ` prefix, the `(commit: ..., built: ...)` shape,
+/// // and a single trailing newline.
+/// assert!(line.starts_with("codefang "));
+/// assert!(line.contains(" (commit: "));
+/// assert!(line.contains(", built: "));
+/// assert!(line.ends_with(")\n"));
+/// ```
 #[must_use]
 pub fn version_output() -> String {
     cf_version::codefang_version_line()

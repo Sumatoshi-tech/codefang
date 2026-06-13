@@ -25,6 +25,18 @@ impl Context {
     ///
     /// Standard two-row dynamic-programming Levenshtein, operating on Unicode
     /// scalar values (`char`), not bytes.
+    ///
+    /// ```
+    /// use cf_typos::levenshtein::Context;
+    ///
+    /// let mut c = Context::new();
+    /// assert_eq!(c.distance("kitten", "sitting"), 3);
+    /// // Distance is measured in scalar-value edits, so a multi-byte char
+    /// // counts as a single substitution, not its byte length.
+    /// assert_eq!(c.distance("café", "cafe"), 1);
+    /// // The same context can be reused across calls.
+    /// assert_eq!(c.distance("abc", "abd"), 1);
+    /// ```
     pub fn distance(&mut self, a: &str, b: &str) -> usize {
         let ra: Vec<char> = a.chars().collect();
         let rb: Vec<char> = b.chars().collect();

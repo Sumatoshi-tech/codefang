@@ -44,6 +44,19 @@ const ID_LEN: usize = 12;
 /// Deterministic replacement for go-echarts' random chart-ID generator: yields
 /// `[A-Za-z]{12}` IDs in a fixed per-page sequence (base-52 counter, most
 /// significant letter first), so two runs render byte-identical pages.
+///
+/// ```
+/// use cf_plotpage::ChartIdGen;
+///
+/// let mut ids = ChartIdGen::new();
+/// // The first ID is all-`A` (counter 0); the least-significant letter
+/// // advances through the `[A-Za-z]` alphabet.
+/// assert_eq!(ids.next_id(), "AAAAAAAAAAAA");
+/// assert_eq!(ids.next_id(), "AAAAAAAAAAAB");
+/// assert_eq!(ids.next_id(), "AAAAAAAAAAAC");
+/// // Every ID is 12 letters long.
+/// assert_eq!(ids.next_id().len(), 12);
+/// ```
 #[derive(Debug, Default)]
 pub struct ChartIdGen {
     next: u64,
@@ -1268,6 +1281,21 @@ const DEFAULT_COLORS: [&str; 9] = [
 
 /// A chart — models a configured go-echarts chart instance
 /// (`BaseConfiguration` + the per-family `charts.*` wrapper).
+///
+/// [`Chart::option_json`] emits the compact, HTML-escaping-off option JSON with
+/// the stream-encode trailing newline. An empty chart (no series added) marshals
+/// `"series":null`, mirroring go-echarts' nil `MultiSeries` slice:
+///
+/// ```
+/// use cf_plotpage::{Chart, ChartKind};
+///
+/// let chart = Chart::new(ChartKind::Pie);
+/// let json = chart.option_json();
+/// assert!(json.contains("\"series\":null"));
+/// // Compact (no spaces after separators) and trailing newline.
+/// assert!(!json.contains(": "));
+/// assert!(json.ends_with("}\n"));
+/// ```
 #[derive(Debug, Clone)]
 pub struct Chart {
     /// Chart family.

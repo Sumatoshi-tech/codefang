@@ -13,24 +13,21 @@ together in pipelines, CI systems, and AI agent workflows.
 
 | Binary | Purpose | Entry point |
 |--------|---------|-------------|
-| `uast` | Parse source code into Universal Abstract Syntax Trees | `cmd/uast/` |
-| `codefang` | Run static and history analyzers on code and repositories | `cmd/codefang/` |
+| `uast` | Parse source code into Universal Abstract Syntax Trees | `bins/uast/` |
+| `codefang` | Run static and history analyzers on code and repositories | `bins/codefang/` |
 
-Both CLIs are built with [Cobra](https://github.com/spf13/cobra) and share
-the same `pkg/` libraries.
+Both CLIs are thin entrypoints over the shared workspace crates: the `cf-uast*`
+crates for parsing and `cf-commands` plus the per-analyzer crates for analysis.
 
 ```bash
-# Parse a Go file into UAST JSON
-uast parse main.go
+# Parse a source file into UAST JSON
+uast parse main.rs
 
 # Run static complexity analysis
-codefang run -a static/complexity .
+codefang run -a static/complexity --head .
 
 # Run git history analysis
-codefang run -a history/burndown,history/devs .
-
-# Compose: parse, then analyze
-uast parse main.go | codefang run -a static/* --format json
+codefang run -a history/burndown,history/devs --limit 50 .
 ```
 
 ---
@@ -39,55 +36,53 @@ uast parse main.go | codefang run -a static/* --format json
 
 ### CLI layer
 
-| Package | Description |
-|---------|-------------|
-| `cmd/codefang/` | CLI entry point for the analyzer. Cobra commands for `run`, `mcp`, etc. |
-| `cmd/uast/` | CLI entry point for the UAST parser. Commands: `parse`, `query`, `diff`, `explore`, `server`. |
+| Crate | Description |
+|-------|-------------|
+| `bins/codefang` | CLI entry point for the analyzer. Subcommands `run`, `render`, `version`, `completion`. Delegates to `cf-commands`. |
+| `bins/uast` | CLI entry point for the UAST parser. Subcommands `parse`, `query`, `diff`, `explore`, `analyze`, `validate`, `mapping`, `lsp`, `server`. |
 
-### Core libraries
+### Core libraries (workspace crates)
 
-| Package | Description |
-|---------|-------------|
-| `pkg/uast/` | UAST parser engine. Tree-sitter integration, DSL engine, language mappings, pre-compiled matchers. `Parser.ParseFile` reads+parses a source file. |
-| `internal/analyzers/` | All analysis logic -- static analyzers and history analyzers. |
-| `internal/framework/` | Pipeline orchestration: runner, coordinator, streaming, blob/diff/UAST pipelines, profiling, watchdog. |
-| `pkg/alg/` | Generic algorithms: Range, Chunk, ForEachPair, Iterator[T] (pull-based sequence), CollectN[T] (drain up to N items), TraverseTree[T] (iterative pre-order DFS). |
-| `pkg/alg/stats/` | Core statistics: Mean, MeanStdDev, Percentile, Median, Clamp, Min, Max, Sum, EMA, ExceedsThreshold. Used by quality, anomaly, cohesion, streaming. |
-| `pkg/alg/mapx/` | Generic map/slice operations: CloneFunc, CloneNested, MergeAdditive, SortedKeys, Unique, SortAndLimit, BuildLookupSet, EstimateMapSize. Use stdlib maps.Clone/slices.Clone for shallow copies. Used by burndown, couples, anomaly, quality, cohesion, devs, file_history. |
-| `pkg/safeconv/` | Safe type conversions: MustConvert (panic), SafeConvert (clamp), Extract (type assertion + numeric coercion). Used across cmd/uast, pkg/gitlib, internal/framework, and analyzers. |
-| `pkg/persist/` | Codec-based file persistence: Codec interface, JSONCodec, GobCodec, SaveState, LoadState, Persister[T]. Used by internal/checkpoint for crash recovery. |
-| `pkg/textutil/` | Text utilities: IsBinary, CountLines, WriteJSON. Used by pkg/gitlib for binary detection and by cmd/uast for JSON output. |
-| `pkg/iosafety/` | Defensive I/O utilities: ReadFile (resolve+validate+read), ResolvePath (clean+abs+stat), SanitizeForTerminal (HTML-escape+strip control chars). Used by cmd/uast sub-commands. |
-| `pkg/gitlib/` | Git operations via libgit2 (git2go): repository, commit, tree, changes, worker pool, batch processing. |
-| `internal/config/` | Configuration system: types with mapstructure tags, Viper-based loader, compiled defaults, validation. |
-| `internal/mcp/` | Model Context Protocol server: tools for `codefang_analyze`, `uast_parse`, `codefang_history`. |
-| `internal/observability/` | OpenTelemetry integration: tracing, RED metrics, structured logging, HTTP middleware, attribute filter. |
-| `internal/streaming/` | Streaming pipeline planner: chunk sizing, memory budgets, double-buffered pipelining. |
-| `internal/cache/` | Blob cache (thin wrapper over `pkg/alg/lru`), hash sets, generic blob cache. |
-| `internal/checkpoint/` | Checkpoint manager for crash recovery across streaming chunks. |
-| `internal/budget/` | Memory budget solver for auto-tuning pipeline parameters. |
-| `internal/storage/` | Atomic file persistence: WriteAtomic (tmp+fsync+rename with cleanup on error). |
+The Rust port is a workspace of small, single-responsibility crates (`cf-*`).
+The most important ones:
 
-### Analyzers (`internal/analyzers/`)
+| Crate | Description |
+|-------|-------------|
+| `cf-uast` | UAST parser engine: Tree-sitter integration, DSL engine, language mappings, pre-compiled matchers. |
+| `cf-uast-node`, `cf-uast-spec` | UAST node model and the schema it conforms to. |
+| `cf-commands` | The `codefang` command bodies (`run`, `render`) and analyzer wiring. |
+| `cf-framework`, `cf-pipeline`, `cf-streaming` | Pipeline orchestration: runner, coordinator, blob/diff/UAST stages, memory-bounded streaming. |
+| `cf-gitlib` | Git operations via the `git2` crate (vendored libgit2): repository, commit, tree, changes, batch blob/diff worker. |
+| `cf-alg`, `cf-alg-stats`, `cf-alg-mapx`, `cf-alg-lru`, … | Generic algorithms, statistics, map/slice helpers, and supporting data structures used across analyzers. |
+| `cf-gojson`, `cf-goyaml`, `cf-gosort` | Go-byte-compatible serialization encoders — the only path report output may use, so output stays byte-identical to the frozen oracle. |
+| `cf-safeconv` | Safe numeric conversions (clamp / checked / extract) used across the workspace. |
+| `cf-persist`, `cf-checkpoint`, `cf-storage` | Codec-based persistence, checkpointing for crash recovery, atomic file writes. |
+| `cf-config` | Configuration system: typed config, loader, compiled defaults, validation. |
+| `cf-mcp` | Model Context Protocol server exposing analysis as agent tools. |
+| `cf-observability` | OpenTelemetry integration: tracing, RED metrics, structured logging. |
+| `cf-budget`, `cf-cache`, `cf-meminfo` | Memory-budget solver, blob/hash caches, memory introspection for auto-tuning. |
+| Analyzer crates (`cf-complexity`, `cf-cohesion`, `cf-halstead`, `cf-comments`, `cf-imports`, `cf-clones`, `cf-composition`, `cf-burndown-core`, `cf-couples`, `cf-devs`, `cf-file-history`, `cf-sentiment`, `cf-shotness`, `cf-typos`, `cf-anomaly`, `cf-quality`) | One crate per analyzer's logic. |
 
-#### Shared components (`plumbing/`)
+### Analyzers
 
-The plumbing package provides the shared pipeline components that all history
+#### Shared components (`cf-analyzers-plumbing`)
+
+The plumbing crate provides the shared pipeline components that all history
 analyzers depend on. These run as "core" analyzers in the pipeline before any
 leaf analyzers consume their output.
 
-| Component | File | Purpose |
-|-----------|------|---------|
-| `TreeDiffAnalyzer` | `tree_diff.go` | Computes per-commit tree diffs via libgit2 |
-| `BlobCacheAnalyzer` | `blob_cache.go` | Caches blob content for efficient re-reads |
-| `FileDiffAnalyzer` | `file_diff.go` | Computes file-level diffs from blobs |
-| `IdentityDetector` | `identity.go` | Maps commit authors to canonical identities |
-| `LanguagesDetectionAnalyzer` | `languages.go` | Detects file languages via enry |
-| `TicksSinceStart` | `ticks.go` | Assigns tick indices to commits for time-series |
-| `LinesStatsCalculator` | `line_stats.go` | Computes per-commit line addition/deletion stats |
-| `UASTChangesAnalyzer` | `uast.go` | Parses UAST for changed files |
+| Component | Purpose |
+|-----------|---------|
+| Tree-diff analyzer | Computes per-commit tree diffs via libgit2 |
+| Blob-cache analyzer | Caches blob content for efficient re-reads |
+| File-diff analyzer | Computes file-level diffs from blobs |
+| Identity detector | Maps commit authors to canonical identities |
+| Language detection | Detects file languages |
+| Ticks-since-start | Assigns tick indices to commits for time-series |
+| Line-stats calculator | Computes per-commit line addition/deletion stats |
+| UAST-changes analyzer | Parses UAST for changed files |
 
-#### Static analyzers (`analyze/`)
+#### Static analyzers
 
 | Analyzer | ID | Description |
 |----------|----|-------------|
@@ -97,8 +92,8 @@ leaf analyzers consume their output.
 | Cohesion | `static/cohesion` | Class/module cohesion metrics |
 | Imports | `static/imports` | Import graph and dependency analysis |
 
-The `analyze/` package also contains the static analysis service, analyzer
-registry, factory, output formatting (JSON, text, compact, YAML, plot, binary,
+The analysis layer also contains the static analysis service, analyzer
+registry, output formatting (JSON, text, compact, YAML, plot, binary,
 timeseries), and cross-format conversion logic.
 
 #### History analyzers
@@ -130,20 +125,20 @@ flowchart TD
         SRC[Source Files]
     end
 
-    subgraph gitlib["pkg/gitlib (libgit2)"]
+    subgraph gitlib["cf-gitlib (libgit2)"]
         OPEN[Open Repository]
         COMMITS[Load Commits]
         TREEDIFF[Tree Diff]
         BLOBS[Blob Lookup]
     end
 
-    subgraph uast_engine["pkg/uast (Tree-sitter)"]
+    subgraph uast_engine["cf-uast (Tree-sitter)"]
         DETECT[Language Detection<br/><em>enry</em>]
         PARSE[DSL Parser]
         NODES[UAST Nodes]
     end
 
-    subgraph framework["internal/framework"]
+    subgraph framework["cf-framework"]
         COORD[Coordinator<br/><em>worker pool</em>]
         BLOB_PIPE[Blob Pipeline]
         DIFF_PIPE[Diff Pipeline]
@@ -151,7 +146,7 @@ flowchart TD
         RUNNER[Runner<br/><em>chunk processing</em>]
     end
 
-    subgraph analyzers["pkg/analyzers"]
+    subgraph analyzers["analyzer crates"]
         PLUMB[Plumbing<br/><em>core analyzers</em>]
         STATIC[Static Analyzers<br/><em>complexity, cohesion,<br/>halstead, comments, imports</em>]
         HISTORY[History Analyzers<br/><em>burndown, couples, devs,<br/>sentiment, anomaly, ...</em>]
@@ -241,7 +236,7 @@ Static analysis is fast, parallelized across files, and requires no Git history.
 
 ### History mode
 
-1. Opens the Git repository via libgit2 (supports both normal and bare repos).
+1. Opens the Git repository via libgit2 through the `git2` crate (supports both normal and bare repos).
 2. Loads the commit history (optionally filtered by `--limit`, `--since`, `--first-parent`).
 3. The **Coordinator** orchestrates a worker pool with three pipeline stages: blob loading, diff computation, and UAST parsing.
 4. **Core plumbing analyzers** (tree diff, blob cache, identity detection, tick assignment, line stats, language detection, UAST changes) process each commit first.
@@ -288,8 +283,7 @@ Configuration follows a clear priority chain:
 CLI flags  >  Environment variables  >  .codefang.yaml  >  Compiled defaults
 ```
 
-The `internal/config/` package uses [Viper](https://github.com/spf13/viper) for
-loading and merging. Environment variables use the `CODEFANG_` prefix with
+The `cf-config` crate handles loading and merging. Environment variables use the `CODEFANG_` prefix with
 underscore-separated nesting (e.g., `CODEFANG_PIPELINE_WORKERS=8`).
 
 See the [Configuration reference](../guide/configuration.md) for the full

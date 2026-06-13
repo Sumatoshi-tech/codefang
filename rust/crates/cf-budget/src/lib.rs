@@ -14,6 +14,27 @@
 //!
 //! Every knob tunes parallelism, cache sizes, or native memory limits only —
 //! none of them can change machine-report bytes.
+//!
+//! # Example
+//!
+//! ```
+//! use cf_budget::{solve_for_budget, solve_static_budget, SolveError, MINIMUM_BUDGET};
+//!
+//! // A budget below the minimum is rejected.
+//! assert_eq!(solve_for_budget(MINIMUM_BUDGET - 1), Err(SolveError::BudgetTooSmall));
+//!
+//! // A valid budget yields a coordinator config with at least one worker and a
+//! // non-empty blob cache.
+//! let cfg = solve_for_budget(2 * 1024 * 1024 * 1024).unwrap();
+//! assert!(cfg.workers >= 1);
+//! assert!(cfg.blob_cache_size > 0);
+//!
+//! // The static solver returns a zero-value config ("use defaults") when the
+//! // budget is below its own minimum.
+//! let static_cfg = solve_static_budget(0);
+//! assert_eq!(static_cfg.max_workers, 0);
+//! assert_eq!(static_cfg.spill_threshold, 0);
+//! ```
 
 pub mod model;
 pub mod solver;

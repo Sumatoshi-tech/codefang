@@ -14,8 +14,8 @@ pub struct NodeTypeInfo {
     ///
     /// A `BTreeMap` keeps the field set deterministically ordered; every
     /// consumer that depends on order sorts first (see
-    /// [`crate::grammar_analysis::collect_child_types`]), so a sorted map
-    /// reproduces the observable behavior deterministically.
+    /// `grammar_analysis::collect_child_types`), so a sorted map reproduces the
+    /// observable behavior deterministically.
     pub fields: BTreeMap<String, FieldInfo>,
     /// Child node types.
     pub children: Vec<ChildInfo>,

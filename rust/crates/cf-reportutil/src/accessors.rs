@@ -65,6 +65,21 @@ pub fn get_float64(report: &GoMap, key: &str) -> f64 {
 /// Note: `cf_safeconv::to_int` returns the word-sized `isize`; this accessor
 /// widens it to `i64` to give a fixed return type on every target while
 /// matching the value on the supported 64-bit hosts.
+///
+/// # Examples
+///
+/// ```
+/// use cf_reportutil::{GoMap, GoValue};
+/// use cf_reportutil::accessors::get_int;
+///
+/// let mut r = GoMap::new_map();
+/// r.insert("n", GoValue::Int(42));
+/// r.insert("f", GoValue::Float(42.0)); // numeric coercion across types
+/// assert_eq!(get_int(&r, "n"), 42);
+/// assert_eq!(get_int(&r, "f"), 42);
+/// // A missing key yields 0.
+/// assert_eq!(get_int(&r, "missing"), 0);
+/// ```
 #[must_use]
 pub fn get_int(report: &GoMap, key: &str) -> i64 {
     match get(report, key) {
@@ -84,6 +99,22 @@ pub fn get_int(report: &GoMap, key: &str) -> i64 {
 ///
 /// A missing key, or a present value that is not a string, yields `""`
 /// (strict type match — numbers are not stringified).
+///
+/// # Examples
+///
+/// ```
+/// use cf_reportutil::{GoMap, GoValue};
+/// use cf_reportutil::accessors::get_string;
+///
+/// let mut r = GoMap::new_map();
+/// r.insert("name", GoValue::Str("hello".into()));
+/// r.insert("count", GoValue::Int(42));
+/// assert_eq!(get_string(&r, "name"), "hello");
+/// // A present-but-wrong-typed value yields the empty string (no coercion).
+/// assert_eq!(get_string(&r, "count"), "");
+/// // A missing key yields the empty string.
+/// assert_eq!(get_string(&r, "missing"), "");
+/// ```
 #[must_use]
 pub fn get_string(report: &GoMap, key: &str) -> String {
     match get(report, key) {
@@ -97,6 +128,27 @@ pub fn get_string(report: &GoMap, key: &str) -> String {
 /// A missing key, or a value that is not an array of strings, yields an empty
 /// vector. A *mixed* array (one element not a string) is not an array of
 /// strings and yields empty (all-or-nothing; report accessor contract).
+///
+/// # Examples
+///
+/// ```
+/// use cf_reportutil::{GoMap, GoValue};
+/// use cf_reportutil::accessors::get_string_slice;
+///
+/// let mut r = GoMap::new_map();
+/// r.insert("imports", GoValue::Array(vec![
+///     GoValue::Str("os".into()),
+///     GoValue::Str("fmt".into()),
+/// ]));
+/// // A mixed array (one non-string element) yields empty: all-or-nothing.
+/// r.insert("mixed", GoValue::Array(vec![
+///     GoValue::Str("os".into()),
+///     GoValue::Int(1),
+/// ]));
+/// assert_eq!(get_string_slice(&r, "imports"), vec!["os", "fmt"]);
+/// assert!(get_string_slice(&r, "mixed").is_empty());
+/// assert!(get_string_slice(&r, "missing").is_empty());
+/// ```
 #[must_use]
 pub fn get_string_slice(report: &GoMap, key: &str) -> Vec<String> {
     match get(report, key) {

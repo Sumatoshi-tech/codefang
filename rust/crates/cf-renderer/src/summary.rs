@@ -41,6 +41,24 @@ impl<'a> ExecutiveSummary<'a> {
 
     /// Returns the average score of all scored sections, excluding info-only
     /// sections. Returns [`SCORE_INFO_ONLY`] when there are no scored sections.
+    ///
+    /// ```
+    /// use cf_renderer::ExecutiveSummary;
+    /// use cf_renderer::analyze::{BaseReportSection, ReportSection, SCORE_INFO_ONLY};
+    ///
+    /// let good = BaseReportSection { title: "C".into(), message: "Good".into(), score_value: 0.8 };
+    /// let fair = BaseReportSection { title: "D".into(), message: "Fair".into(), score_value: 0.6 };
+    /// // An info-only section (negative score) is excluded from the average.
+    /// let info = BaseReportSection { title: "I".into(), message: "info".into(), score_value: SCORE_INFO_ONLY };
+    ///
+    /// let sections: Vec<&dyn ReportSection> = vec![&good, &fair, &info];
+    /// let summary = ExecutiveSummary::new(&sections);
+    /// assert!((summary.overall_score() - 0.7).abs() < 1e-9);
+    ///
+    /// // With no scored sections, the result is the info-only sentinel.
+    /// let only_info: Vec<&dyn ReportSection> = vec![&info];
+    /// assert_eq!(ExecutiveSummary::new(&only_info).overall_score(), SCORE_INFO_ONLY);
+    /// ```
     #[must_use]
     pub fn overall_score(&self) -> f64 {
         let mut total = 0.0;

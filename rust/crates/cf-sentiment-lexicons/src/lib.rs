@@ -146,6 +146,14 @@ pub fn language_count() -> usize {
 ///
 /// For an unknown code the code itself is returned, exactly as the Go
 /// `LanguageName` helper does.
+///
+/// ```
+/// use cf_sentiment_lexicons::{language_name, LANG_RUSSIAN};
+///
+/// assert_eq!(language_name(LANG_RUSSIAN), "Russian");
+/// // Unknown codes echo back the input.
+/// assert_eq!(language_name("xx"), "xx");
+/// ```
 pub fn language_name(lang: Language) -> String {
     REGISTRY
         .iter()
@@ -170,6 +178,15 @@ pub fn for_language(lang: Language) -> Option<&'static [Entry]> {
 ///
 /// Port of the Go `All`. Entries are concatenated in registry (ISO-code) order;
 /// each language's internal ordering is preserved.
+///
+/// ```
+/// use cf_sentiment_lexicons::{all, entry_count};
+///
+/// // The flattened view holds exactly `entry_count()` entries...
+/// assert_eq!(all().len(), entry_count());
+/// // ...and every embedded valence is +1.5 or -1.5.
+/// assert!(all().iter().all(|e| e.valence == 1.5 || e.valence == -1.5));
+/// ```
 pub fn all() -> Vec<Entry> {
     let mut out = Vec::with_capacity(entry_count());
     for (_, _, entries) in REGISTRY {

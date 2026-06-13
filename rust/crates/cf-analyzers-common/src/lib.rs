@@ -11,4 +11,8 @@
 //! cf-uast-node, cf-streaming, cf-safeconv and cf-spillstore.
 
 /// Crate name, used by smoke tests to confirm the module links.
+///
+/// ```
+/// assert_eq!(cf_analyzers_common::CRATE_NAME, "cf-analyzers-common");
+/// ```
 pub const CRATE_NAME: &str = "cf-analyzers-common";

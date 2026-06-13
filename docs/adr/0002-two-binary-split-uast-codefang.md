@@ -27,14 +27,14 @@ The original `hercules` was a monolith. Codefang has two distinct jobs: turning 
 
 Chosen option: "Two binaries — `uast` and `codefang`", because parsing and analysis are separable responsibilities with different consumers, and a pipe-friendly split lets each tool stay small while still composing into a pipeline.
 
-`uast` (`cmd/uast/`) turns source code into UAST and exposes `parse`, `query`, `diff`, `explore`, and `server`. `codefang` (`cmd/codefang/`) consumes UASTs for static analysis or Git repositories for history analysis via `run`, `mcp`, and related commands. Both CLIs are built with Cobra and share the same `pkg/` libraries, so the split is at the command surface, not a duplication of core logic. The canonical composition is `uast parse main.go | codefang run -a static/* --format json`.
+`uast` (`bins/uast/`) turns source code into UAST and exposes `parse`, `query`, `diff`, `explore`, `analyze`, and `server`. `codefang` (`bins/codefang/`) consumes UASTs for static analysis or Git repositories for history analysis via `run`, `render`, and related commands. Both CLIs are thin entrypoints over the shared workspace crates (`cf-uast*` for parsing, `cf-commands` and the analyzer crates for analysis), so the split is at the command surface, not a duplication of core logic. The canonical composition is `codefang run -a static/* --format json /path/to/repo`; `uast parse` can also produce a UAST for inspection or for piping into other tools.
 
 ### Consequences
 
 - Good: Each binary has one responsibility and a small command surface.
 - Good: `uast` is usable on its own as a universal parser, independent of any analysis.
 - Good: The tools compose through stdin/stdout, fitting CI pipelines and AI-agent tool wiring.
-- Neutral: Two binaries must be installed (`go install .../cmd/codefang` and `.../cmd/uast`), and both are versioned together from one module.
+- Neutral: Two binaries are produced (`cargo build -p codefang -p uast`), and both are versioned together from one workspace.
 - Bad: A workflow that always wants both pays an extra process boundary and a serialization step between them.
 
 ## Pros and cons of the options
@@ -43,7 +43,7 @@ Chosen option: "Two binaries — `uast` and `codefang`", because parsing and ana
 
 - Good: Single-responsibility tools; either is useful alone.
 - Good: Pipe composition matches the Unix philosophy the project commits to.
-- Neutral: Shared `pkg/` code means the split costs no logic duplication.
+- Neutral: Shared workspace crates mean the split costs no logic duplication.
 
 ### Single monolithic binary
 

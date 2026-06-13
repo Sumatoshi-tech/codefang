@@ -136,6 +136,20 @@ impl Config {
     ///
     /// [`Color::None`] also returns `text` unchanged regardless of
     /// [`Config::no_color`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cf_terminal::{Color, Config};
+    ///
+    /// let on = Config { width: 80, no_color: false };
+    /// assert_eq!(on.colorize("hi", Color::Green), "\u{1b}[32mhi\u{1b}[0m");
+    /// // Color::None is a pass-through even when color is enabled.
+    /// assert_eq!(on.colorize("hi", Color::None), "hi");
+    ///
+    /// let off = Config { width: 80, no_color: true };
+    /// assert_eq!(off.colorize("hi", Color::Green), "hi");
+    /// ```
     #[must_use]
     pub fn colorize(&self, text: &str, color: Color) -> String {
         if self.no_color {
@@ -225,6 +239,16 @@ impl Color {
     /// The raw ANSI escape sequence for this color. [`Color::None`] has no code
     /// (empty string): colorizing with it emits the text with no prefix or
     /// reset.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cf_terminal::Color;
+    ///
+    /// assert_eq!(Color::None.code(), "");
+    /// assert_eq!(Color::Green.code(), "\u{1b}[32m");
+    /// assert_eq!(Color::Red.code(), "\u{1b}[31m");
+    /// ```
     #[must_use]
     pub const fn code(self) -> &'static str {
         match self {
@@ -242,6 +266,16 @@ impl Color {
 ///
 /// `score >= 0.8` → [`Color::Green`]; `score >= 0.5` → [`Color::Yellow`];
 /// otherwise [`Color::Red`].
+///
+/// # Examples
+///
+/// ```
+/// use cf_terminal::{color_for_score, Color};
+///
+/// assert_eq!(color_for_score(0.9), Color::Green);
+/// assert_eq!(color_for_score(0.5), Color::Yellow); // inclusive lower bound
+/// assert_eq!(color_for_score(0.3), Color::Red);
+/// ```
 #[must_use]
 pub fn color_for_score(score: f64) -> Color {
     if score >= SCORE_THRESHOLD_GOOD {
@@ -263,6 +297,19 @@ pub fn color_for_score(score: f64) -> Color {
 /// clamped). The number of filled cells is `value * width` truncated toward
 /// zero. Filled cells use [`PROGRESS_FILLED`] and the remaining
 /// `width - filled` cells use [`PROGRESS_EMPTY`].
+///
+/// # Examples
+///
+/// ```
+/// use cf_terminal::draw_progress_bar;
+///
+/// assert_eq!(draw_progress_bar(0.0, 10), "░░░░░░░░░░");
+/// assert_eq!(draw_progress_bar(0.7, 10), "███████░░░");
+/// assert_eq!(draw_progress_bar(1.0, 10), "██████████");
+/// // `value` is clamped to [0, 1].
+/// assert_eq!(draw_progress_bar(-0.5, 10), "░░░░░░░░░░");
+/// assert_eq!(draw_progress_bar(1.5, 10), "██████████");
+/// ```
 ///
 /// # Panics
 ///
@@ -299,6 +346,17 @@ pub fn draw_progress_bar(value: f64, width: i64) -> String {
 ///
 /// `N = round(score * 10)` using round-half-away-from-zero, so
 /// `0.75 → "8/10"`.
+///
+/// # Examples
+///
+/// ```
+/// use cf_terminal::format_score;
+///
+/// assert_eq!(format_score(0.0), "0/10");
+/// assert_eq!(format_score(0.8), "8/10");
+/// assert_eq!(format_score(1.0), "10/10");
+/// assert_eq!(format_score(0.75), "8/10"); // rounds half away from zero
+/// ```
 #[must_use]
 pub fn format_score(score: f64) -> String {
     let scaled = (score * SCORE_MAX as f64).round() as i64;
@@ -307,6 +365,14 @@ pub fn format_score(score: f64) -> String {
 
 /// Format a score as a bracketed bar followed by the `"N/10"` badge, e.g.
 /// `"[████████░░] 8/10"`.
+///
+/// # Examples
+///
+/// ```
+/// use cf_terminal::format_score_bar;
+///
+/// assert_eq!(format_score_bar(0.8, 10), "[████████░░] 8/10");
+/// ```
 #[must_use]
 pub fn format_score_bar(score: f64, bar_width: i64) -> String {
     let bar = draw_progress_bar(score, bar_width);
@@ -325,6 +391,18 @@ pub fn format_score_bar(score: f64, bar_width: i64) -> String {
 ///
 /// Example: `"Simple (1-5)     ████████████████░░░░  68%  (68)"`. This is
 /// **cosmetic / non-binding** output (DESIGN.md §2.7).
+///
+/// # Examples
+///
+/// ```
+/// use cf_terminal::draw_percent_bar;
+///
+/// let row = draw_percent_bar("Simple (1-5)", 0.68, 68, 15, 20);
+/// // label padded to 15 bytes, then the bar, then the right-aligned percent
+/// // (two spaces before the parenthesized count).
+/// assert!(row.starts_with("Simple (1-5)   ")); // 12 bytes + 3 pad = 15
+/// assert!(row.ends_with("  68%  (68)"));
+/// ```
 #[must_use]
 pub fn draw_percent_bar(
     label: &str,
@@ -351,6 +429,17 @@ pub fn draw_percent_bar(
 /// * Otherwise the result is the first `max_width - 3` **bytes** of `s`
 ///   followed by `"..."` (total `max_width` bytes).
 ///
+/// # Examples
+///
+/// ```
+/// use cf_terminal::truncate_with_ellipsis;
+///
+/// assert_eq!(truncate_with_ellipsis("hello", 10), "hello");      // fits
+/// assert_eq!(truncate_with_ellipsis("hello", 5), "hello");       // exact
+/// assert_eq!(truncate_with_ellipsis("hello world", 8), "hello..."); // 5 + "..."
+/// assert_eq!(truncate_with_ellipsis("hello", 2), "..");          // max_width <= 3
+/// ```
+///
 /// # Panics
 ///
 /// The byte index `max_width - 3` must fall on a UTF-8 character boundary;
@@ -374,6 +463,17 @@ pub fn truncate_with_ellipsis(s: &str, max_width: i64) -> String {
 ///
 /// If the byte length of `s` is `>= width`, `s` is returned unchanged (never
 /// truncated). Length is measured in bytes, not display columns.
+///
+/// # Examples
+///
+/// ```
+/// use cf_terminal::pad_right;
+///
+/// assert_eq!(pad_right("hello", 10), "hello     ");
+/// assert_eq!(pad_right("hello", 5), "hello");
+/// assert_eq!(pad_right("hello", 3), "hello"); // wider than `width`: no truncation
+/// assert_eq!(pad_right("", 5), "     ");
+/// ```
 #[must_use]
 pub fn pad_right(s: &str, width: i64) -> String {
     let len = s.len() as i64;
@@ -389,6 +489,15 @@ pub fn pad_right(s: &str, width: i64) -> String {
 
 /// Draw a thin horizontal separator line of `width` light box-drawing
 /// characters ([`BOX_HORIZONTAL`], `─`). A `width <= 0` yields an empty string.
+///
+/// # Examples
+///
+/// ```
+/// use cf_terminal::draw_separator;
+///
+/// assert_eq!(draw_separator(5), "─────");
+/// assert_eq!(draw_separator(0), "");
+/// ```
 #[must_use]
 pub fn draw_separator(width: i64) -> String {
     if width <= 0 {
@@ -414,6 +523,19 @@ pub fn draw_separator(width: i64) -> String {
 /// space. All lengths are byte lengths.
 ///
 /// This is **cosmetic / non-binding** output (DESIGN.md §2.7).
+///
+/// # Examples
+///
+/// ```
+/// use cf_terminal::draw_header;
+///
+/// let header = draw_header("COMPLEXITY", "Score: 8/10", 40);
+/// let lines: Vec<&str> = header.lines().collect();
+/// assert_eq!(lines.len(), 3); // top border, content, bottom border
+/// assert!(lines[0].starts_with('┏') && lines[0].ends_with('┓'));
+/// assert!(lines[1].contains("COMPLEXITY") && lines[1].contains("Score: 8/10"));
+/// assert!(lines[2].starts_with('┗') && lines[2].ends_with('┛'));
+/// ```
 #[must_use]
 pub fn draw_header(title: &str, right_text: &str, width: i64) -> String {
     const HEADER_EXTRA_CHARS: i64 = 4; // borders + spacing around title/rightText

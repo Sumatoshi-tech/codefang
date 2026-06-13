@@ -11,6 +11,25 @@ use std::sync::RwLock;
 /// the lock concurrently; writers are exclusive. All methods take `&self` so
 /// the store can be shared (e.g. inside an `Arc`) across the async LSP
 /// handler tasks.
+///
+/// # Examples
+///
+/// ```
+/// use cf_uast_lsp::DocumentStore;
+///
+/// let store = DocumentStore::new();
+/// assert!(store.get("file:///a.uastmap").is_none());
+///
+/// store.set("file:///a.uastmap", "initial");
+/// assert!(store.contains("file:///a.uastmap"));
+///
+/// // `set` is last-write-wins.
+/// store.set("file:///a.uastmap", "updated");
+/// assert_eq!(store.get("file:///a.uastmap").as_deref(), Some("updated"));
+///
+/// store.delete("file:///a.uastmap");
+/// assert!(!store.contains("file:///a.uastmap"));
+/// ```
 #[derive(Debug, Default)]
 pub struct DocumentStore {
     /// URI -> content.

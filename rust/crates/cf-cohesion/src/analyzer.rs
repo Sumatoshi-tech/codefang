@@ -118,6 +118,21 @@ impl Analyzer {
     /// Returns an intermediate [`Report`]; convert to the machine format with
     /// [`crate::metrics::compute_all_metrics`].
     ///
+    /// A subtree with no functions yields the empty-result shape: `lcom = 0`,
+    /// `cohesion_score = 1`, `function_cohesion = 1`, and no `analyzer_name` /
+    /// `functions` keys:
+    ///
+    /// ```
+    /// use cf_cohesion::Analyzer;
+    /// use cf_cohesion::report_value::ReportValue;
+    /// use cf_cohesion::uast::TestNode;
+    ///
+    /// let report = Analyzer::new().analyze(&TestNode::block(vec![])).unwrap();
+    /// assert_eq!(report.get("total_functions"), Some(&ReportValue::Int(0)));
+    /// assert_eq!(report.get("cohesion_score"), Some(&ReportValue::Float(1.0)));
+    /// assert!(report.get("functions").is_none());
+    /// ```
+    ///
     /// # Errors
     ///
     /// Currently never fails: the root is non-nullable, so the missing-root
@@ -312,6 +327,17 @@ impl Analyzer {
     }
 
     /// Emoji cohesion assessment.
+    ///
+    /// `>= 0.6` is excellent, `>= 0.4` good, `>= 0.3` fair, otherwise poor:
+    ///
+    /// ```
+    /// use cf_cohesion::Analyzer;
+    /// let a = Analyzer::new();
+    /// assert_eq!(a.get_cohesion_assessment(0.6), "\u{1F7E2} Excellent");
+    /// assert_eq!(a.get_cohesion_assessment(0.4), "\u{1F7E1} Good");
+    /// assert_eq!(a.get_cohesion_assessment(0.3), "\u{1F7E1} Fair");
+    /// assert_eq!(a.get_cohesion_assessment(0.29), "\u{1F534} Poor");
+    /// ```
     #[must_use]
     pub fn get_cohesion_assessment(&self, cohesion: f64) -> String {
         if cohesion >= COHESION_THRESHOLD_HIGH {

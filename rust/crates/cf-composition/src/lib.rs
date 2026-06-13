@@ -21,6 +21,30 @@
 //! * [`aggregator`] — `Aggregator` (per-file results -> aggregate report).
 //! * [`report_section`] — `ReportSection` (terminal section data).
 //! * [`analyzer`] — `Analyzer` (identity + format entry points).
+//!
+//! # Example
+//!
+//! Classify a single file into its [`Category`]:
+//!
+//! ```
+//! use cf_composition::{Classifier, Category};
+//!
+//! let category = Classifier::new().classify("pkg/main.go", b"package main\n");
+//! assert_eq!(category, Category::Source);
+//! assert_eq!(category.as_str(), "source");
+//! ```
+//!
+//! The analyzer's per-file report is a single-key `category` map, encoded
+//! through `cf-gojson`:
+//!
+//! ```
+//! use cf_composition::Analyzer;
+//!
+//! let report = Analyzer::new().analyze_file_content("pkg/main.go", b"package main\n");
+//! let bytes = cf_gojson::Encoder::compact()
+//!     .encode_to_vec(&cf_gojson::GoValue::Map(report));
+//! assert_eq!(bytes, br#"{"category":"source"}"#);
+//! ```
 
 #![forbid(unsafe_code)]
 
