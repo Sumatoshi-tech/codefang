@@ -88,3 +88,8 @@ coverage.out
 profiles/
 .promptkit
 .tmp
+
+# Rust workspace
+/target
+**/*.rs.bk
+Cargo.lock.orig

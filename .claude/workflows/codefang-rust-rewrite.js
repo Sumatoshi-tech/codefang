@@ -17,7 +17,7 @@ export const meta = {
 const GO = '/home/dmitriy/sources/codefang'
 const KUBE = '/home/dmitriy/sources/kubernetes'
 const RUST = GO + '/rust'
-const GOLDEN = GO + '/rust/tests/golden'
+const GOLDEN = GO + '/tests/golden'
 const DOCS = GO + '/specs/rust-rewrite'
 // FULL AUTONOMOUS ATTEMPT: port every module, no cap (long tail captured in ROADMAP for resume).
 const PORT_LIMIT = Infinity

@@ -1,0 +1,47 @@
+[package]
+name = "cf-devs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+# cf-devs — developer activity / per-developer line statistics with
+# HyperLogLog developer-cardinality estimation (analyzer id: history/devs,
+# sequential-only).
+#
+# Computes per-developer commit / lines-added / lines-removed / lines-changed
+# statistics through time, per-language breakdowns, CHAOSS bus-factor risk,
+# per-tick activity and churn time-series, and an aggregate summary that uses
+# an HLL sketch for total/active developer cardinality. Merge semantics are
+# purely additive and NO wall-clock is read during scoring.
+#
+# Report serialization routes exclusively through cf-gojson / cf-goyaml; the
+# machine-format bytes (json/yaml/ndjson/timeseries/compact/bin) are pinned
+# against the reference implementation by tests/compat.
+
+[dependencies]
+# Report-format-compatible JSON encoder. NEVER serde_json for output. The
+# report types expose `*_to_go()` builders producing a GoValue tree that both
+# the JSON (cf-gojson) and YAML (cf-goyaml) paths consume.
+cf-gojson = { path = "../cf-gojson" }
+# HyperLogLog cardinality sketch. p=14 → 16384 registers; the estimate is an
+# integer in machine output so it must be bit-identical to the reference.
+cf-alg-hll = { path = "../cf-alg-hll" }
+# Mean/stddev/percent helpers. `to_percent` produces the primary/secondary
+# percentage floats that reach the report.
+cf-alg-stats = { path = "../cf-alg-stats" }
+# Identity helpers (AUTHOR_MISSING sentinel, AUTHOR_MISSING_NAME,
+# split_identity).
+cf-identity = { path = "../cf-identity" }
+# MetricMeta + risk level/priority enums.
+cf-metrics = { path = "../cf-metrics" }
+# Unstable-sort (pdqsort) parity for byte-identical tie ordering (busfactor
+# risk-priority sort, contributor sort).
+cf-gosort = { path = "../cf-gosort" }
+
+[lints.clippy]
+pedantic = "warn"
+
+[dev-dependencies]

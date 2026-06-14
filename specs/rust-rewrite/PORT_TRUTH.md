@@ -2,7 +2,7 @@
 
 The golden captures (32/32 "byte-identical") are necessary but NOT sufficient:
 they can be matched via hardcoded closed-form constants rather than a real port.
-The anti-simulation gate (`rust/tests/antisim/parity_gate.sh`) proves the real
+The anti-simulation gate (`tests/antisim/parity_gate.sh`) proves the real
 state by diffing against Go on OFF-GOLDEN inputs + constant-output probes.
 
 ## LATEST VERIFIED GATE RUN (2026-06-06)
@@ -45,7 +45,7 @@ state by diffing against Go on OFF-GOLDEN inputs + constant-output probes.
   AssignStableIDs, so every parsed node carries the empty id "", reverseNodeMap
   collapses to one (random map-order) entry, and the SELECTED NODE SET differs
   run-to-run. PROVEN: the Go binary does not even reproduce its own
-  rust/tests/golden/run/history_shotness.json (differs at byte 211). The golden
+  tests/golden/run/history_shotness.json (differs at byte 211). The golden
   is MANIFEST nonBinding/stable=false. This port resolves the empty-id tiebreak
   deterministically (max name). Gate realprobe → PASS, no SIM.
 - history/couples — REAL (couples_run.rs); same Go content-nondeterminism class

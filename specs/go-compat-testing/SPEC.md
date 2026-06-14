@@ -2,8 +2,8 @@
 
 ## 0. Status (as of 2026-06-06)
 
-**BUILT — all 8 roadmap layers implemented under `rust/tests/compat/`.** Single
-entry point: `rust/tests/compat/run.sh {smoke|full}` (see `tests/compat/README.md`).
+**BUILT — all 8 roadmap layers implemented under `tests/compat/`.** Single
+entry point: `tests/compat/run.sh {smoke|full}` (see `tests/compat/README.md`).
 
 - [x] **1. Oracle + canonicalizer** — `oracle/oracle.py`: runs the LIVE Go binary
       N≥3×, classifies every JSON-leaf field STABLE/VARIANT with stored evidence,
@@ -232,8 +232,8 @@ Every piece below is part of one cohesive compatibility-test system:
 
 ### Architecture
 
-Sits alongside the existing `rust/tests/antisim/parity_gate.sh` (which becomes the seed of
-layer 6) and `rust/tests/golden-harness` (which becomes one consumer of layer 4's manifest).
+Sits alongside the existing `tests/antisim/parity_gate.sh` (which becomes the seed of
+layer 6) and `tests/golden-harness` (which becomes one consumer of layer 4's manifest).
 
 Data flow:
 
@@ -255,7 +255,7 @@ results ──► per-cell PASS/FAIL/SIM ──► coverage accounting (llvm-cov
 tamper check (hash oracle/matrix) ──► fail-closed gate ──► CI exit code
 ```
 
-Modules affected / added (under `rust/tests/compat/`): `matrix.toml` (the invocation
+Modules affected / added (under `tests/compat/`): `matrix.toml` (the invocation
 cross-product), `corpus/` (content-addressed inputs + provenance), `oracle/` (Go-runner +
 Go-measured canonicalizer), `fuzz/` (per-stage Go-native fuzz targets + Rust FFI/subprocess
 shims), `metamorphic/` (relational checks), `coverage/` (llvm-cov + matrix-cell accounting),

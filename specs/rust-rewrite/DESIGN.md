@@ -47,7 +47,7 @@ plus the CLI surface (`--help`, `version`, format-validation error strings) are 
    `MarshalIndent`; `static.go` and the timeseries/ndjson sinks use `NewEncoder`. The trailing
    newline is the single most common one-byte golden diff.
 
-3. **The keystones already exist and are correct in spirit.** `rust/crates/cf-gojson`
+3. **The keystones already exist and are correct in spirit.** `crates/cf-gojson`
    (`value.rs`, `marshal.rs`, `ftoa.rs`) already models declaration-order structs vs
    byte-sorted map keys, HTML escaping of `<>&`, and the two Go float encoders
    (`format_json_float` = json's `'g'` with ≥1-digit exponent and `1e-6`/`1e21` thresholds;
@@ -241,13 +241,13 @@ order, help layout, or error strings; the builder controls every user-facing byt
 
 ## 5. Golden-diff integration-test harness
 
-Anchored by the existing `rust/tests/golden-harness` crate (`golden_diff.rs`).
+Anchored by the existing `tests/golden-harness` crate (`golden_diff.rs`).
 
 1. **Corpus + pinning**: run the **Go binary** and the **Rust binary** with the exact argv from
    the golden manifest against fixed repos (`~/sources/kubernetes` large target + small
    deterministic fixtures for CI). Pin commit range / `--head` / `--limit` for reproducibility.
 2. **Binding byte diff**: for every `(analyzer × machine format)` with `nonBinding:false`,
-   `assert_eq!` on raw `Vec<u8>` against the golden artifact (`rust/tests/golden/...`,
+   `assert_eq!` on raw `Vec<u8>` against the golden artifact (`tests/golden/...`,
    sha256-checked). On mismatch, emit byte-offset + hexdump window and, for JSON, a structural
    diff localizing float / key-order / escaping / trailing-newline causes.
 3. **Non-binding = informational**: UNSTABLE-marked goldens (clones, cohesion, comments-json,
@@ -286,7 +286,7 @@ Anchored by the existing `rust/tests/golden-harness` crate (`golden_diff.rs`).
 - Byte-diff golden harness over a pinned corpus; only binding (machine) goldens fail the build;
   human/UNSTABLE diffs are informational.
 
-Grounded in: `rust/Cargo.toml`, `rust/crates/cf-gojson/src/{lib.rs,ftoa.rs,marshal.rs,value.rs}`,
+Grounded in: `Cargo.toml`, `crates/cf-gojson/src/{lib.rs,ftoa.rs,marshal.rs,value.rs}`,
 `internal/analyzers/common/reportutil/binary.go`, `internal/analyzers/analyze/formats.go`,
 `internal/analyzers/common/reporter.go`, and the golden manifest in
-`rust/tests/golden/{run,static,uast}/`.
+`tests/golden/{run,static,uast}/`.

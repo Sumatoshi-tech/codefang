@@ -1,0 +1,106 @@
+[package]
+name = "cf-commands"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Analyzer-registration + clap command construction for codefang: the run/render/version command tree and dynamic per-analyzer flags."
+
+# cf-commands is the tier-8 analyzer-registration + clap command-construction
+# aggregation point (DESIGN §1 tier 8, §4): it builds the run/render/version
+# clap commands, registers every analyzer and its dynamic per-analyzer flags,
+# and routes all report serialization through the shared report-format crates
+# (never raw serde). Output bytes are pinned against the reference binary by
+# the differential gate in tests/compat.
+
+[features]
+# Default builds only the parts that do NOT depend on unported sibling crates:
+# the clap command tree, format validation, and the version command.
+default = []
+
+# `runtime` pulls in the remaining execution crates (framework runner,
+# checkpoint/cache, observability, plot/store) for the not-yet-wired streaming
+# pipeline paths. The core run pipeline + registry (this crate's `pipeline` and
+# `handlers` modules) now depend on the analyzer + git crates unconditionally,
+# so they are no longer behind this feature.
+runtime = [
+    "dep:cf-framework",
+    "dep:cf-config",
+    "dep:cf-checkpoint",
+    "dep:cf-budget",
+    "dep:cf-observability",
+    "dep:cf-storage",
+]
+
+# The reference `mcp` command is not shipped by default (DESIGN §4.1).
+# Mirror it as a non-default feature.
+mcp = ["dep:cf-mcp"]
+
+[dependencies]
+clap = { workspace = true }
+thiserror = "1"
+# Generates the shell-completion scripts for the `completion` subcommand, the
+# Rust analogue of the bytes cobra emits for its auto-registered completion
+# command (bash/fish/powershell/zsh).
+clap_complete = "4"
+
+# Real, compiling sibling crates depended on unconditionally.
+cf-version = { path = "../cf-version" }
+cf-pipeline = { path = "../cf-pipeline" }
+
+# --- Run-pipeline execution crates (the general run pipeline + registry) ---
+# Report serialization MUST route through these report-format crates, never serde.
+cf-gojson = { path = "../cf-gojson" }
+cf-goyaml = { path = "../cf-goyaml" }
+cf-reportutil = { path = "../cf-reportutil" }
+# UAST parse for the shared static folder phase (parse the file set once).
+cf-uast = { path = "../cf-uast" }
+cf-uast-node = { path = "../cf-uast-node" }
+# Vendor/generated path-policy exclusion shared by the static + history phases.
+cf-pathpolicy = { path = "../cf-pathpolicy", features = ["default-deps"] }
+# libgit2-backed repository/commit access for the single history revwalk.
+cf-gitlib = { path = "../cf-gitlib" }
+# Pinned RFC3339 formatting + metadata for history tick bounds / timeseries.
+cf-analyze = { path = "../cf-analyze" }
+cf-textutil = { path = "../cf-textutil" }
+cf-langpath = { path = "../cf-langpath" }
+# Line-mode diff (diffmatchpatch parity) for history per-file line stats.
+cf-godiff = { path = "../cf-godiff" }
+cf-alg-bloom = { path = "../cf-alg-bloom" }
+cf-alg-levenshtein = { path = "../cf-alg-levenshtein" }
+cf-analyzers-plumbing = { path = "../cf-analyzers-plumbing" }
+cf-burndown-core = { path = "../cf-burndown-core" }
+# --- Analyzer math crates (per-file Analyze + report serializers) ---
+cf-complexity = { path = "../cf-complexity" }
+cf-clones = { path = "../cf-clones" }
+cf-halstead = { path = "../cf-halstead" }
+cf-comments = { path = "../cf-comments" }
+cf-imports = { path = "../cf-imports" }
+cf-composition = { path = "../cf-composition" }
+cf-cohesion = { path = "../cf-cohesion" }
+cf-renderer = { path = "../cf-renderer" }
+cf-couples = { path = "../cf-couples" }
+cf-shotness = { path = "../cf-shotness" }
+cf-analyzer-burndown = { path = "../cf-analyzer-burndown" }
+# --format plot HTML page renderer: the static-phase plot path renders
+# per-analyzer pages + index + report.json.
+cf-plotpage = { path = "../cf-plotpage" }
+cf-devs = { path = "../cf-devs" }
+cf-typos = { path = "../cf-typos" }
+cf-anomaly = { path = "../cf-anomaly" }
+cf-quality = { path = "../cf-quality" }
+cf-sentiment = { path = "../cf-sentiment" }
+cf-file-history = { path = "../cf-file-history" }
+cf-terminal = { path = "../cf-terminal" }
+
+# Scaffold / not-yet-wired sibling crates -- optional, gated behind the
+# `runtime` / `mcp` features (streaming framework runner, persistence, plot).
+cf-framework = { path = "../cf-framework", optional = true }
+cf-config = { path = "../cf-config", optional = true }
+cf-checkpoint = { path = "../cf-checkpoint", optional = true }
+cf-budget = { path = "../cf-budget", optional = true }
+cf-observability = { path = "../cf-observability", optional = true }
+cf-storage = { path = "../cf-storage", optional = true }
+cf-mcp = { path = "../cf-mcp", optional = true }

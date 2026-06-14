@@ -56,8 +56,8 @@ cd codefang/rust
 cargo build --release -p codefang -p uast
 ```
 
-The two binaries land at `rust/target/release/codefang` and
-`rust/target/release/uast`. Put that directory on your `PATH`, or invoke them by
+The two binaries land at `target/release/codefang` and
+`target/release/uast`. Put that directory on your `PATH`, or invoke them by
 full path.
 
 Check the build:
@@ -110,10 +110,10 @@ Analyzer IDs are `static/<name>` and `history/<name>`; `-a` accepts globs
 Machine-report output is a frozen contract. The original Go binaries are kept
 solely as a **frozen oracle** at `build/bin/{codefang,uast}` — the Go source is
 gone, only the compiled reference binaries remain. The parity harness under
-`rust/tests/compat/` diffs the Rust binary's bytes against that oracle:
+`tests/compat/` diffs the Rust binary's bytes against that oracle:
 
 ```bash
-cd rust/tests/compat
+cd tests/compat
 python3 oracle/oracle.py --n-go 3 --quiet -- \
   run --checkpoint=false --resume=false --no-cache --workers 1 \
   --analyzers history/burndown --format json --limit 50 /path/to/repo
@@ -122,7 +122,7 @@ python3 oracle/oracle.py --n-go 3 --quiet -- \
 The oracle runs the Go reference N≥3 times, classifies each output field as
 stable or run-to-run variant, requires the Rust output to be byte-identical on
 stable fields, and rejects any attempt to blank a stable field. Exit code `0`
-means parity holds. See `rust/tests/compat/README.md` for the full system.
+means parity holds. See `tests/compat/README.md` for the full system.
 
 The CLI examples in this README and in `docs/` are themselves executed against
 the built Rust binary by the `doc-examples` test crate

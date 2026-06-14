@@ -1,0 +1,33 @@
+[package]
+name = "cf-sentiment"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# cf-sentiment — commit-comment sentiment analysis (analyzer id: history/sentiment).
+# VADER scoring + multilingual lexicon + SE-domain neutralizers, aggregated per
+# tick over commit history.
+#
+# Compatibility: machine-report bytes are pinned against the reference binary by
+# tests/compat. The base VADER lexicon is vendored byte-for-byte under
+# data/.
+
+[dependencies]
+# Report-format JSON encoder (compatibility contract). NEVER serde_json for
+# report output. Report types expose `to_go_value()`; YAML routes the same
+# GoValue tree through cf-goyaml.
+cf-gojson = { path = "../cf-gojson" }
+# Mean/stddev/percent helpers. to_percent feeds the trend change-percent float
+# in machine output, so its arithmetic is part of the report contract.
+cf-alg-stats = { path = "../cf-alg-stats" }
+# Embedded multilingual Chen-Skiena lexicon (data-parity crate), injected into
+# VADER's lexicon for 32+ language scoring.
+cf-sentiment-lexicons = { path = "../cf-sentiment-lexicons" }
+
+[lints.clippy]
+pedantic = "warn"
+
+[dev-dependencies]

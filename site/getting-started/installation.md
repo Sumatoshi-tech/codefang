@@ -36,8 +36,8 @@ cd codefang/rust
 cargo build --release -p codefang -p uast
 ```
 
-The binaries are produced at `rust/target/release/codefang` and
-`rust/target/release/uast`. Add that directory to your `PATH`:
+The binaries are produced at `target/release/codefang` and
+`target/release/uast`. Add that directory to your `PATH`:
 
 ```bash
 export PATH="$PWD/target/release:$PATH"
@@ -45,7 +45,7 @@ export PATH="$PWD/target/release:$PATH"
 
 !!! tip "Add to your shell profile"
     Append an `export` line pointing at the absolute path of
-    `rust/target/release` to your `~/.bashrc`, `~/.zshrc`, or equivalent so the
+    `target/release` to your `~/.bashrc`, `~/.zshrc`, or equivalent so the
     binaries are always available.
 
 ---

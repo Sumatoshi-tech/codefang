@@ -16,7 +16,7 @@ The project needs a Git implementation that is fast at bulk commit walking, tree
 diffing, and blob lookup, supports both normal and bare repositories, and — now
 that the codebase is a Rust workspace — produces diff, blob, and hash results
 that are byte-for-byte identical to the frozen Go reference binary so the parity
-gate (`rust/tests/compat/`) keeps passing. How should Codefang access Git object
+gate (`tests/compat/`) keeps passing. How should Codefang access Git object
 and history data in the Rust port?
 
 The original decision (Go era) chose libgit2 through the `git2go/v34` **cgo**

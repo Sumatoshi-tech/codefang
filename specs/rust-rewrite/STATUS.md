@@ -2,7 +2,7 @@
 
 ## ANTI-SIM GATE — REAL TALLY (latest verified run, 2026-06-06)
 
-The authoritative liveness signal is `rust/tests/antisim/parity_gate.sh` (diffs
+The authoritative liveness signal is `tests/antisim/parity_gate.sh` (diffs
 vs Go on OFF-GOLDEN inputs). Latest run:
 
 - `cargo build --release` → **exit 0** (warnings only).
@@ -27,7 +27,7 @@ notes; that is now resolved.
 **Binding captures: 32/32 byte-identical — BINDING-CAPTURE TIER COMPLETE.**
 `cargo build --release` exits 0 and `cargo test --workspace` is GREEN. ALL 32
 MANIFEST-binding captures (`machine=true` AND `nonBinding=false`) were measured
-this run: each Rust release binary (`rust/target/release/{codefang,uast}`) was run
+this run: each Rust release binary (`target/release/{codefang,uast}`) was run
 with the exact MANIFEST.json argv (binary path swapped) under the pinned golden
 env (`TZ=UTC NO_COLOR=1 LANG=C LC_ALL=C SOURCE_DATE_EPOCH=315532800`) and STDOUT
 was byte-compared against the golden at `relPath`. ALL 32 are IDENTICAL; 0 fail.
@@ -62,7 +62,7 @@ pipeline + halstead JSON-section builder:
 
 
 Authoritative, evidence-backed snapshot. Companion docs: `ARCHITECTURE.md`,
-`DESIGN.md`, `ROADMAP.md`, `rust/tests/golden/MANIFEST.json`.
+`DESIGN.md`, `ROADMAP.md`, `tests/golden/MANIFEST.json`.
 
 ## ✅ Green (verified on disk this session)
 
@@ -156,7 +156,7 @@ Authoritative, evidence-backed snapshot. Companion docs: `ARCHITECTURE.md`,
 ALL 32 binding captures are byte-identical — the binding-capture tier is COMPLETE.
 
 Verify under: `set -f; env TZ=UTC NO_COLOR=1 LANG=C LC_ALL=C SOURCE_DATE_EPOCH=315532800 <bin> <argv>`,
-STDOUT only, `cmp`/`sha256sum` vs the golden in `rust/tests/golden/<relPath>`.
+STDOUT only, `cmp`/`sha256sum` vs the golden in `tests/golden/<relPath>`.
 
 ## Remaining failing binding capture — NONE (32/32)
 
@@ -269,7 +269,7 @@ correctly remain `stable=false` / `nonBinding=true`. Two distinct sub-causes:
    - `all_static` (json/yaml/bin): `static/*` union inherits clones + halstead
      content-nondeterminism.
 
-Per-capture verdicts were written into `rust/tests/golden/MANIFEST.json` as a new
+Per-capture verdicts were written into `tests/golden/MANIFEST.json` as a new
 `triageVerdict` field on each of the 22 captures, plus a top-level `triageNote`.
 The golden harness (`cargo test -p golden-harness`) stays GREEN and the 32 binding
 captures are unaffected (the edit only touches nonBinding capture metadata).
@@ -297,7 +297,7 @@ any mismatch. Substring filters: `cargo run -p golden-harness -- uast`. Latest
 ### Step 13 — module-map reconciliation (DONE this run)
 
 Verified every Go package under `internal/`, `pkg/`, `cmd/` (71 packages) maps to
-a real Rust crate under `rust/crates/` (74 crates + 2 bin crates). Wrote the
+a real Rust crate under `crates/` (74 crates + 2 bin crates). Wrote the
 canonical Go-package→Rust-crate table into ARCHITECTURE.md **§8.1** (it replaces
 the dangling "structured JSON artifact" reference, which never existed on disk),
 and a scaffold inventory in **§8.2**. Documented merges: `internal/analyzers/

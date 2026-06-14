@@ -367,7 +367,7 @@ guards (not in payloads).
 All git2go (`github.com/libgit2/git2go/v34`) usage is centralized in `pkg/gitlib` (no other
 production package imports it). The rest of the codebase consumes domain types
 (Repository, Commit, Tree, TreeEntry, Blob, Diff, RevWalk, Hash, Signature). Rust mirror:
-`rust/crates/cf-gitlib`.
+`crates/cf-gitlib`.
 
 | Go op | site | git2 mapping |
 |-------|------|--------------|
@@ -535,9 +535,9 @@ copy verbatim), framework 5197, uast/pkg/node 4112, burndown 3993, analyze 3885.
 ### 8.1 Canonical Go-package → Rust-crate map (verified 2026-06-06)
 
 Every Go package under `internal/`, `pkg/`, `cmd/` maps to exactly one real Rust crate under
-`rust/crates/` (or a documented merge / support shim). Verified against the live tree: 74 crates +
+`crates/` (or a documented merge / support shim). Verified against the live tree: 74 crates +
 2 bin crates. No orphan bare scaffold remains except `cf-plotpage` (documented below). The
-`run`/`uast` CLIs live in `rust/bins/{codefang,uast}` (the `cmd/*` Tier 8/9 packages).
+`run`/`uast` CLIs live in `bins/{codefang,uast}` (the `cmd/*` Tier 8/9 packages).
 
 | Go package | Rust crate | Notes |
 |---|---|---|

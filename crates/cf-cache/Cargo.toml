@@ -1,0 +1,43 @@
+[package]
+name = "cf-cache"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Analysis cache (UAST/blob caching keyed by git). Cross-commit LRU blob cache (over cf-alg-lru) with an FNV-128a Bloom pre-filter and size-aware cost-based eviction, plus the incremental-analysis metadata (cache.json) read/write/key/staleness helpers. Does NOT depend on the framework."
+
+[dependencies]
+# Generic thread-safe LRU: size-based + cost-sampling eviction, Bloom
+# pre-filter, value cloning on insert.
+cf-alg-lru = { path = "../cf-alg-lru" }
+# Atomic cache.json write (write_atomic): temp sibling, fsync, chmod, rename.
+# No machine-report bytes emitted by this crate.
+cf-storage = { path = "../cf-storage" }
+# Canonical report-format JSON writer (write_json over cf-gojson). The
+# cache.json metadata bytes are part of the compatibility contract (pinned by
+# tests/compat); we route through this, never raw serde_json.
+cf-textutil = { path = "../cf-textutil" }
+# SHA-256 cache-key derivation. Util only — never used for machine report
+# output.
+sha2 = { workspace = true }
+# IncrementalMeta PARSING only. Writing goes through cf-textutil/cf-gojson for
+# byte identity; serde_json is used solely to decode the on-disk cache.json (an
+# internal artifact), never to encode output.
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Derived Display/Error impls for the metadata error enums; the error strings
+# are part of the CLI surface and are kept byte-identical.
+thiserror = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.clippy]
+# Hash<->byte copies and the i64<->usize size bookkeeping deliberately keep the
+# reference implementation's integer model; silence the pedantic cast lints.
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+cast_lossless = "allow"

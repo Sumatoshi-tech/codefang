@@ -12,7 +12,7 @@
 
 Build the Rust binaries, then run with the EXACT golden env + argv from
 `MANIFEST.json`, swapping only the binary path (`build/bin/{codefang,uast}` ->
-`rust/target/release/{codefang,uast}`):
+`target/release/{codefang,uast}`):
 
 ```
 set -f
@@ -20,7 +20,7 @@ env TZ=UTC NO_COLOR=1 LANG=C LC_ALL=C SOURCE_DATE_EPOCH=315532800 <argv>
 ```
 
 Capture STDOUT only (STDERR is timestamped progress, discarded), then `cmp -s` /
-`sha256sum` against `rust/tests/golden/<relPath>`. A step is done only when its
+`sha256sum` against `tests/golden/<relPath>`. A step is done only when its
 binding capture(s) are byte-IDENTICAL. MANIFEST.json marks **32** captures binding
 (`machine=true` AND `nonBinding=false`) — ALL 32 are byte-IDENTICAL as of
 2026-06-06. The 7 ORIGINAL CORE captures (the first to be driven green) are:
@@ -700,7 +700,7 @@ the full harness after every Tier-0/1 change.
 ### Tier 1 — binding captures (2026-06-06: 32/32 IDENTICAL — TIER COMPLETE)
 > The original 7 core captures below were diffed byte-for-byte against their
 > goldens under the golden env (each Rust release binary run with the exact
-> MANIFEST.json argv, binary path swapped to `rust/target/release/{codefang,uast}`,
+> MANIFEST.json argv, binary path swapped to `target/release/{codefang,uast}`,
 > STDOUT compared byte-for-byte via file/`cmp` — command-substitution `$(...)`
 > strips the trailing newline and gives a false 1-byte miss). The original 7 are
 > all still IDENTICAL. The tally reached 17/32, then the static per-analyzer

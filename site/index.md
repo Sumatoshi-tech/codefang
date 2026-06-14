@@ -105,7 +105,7 @@ analysis of entire repositories. One tool, one config, complete understanding.
     cargo build --release -p codefang -p uast
     ```
 
-    The binaries land in `rust/target/release/`.
+    The binaries land in `target/release/`.
 
 === "Docker"
 
