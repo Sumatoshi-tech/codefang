@@ -21,7 +21,7 @@ use std::sync::{Arc, OnceLock};
 use cf_uast_mapping::{LanguageInfo, Parser as MappingParser, PatternMatcher, Rule};
 use cf_uast_node::Node;
 
-use crate::lowering::Lowering;
+use crate::lowering::{resolve_rules, Lowering, ResolvedRule};
 use crate::types::{LanguageParser, ParseError};
 
 /// The bit-array length for the extension bloom filter.
@@ -200,7 +200,10 @@ struct LazyDslParser {
 /// [`tree_sitter::Language`] plus the parsed rules / derived lookup structures
 /// needed to lower a concrete syntax tree to a UAST.
 struct InitState {
-    rules: Vec<Rule>,
+    /// Rules with inheritance pre-merged and patterns pre-compiled once, so the
+    /// lowering walk borrows them and never clones a `Rule` or compiles a
+    /// pattern per node.
+    resolved: Vec<ResolvedRule>,
     #[allow(dead_code)]
     lang_info: LanguageInfo,
     /// First-occurrence-wins rule index keyed by node type.
@@ -263,8 +266,14 @@ impl LazyDslParser {
                 .as_ref()
                 .map(|lang| PatternMatcher::new(lang.clone()));
 
+            // Pre-resolve inheritance and pre-compile each rule's pattern once.
+            // A pattern that fails to compile (or no matcher when no grammar is
+            // vendored) stores `None`, reproducing the old lazy per-node
+            // `compile_and_cache(..).ok()? -> None` fall-through exactly.
+            let resolved = resolve_rules(&rules, &rule_index, pattern_matcher.as_ref());
+
             Ok(InitState {
-                rules,
+                resolved,
                 lang_info,
                 rule_index,
                 ts_language,
@@ -305,7 +314,7 @@ impl LanguageParser for LazyDslParser {
 
         let lowering = Lowering::new(
             content,
-            &state.rules,
+            &state.resolved,
             &state.rule_index,
             pattern_matcher,
             &state.language,

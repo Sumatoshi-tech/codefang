@@ -19,10 +19,108 @@
 //!   command calls `assign_stable_ids`); this lowering leaves `id` empty.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use cf_uast_mapping::{PatternMatcher, Rule};
 use cf_uast_node::{Node, Positions};
-use tree_sitter::{Node as TsNode, Tree};
+use tree_sitter::{Node as TsNode, Query, Tree};
+
+/// A mapping [`Rule`] with its inheritance already merged and its pattern
+/// already compiled.
+///
+/// Built once per language at loader init (see [`resolve_rules`]) so the
+/// per-node lowering walk borrows a fully-resolved rule and reuses an
+/// already-compiled [`Query`] — eliminating the per-node `Rule` clone and the
+/// per-node mutex/`compile_and_cache` round-trip the lazy path performed.
+pub(crate) struct ResolvedRule {
+    /// The inheritance-merged rule.
+    pub rule: Rule,
+    /// The compiled pattern, or `None` when the rule has no pattern **or** the
+    /// pattern fails to compile.
+    ///
+    /// Compile-failure parity: the lazy path surfaced a bad pattern at match
+    /// time via `compile_and_cache(..).ok()? -> None`, so the node fell through
+    /// with no captures. Storing `None` here for a pattern that fails to
+    /// compile reproduces that fall-through exactly — init never starts
+    /// erroring on patterns that previously only failed lazily.
+    pub query: Option<Arc<Query>>,
+}
+
+/// Pre-resolves every rule's inheritance and pre-compiles every non-empty
+/// pattern, producing the table the lowering walk borrows.
+///
+/// Inheritance is resolved up front (the embedded corpus uses no `extends`, so
+/// this is a passthrough move there, but the general `extends` merge is kept).
+/// Each non-empty pattern is compiled via `matcher`; a pattern that fails to
+/// compile (or an absent matcher) yields `None`, matching the lazy path's
+/// observable fall-through.
+pub(crate) fn resolve_rules(
+    rules: &[Rule],
+    rule_index: &HashMap<String, usize>,
+    matcher: Option<&PatternMatcher>,
+) -> Vec<ResolvedRule> {
+    rules
+        .iter()
+        .map(|r| {
+            let rule = resolve_inheritance(rules, rule_index, r.clone());
+            let query = if rule.pattern.is_empty() {
+                None
+            } else {
+                matcher.and_then(|m| m.compile_and_cache(&rule.pattern).ok())
+            };
+            ResolvedRule { rule, query }
+        })
+        .collect()
+}
+
+/// Recursively merges a base rule's fields, with the child rule overriding
+/// non-empty scalar fields and copying/extending the collection fields.
+///
+/// Moved verbatim from the former `Lowering::resolve_inheritance` so the merge
+/// semantics are unchanged; it now runs once per rule at init rather than once
+/// per matched node.
+fn resolve_inheritance(
+    rules: &[Rule],
+    rule_index: &HashMap<String, usize>,
+    rule: Rule,
+) -> Rule {
+    if rule.extends.is_empty() {
+        return rule;
+    }
+
+    let Some(&base_idx) = rule_index.get(&rule.extends) else {
+        return rule;
+    };
+
+    let mut merged = rules[base_idx].clone();
+
+    if !rule.pattern.is_empty() {
+        merged.pattern.clone_from(&rule.pattern);
+    }
+    if !rule.uast_spec.r#type.is_empty() {
+        merged.uast_spec.r#type.clone_from(&rule.uast_spec.r#type);
+    }
+    if !rule.uast_spec.token.is_empty() {
+        merged.uast_spec.token.clone_from(&rule.uast_spec.token);
+    }
+    if !rule.uast_spec.roles.is_empty() {
+        merged.uast_spec.roles.clone_from(&rule.uast_spec.roles);
+    }
+    if let Some(child_props) = &rule.uast_spec.props {
+        let dst = merged.uast_spec.props.get_or_insert_with(Default::default);
+        for (k, v) in child_props {
+            dst.insert(k.clone(), v.clone());
+        }
+    }
+    if !rule.uast_spec.children.is_empty() {
+        merged.uast_spec.children.clone_from(&rule.uast_spec.children);
+    }
+    if !rule.conditions.is_empty() {
+        merged.conditions.extend(rule.conditions.iter().cloned());
+    }
+
+    resolve_inheritance(rules, rule_index, merged)
+}
 
 /// The minimum named-child count at which `process_unmapped_children`
 /// switches from per-index `named_child(idx)` construction to a raw cursor
@@ -33,12 +131,14 @@ const CURSOR_THRESHOLD: usize = 8;
 /// Per-parse lowering state.
 pub struct Lowering<'a> {
     source: &'a [u8],
-    rules: &'a [Rule],
+    /// Pre-resolved rules (inheritance merged, pattern compiled) — borrowed,
+    /// never cloned per node.
+    rules: &'a [ResolvedRule],
     /// First-occurrence-wins rule index keyed by tree-sitter node type.
     rule_index: &'a HashMap<String, usize>,
-    /// Compiled-pattern matcher for the language. Used only for `@capture`
-    /// token/prop extraction and conditions; the embedded mappings exercise
-    /// neither, but the path exists for custom mappings.
+    /// Compiled-pattern matcher for the language. Used only to run an
+    /// already-compiled `@capture` query against a node; pattern *compilation*
+    /// happens once at init, not per node.
     pattern_matcher: &'a PatternMatcher,
     language: &'a str,
     include_unmapped: bool,
@@ -47,7 +147,7 @@ pub struct Lowering<'a> {
 impl<'a> Lowering<'a> {
     pub(crate) const fn new(
         source: &'a [u8],
-        rules: &'a [Rule],
+        rules: &'a [ResolvedRule],
         rule_index: &'a HashMap<String, usize>,
         pattern_matcher: &'a PatternMatcher,
         language: &'a str,
@@ -95,9 +195,9 @@ impl<'a> Lowering<'a> {
         let node_type = self.node_type(root);
         let mapping_rule = self.find_mapping_rule(node_type);
 
-        let children = self.process_children(root, mapping_rule.as_ref());
+        let children = self.process_children(root, mapping_rule);
 
-        if self.should_skip_node(root, mapping_rule.as_ref()) {
+        if self.should_skip_node(root, mapping_rule) {
             return None;
         }
 
@@ -106,62 +206,22 @@ impl<'a> Lowering<'a> {
         }
 
         match mapping_rule {
-            Some(rule) => Some(self.create_mapped_node(root, &rule, children)),
+            Some(resolved) => Some(self.create_mapped_node(root, resolved, children)),
             None => self.create_unmapped_node(root, parent_context, node_type),
         }
     }
 
-    /// Looks up the node type's mapping rule. Returns an owned, fully
-    /// inheritance-merged rule.
-    fn find_mapping_rule(&self, node_type: &str) -> Option<Rule> {
+    /// Looks up the node type's pre-resolved mapping rule. Returns a borrow
+    /// into the init-time resolution table — no clone, no inheritance merge,
+    /// no pattern compile per node.
+    fn find_mapping_rule(&self, node_type: &str) -> Option<&'a ResolvedRule> {
         let idx = *self.rule_index.get(node_type)?;
-        Some(self.resolve_inheritance(self.rules[idx].clone()))
-    }
-
-    /// Recursively merges a base rule's fields, with the child rule overriding
-    /// non-empty scalar fields and copying/extending the collection fields.
-    fn resolve_inheritance(&self, rule: Rule) -> Rule {
-        if rule.extends.is_empty() {
-            return rule;
-        }
-
-        let Some(&base_idx) = self.rule_index.get(&rule.extends) else {
-            return rule;
-        };
-
-        let mut merged = self.rules[base_idx].clone();
-
-        if !rule.pattern.is_empty() {
-            merged.pattern.clone_from(&rule.pattern);
-        }
-        if !rule.uast_spec.r#type.is_empty() {
-            merged.uast_spec.r#type.clone_from(&rule.uast_spec.r#type);
-        }
-        if !rule.uast_spec.token.is_empty() {
-            merged.uast_spec.token.clone_from(&rule.uast_spec.token);
-        }
-        if !rule.uast_spec.roles.is_empty() {
-            merged.uast_spec.roles.clone_from(&rule.uast_spec.roles);
-        }
-        if let Some(child_props) = &rule.uast_spec.props {
-            let dst = merged.uast_spec.props.get_or_insert_with(Default::default);
-            for (k, v) in child_props {
-                dst.insert(k.clone(), v.clone());
-            }
-        }
-        if !rule.uast_spec.children.is_empty() {
-            merged.uast_spec.children.clone_from(&rule.uast_spec.children);
-        }
-        if !rule.conditions.is_empty() {
-            merged.conditions.extend(rule.conditions.iter().cloned());
-        }
-
-        self.resolve_inheritance(merged)
+        Some(&self.rules[idx])
     }
 
     /// Visits named children in order, skipping those excluded by their own
     /// rule's conditions, recursing into each.
-    fn process_children(&self, root: TsNode<'_>, mapping_rule: Option<&Rule>) -> Vec<Node> {
+    fn process_children(&self, root: TsNode<'_>, mapping_rule: Option<&ResolvedRule>) -> Vec<Node> {
         let count = root.named_child_count();
         let mut children = Vec::with_capacity(count);
         // Index-based `named_child(idx)`, NOT a cursor walk and NOT the
@@ -182,10 +242,10 @@ impl<'a> Lowering<'a> {
 
     /// The context string a child sees: the parent rule's UAST type, or the
     /// parent's raw node type when unmapped.
-    fn derive_parent_context(&self, root: TsNode<'_>, mapping_rule: Option<&Rule>) -> String {
-        if let Some(rule) = mapping_rule {
-            if !rule.uast_spec.r#type.is_empty() {
-                return rule.uast_spec.r#type.clone();
+    fn derive_parent_context(&self, root: TsNode<'_>, mapping_rule: Option<&ResolvedRule>) -> String {
+        if let Some(resolved) = mapping_rule {
+            if !resolved.rule.uast_spec.r#type.is_empty() {
+                return resolved.rule.uast_spec.r#type.clone();
             }
         }
         self.node_type(root).to_string()
@@ -193,20 +253,22 @@ impl<'a> Lowering<'a> {
 
     // ---- pattern matching / captures ----------------------------------------
 
-    /// Compiles the rule's pattern and returns the first match's captures, or
-    /// `None` when there is no pattern / no match.
+    /// Runs the rule's pre-compiled pattern and returns the first match's
+    /// captures, or `None` when there is no pattern / it failed to compile at
+    /// init / no match.
+    ///
+    /// The pre-compiled `Option<Arc<Query>>` reproduces the lazy path exactly:
+    /// an empty pattern stored `None` (no query), and a pattern that failed to
+    /// compile also stored `None` — both fall through to `None` here, just as
+    /// `compile_and_cache(..).ok()?` did per node.
     fn match_pattern(
         &self,
         root: TsNode<'_>,
-        mapping_rule: Option<&Rule>,
+        mapping_rule: Option<&ResolvedRule>,
     ) -> Option<std::collections::BTreeMap<String, String>> {
-        let rule = mapping_rule?;
-        if rule.pattern.is_empty() {
-            return None;
-        }
-        let query = self.pattern_matcher.compile_and_cache(&rule.pattern).ok()?;
+        let query = mapping_rule?.query.as_ref()?;
         self.pattern_matcher
-            .match_pattern(&query, root, self.source)
+            .match_pattern(query, root, self.source)
             .ok()
     }
 
@@ -214,7 +276,7 @@ impl<'a> Lowering<'a> {
     /// with that name, then a descendant of that type.
     fn extract_capture_text(&self, root: TsNode<'_>, capture_name: &str) -> String {
         let mapping_rule = self.find_mapping_rule(self.node_type(root));
-        if let Some(captures) = self.match_pattern(root, mapping_rule.as_ref()) {
+        if let Some(captures) = self.match_pattern(root, mapping_rule) {
             if let Some(val) = captures.get(capture_name) {
                 return val.clone();
             }
@@ -239,9 +301,9 @@ impl<'a> Lowering<'a> {
     // ---- conditions ----------------------------------------------------------
 
     /// Evaluates a rule's conditions; vacuously true without conditions.
-    fn evaluate_conditions(&self, root: TsNode<'_>, mapping_rule: Option<&Rule>) -> bool {
+    fn evaluate_conditions(&self, root: TsNode<'_>, mapping_rule: Option<&ResolvedRule>) -> bool {
         let rule = match mapping_rule {
-            Some(r) if !r.conditions.is_empty() => r,
+            Some(r) if !r.rule.conditions.is_empty() => &r.rule,
             _ => return true,
         };
         let captures = self.match_pattern(root, mapping_rule);
@@ -317,7 +379,7 @@ impl<'a> Lowering<'a> {
     // ---- inclusion / exclusion ------------------------------------------------
 
     /// A mapped node whose conditions fail is skipped.
-    fn should_skip_node(&self, root: TsNode<'_>, mapping_rule: Option<&Rule>) -> bool {
+    fn should_skip_node(&self, root: TsNode<'_>, mapping_rule: Option<&ResolvedRule>) -> bool {
         if mapping_rule.is_none() {
             return false;
         }
@@ -325,7 +387,7 @@ impl<'a> Lowering<'a> {
     }
 
     /// A child with a failing-conditions rule of its own is excluded.
-    fn should_exclude_child(&self, child: TsNode<'_>, mapping_rule: Option<&Rule>) -> bool {
+    fn should_exclude_child(&self, child: TsNode<'_>, mapping_rule: Option<&ResolvedRule>) -> bool {
         if mapping_rule.is_none() {
             return false;
         }
@@ -333,7 +395,7 @@ impl<'a> Lowering<'a> {
         if child_rule.is_none() {
             return false;
         }
-        !self.evaluate_conditions(child, child_rule.as_ref())
+        !self.evaluate_conditions(child, child_rule)
     }
 
     /// An empty `source_file` with no children lowers to nothing.
@@ -344,7 +406,8 @@ impl<'a> Lowering<'a> {
     // ---- mapped node construction ---------------------------------------------
 
     /// Builds the canonical node for a rule-mapped tree-sitter node.
-    fn create_mapped_node(&self, root: TsNode<'_>, rule: &Rule, children: Vec<Node>) -> Node {
+    fn create_mapped_node(&self, root: TsNode<'_>, resolved: &ResolvedRule, children: Vec<Node>) -> Node {
+        let rule = &resolved.rule;
         let roles = self.extract_roles(rule);
 
         // An empty props map serializes identically to an absent one under
