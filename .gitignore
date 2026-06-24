@@ -93,3 +93,6 @@ profiles/
 /target
 **/*.rs.bk
 Cargo.lock.orig
+
+# Compat harness run artifacts (regenerated; not source)
+tests/compat/results/
