@@ -376,19 +376,6 @@ uast explore -l python script.py         # Force language
 |------|-------------|---------|
 | `-l, --language` | Force language detection | auto-detect |
 
-### `uast server`
-
-Start an HTTP server for UAST operations (useful for editor integrations and
-development).
-
-```bash
-uast server                              # Default port
-uast server --port 8080                  # Custom port
-```
-
-The server exposes REST endpoints for parsing, querying, and retrieving
-language mappings, with full OpenTelemetry instrumentation.
-
 ---
 
 ## Architecture diagram
@@ -400,7 +387,6 @@ flowchart TB
         QUERY_CMD[query]
         DIFF_CMD[diff]
         EXPLORE_CMD[explore]
-        SERVER_CMD[server]
     end
 
     subgraph parser["pkg/uast"]
@@ -429,7 +415,6 @@ flowchart TB
     QUERY_CMD --> PARSER
     DIFF_CMD --> PARSER
     EXPLORE_CMD --> PARSER
-    SERVER_CMD --> PARSER
 
     PARSER --> LANG_DETECT
     LANG_DETECT --> DSL

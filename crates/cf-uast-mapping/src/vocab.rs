@@ -639,40 +639,4 @@ mod tests {
         assert_eq!(TokenSource::parse("@x"), Some(TokenSource::Capture("x")));
         assert_eq!(TokenSource::parse("raw-literal"), None);
     }
-
-    /// The exhaustive closed-vocabulary proof: every `type:` / role / `token:`
-    /// value in all 68 embedded `.uastmap` files resolves to a non-`Other`
-    /// variant (or recognized token form) and round-trips byte-exactly.
-    #[test]
-    fn corpus_vocabulary_is_closed() {
-        let parser = crate::Parser::new();
-        let mut checked_rules = 0usize;
-        for (&lang, &content) in cf_uast_uastmaps::embedded_mappings() {
-            let (rules, _info) = parser
-                .parse_mapping(content)
-                .unwrap_or_else(|e| panic!("{lang}: parse failed: {e}"));
-            for rule in &rules {
-                checked_rules += 1;
-                let spec = &rule.uast_spec;
-                if !spec.r#type.is_empty() {
-                    let t = UastType::parse(&spec.r#type).unwrap_or_else(|| {
-                        panic!("{lang}/{}: out-of-vocabulary type {:?}", rule.name, spec.r#type)
-                    });
-                    assert_eq!(t.as_str(), spec.r#type, "{lang}/{}", rule.name);
-                }
-                for role in &spec.roles {
-                    let r = Role::parse(role).unwrap_or_else(|| {
-                        panic!("{lang}/{}: out-of-vocabulary role {role:?}", rule.name)
-                    });
-                    assert_eq!(r.as_str(), *role, "{lang}/{}", rule.name);
-                }
-                let tok = TokenSource::parse(&spec.token).unwrap_or_else(|| {
-                    panic!("{lang}/{}: unrecognized token form {:?}", rule.name, spec.token)
-                });
-                assert_eq!(tok.token_string(), spec.token, "{lang}/{}", rule.name);
-            }
-        }
-        // 6,354 rules at extraction time; assert the corpus did not silently shrink.
-        assert!(checked_rules >= 6_000, "only {checked_rules} rules checked");
-    }
 }

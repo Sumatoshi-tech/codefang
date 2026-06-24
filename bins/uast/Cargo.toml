@@ -24,8 +24,6 @@ cf-uast-node = { path = "../../crates/cf-uast-node" }
 cf-uast-mapping = { path = "../../crates/cf-uast-mapping" }
 # Embedded UAST JSON Schema (`uast validate` default schema).
 cf-uast-spec = { path = "../../crates/cf-uast-spec" }
-# Mapping/query-DSL LSP server (`uast lsp`).
-cf-uast-lsp = { path = "../../crates/cf-uast-lsp" }
 
 # Report serialization MUST route through the shared go-compat path (DESIGN
 # rule 1): cf-textutil::write_json wraps the cf-gojson encoder. Never serde_json
@@ -36,17 +34,10 @@ cf-version = { path = "../../crates/cf-version" }
 # Safe file reading + terminal sanitization for user-supplied paths/strings.
 cf-iosafety = { path = "../../crates/cf-iosafety" }
 
-# INPUT decoding only (UAST JSON files/stdin, node-types.json, validate input,
-# server request bodies). DESIGN §2 permits serde_json for input, never output.
+# INPUT decoding only (UAST JSON files/stdin, node-types.json, validate input).
+# DESIGN §2 permits serde_json for input, never output.
 serde_json = { workspace = true }
 
 # JSON-Schema validation engine for `uast validate` (replaces Go
 # xeipuuv/gojsonschema). Exit codes 0/1/2 are driven from its results.
 jsonschema = "0.18"
-
-# `uast lsp` is async (tower-lsp via cf-uast-lsp); drive it on a tokio runtime.
-tokio = { version = "1", default-features = false, features = ["rt-multi-thread"] }
-
-# `uast server` — minimal synchronous HTTP server (Go used net/http; the otel
-# middleware is behavioral-only and dropped).
-tiny_http = "0.12"

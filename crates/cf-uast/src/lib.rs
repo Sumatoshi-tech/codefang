@@ -19,7 +19,8 @@
 //!   byte-sorted `ToMap` serialization (DESIGN §2.2).
 //! * [`cf_uast_mapping`] — the mapping DSL parser and native tree-sitter
 //!   query/capture compiler.
-//! * [`cf_uast_uastmaps`] — the embedded `.uastmap` tables.
+//! * [`cf_uast_mappings`] — the native per-language mapping tables that drive
+//!   parsing (the mapping system of record).
 //!
 //! This crate deliberately does **not** depend on `cf-framework`, so the `uast`
 //! binary remains the first end-to-end-shippable artifact (DESIGN §1.1).
@@ -53,7 +54,7 @@ pub use changes::detect_changes;
 pub use loader::{
     embedded_mappings_available, Loader, PrecompiledMapping,
 };
-pub use parser::{MappingInfo, Parser};
+pub use parser::Parser;
 pub use types::{
     get_file_extension, ChangeType, LanguageParser, Map, NodeChange, ParseError,
     CONFIG_UAST_PROVIDER,

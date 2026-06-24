@@ -3,9 +3,8 @@
 //! A clap **builder**-API mirror of the cobra CLI in `cmd/uast/*.go`
 //! (DESIGN §4.2). Root: `Use "uast"`, Short "UAST (Universal Abstract Syntax
 //! Tree) parser and analyzer". Persistent flags `--config`, `--verbose`/`-v`,
-//! `--quiet`/`-q`. The 11 subcommands are registered in the same order as
-//! `cmd/uast/main.go`'s `AddCommand` calls: parse, diff, query, explore,
-//! analyze, completion, version, validate, mapping, lsp, server. Every
+//! `--quiet`/`-q`. The 9 subcommands are: parse, diff, query, explore,
+//! analyze, completion, version, validate, mapping. Every
 //! subcommand's `Use`/`Short`, flag long/short/default/help string, and valid
 //! format-value list is copied verbatim from the Go source so help/usage and
 //! error wording match cobra (the Layer-D CLI golden, DESIGN §6).
@@ -24,7 +23,7 @@
 //! ## Serialization (DESIGN rule 1)
 //!
 //! Every machine-format report (`parse`/`query`/`analyze`/`diff`/`mapping`
-//! `--format json|compact`, and the `server` HTTP responses) is serialized
+//! `--format json|compact`) is serialized
 //! through [`cf_textutil::write_json`], which wraps the shared `cf-gojson`
 //! Go-byte-compatible encoder — never `serde_json`. `serde_json` is used only to
 //! *decode* input (UAST JSON files/stdin, `node-types.json`, the validate
@@ -38,7 +37,6 @@ mod govalue_bridge;
 mod mapping;
 mod parse;
 mod query;
-mod server;
 mod validate;
 
 use std::process::exit;
@@ -55,7 +53,15 @@ pub const FORMAT_NONE: &str = "none";
 /// The percent multiplier used by `analyze`/`mapping` (Go `coveragePercent`).
 pub const COVERAGE_PERCENT: f64 = 100.0;
 
-/// Builds the root `uast` command with all 11 subcommands (main.go:23-43).
+/// Builds the root `uast` command with all 9 subcommands.
+///
+/// NOTE: the Go reference also shipped `lsp` (a `.uastmap`/query-DSL language
+/// server) and `server` (the UAST development HTTP server + web playground).
+/// Both, along with the `.uastmap` DSL data they edited, were removed from the
+/// Rust product — analysis runs off the native `cf-uast-mappings` tables, so
+/// the DSL editor tooling had no remaining consumer. This is a deliberate
+/// divergence from the frozen Go oracle's CLI surface (see the cli-surface
+/// gate's intentional-divergence allowlist).
 fn build_cli() -> Command {
     Command::new("uast")
         .about("UAST (Universal Abstract Syntax Tree) parser and analyzer")
@@ -95,14 +101,6 @@ fn build_cli() -> Command {
         .subcommand(Command::new("version").about("Show version information"))
         .subcommand(validate::command())
         .subcommand(mapping::command())
-        .subcommand(
-            Command::new("lsp")
-                .about("Start language server for mapping and query DSL (LSP)")
-                .long_about(
-                    "Start a language server (LSP) for .uastmap and query DSL files (stdio mode).",
-                ),
-        )
-        .subcommand(server::command())
 }
 
 fn main() {
@@ -133,11 +131,6 @@ fn main() {
         // validate exits via process::exit 0/1/2 itself; it never returns Ok/Err.
         Some(("validate", sub)) => validate::run(sub),
         Some(("mapping", sub)) => mapping::run(sub),
-        Some(("lsp", _)) => {
-            run_lsp();
-            Ok(())
-        }
-        Some(("server", sub)) => server::run(sub),
         _ => {
             // No subcommand: print help (cobra root with no args, exit 0).
             build_cli().print_help().ok();
@@ -156,21 +149,12 @@ fn main() {
     }
 }
 
-/// Serves the mapping-DSL LSP over stdio (lsp.go `lsp.NewServer().Run()`).
-///
-/// `cf_uast_lsp::run_stdio` is async (tower-lsp); Go's `Run()` blocks, so we
-/// drive it to completion on a fresh tokio multi-thread runtime.
-fn run_lsp() {
-    let rt = tokio::runtime::Runtime::new().expect("create tokio runtime for lsp");
-    rt.block_on(cf_uast_lsp::run_stdio());
-}
-
 #[cfg(test)]
 mod tests {
     use super::build_cli;
 
     #[test]
-    fn cli_has_all_eleven_subcommands_in_order() {
+    fn cli_has_all_nine_subcommands_in_order() {
         let cli = build_cli();
         let names: Vec<&str> = cli
             .get_subcommands()
@@ -188,8 +172,6 @@ mod tests {
                 "version",
                 "validate",
                 "mapping",
-                "lsp",
-                "server",
             ]
         );
     }

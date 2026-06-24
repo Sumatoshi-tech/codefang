@@ -40,11 +40,11 @@ pub struct Parser {
 }
 
 impl Parser {
-    /// Creates a parser with DSL-based language parsers loaded from the
-    /// embedded `.uastmap` mappings.
+    /// Creates a parser with language parsers loaded from the native
+    /// `cf-uast-mappings` registry.
     ///
-    /// Infallible: the embedded table is validated at build time by
-    /// `cf-uast-uastmaps`, so there is no I/O that can fail here.
+    /// Infallible: the mapping tables are compiled into the binary, so there
+    /// is no I/O that can fail here.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -140,76 +140,12 @@ impl Parser {
         lang_parser.parse(filename, content)
     }
 
-    /// Returns all embedded UAST mappings keyed by language.
-    ///
-    /// Each mapping's DSL is parsed for its extensions; a mapping whose DSL
-    /// fails to parse is omitted.
-    #[must_use]
-    pub fn get_embedded_mappings(&self) -> HashMap<String, Map> {
-        let mp = MappingParser::new();
-        let mut mappings = HashMap::new();
-        for (&language, &content) in cf_uast_uastmaps::embedded_mappings() {
-            match mp.parse_mapping(content) {
-                Ok((_, lang_info)) => {
-                    mappings.insert(
-                        language.to_string(),
-                        Map {
-                            uast: content.to_string(),
-                            extensions: lang_info.extensions,
-                        },
-                    );
-                }
-                Err(_) => continue,
-            }
-        }
-        mappings
-    }
-
-    /// Returns a lightweight listing of embedded mappings: each language maps
-    /// to its `.uastmap` content size in bytes.
-    #[must_use]
-    pub fn get_embedded_mappings_list(&self) -> HashMap<String, MappingInfo> {
-        let mut mappings = HashMap::new();
-        for (&language, &content) in cf_uast_uastmaps::embedded_mappings() {
-            mappings.insert(language.to_string(), MappingInfo { size: content.len() });
-        }
-        mappings
-    }
-
-    /// Returns a specific embedded mapping by language name.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ParseError::MappingNotFound`] if the language is not
-    /// embedded, or [`ParseError::Other`] if its DSL fails to parse.
-    pub fn get_mapping(&self, language: &str) -> Result<Map, ParseError> {
-        let content = cf_uast_uastmaps::get(language).ok_or_else(|| ParseError::MappingNotFound {
-            language: language.to_string(),
-        })?;
-
-        let (_, lang_info) = MappingParser::new()
-            .parse_mapping(content)
-            .map_err(|e| ParseError::Other(format!("parsing DSL: {e}")))?;
-
-        Ok(Map {
-            uast: content.to_string(),
-            extensions: lang_info.extensions,
-        })
-    }
 }
 
 impl Default for Parser {
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// Lightweight per-mapping info returned by
-/// [`Parser::get_embedded_mappings_list`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MappingInfo {
-    /// The size in bytes of the `.uastmap` content.
-    pub size: usize,
 }
 
 /// A parser built from a custom (user-supplied) mapping.
@@ -297,33 +233,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn embedded_mappings_list_has_sizes() {
-        let p = Parser::new();
-        let list = p.get_embedded_mappings_list();
-        assert_eq!(list.len(), cf_uast_uastmaps::len());
-        let go = list.get("go").expect("go mapping present");
-        assert!(go.size > 0);
-    }
-
-    #[test]
-    fn get_mapping_present_and_absent() {
-        let p = Parser::new();
-        assert!(p.get_mapping("go").is_ok());
-        let err = p.get_mapping("cobol").unwrap_err();
-        assert_eq!(
-            err,
-            ParseError::MappingNotFound {
-                language: "cobol".into()
-            }
-        );
-    }
-
-    #[test]
-    fn get_embedded_mappings_contains_go_extension() {
-        let p = Parser::new();
-        let mappings = p.get_embedded_mappings();
-        let go = mappings.get("go").expect("go mapping");
-        assert!(go.extensions.iter().any(|e| e == ".go"));
-    }
 }

@@ -191,16 +191,6 @@ fn output_results(results: &[Node], output: &str, format: &str) -> Result<(), St
     }
 }
 
-/// Public wrapper around [`nodes_to_value`] for the `server` module.
-pub fn nodes_to_value_public(nodes: &[Node]) -> GoValue {
-    nodes_to_value(nodes)
-}
-
-/// Public wrapper around [`json_to_node`] for the `server` module.
-pub fn json_to_node_public(v: &serde_json::Value) -> Node {
-    json_to_node(v)
-}
-
 /// Builds the `{"results":[...]}` value (query.go `nodesToMap`).
 ///
 /// Empty → `{"results":[]}`. If every node is a `Literal`, the results are the

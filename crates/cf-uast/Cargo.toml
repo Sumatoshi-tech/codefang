@@ -5,7 +5,7 @@
 #
 #   * cf-uast-node     — the Node/Positions tree + byte-sorted ToMap (DESIGN §2.2)
 #   * cf-uast-mapping  — the mapping DSL parser + native tree-sitter compiler
-#   * cf-uast-uastmaps — the embedded `.uastmap` tables
+#   * cf-uast-mappings — the native per-language mapping tables (system of record)
 #   * cf-alg-bloom     — generic bloom filter (NOTE: the loader keeps its OWN
 #                        512-bit FNV-1a double-hash bloom kernel for byte-exact
 #                        parity with the reference implementation; see
@@ -31,11 +31,9 @@ description = "Aggregate UAST parser facade: tree-sitter parse to UAST over many
 [dependencies]
 cf-uast-node = { path = "../cf-uast-node" }
 cf-uast-mapping = { path = "../cf-uast-mapping" }
-cf-uast-uastmaps = { path = "../cf-uast-uastmaps" }
 # The Rust-native static mapping tables (specs/uastmap-rust-macros): the loader
-# builds its per-language rules from this registry instead of parsing the
-# embedded DSL text. cf-uast-uastmaps remains only for the dev server's
-# DSL-text endpoints (GetMapping / mappings list).
+# builds its per-language rules from this registry. It is the mapping system of
+# record (the legacy `.uastmap` DSL text and its tooling have been removed).
 cf-uast-mappings = { path = "../cf-uast-mappings" }
 # tree-sitter is pinned in the workspace; per-language grammar C sources are
 # vendored under `vendor/` from go-sitter-forest at the EXACT grammar revision

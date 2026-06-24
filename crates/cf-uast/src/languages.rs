@@ -16,10 +16,10 @@
 //! is a localized change: vendor the sources, list them in `build.rs`, add the
 //! `extern` binding, and return `Some(lang)` here.
 
-/// The complete set of language names with embedded `.uastmap` mappings.
+/// The complete set of supported language names.
 ///
-/// This is the authoritative dispatch key set: 68 names, one per embedded
-/// `.uastmap` data file in `cf-uast-uastmaps` (the two sets are identical).
+/// This is the authoritative dispatch key set: 68 names, one per language in
+/// the native `cf-uast-mappings` registry (the two sets are identical).
 pub const SUPPORTED_LANGUAGES: &[&str] = &[
     "ansible",
     "bash",

@@ -46,6 +46,19 @@ PINNED_ENV = {
 # command and IS compared.)
 SYNTHETIC_SUBCMDS = {"help"}
 
+# Subcommands present in the FROZEN Go oracle that have been INTENTIONALLY
+# removed from the Rust product (so they are expected to be absent and must not
+# count as surface divergences). Keyed by binary name; values are the bare
+# command keys the extractor emits for that binary's surface.
+#
+# `uast lsp`    — language server for the `.uastmap`/query DSL.
+# `uast server` — the UAST development HTTP server + web playground.
+# Both, and the `.uastmap` DSL data they edited, were dropped: analysis runs off
+# the native cf-uast-mappings tables, leaving the DSL-editor tooling with no
+# consumer. This is a deliberate divergence from the Go oracle's CLI surface;
+# the report-output oracle (tests/compat/oracle) is unaffected.
+INTENTIONALLY_REMOVED = {"uast": {"lsp", "server"}}
+
 
 def load_surface(side, binname):
     """Run the extractor on the LIVE binary, return its surface model."""
@@ -74,6 +87,7 @@ def diff_surface(binname, go_s, ru_s):
 
     go_cmds = _cmd_keys(go_s)
     ru_cmds = _cmd_keys(ru_s)
+    removed = INTENTIONALLY_REMOVED.get(binname, set())
 
     # 1) command tree (subcommand existence). The cobra/clap synthetic `help`
     #    command is excluded; everything else (run, render, version, completion,
@@ -81,6 +95,8 @@ def diff_surface(binname, go_s, ru_s):
     go_real = {c for c in go_cmds if c.split()[-1] not in SYNTHETIC_SUBCMDS}
     ru_real = {c for c in ru_cmds if c.split()[-1] not in SYNTHETIC_SUBCMDS}
     for c in sorted(go_real - ru_real):
+        if c in removed:
+            continue  # deliberate product divergence; see INTENTIONALLY_REMOVED
         fail(c, "missing-command", "present in Go, absent in Rust")
     for c in sorted(ru_real - go_real):
         fail(c, "extra-command", "present in Rust, absent in Go")
@@ -90,8 +106,9 @@ def diff_surface(binname, go_s, ru_s):
         g = go_s[cmd]
         r = ru_s[cmd]
 
-        # 2a) declared subcommand sets (minus synthetic)
-        gsub = {s for s in g["subcommands"] if s not in SYNTHETIC_SUBCMDS}
+        # 2a) declared subcommand sets (minus synthetic and intentionally-removed)
+        gsub = {s for s in g["subcommands"]
+                if s not in SYNTHETIC_SUBCMDS and s not in removed}
         rsub = {s for s in r["subcommands"] if s not in SYNTHETIC_SUBCMDS}
         if gsub != rsub:
             fail(cmd, "subcommand-set-differs",
@@ -297,6 +314,9 @@ def main():
                   f"rust(rc={r['rust_rc']},{r['rust_cat']})"
                   + (f"  PROBLEMS={r['problems']}" if r["problems"] else ""))
     print("-- surface diff --")
+    allowlisted = sorted(f"{b} {c}" for b, cs in INTENTIONALLY_REMOVED.items() for c in cs)
+    if allowlisted:
+        print(f"  NOTE  intentionally removed (allowlisted): {', '.join(allowlisted)}")
     if not fails:
         print("  (no surface divergences)")
     for f in fails:

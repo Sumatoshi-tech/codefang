@@ -467,39 +467,6 @@ Available interactive commands:
 
 ---
 
-### `uast server`
-
-Start an HTTP development server that provides UAST parsing and querying
-via a REST API.
-
-```bash
-uast server [flags]
-```
-
-| Flag | Short | Type | Default | Description |
-|------|-------|------|---------|-------------|
-| `--port` | `-p` | `string` | `8080` | Port to listen on |
-| `--static` | `-s` | `string` | `""` | Directory to serve static files from |
-
-```bash
-# Start on default port
-uast server
-
-# Custom port with static file serving
-uast server -p 3000 -s ./web
-```
-
-**API Endpoints:**
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/parse` | Parse source code to UAST |
-| `POST` | `/api/query` | Query a UAST with DSL expression |
-| `GET` | `/api/mappings` | List available language mappings |
-| `GET` | `/api/mappings/<name>` | Get a specific language mapping |
-
----
-
 ### `uast analyze`
 
 Quick analysis shortcut that parses and analyzes source files in one step.
