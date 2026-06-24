@@ -88,6 +88,31 @@ pub(crate) fn run_concurrent<T: Send>(
         .collect()
 }
 
+/// Directory-level skip predicate for the static folder walks. The reference
+/// pipeline only does `filepath.SkipDir` on `.git`; this EXTENDS that to also
+/// skip any directory carrying a `CACHEDIR.TAG` — the BSD cache-directory
+/// convention Cargo writes into `target/` (and that ripgrep/fd/tar honor). A
+/// bare `codefang run .` in a built Rust repo would otherwise descend into a
+/// multi-gigabyte `target/` tree and parse its generated sources, which looks
+/// like a hang. The tag check has effectively zero false positives (a real
+/// source directory never carries the signature), so analysis is unchanged on
+/// repos without such dirs — including the parity gate's kubernetes checkout.
+pub(crate) fn should_skip_walk_dir(path: &std::path::Path, name: &std::ffi::OsStr) -> bool {
+    name == ".git" || is_cache_tagged_dir(path)
+}
+
+/// True when `dir` holds a `CACHEDIR.TAG` whose leading bytes are the standard
+/// cache signature (per <https://bford.info/cachedir/>).
+fn is_cache_tagged_dir(dir: &std::path::Path) -> bool {
+    use std::io::Read as _;
+    const SIG: &[u8] = b"Signature: 8a477f597d28d172789f06886806bc55";
+    let Ok(mut f) = std::fs::File::open(dir.join("CACHEDIR.TAG")) else {
+        return false;
+    };
+    let mut buf = [0u8; SIG.len()];
+    f.read_exact(&mut buf).is_ok() && buf[..] == *SIG
+}
+
 // ---------------------------------------------------------------------------
 // Shared pipeline helpers (path resolution, tick floor, RFC3339 formatting).
 // These mirror the reference implementation / plumbing helpers and are shared by the static

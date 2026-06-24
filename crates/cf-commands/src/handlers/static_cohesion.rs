@@ -174,7 +174,7 @@ fn walk(
             continue;
         };
         if file_type.is_dir() {
-            if entry.file_name() == ".git" {
+            if super::should_skip_walk_dir(&entry.path(), &entry.file_name()) {
                 continue;
             }
             walk(&path, root_path, parser, opts, analyzer, agg);

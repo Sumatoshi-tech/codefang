@@ -63,6 +63,7 @@ pub fn build_run_command_with(providers: &[&dyn ConfigOptionProvider]) -> Comman
     let mut cmd = Command::new("run")
         .about("Run static and history analyzers")
         .long_about("Run selected static and history analyzers.")
+        .after_help(run_analyzers_after_help())
         // Args: cobra.MaximumNArgs(1) -> 0..=1 positional [path].
         .arg(
             Arg::new("path-positional")
@@ -75,6 +76,41 @@ pub fn build_run_command_with(providers: &[&dyn ConfigOptionProvider]) -> Comman
     cmd = mark_deprecated_exclusion_flags(cmd);
     cmd = register_analyzer_flags(cmd, providers);
     cmd
+}
+
+/// The `run --help` trailer: the available analyzer ids (grouped by phase) plus
+/// runnable examples.
+///
+/// This INTENTIONALLY DIVERGES from the reference `run` help — cobra lists no
+/// analyzer ids there, expecting discovery via `--list-analyzers`. It is an
+/// additive usability block: clap renders it after the `Options:` section, and
+/// the cli-surface parity gate compares the STRUCTURED flag/command/positional
+/// surface (not help prose), so this trailer adds no surface row. The ids are
+/// read from the live [`crate::handlers::default_registry`] so the list can
+/// never drift from what `--list-analyzers` prints or what dispatch accepts.
+#[must_use]
+fn run_analyzers_after_help() -> String {
+    use std::fmt::Write as _;
+
+    let ids = crate::handlers::default_registry().ids();
+    let group = |prefix: &str| {
+        ids.iter()
+            .filter_map(|id| id.strip_prefix(prefix))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+
+    let mut s = String::new();
+    s.push_str("Available analyzers (pass to -a; omit -a to run them all):\n");
+    let _ = writeln!(s, "  static/    {}", group("static/"));
+    let _ = writeln!(s, "  history/   {}", group("history/"));
+    s.push_str("  (full ids, one per line: codefang run --list-analyzers)\n\n");
+    s.push_str("Examples:\n");
+    s.push_str("  codefang run .                            # all analyzers, combined JSON\n");
+    s.push_str("  codefang run -a static/complexity .       # one analyzer\n");
+    s.push_str("  codefang run -a 'history/*' --limit 50 .  # all history analyzers, capped\n");
+    s.push_str("  codefang run -a '*' --format yaml .       # everything, as YAML");
+    s
 }
 
 /// Build the `run` command with the default analyzer option set

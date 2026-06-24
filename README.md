@@ -45,22 +45,29 @@ a Rust workspace; the original Go implementation has been removed.
 
 ## Install / build
 
-Codefang is a Rust workspace under `rust/`. You need a recent stable Rust
-toolchain and a C toolchain (a C/C++ compiler and CMake) — the `git2` crate
-builds a vendored copy of **libgit2** from `third_party/libgit2`, so no system
-libgit2 is required.
+Codefang is a single Rust workspace rooted at the repository root. You need a
+recent stable Rust toolchain and a C toolchain (a C/C++ compiler and CMake) —
+the `git2` crate builds a vendored copy of **libgit2** from
+`third_party/libgit2`, so no system libgit2 is required.
+
+The quickest path — clone, then one `make install` that builds both binaries
+and puts them on your `PATH` (`~/.cargo/bin`):
 
 ```bash
 git clone --recurse-submodules https://github.com/Sumatoshi-tech/codefang.git
-cd codefang/rust
-cargo build --release -p codefang -p uast
+cd codefang
+make install
 ```
 
-The two binaries land at `target/release/codefang` and
-`target/release/uast`. Put that directory on your `PATH`, or invoke them by
-full path.
+`make install` also initializes the submodule, so if you cloned without
+`--recurse-submodules` it still works. Run `make help` to see the other targets
+(`build`, `test`, `clean`).
 
-Check the build:
+Prefer plain cargo, or just want the binaries in `target/release/` without
+touching `PATH`? Use `make build` (equivalently
+`cargo build --release -p codefang -p uast`) and invoke them by full path.
+
+Check the install:
 
 ```console
 $ codefang version
@@ -138,7 +145,7 @@ illustrative.
 - Per-analyzer references under [`site/analyzers/`](site/analyzers/) and the
   metric models under [`site/explanation/`](site/explanation/).
 - Architecture Decision Records under [`docs/adr/`](docs/adr/).
-- Per-crate Rust API docs: `cd rust && cargo doc --open`.
+- Per-crate Rust API docs: `cargo doc --open`.
 
 ---
 

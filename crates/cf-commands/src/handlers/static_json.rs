@@ -208,7 +208,7 @@ fn walk(dir: &Path, classifier: &Classifier, opts: &Options, counts: &mut Counts
         };
 
         if file_type.is_dir() {
-            if entry.file_name() == ".git" {
+            if super::should_skip_walk_dir(&entry.path(), &entry.file_name()) {
                 continue; // filepath.SkipDir on .git
             }
             walk(&path, classifier, opts, counts);

@@ -100,6 +100,18 @@ pub const CRATE_NAME: &str = "cf-commands";
 pub fn build_codefang_command() -> clap::Command {
     clap::Command::new("codefang")
         .about("Codefang Code Analysis - Unified code analysis tool")
+        // Trailer DIVERGES from the reference top-level help (cobra prints no
+        // examples block) — an additive usability hint pointing at the most
+        // common entrypoint. The cli-surface gate compares the structured
+        // command/flag surface, not help prose, so this adds no surface row.
+        .after_help(
+            "Getting started:\n  \
+             codefang run .                       # analyze the current repo with every analyzer\n  \
+             codefang run -a static/complexity .  # run a single analyzer\n  \
+             codefang run --list-analyzers        # list every analyzer id\n  \
+             codefang run --help                  # all run flags + available analyzers\n\n\
+             Run 'codefang <command> --help' for details on any command.",
+        )
         .arg(
             clap::Arg::new("verbose")
                 .long("verbose")
@@ -203,6 +215,43 @@ fn completion_subcommand(sub: &clap::ArgMatches) -> i32 {
     0
 }
 
+/// Stderr progress for a `run`, mirroring the reference implementation's
+/// `progress:` lines (the report bytes themselves go to stdout, so progress
+/// never touches the frozen output contract). Suppressed by `--silent`. A
+/// startup line announces the resolved selection immediately, and the Drop
+/// impl prints the elapsed wall time on EVERY return path — so even a long
+/// static walk is visibly working rather than looking hung.
+struct RunProgress {
+    start: std::time::Instant,
+    silent: bool,
+}
+
+impl RunProgress {
+    fn begin(silent: bool, static_n: usize, history_n: usize, output_format: &str) -> Self {
+        if !silent {
+            eprintln!(
+                "progress: resolved analyzers: static={static_n} history={history_n} output_format={output_format}"
+            );
+        }
+        Self { start: std::time::Instant::now(), silent }
+    }
+}
+
+impl Drop for RunProgress {
+    fn drop(&mut self) {
+        if self.silent {
+            return;
+        }
+        let d = self.start.elapsed();
+        let ms = d.as_millis();
+        if ms < 1000 {
+            eprintln!("progress: run finished in {ms}ms");
+        } else {
+            eprintln!("progress: run finished in {:.1}s", d.as_secs_f64());
+        }
+    }
+}
+
 /// Dispatches `codefang run` through the general pipeline. Emits each phase's
 /// report bytes to stdout in dispatch order; on an unsatisfiable selection it
 /// surfaces the codefang error path (`Error: <msg>\n`, exit 1).
@@ -244,6 +293,19 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
     // it is handled before the per-id pipeline (which dispatches literal ids).
     let raw_format = ctx.raw_format();
     let analyzer_strs: Vec<&str> = ids.iter().map(String::as_str).collect();
+
+    // Progress bracket: print the resolved selection now (so the user sees the
+    // run is alive and what it will compute), and the elapsed time on Drop —
+    // covering every dispatch branch's early return below. Counts use the same
+    // glob expansion the combined dispatch uses, so `*` reports the full
+    // static/history fan-out. Suppressed by `--silent`; stderr only.
+    let (_prog_static, _prog_history) = handlers::expand_combined_ids(&analyzer_strs);
+    let _progress = RunProgress::begin(
+        sub.get_flag("silent"),
+        _prog_static.len(),
+        _prog_history.len(),
+        &formats::normalize_format(&raw_format),
+    );
 
     // --format plot routes to the multi-page HTML renderer (the reference implementation: the
     // static/history phases each call validatePlotFlags then the plot

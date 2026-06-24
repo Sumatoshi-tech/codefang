@@ -136,7 +136,7 @@ fn walk(dir: &Path, parser: &Parser, opts: &PathPolicyOptions, out: &mut Vec<std
             continue;
         };
         if file_type.is_dir() {
-            if entry.file_name() == ".git" {
+            if super::should_skip_walk_dir(&entry.path(), &entry.file_name()) {
                 continue;
             }
             walk(&path, parser, opts, out);

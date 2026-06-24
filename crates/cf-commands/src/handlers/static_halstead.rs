@@ -646,7 +646,7 @@ fn collect_files(dir: &Path, parser: &Parser, opts: &Options, out: &mut Vec<Stri
         let path = entry.path();
         let Ok(ft) = entry.file_type() else { continue };
         if ft.is_dir() {
-            if entry.file_name() == ".git" {
+            if super::should_skip_walk_dir(&entry.path(), &entry.file_name()) {
                 continue;
             }
             collect_files(&path, parser, opts, out);

@@ -1,0 +1,16 @@
+{
+  "tier": "smoke",
+  "tally": {
+    "PASS": 83,
+    "FAIL": 0,
+    "SIM": 0,
+    "EXPECTED_EMPTY": 72,
+    "ALLOWED_GO_NONDET": 0,
+    "TRACKED_KNOWN_FAILING": 0
+  },
+  "meta_sim": 0,
+  "real_divergence_count": 0,
+  "allowed": [],
+  "tracked": [],
+  "real_divergences": []
+}

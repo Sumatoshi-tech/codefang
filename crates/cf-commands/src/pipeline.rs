@@ -82,13 +82,27 @@ impl<'a> RunContext<'a> {
     }
 
     /// The requested analyzer ids, in user-supplied order (the reference `-a/--analyzers`,
-    /// comma-split by clap's value delimiter). Empty when the flag is absent.
+    /// comma-split by clap's value delimiter).
+    ///
+    /// An absent (or empty) `--analyzers` resolves to the full set (`*`),
+    /// matching the reference command's empty-selection behavior: `codefang run`
+    /// with no `-a` runs every static + history analyzer (the reference logs
+    /// `resolved analyzers: static=7 history=10`) and renders the combined
+    /// output, rather than erroring. The glob is expanded downstream by the
+    /// same `expand_combined_ids`/`expand_history_phase_ids` path an explicit
+    /// `-a '*'` takes, so the resolved selection is identical.
     #[must_use]
     pub fn analyzer_ids(&self) -> Vec<String> {
-        self.matches
+        let ids: Vec<String> = self
+            .matches
             .get_many::<String>("analyzers")
             .map(|vals| vals.cloned().collect())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if ids.is_empty() {
+            vec!["*".to_owned()]
+        } else {
+            ids
+        }
     }
 
     /// The raw `--format` value (default `json`), before per-phase resolution.
@@ -341,6 +355,26 @@ mod tests {
         let (s, h) = r.split(&ids);
         assert_eq!(s, vec![&"static/complexity".to_string()]);
         assert_eq!(h, vec![&"history/burndown".to_string()]);
+    }
+
+    #[test]
+    fn absent_analyzers_flag_defaults_to_all() {
+        // `codefang run` with no -a resolves to the full set (`*`), matching the
+        // reference command's empty-selection behavior (run every analyzer +
+        // combined output) instead of erroring with the dispatch-blocked path.
+        let m = run_matches(&["."]);
+        let ctx = RunContext::from_matches(&m);
+        assert_eq!(ctx.analyzer_ids(), vec!["*".to_string()]);
+    }
+
+    #[test]
+    fn explicit_analyzers_flag_is_preserved_in_order() {
+        let m = run_matches(&["-a", "history/burndown,static/complexity"]);
+        let ctx = RunContext::from_matches(&m);
+        assert_eq!(
+            ctx.analyzer_ids(),
+            vec!["history/burndown".to_string(), "static/complexity".to_string()]
+        );
     }
 
     #[test]
