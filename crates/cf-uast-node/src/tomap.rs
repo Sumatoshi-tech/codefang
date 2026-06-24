@@ -8,8 +8,8 @@
 //! emit is `children, id, pos, props, roles, token, type`, which in byte order
 //! becomes exactly that sequence — see DESIGN.md §2.2.
 
-use cf_gojson::{GoMap, GoValue};
 use crate::node::{Node, Positions};
+use cf_gojson::{GoMap, GoValue};
 
 impl Node {
     /// Converts this node (and its subtree) into a [`GoValue`] whose
@@ -64,8 +64,7 @@ impl Node {
         }
 
         // `roles`: always present as a (possibly empty) string array.
-        let roles: Vec<GoValue> =
-            self.roles.iter().map(|r| GoValue::Str(r.clone())).collect();
+        let roles: Vec<GoValue> = self.roles.iter().map(|r| GoValue::Str(r.clone())).collect();
         entries.push(("roles".to_string(), GoValue::Array(roles)));
 
         // `pos` is always present.
@@ -101,8 +100,8 @@ fn position_map(pos: Option<&Positions>) -> GoValue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cf_gojson::Encoder;
     use crate::node::Builder;
+    use cf_gojson::Encoder;
 
     #[test]
     fn to_map_basic_fields() {

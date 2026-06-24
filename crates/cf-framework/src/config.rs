@@ -311,9 +311,13 @@ fn apply_advanced_params(
     params: &ConfigParams,
 ) -> Result<(), ConfigError> {
     if !params.uast_parse_timeout.is_empty() {
-        config.uast_parse_timeout = parse_go_duration(&params.uast_parse_timeout).map_err(|_| {
-            ConfigError::InvalidDuration(format!("uast-parse-timeout: {}", params.uast_parse_timeout))
-        })?;
+        config.uast_parse_timeout =
+            parse_go_duration(&params.uast_parse_timeout).map_err(|_| {
+                ConfigError::InvalidDuration(format!(
+                    "uast-parse-timeout: {}",
+                    params.uast_parse_timeout
+                ))
+            })?;
     }
     if !params.drain_prefetch_timeout.is_empty() {
         config.drain_prefetch_timeout =
@@ -509,7 +513,8 @@ pub fn parse_go_duration(s: &str) -> Result<Duration, String> {
     }
 
     let mut total_nanos: i128 = 0;
-    let mut rest = std::str::from_utf8(bytes).map_err(|_| format!("time: invalid duration {orig:?}"))?;
+    let mut rest =
+        std::str::from_utf8(bytes).map_err(|_| format!("time: invalid duration {orig:?}"))?;
 
     while !rest.is_empty() {
         // Parse a (possibly fractional) number.
@@ -690,8 +695,14 @@ mod tests {
 
     #[test]
     fn duration_micros_ascii_and_mu() {
-        assert_eq!(parse_go_duration("250us").unwrap(), Duration::from_micros(250));
-        assert_eq!(parse_go_duration("250µs").unwrap(), Duration::from_micros(250));
+        assert_eq!(
+            parse_go_duration("250us").unwrap(),
+            Duration::from_micros(250)
+        );
+        assert_eq!(
+            parse_go_duration("250µs").unwrap(),
+            Duration::from_micros(250)
+        );
     }
 
     #[test]
@@ -718,7 +729,10 @@ mod tests {
         assert_eq!(cfg.workers, 8);
         assert_eq!(cfg.commit_batch_size, 50);
         // default preserved where param was zero.
-        assert_eq!(cfg.diff_cache_size, CoordinatorConfig::default().diff_cache_size);
+        assert_eq!(
+            cfg.diff_cache_size,
+            CoordinatorConfig::default().diff_cache_size
+        );
     }
 
     #[test]

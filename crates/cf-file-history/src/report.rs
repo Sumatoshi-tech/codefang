@@ -20,7 +20,7 @@
 use cf_gojson::{marshal, Encoder, GoMap, GoValue};
 
 use crate::metrics::{
-    AggregateData, ComputedMetrics, CompositionData, CompositionTimeSeriesEntry, ContributorEntry,
+    AggregateData, CompositionData, CompositionTimeSeriesEntry, ComputedMetrics, ContributorEntry,
     FileChurnData, FileContributorData, HotspotData,
 };
 
@@ -37,7 +37,12 @@ pub fn computed_metrics_to_go(m: &ComputedMetrics) -> GoValue {
     );
     obj.push(
         "file_contributors",
-        GoValue::Array(m.file_contributors.iter().map(file_contributor_to_go).collect()),
+        GoValue::Array(
+            m.file_contributors
+                .iter()
+                .map(file_contributor_to_go)
+                .collect(),
+        ),
     );
     obj.push(
         "hotspots",
@@ -72,7 +77,10 @@ fn file_contributor_to_go(f: &FileContributorData) -> GoValue {
         GoValue::Array(f.contributors.iter().map(contributor_entry_to_go).collect()),
     );
     o.push("top_contributor_id", GoValue::Int(f.top_contributor_id));
-    o.push("top_contributor_lines", GoValue::Int(f.top_contributor_lines));
+    o.push(
+        "top_contributor_lines",
+        GoValue::Int(f.top_contributor_lines),
+    );
     GoValue::Object(o)
 }
 
@@ -99,8 +107,14 @@ fn aggregate_to_go(a: &AggregateData) -> GoValue {
     o.push("total_files", GoValue::Int(a.total_files));
     o.push("total_commits", GoValue::Int(a.total_commits));
     o.push("total_contributors", GoValue::Int(a.total_contributors));
-    o.push("avg_commits_per_file", GoValue::Float(a.avg_commits_per_file));
-    o.push("avg_contributors_per_file", GoValue::Float(a.avg_contributors_per_file));
+    o.push(
+        "avg_commits_per_file",
+        GoValue::Float(a.avg_commits_per_file),
+    );
+    o.push(
+        "avg_contributors_per_file",
+        GoValue::Float(a.avg_contributors_per_file),
+    );
     o.push("high_churn_files", GoValue::Int(a.high_churn_files));
     GoValue::Object(o)
 }

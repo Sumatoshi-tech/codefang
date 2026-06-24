@@ -155,11 +155,23 @@ mod tests {
         let mut commit_metrics = BTreeMap::new();
         commit_metrics.insert(
             hash('a'),
-            CommitAnomalyData { files_changed: 3, lines_added: 20, lines_removed: 5, author_id: 1, ..Default::default() },
+            CommitAnomalyData {
+                files_changed: 3,
+                lines_added: 20,
+                lines_removed: 5,
+                author_id: 1,
+                ..Default::default()
+            },
         );
         commit_metrics.insert(
             hash('b'),
-            CommitAnomalyData { files_changed: 2, lines_added: 10, lines_removed: 3, author_id: 2, ..Default::default() },
+            CommitAnomalyData {
+                files_changed: 2,
+                lines_added: 10,
+                lines_removed: 3,
+                author_id: 2,
+                ..Default::default()
+            },
         );
         let commits_by_tick = BTreeMap::from([(0_i64, vec![hash('a')]), (1_i64, vec![hash('b')])]);
 
@@ -187,7 +199,13 @@ mod tests {
         let mut commit_metrics = BTreeMap::new();
         commit_metrics.insert(
             hash('a'),
-            CommitAnomalyData { files_changed: 3, lines_added: 20, lines_removed: 5, author_id: 1, ..Default::default() },
+            CommitAnomalyData {
+                files_changed: 3,
+                lines_added: 20,
+                lines_removed: 5,
+                author_id: 1,
+                ..Default::default()
+            },
         );
         let commits_by_tick = BTreeMap::from([(0_i64, vec![hash('a'), hash('c')])]);
 

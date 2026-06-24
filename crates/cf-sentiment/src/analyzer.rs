@@ -54,8 +54,9 @@ pub const CONFIG_GAP: &str = "CommentSentiment.Gap";
 
 /// Comment prefixes stripped before analysis, longest first so `///` matches
 /// before `//`.
-pub const COMMENT_PREFIXES: &[&str] =
-    &["///", "//!", "//", "/**", "/*", "#!", "##", "#", "--", ";;", ";"];
+pub const COMMENT_PREFIXES: &[&str] = &[
+    "///", "//!", "//", "/**", "/*", "#!", "##", "#", "--", ";;", ";",
+];
 
 /// Comment suffixes stripped from lines.
 pub const COMMENT_SUFFIXES: &[&str] = &["*/"];
@@ -223,7 +224,10 @@ fn collapse_whitespace(s: &str) -> String {
 
 /// Counts the total byte length of `\p{L}+` matches (letter bytes).
 fn count_letter_bytes(s: &str) -> usize {
-    s.chars().filter(|&c| is_letter(c)).map(char::len_utf8).sum()
+    s.chars()
+        .filter(|&c| is_letter(c))
+        .map(char::len_utf8)
+        .sum()
 }
 
 /// Returns true if `s` contains a license/copyright marker
@@ -378,12 +382,18 @@ mod tests {
 
     #[test]
     fn validate_clamps() {
-        let mut c = Config { min_comment_length: 5, gap: 2.0 };
+        let mut c = Config {
+            min_comment_length: 5,
+            gap: 2.0,
+        };
         c.validate();
         assert_eq!(c.gap, DEFAULT_COMMENT_SENTIMENT_GAP);
         assert_eq!(c.min_comment_length, DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH);
 
-        let mut ok = Config { min_comment_length: 30, gap: 0.8 };
+        let mut ok = Config {
+            min_comment_length: 30,
+            gap: 0.8,
+        };
         ok.validate();
         assert_eq!(ok.min_comment_length, 30);
         assert!((ok.gap - 0.8).abs() < 1e-6);
@@ -399,7 +409,11 @@ mod tests {
         // short_filtered
         assert!(filter_comments(&s(&["bad"]), MIN_LEN).is_empty());
         // license_filtered
-        assert!(filter_comments(&s(&["Copyright 2024 Acme Corp Licensed under MIT"]), MIN_LEN).is_empty());
+        assert!(filter_comments(
+            &s(&["Copyright 2024 Acme Corp Licensed under MIT"]),
+            MIN_LEN
+        )
+        .is_empty());
     }
 
     #[test]
@@ -419,7 +433,10 @@ mod tests {
 
     #[test]
     fn filter_comments_license_uk_spelling() {
-        let r = filter_comments(&s(&["This code is under the License agreement terms"]), MIN_LEN);
+        let r = filter_comments(
+            &s(&["This code is under the License agreement terms"]),
+            MIN_LEN,
+        );
         assert!(r.is_empty(), "UK license should be filtered");
     }
 
@@ -456,8 +473,16 @@ mod tests {
     #[test]
     fn merge_adjacent_lines() {
         let nodes = vec![
-            CommentNode { start_line: 1, end_line: 1, token: "Line 1 is good".into() },
-            CommentNode { start_line: 2, end_line: 2, token: "Line 2 is nice".into() },
+            CommentNode {
+                start_line: 1,
+                end_line: 1,
+                token: "Line 1 is good".into(),
+            },
+            CommentNode {
+                start_line: 2,
+                end_line: 2,
+                token: "Line 2 is nice".into(),
+            },
         ];
         let merged = merge_adjacent_comments(&nodes);
         assert_eq!(merged.len(), 1);
@@ -467,7 +492,11 @@ mod tests {
 
     #[test]
     fn merge_comments_filters_short() {
-        let nodes = vec![CommentNode { start_line: 2, end_line: 2, token: "bad".into() }];
+        let nodes = vec![CommentNode {
+            start_line: 2,
+            end_line: 2,
+            token: "bad".into(),
+        }];
         let out = merge_comments(&nodes, MIN_LEN);
         assert!(out.is_empty(), "short comment should be filtered");
     }
@@ -487,7 +516,10 @@ mod tests {
     #[test]
     fn function_name_stripping() {
         // `foo()` should be removed, leaving the descriptive text long enough.
-        let r = filter_comments(&s(&["initialize foo() and configure bar() properly here"]), MIN_LEN);
+        let r = filter_comments(
+            &s(&["initialize foo() and configure bar() properly here"]),
+            MIN_LEN,
+        );
         assert_eq!(r.len(), 1);
         assert!(!r[0].contains("()"));
     }

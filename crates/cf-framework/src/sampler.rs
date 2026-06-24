@@ -160,10 +160,7 @@ mod tests {
             profile_path("/tmp/dumps", "t0", 3),
             "/tmp/dumps/heap_t0_chunk3.pb.gz"
         );
-        assert_eq!(
-            profile_path("/d", "t1", 0),
-            "/d/heap_t1_chunk0.pb.gz"
-        );
+        assert_eq!(profile_path("/d", "t1", 0), "/d/heap_t1_chunk0.pb.gz");
     }
 
     #[test]

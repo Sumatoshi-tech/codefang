@@ -76,8 +76,7 @@ impl LruBlobCache {
             max_size
         };
 
-        let expected_n =
-            ((max_size / AVERAGE_BLOB_SIZE_ESTIMATE) as usize).max(MIN_BLOOM_ELEMENTS);
+        let expected_n = ((max_size / AVERAGE_BLOB_SIZE_ESTIMATE) as usize).max(MIN_BLOOM_ELEMENTS);
 
         let cache = Cache::new(|c| {
             c.with_max_bytes(max_size, blob_size);
@@ -109,10 +108,7 @@ impl LruBlobCache {
 
     /// Retrieves multiple blobs, returning found pairs and missing hashes.
     #[must_use]
-    pub fn get_multi(
-        &self,
-        hashes: &[GitHash],
-    ) -> (HashMap<GitHash, CachedBlob>, Vec<GitHash>) {
+    pub fn get_multi(&self, hashes: &[GitHash]) -> (HashMap<GitHash, CachedBlob>, Vec<GitHash>) {
         self.cache.get_multi(hashes)
     }
 

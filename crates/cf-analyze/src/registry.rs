@@ -39,19 +39,24 @@ impl Registry {
 
         append_descriptors(AnalyzerMode::Static, static_descs, &mut index, &mut ordered)?;
         append_descriptors(AnalyzerMode::Static, raw_descs, &mut index, &mut ordered)?;
-        append_descriptors(AnalyzerMode::History, history_descs, &mut index, &mut ordered)?;
+        append_descriptors(
+            AnalyzerMode::History,
+            history_descs,
+            &mut index,
+            &mut ordered,
+        )?;
 
         Ok(Self { ordered, index })
     }
 
     /// Returns all descriptors in stable (registration) order.
-    #[must_use] 
+    #[must_use]
     pub fn all(&self) -> Vec<Descriptor> {
         self.ordered.clone()
     }
 
     /// Returns IDs for the given mode in stable order.
-    #[must_use] 
+    #[must_use]
     pub fn ids_by_mode(&self, mode: AnalyzerMode) -> Vec<String> {
         self.ordered
             .iter()
@@ -61,7 +66,7 @@ impl Registry {
     }
 
     /// Returns metadata for the given ID.
-    #[must_use] 
+    #[must_use]
     pub fn descriptor(&self, id: &str) -> Option<Descriptor> {
         self.index.get(id).cloned()
     }
@@ -128,10 +133,11 @@ impl Registry {
     fn match_glob(&self, pattern: &str) -> Result<Vec<String>, AnalyzeError> {
         let mut matched = Vec::with_capacity(self.ordered.len());
         for d in &self.ordered {
-            let is_match = path_match(pattern, &d.id).map_err(|e| AnalyzeError::InvalidAnalyzerGlob {
-                pattern: pattern.to_string(),
-                cause: e.to_string(),
-            })?;
+            let is_match =
+                path_match(pattern, &d.id).map_err(|e| AnalyzeError::InvalidAnalyzerGlob {
+                    pattern: pattern.to_string(),
+                    cause: e.to_string(),
+                })?;
             if is_match {
                 matched.push(d.id.clone());
             }
@@ -208,9 +214,15 @@ mod tests {
 
     fn registry() -> Registry {
         Registry::new(
-            &[d("static/a", AnalyzerMode::Static), d("static/b", AnalyzerMode::Static)],
+            &[
+                d("static/a", AnalyzerMode::Static),
+                d("static/b", AnalyzerMode::Static),
+            ],
             &[],
-            &[d("history/b", AnalyzerMode::History), d("history/c", AnalyzerMode::History)],
+            &[
+                d("history/b", AnalyzerMode::History),
+                d("history/c", AnalyzerMode::History),
+            ],
         )
         .unwrap()
     }
@@ -218,7 +230,10 @@ mod tests {
     #[test]
     fn duplicate_id_rejected() {
         let err = Registry::new(
-            &[d("static/a", AnalyzerMode::Static), d("static/a", AnalyzerMode::Static)],
+            &[
+                d("static/a", AnalyzerMode::Static),
+                d("static/a", AnalyzerMode::Static),
+            ],
             &[],
             &[],
         )
@@ -236,9 +251,7 @@ mod tests {
     #[test]
     fn split_by_mode() {
         let reg = registry();
-        let (s, h) = reg
-            .split(&["static/a".into(), "history/b".into()])
-            .unwrap();
+        let (s, h) = reg.split(&["static/a".into(), "history/b".into()]).unwrap();
         assert_eq!(s, vec!["static/a"]);
         assert_eq!(h, vec!["history/b"]);
     }
@@ -252,8 +265,14 @@ mod tests {
     #[test]
     fn ids_by_mode() {
         let reg = registry();
-        assert_eq!(reg.ids_by_mode(AnalyzerMode::Static), vec!["static/a", "static/b"]);
-        assert_eq!(reg.ids_by_mode(AnalyzerMode::History), vec!["history/b", "history/c"]);
+        assert_eq!(
+            reg.ids_by_mode(AnalyzerMode::Static),
+            vec!["static/a", "static/b"]
+        );
+        assert_eq!(
+            reg.ids_by_mode(AnalyzerMode::History),
+            vec!["history/b", "history/c"]
+        );
     }
 
     #[test]

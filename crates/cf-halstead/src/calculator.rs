@@ -125,7 +125,8 @@ impl MetricsCalculator {
         };
 
         let difficulty = if distinct_opnds > 0 {
-            (distinct_ops as f64 / DIFFICULTY_DIVISOR) * (total_opnds as f64 / distinct_opnds as f64)
+            (distinct_ops as f64 / DIFFICULTY_DIVISOR)
+                * (total_opnds as f64 / distinct_opnds as f64)
         } else {
             0.0
         };

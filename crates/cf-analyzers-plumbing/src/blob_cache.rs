@@ -112,8 +112,7 @@ impl<'r> GitBlobSource<'r> {
 
 impl BlobSource for GitBlobSource<'_> {
     fn read_blob(&self, hash: Hash) -> Result<Vec<u8>, AnalyzerError> {
-        let oid = git2::Oid::from_bytes(&hash.0)
-            .map_err(|e| AnalyzerError::Git(e.to_string()))?;
+        let oid = git2::Oid::from_bytes(&hash.0).map_err(|e| AnalyzerError::Git(e.to_string()))?;
         let blob = self.repo.find_blob(oid)?;
         Ok(blob.content().to_vec())
     }
@@ -243,7 +242,12 @@ mod tests {
             ("single line no newline", b"hello".to_vec(), 1, false),
             ("single line with newline", b"hello\n".to_vec(), 1, false),
             ("two lines", b"hello\nworld".to_vec(), 2, false),
-            ("two lines trailing newline", b"hello\nworld\n".to_vec(), 2, false),
+            (
+                "two lines trailing newline",
+                b"hello\nworld\n".to_vec(),
+                2,
+                false,
+            ),
             ("binary", vec![0x00, 0x01, 0x02], 0, true),
         ];
         for (name, data, want, want_err) in cases {
@@ -296,16 +300,28 @@ mod tests {
             // insert: from empty, to h(1)
             Change {
                 from: crate::git_model::ChangeEntry::default(),
-                to: crate::git_model::ChangeEntry { name: "a".into(), hash: h(1) },
+                to: crate::git_model::ChangeEntry {
+                    name: "a".into(),
+                    hash: h(1),
+                },
             },
             // modify: from h(2) to h(3)
             Change {
-                from: crate::git_model::ChangeEntry { name: "b".into(), hash: h(2) },
-                to: crate::git_model::ChangeEntry { name: "b".into(), hash: h(3) },
+                from: crate::git_model::ChangeEntry {
+                    name: "b".into(),
+                    hash: h(2),
+                },
+                to: crate::git_model::ChangeEntry {
+                    name: "b".into(),
+                    hash: h(3),
+                },
             },
             // delete: from h(4), to empty
             Change {
-                from: crate::git_model::ChangeEntry { name: "c".into(), hash: h(4) },
+                from: crate::git_model::ChangeEntry {
+                    name: "c".into(),
+                    hash: h(4),
+                },
                 to: crate::git_model::ChangeEntry::default(),
             },
         ];
@@ -314,8 +330,8 @@ mod tests {
         assert_eq!(result.get(&h(1)).unwrap().data, b"added\n");
         assert_eq!(result.get(&h(3)).unwrap().data, b"new\n"); // to-hash for modify
         assert_eq!(result.get(&h(4)).unwrap().data, b"gone\n"); // from-hash for delete
-        // The from-side of a modify is ALSO cached (read fresh when not in
-        // the previous cache); h(2) is therefore present.
+                                                                // The from-side of a modify is ALSO cached (read fresh when not in
+                                                                // the previous cache); h(2) is therefore present.
         assert_eq!(result.get(&h(2)).unwrap().data, b"old\n");
     }
 
@@ -326,10 +342,18 @@ mod tests {
         blobs.insert(h(3), b"new\n".to_vec());
         let mut cache = BlobCache::new(MapSource(blobs));
         // Seed the previous cache as if h(2) was produced by an earlier commit.
-        cache.previous_cache.insert(h(2), CachedBlob::new(b"reused\n".to_vec()));
+        cache
+            .previous_cache
+            .insert(h(2), CachedBlob::new(b"reused\n".to_vec()));
         let changes: Changes = vec![Change {
-            from: crate::git_model::ChangeEntry { name: "b".into(), hash: h(2) },
-            to: crate::git_model::ChangeEntry { name: "b".into(), hash: h(3) },
+            from: crate::git_model::ChangeEntry {
+                name: "b".into(),
+                hash: h(2),
+            },
+            to: crate::git_model::ChangeEntry {
+                name: "b".into(),
+                hash: h(3),
+            },
         }];
         let result = cache.build(&changes);
         // from-side reused from previous cache, not re-read.
@@ -342,7 +366,10 @@ mod tests {
         let mut cache = BlobCache::new(MapSource(HashMap::new()));
         let changes: Changes = vec![Change {
             from: Default::default(),
-            to: crate::git_model::ChangeEntry { name: "a".into(), hash: h(1) },
+            to: crate::git_model::ChangeEntry {
+                name: "a".into(),
+                hash: h(1),
+            },
         }];
         let result = cache.build(&changes);
         assert_eq!(result.get(&h(1)).unwrap().data, b"");

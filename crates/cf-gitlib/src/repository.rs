@@ -217,11 +217,7 @@ impl Repository {
     ) -> Result<Diff<'_>> {
         let diff = self
             .repo
-            .diff_tree_to_tree(
-                old_tree.map(Tree::native),
-                new_tree.map(Tree::native),
-                None,
-            )
+            .diff_tree_to_tree(old_tree.map(Tree::native), new_tree.map(Tree::native), None)
             .map_err(GitError::DiffTrees)?;
         Ok(Diff::new(diff))
     }
@@ -577,7 +573,10 @@ mod tests {
         assert!(full.contains(&hash_b));
         assert!(fp.contains(&hash_m));
         assert!(fp.contains(&hash_a));
-        assert!(!fp.contains(&hash_b), "first-parent must exclude branch commit");
+        assert!(
+            !fp.contains(&hash_b),
+            "first-parent must exclude branch commit"
+        );
         assert!(fp.len() < full.len());
 
         // Each commit's predecessor must be its first parent.
@@ -618,11 +617,12 @@ mod tests {
             })
             .unwrap();
         let mut count = 0;
-        iter2.for_each(|_| {
-            count += 1;
-            Ok(())
-        })
-        .unwrap();
+        iter2
+            .for_each(|_| {
+                count += 1;
+                Ok(())
+            })
+            .unwrap();
         assert!(count >= 2);
     }
 

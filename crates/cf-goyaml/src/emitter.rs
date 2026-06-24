@@ -51,7 +51,11 @@ pub struct Emitter {
 
 impl Emitter {
     pub fn new(indent: i32) -> Self {
-        let best_indent = if !(2..=9).contains(&indent) { 2 } else { indent };
+        let best_indent = if !(2..=9).contains(&indent) {
+            2
+        } else {
+            indent
+        };
         Emitter {
             out: Vec::new(),
             column: 0,
@@ -565,7 +569,10 @@ impl Emitter {
 fn scalar_text_and_style(value: &GoValue) -> (String, Style) {
     match value {
         GoValue::Null => ("null".to_string(), Style::Plain),
-        GoValue::Bool(b) => ((if *b { "true" } else { "false" }).to_string(), Style::Plain),
+        GoValue::Bool(b) => (
+            (if *b { "true" } else { "false" }).to_string(),
+            Style::Plain,
+        ),
         GoValue::Int(i) => (i.to_string(), Style::Plain),
         GoValue::Uint(u) => (u.to_string(), Style::Plain),
         GoValue::Float(f) => (float::format_g(*f), Style::Plain),
@@ -630,11 +637,9 @@ fn yaml_key_order(m: &cf_gojson::GoMap) -> Vec<&(String, GoValue)> {
         // Integer map keys sort by integer value (the key comparator's
         // numeric fast path).
         cf_gojson::MapOrigin::IntMap => {
-            refs.sort_by(|a, b| {
-                match (a.0.parse::<i64>(), b.0.parse::<i64>()) {
-                    (Ok(x), Ok(y)) => x.cmp(&y),
-                    _ => a.0.as_bytes().cmp(b.0.as_bytes()),
-                }
+            refs.sort_by(|a, b| match (a.0.parse::<i64>(), b.0.parse::<i64>()) {
+                (Ok(x), Ok(y)) => x.cmp(&y),
+                _ => a.0.as_bytes().cmp(b.0.as_bytes()),
             });
         }
         cf_gojson::MapOrigin::Struct => {}

@@ -22,17 +22,23 @@ pub fn lower_node(ast: &DslNode) -> Result<QueryFn, DslError> {
     match ast {
         DslNode::Map(expr) => {
             let field_fn = lower_map_expr(expr);
-            Ok(Box::new(move |nodes: Vec<Node>| apply_map(&nodes, field_fn.as_ref())))
+            Ok(Box::new(move |nodes: Vec<Node>| {
+                apply_map(&nodes, field_fn.as_ref())
+            }))
         }
         DslNode::Filter(expr) => {
             let predicate = lower_filter_expr(expr);
-            Ok(Box::new(move |nodes: Vec<Node>| apply_filter(&nodes, predicate.as_ref())))
+            Ok(Box::new(move |nodes: Vec<Node>| {
+                apply_filter(&nodes, predicate.as_ref())
+            }))
         }
         DslNode::Reduce(expr) => {
             // A non-call reduce body is identity (reference-implementation
             // behavior); a call-expr body runs as a fold over the whole slice.
             let body = lower_map_expr(expr);
-            Ok(Box::new(move |nodes: Vec<Node>| apply_reduce(&nodes, body.as_ref())))
+            Ok(Box::new(move |nodes: Vec<Node>| {
+                apply_reduce(&nodes, body.as_ref())
+            }))
         }
         DslNode::Field(_) => {
             let f = lower_field_access(ast);
@@ -41,11 +47,15 @@ pub fn lower_node(ast: &DslNode) -> Result<QueryFn, DslError> {
         DslNode::Call { name, args } => {
             let name = name.clone();
             let args = args.clone();
-            Ok(Box::new(move |nodes: Vec<Node>| apply_builtin(&name, &nodes, &args)))
+            Ok(Box::new(move |nodes: Vec<Node>| {
+                apply_builtin(&name, &nodes, &args)
+            }))
         }
         DslNode::Pipeline(stages) => {
             let stages = stages.clone();
-            Ok(Box::new(move |nodes: Vec<Node>| apply_pipeline_stages(&stages, nodes)))
+            Ok(Box::new(move |nodes: Vec<Node>| {
+                apply_pipeline_stages(&stages, nodes)
+            }))
         }
         // RMap/RFilter lower to identity.
         DslNode::RMap(_) | DslNode::RFilter(_) => Ok(Box::new(|nodes: Vec<Node>| nodes)),
@@ -121,9 +131,7 @@ fn lower_filter_expr(expr: &DslNode) -> Box<dyn Fn(&Node) -> bool> {
         DslNode::Comparison { lhs, op, rhs } if op == "has" => {
             let left_fn = lower_field_access(lhs);
             let rhs_val = literal_or_field_value(rhs);
-            Box::new(move |n: &Node| {
-                check_membership(&left_fn, &rhs_val, n)
-            })
+            Box::new(move |n: &Node| check_membership(&left_fn, &rhs_val, n))
         }
         DslNode::Comparison { lhs, op, rhs } => {
             let field = field_name_of(lhs);

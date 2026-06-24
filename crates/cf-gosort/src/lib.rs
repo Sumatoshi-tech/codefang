@@ -370,14 +370,7 @@ where
     }
 }
 
-fn median<T, F>(
-    data: &[T],
-    a: usize,
-    b: usize,
-    c: usize,
-    swaps: &mut i32,
-    less: &F,
-) -> usize
+fn median<T, F>(data: &[T], a: usize, b: usize, c: usize, swaps: &mut i32, less: &F) -> usize
 where
     F: Fn(&T, &T) -> bool,
 {
@@ -424,4 +417,3 @@ mod tests {
         assert_eq!(v, sorted);
     }
 }
-

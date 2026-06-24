@@ -124,7 +124,10 @@ mod tests {
         file.update(1, 50, 10, 0);
         let results = file.query_range(0, file.len());
         assert!(!results.is_empty());
-        let owner1 = results.iter().find(|s| s.owner == 1).expect("owner=1 segment");
+        let owner1 = results
+            .iter()
+            .find(|s| s.owner == 1)
+            .expect("owner=1 segment");
         assert_eq!(owner1.start_line, 50);
         assert_eq!(owner1.end_line, 60);
     }
@@ -135,7 +138,10 @@ mod tests {
         let mut file = File::new(0, RQ_INITIAL_LENGTH, Vec::new());
         file.update(1, 50, 10, 0);
         let results = file.query_range(55, 65);
-        assert!(results.iter().any(|s| s.owner == 1), "should find time=1 segment");
+        assert!(
+            results.iter().any(|s| s.owner == 1),
+            "should find time=1 segment"
+        );
     }
 
     /// Mirrors reference test `TestQueryRange_NoOverlap`.
@@ -173,7 +179,11 @@ mod tests {
         let results = file.query_range(0, file.len());
         assert!(!results.is_empty());
         let total_lines: i64 = results.iter().map(|s| s.end_line - s.start_line).sum();
-        assert_eq!(total_lines, file.len(), "total segment lines should match file length");
+        assert_eq!(
+            total_lines,
+            file.len(),
+            "total segment lines should match file length"
+        );
     }
 
     /// Mirrors reference test `TestQueryRange_ExcludesTreeEnd`.

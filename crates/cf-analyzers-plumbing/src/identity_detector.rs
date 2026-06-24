@@ -119,20 +119,32 @@ impl IdentityDetector {
         if let Some(&id) = self.people_dict.get(email) {
             if !self.people_dict.contains_key(name) {
                 self.people_dict.insert(name.to_string(), id);
-                self.incremental_names.entry(id).or_default().push(name.to_string());
+                self.incremental_names
+                    .entry(id)
+                    .or_default()
+                    .push(name.to_string());
             }
             return;
         }
         if let Some(&id) = self.people_dict.get(name) {
             self.people_dict.insert(email.to_string(), id);
-            self.incremental_emails.entry(id).or_default().push(email.to_string());
+            self.incremental_emails
+                .entry(id)
+                .or_default()
+                .push(email.to_string());
             return;
         }
         let id = self.incremental_size;
         self.people_dict.insert(email.to_string(), id);
         self.people_dict.insert(name.to_string(), id);
-        self.incremental_emails.entry(id).or_default().push(email.to_string());
-        self.incremental_names.entry(id).or_default().push(name.to_string());
+        self.incremental_emails
+            .entry(id)
+            .or_default()
+            .push(email.to_string());
+        self.incremental_names
+            .entry(id)
+            .or_default()
+            .push(name.to_string());
         self.incremental_size += 1;
     }
 
@@ -215,7 +227,11 @@ impl IdentityDetector {
         let mut reverse = vec![String::new(); size as usize];
         for id in 0..size {
             let mut names = self.incremental_names.get(&id).cloned().unwrap_or_default();
-            let mut emails = self.incremental_emails.get(&id).cloned().unwrap_or_default();
+            let mut emails = self
+                .incremental_emails
+                .get(&id)
+                .cloned()
+                .unwrap_or_default();
             names.sort();
             emails.sort();
             reverse[id as usize] = format!("{}|{}", names.join("|"), emails.join("|"));
@@ -245,7 +261,11 @@ impl IdentityDetector {
         } else {
             for id in 0..size {
                 let mut names = self.incremental_names.get(&id).cloned().unwrap_or_default();
-                let mut emails = self.incremental_emails.get(&id).cloned().unwrap_or_default();
+                let mut emails = self
+                    .incremental_emails
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_default();
                 names.sort();
                 emails.sort();
                 reverse[id as usize] = format!("{}|{}", names.join("|"), emails.join("|"));

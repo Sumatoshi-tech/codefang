@@ -89,17 +89,29 @@ fn first_literal_arg(args: &[DslNode]) -> Option<String> {
 
 fn apply_contains(nodes: &[Node], args: &[DslNode]) -> Vec<Node> {
     let needle = first_literal_arg(args).unwrap_or_default();
-    nodes.iter().filter(|n| n.token.contains(&needle)).cloned().collect()
+    nodes
+        .iter()
+        .filter(|n| n.token.contains(&needle))
+        .cloned()
+        .collect()
 }
 
 fn apply_starts_with(nodes: &[Node], args: &[DslNode]) -> Vec<Node> {
     let prefix = first_literal_arg(args).unwrap_or_default();
-    nodes.iter().filter(|n| n.token.starts_with(&prefix)).cloned().collect()
+    nodes
+        .iter()
+        .filter(|n| n.token.starts_with(&prefix))
+        .cloned()
+        .collect()
 }
 
 fn apply_ends_with(nodes: &[Node], args: &[DslNode]) -> Vec<Node> {
     let suffix = first_literal_arg(args).unwrap_or_default();
-    nodes.iter().filter(|n| n.token.ends_with(&suffix)).cloned().collect()
+    nodes
+        .iter()
+        .filter(|n| n.token.ends_with(&suffix))
+        .cloned()
+        .collect()
 }
 
 /// `has(field)` keeps nodes that have a non-empty value for `field`.

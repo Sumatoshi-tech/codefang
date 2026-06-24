@@ -146,7 +146,14 @@ mod tests {
     fn new_node_sets_fields() {
         let mut a = Allocator::new();
         let pos = a.new_positions(1, 2, 3, 4, 5, 6);
-        let n = a.new_node(Vec::new(), "Function", "tok", vec!["Declaration".into()], Some(pos), HashMap::new());
+        let n = a.new_node(
+            Vec::new(),
+            "Function",
+            "tok",
+            vec!["Declaration".into()],
+            Some(pos),
+            HashMap::new(),
+        );
         assert_eq!(n.node_type, "Function");
         assert_eq!(n.pos.unwrap().start_line, 1);
     }

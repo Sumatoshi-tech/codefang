@@ -101,7 +101,11 @@ impl SectionRenderer {
         let mut score_text = format!("Score: {}", section.score_label());
         let score_color = terminal::color_for_score(section.score());
         score_text = self.config.colorize(&score_text, score_color);
-        parts.push(terminal::draw_header(&title, &score_text, self.config.width));
+        parts.push(terminal::draw_header(
+            &title,
+            &score_text,
+            self.config.width,
+        ));
 
         // Summary line.
         let indent = " ".repeat(INDENT_WIDTH);
@@ -147,7 +151,11 @@ impl SectionRenderer {
             .config
             .width
             .saturating_sub(INDENT_WIDTH * SEPARATOR_WIDTH_VALUE);
-        lines.push(format!("{}{}", indent, terminal::draw_separator(separator_width)));
+        lines.push(format!(
+            "{}{}",
+            indent,
+            terminal::draw_separator(separator_width)
+        ));
 
         let mut i = 0;
         while i < metrics.len() {
@@ -174,8 +182,15 @@ impl SectionRenderer {
         lines.push(String::new());
         let dist_header = self.config.colorize(DISTRIBUTION_LABEL, Color::Gray);
         lines.push(format!("{indent}{dist_header}"));
-        let separator_width = self.config.width.saturating_sub(INDENT_WIDTH * SEPARATOR_WIDTH_VALUE);
-        lines.push(format!("{}{}", indent, terminal::draw_separator(separator_width)));
+        let separator_width = self
+            .config
+            .width
+            .saturating_sub(INDENT_WIDTH * SEPARATOR_WIDTH_VALUE);
+        lines.push(format!(
+            "{}{}",
+            indent,
+            terminal::draw_separator(separator_width)
+        ));
 
         for item in items {
             let bar = terminal::draw_percent_bar(
@@ -197,8 +212,15 @@ impl SectionRenderer {
         lines.push(String::new());
         let issues_header = self.config.colorize(label, Color::Gray);
         lines.push(format!("{indent}{issues_header}"));
-        let separator_width = self.config.width.saturating_sub(INDENT_WIDTH * SEPARATOR_WIDTH_VALUE);
-        lines.push(format!("{}{}", indent, terminal::draw_separator(separator_width)));
+        let separator_width = self
+            .config
+            .width
+            .saturating_sub(INDENT_WIDTH * SEPARATOR_WIDTH_VALUE);
+        lines.push(format!(
+            "{}{}",
+            indent,
+            terminal::draw_separator(separator_width)
+        ));
 
         for issue in issues {
             let name = terminal::truncate_with_ellipsis(&issue.name, ISSUE_NAME_WIDTH);

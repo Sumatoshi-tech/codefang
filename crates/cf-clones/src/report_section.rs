@@ -6,8 +6,13 @@
 
 use cf_analyze::{GoMap, GoValue, MapOrigin, Report};
 
-use crate::report::{categorize_clone_pairs, CloneTypeCounts, ClonePair, CLONE_TYPE1, CLONE_TYPE2, CLONE_TYPE3};
-use crate::{KEY_CLONE_PAIRS, KEY_CLONE_RATIO, KEY_CLONE_TYPE_DISTRIBUTION, KEY_MESSAGE, KEY_TOTAL_CLONE_PAIRS, KEY_TOTAL_FUNCTIONS};
+use crate::report::{
+    categorize_clone_pairs, ClonePair, CloneTypeCounts, CLONE_TYPE1, CLONE_TYPE2, CLONE_TYPE3,
+};
+use crate::{
+    KEY_CLONE_PAIRS, KEY_CLONE_RATIO, KEY_CLONE_TYPE_DISTRIBUTION, KEY_MESSAGE,
+    KEY_TOTAL_CLONE_PAIRS, KEY_TOTAL_FUNCTIONS,
+};
 
 /// Machine-output severity for a clone pair below [`SEVERITY_THRESH_HIGH`]
 /// (the lowercase JSON form, distinct from the capitalized terminal label
@@ -98,15 +103,24 @@ impl ReportSection {
         vec![
             Metric {
                 label: "Total Functions".to_string(),
-                value: cf_reportutil::format_int(cf_reportutil::get_int(&self.report, KEY_TOTAL_FUNCTIONS)),
+                value: cf_reportutil::format_int(cf_reportutil::get_int(
+                    &self.report,
+                    KEY_TOTAL_FUNCTIONS,
+                )),
             },
             Metric {
                 label: "Clone Pairs".to_string(),
-                value: cf_reportutil::format_int(cf_reportutil::get_int(&self.report, KEY_TOTAL_CLONE_PAIRS)),
+                value: cf_reportutil::format_int(cf_reportutil::get_int(
+                    &self.report,
+                    KEY_TOTAL_CLONE_PAIRS,
+                )),
             },
             Metric {
                 label: "Clone Ratio".to_string(),
-                value: cf_reportutil::format_float(cf_reportutil::get_float64(&self.report, KEY_CLONE_RATIO)),
+                value: cf_reportutil::format_float(cf_reportutil::get_float64(
+                    &self.report,
+                    KEY_CLONE_RATIO,
+                )),
             },
         ]
     }
@@ -252,9 +266,15 @@ pub fn report_section_json_value(report: &Report) -> GoValue {
                     JSON_SEVERITY_FAIR
                 };
                 let mut si = GoMap::new(MapOrigin::Struct);
-                si.push("name", GoValue::Str(format!("{} <-> {}", p.func_a, p.func_b)));
+                si.push(
+                    "name",
+                    GoValue::Str(format!("{} <-> {}", p.func_a, p.func_b)),
+                );
                 si.push("location", GoValue::Str(p.clone_type));
-                si.push("value", GoValue::Str(cf_reportutil::format_float(p.similarity)));
+                si.push(
+                    "value",
+                    GoValue::Str(cf_reportutil::format_float(p.similarity)),
+                );
                 si.push("severity", GoValue::Str(severity.to_string()));
                 GoValue::Object(si)
             })
@@ -370,9 +390,7 @@ pub fn compute_score(clone_ratio: f64) -> f64 {
 /// Reads the stored `clone_type_distribution` counts, if present.
 fn stored_distribution(report: &Report) -> Option<CloneTypeCounts> {
     use cf_analyze::GoValue;
-    let Some(GoValue::Map(m)) =
-        cf_reportutil::get(report, KEY_CLONE_TYPE_DISTRIBUTION)
-    else {
+    let Some(GoValue::Map(m)) = cf_reportutil::get(report, KEY_CLONE_TYPE_DISTRIBUTION) else {
         return None;
     };
     let mut counts = CloneTypeCounts::default();
@@ -432,8 +450,14 @@ mod tests {
     use cf_uast_node::Node;
 
     fn function(name: &str) -> Node {
-        let name_node = NodeBuilder::new("Identifier").role("Name").token(name).build();
-        let mut f = NodeBuilder::new("Function").role("Function").child(name_node).build();
+        let name_node = NodeBuilder::new("Identifier")
+            .role("Name")
+            .token(name)
+            .build();
+        let mut f = NodeBuilder::new("Function")
+            .role("Function")
+            .child(name_node)
+            .build();
         let mut block = NodeBuilder::new("Block").build();
         for i in 0..24 {
             let kind = ["Identifier", "Call", "Literal", "Operator"][i % 4];

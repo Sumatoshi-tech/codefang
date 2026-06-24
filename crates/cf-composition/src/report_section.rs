@@ -225,7 +225,11 @@ impl ReportSection {
 
     /// Looks up a category count in the breakdown (zero if absent).
     fn breakdown_count(&self, cat: Category) -> i64 {
-        self.report.breakdown.get(cat.as_str()).copied().unwrap_or(0)
+        self.report
+            .breakdown
+            .get(cat.as_str())
+            .copied()
+            .unwrap_or(0)
     }
 }
 

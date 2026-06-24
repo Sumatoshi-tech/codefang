@@ -169,8 +169,11 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
     let mut seen_files: Vec<cf_alg_bloom::Filter> = Vec::with_capacity(num_workers);
     for _ in 0..num_workers {
         seen_files.push(
-            cf_alg_bloom::Filter::new_with_estimates(SEEN_FILES_BLOOM_EXPECTED, SEEN_FILES_BLOOM_FP)
-                .ok()?,
+            cf_alg_bloom::Filter::new_with_estimates(
+                SEEN_FILES_BLOOM_EXPECTED,
+                SEEN_FILES_BLOOM_FP,
+            )
+            .ok()?,
         );
     }
     let mut seen_merges: Vec<HashSet<cf_gitlib::Hash>> = vec![HashSet::new(); num_workers];
@@ -230,8 +233,11 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
             let changes: Vec<cf_gitlib::changes::Change> = raw_changes
                 .into_iter()
                 .filter(|c| {
-                    let name =
-                        if c.action == ChangeAction::Delete { &c.from.name } else { &c.to.name };
+                    let name = if c.action == ChangeAction::Delete {
+                        &c.from.name
+                    } else {
+                        &c.to.name
+                    };
                     !exclude(name, None, opts_ref)
                 })
                 .collect();
@@ -301,14 +307,21 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
         });
         // Reference: author = Identity.AuthorID; if AuthorMissing → PeopleNumber.
         // With loose detection author_id is always a real id, never AuthorMissing.
-        let author = if author_id == AUTHOR_MISSING { 0 } else { author_id as usize };
+        let author = if author_id == AUTHOR_MISSING {
+            0
+        } else {
+            author_id as usize
+        };
 
         // The tree diff + path-policy filter for this commit was computed in the
         // parallel pre-pass; the reduce only reads it.
         let changes = &prep.changes;
 
         // Build this commit's CommitData.
-        let mut data = CommitData { commit_counted: true, ..CommitData::default() };
+        let mut data = CommitData {
+            commit_counted: true,
+            ..CommitData::default()
+        };
 
         // Oversized changeset: skip coupling/ownership extraction, but the commit
         // is still counted (CommitCounted = true) — the reference implementation returns `&data` early
@@ -318,13 +331,23 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
         let oversized = changes.len() > MAX_MEANINGFUL_CONTEXT;
         if !oversized {
             for change in changes {
-                process_change(change, merge_mode, author, &mut data, &mut seen_files[worker]);
+                process_change(
+                    change,
+                    merge_mode,
+                    author,
+                    &mut data,
+                    &mut seen_files[worker],
+                );
             }
         }
 
         agg.add(author, &data);
         commits.push(CouplesCommit {
-            hash: if oversized { ZERO_HASH_HEX.to_string() } else { hash.to_string() },
+            hash: if oversized {
+                ZERO_HASH_HEX.to_string()
+            } else {
+                hash.to_string()
+            },
             data: Some(data),
             tick,
             author_id,
@@ -409,7 +432,12 @@ pub fn couples_ndjson_records(
         let mut data = GoMap::new_struct();
         data.insert(
             "CouplingFiles".to_string(),
-            GoValue::Array(cd.coupling_files.iter().map(|f| GoValue::Str(f.clone())).collect()),
+            GoValue::Array(
+                cd.coupling_files
+                    .iter()
+                    .map(|f| GoValue::Str(f.clone()))
+                    .collect(),
+            ),
         );
         let mut authors = GoMap::new_map();
         for (f, n) in &cd.author_files {
@@ -430,7 +458,10 @@ pub fn couples_ndjson_records(
                     .collect(),
             ),
         );
-        data.insert("CommitCounted".to_string(), GoValue::Bool(cd.commit_counted));
+        data.insert(
+            "CommitCounted".to_string(),
+            GoValue::Bool(cd.commit_counted),
+        );
         records.push(crate::handlers::history_formats::NdjsonRecord {
             pos,
             hash: c.hash.clone(),
@@ -465,7 +496,10 @@ pub fn couples_timeseries_contribution(
             continue;
         }
         let mut entry = GoMap::new_map();
-        entry.insert("files_touched".to_string(), GoValue::Int(cd.coupling_files.len() as i64));
+        entry.insert(
+            "files_touched".to_string(),
+            GoValue::Int(cd.coupling_files.len() as i64),
+        );
         entry.insert("author_id".to_string(), GoValue::Int(c.author_id));
         per_commit.push((c.hash.clone(), GoValue::Map(entry)));
         commit_meta.push((
@@ -573,4 +607,3 @@ fn process_change(
 /// id and, when present, as the `PeopleNumber` slot). Under loose detection the
 /// resolved author is never this sentinel.
 const AUTHOR_MISSING_IDX: usize = (1 << 18) - 1;
-

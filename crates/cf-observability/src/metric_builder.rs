@@ -150,7 +150,12 @@ mod tests {
         let _c = b.create_metric::<_, TestErr>(
             "test.metric",
             || meter.u64_counter("fallback").init(),
-            |m| Ok(m.u64_counter("test.metric").with_description("A test metric").with_unit("{item}").init()),
+            |m| {
+                Ok(m.u64_counter("test.metric")
+                    .with_description("A test metric")
+                    .with_unit("{item}")
+                    .init())
+            },
         );
 
         assert!(b.err().is_none());

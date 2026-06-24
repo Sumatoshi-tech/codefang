@@ -55,9 +55,7 @@ pub mod classifier;
 pub mod report_section;
 
 pub use aggregator::Aggregator;
-pub use analyzer::{
-    Analyzer, ANALYZER_DESCRIPTION, ANALYZER_FLAG, ANALYZER_ID, ANALYZER_NAME,
-};
+pub use analyzer::{Analyzer, ANALYZER_DESCRIPTION, ANALYZER_FLAG, ANALYZER_ID, ANALYZER_NAME};
 pub use category::{Category, CategoryCounts, ALL_CATEGORIES};
 pub use classifier::Classifier;
 pub use report_section::{CompositionReport, ReportSection, SECTION_TITLE};
@@ -127,7 +125,10 @@ mod tests {
 
     #[test]
     fn analyze_content_markdown() {
-        assert_eq!(classify("docs/README.md", b"# Hello\n"), Category::Documentation);
+        assert_eq!(
+            classify("docs/README.md", b"# Hello\n"),
+            Category::Documentation
+        );
     }
 
     #[test]
@@ -160,8 +161,7 @@ mod tests {
     #[test]
     fn analyze_file_content_report_shape() {
         let report = Analyzer::new().analyze_file_content("pkg/main.go", b"package main\n");
-        let bytes =
-            cf_gojson::Encoder::compact().encode_to_vec(&cf_gojson::GoValue::Map(report));
+        let bytes = cf_gojson::Encoder::compact().encode_to_vec(&cf_gojson::GoValue::Map(report));
         assert_eq!(bytes, br#"{"category":"source"}"#);
     }
 
@@ -229,7 +229,10 @@ mod tests {
         assert_eq!(result.total_files, files.len() as i64);
         assert_eq!(result.breakdown.get(Category::Source.as_str()), Some(&3));
         assert_eq!(result.breakdown.get(Category::Vendor.as_str()), Some(&1));
-        assert_eq!(result.breakdown.get(Category::Documentation.as_str()), Some(&1));
+        assert_eq!(
+            result.breakdown.get(Category::Documentation.as_str()),
+            Some(&1)
+        );
 
         // Percentages are present in the encoded report.
         let mut pct = HashMap::new();
@@ -280,7 +283,10 @@ mod tests {
 
     #[test]
     fn section_title() {
-        assert_eq!(ReportSection::new(test_report()).section_title(), SECTION_TITLE);
+        assert_eq!(
+            ReportSection::new(test_report()).section_title(),
+            SECTION_TITLE
+        );
     }
 
     #[test]

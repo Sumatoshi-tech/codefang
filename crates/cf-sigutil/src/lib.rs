@@ -350,8 +350,7 @@ mod tests {
             }
         }
         let n = Arc::new(AtomicI32::new(0));
-        let mut guard =
-            SignalCleanupGuard::new(None, Some(Box::new(Counting(Arc::clone(&n)))));
+        let mut guard = SignalCleanupGuard::new(None, Some(Box::new(Counting(Arc::clone(&n)))));
         guard.close();
         assert_eq!(0, n.load(Ordering::SeqCst), "close path must not log");
     }

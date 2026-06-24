@@ -8,8 +8,8 @@ use std::collections::BTreeMap;
 use cf_alg_hll::Sketch;
 
 use crate::model::{
-    ActivityData, AggregateData, BusFactorData, ChurnData, ComputedMetrics, DeveloperCommits,
-    DeveloperData, DevTick, LanguageData, LanguageStatsEntry, LineStats,
+    ActivityData, AggregateData, BusFactorData, ChurnData, ComputedMetrics, DevTick,
+    DeveloperCommits, DeveloperData, LanguageData, LanguageStatsEntry, LineStats,
 };
 
 /// `HyperLogLog` precision for developer cardinality.
@@ -226,10 +226,12 @@ pub fn compute_languages(developers: &[DeveloperData]) -> Vec<LanguageData> {
                 lang_entry.language.clone()
             };
 
-            let ld = lang_map.entry(lang.clone()).or_insert_with(|| LanguageData {
-                name: lang.clone(),
-                ..LanguageData::default()
-            });
+            let ld = lang_map
+                .entry(lang.clone())
+                .or_insert_with(|| LanguageData {
+                    name: lang.clone(),
+                    ..LanguageData::default()
+                });
 
             ld.total_lines += lang_entry.added;
             let contribution = lang_entry.added + lang_entry.removed;
@@ -271,8 +273,11 @@ pub fn compute_bus_factor(input: &BusFactorInput, opts: &MetricOptions) -> Vec<B
         // The contributor input order is the BTreeMap id-ascending order
         // (deterministic; this only affects the order of equal-line
         // contributors, where the reference binary is itself nondeterministic).
-        let mut contribs: Vec<(i64, i64)> =
-            ld.contributors.iter().map(|(&id, &lines)| (id, lines)).collect();
+        let mut contribs: Vec<(i64, i64)> = ld
+            .contributors
+            .iter()
+            .map(|(&id, &lines)| (id, lines))
+            .collect();
         cf_gosort::go_sort_slice(&mut contribs, |a, b| a.1 > b.1);
 
         let sorted_amounts: Vec<i64> = contribs.iter().map(|c| c.1).collect();
@@ -466,7 +471,8 @@ pub fn compute_aggregate(input: &AggregateInput, opts: &MetricOptions) -> Aggreg
         agg.analysis_period_ticks = max_tick;
 
         let recent_threshold = compute_active_threshold(max_tick, input.tick_size, opts);
-        let active_sketch = build_active_dev_sketch(input.ticks, recent_threshold, opts.hll_precision);
+        let active_sketch =
+            build_active_dev_sketch(input.ticks, recent_threshold, opts.hll_precision);
 
         let mut active_devs: BTreeMap<i64, bool> = BTreeMap::new();
         for (&tick, dev_ticks) in input.ticks {

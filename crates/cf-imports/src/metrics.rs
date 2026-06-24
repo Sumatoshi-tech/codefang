@@ -200,7 +200,10 @@ impl ComputedMetrics {
         root.insert("dependencies", ReportValue::List(dependencies));
 
         let mut agg = ReportValue::map();
-        agg.insert("total_imports", ReportValue::Int(self.aggregate.total_imports));
+        agg.insert(
+            "total_imports",
+            ReportValue::Int(self.aggregate.total_imports),
+        );
         agg.insert(
             "external_imports",
             ReportValue::Int(self.aggregate.external_imports),
@@ -292,10 +295,22 @@ impl ComputedMetrics {
 
         let mut agg = GoMap::new_struct();
         agg.push("total_imports", GoValue::Int(self.aggregate.total_imports));
-        agg.push("external_imports", GoValue::Int(self.aggregate.external_imports));
-        agg.push("internal_imports", GoValue::Int(self.aggregate.internal_imports));
-        agg.push("unique_packages", GoValue::Int(self.aggregate.unique_packages));
-        agg.push("external_ratio", GoValue::Float(self.aggregate.external_ratio));
+        agg.push(
+            "external_imports",
+            GoValue::Int(self.aggregate.external_imports),
+        );
+        agg.push(
+            "internal_imports",
+            GoValue::Int(self.aggregate.internal_imports),
+        );
+        agg.push(
+            "unique_packages",
+            GoValue::Int(self.aggregate.unique_packages),
+        );
+        agg.push(
+            "external_ratio",
+            GoValue::Float(self.aggregate.external_ratio),
+        );
 
         let mut root = GoMap::new_struct();
         root.push("import_list", GoValue::Array(import_list));
@@ -391,7 +406,11 @@ pub fn compute_categories(input: &ReportData) -> Vec<ImportCategoryData> {
         .into_iter()
         .map(|(category, count)| ImportCategoryData { category, count })
         .collect();
-    result.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.category.cmp(&b.category)));
+    result.sort_by(|a, b| {
+        b.count
+            .cmp(&a.count)
+            .then_with(|| a.category.cmp(&b.category))
+    });
     result
 }
 
@@ -409,8 +428,7 @@ pub fn compute_dependencies(input: &ReportData) -> Vec<ImportDependencyData> {
 
         if count_occurrences(imp, "..") >= DEEPLY_NESTED_THRESHOLD {
             risk_level = "MEDIUM".to_string();
-            reason =
-                "Deeply nested relative import may indicate poor module structure".to_string();
+            reason = "Deeply nested relative import may indicate poor module structure".to_string();
         }
 
         if count_occurrences(imp, "/") >= LONG_PATH_THRESHOLD {
@@ -498,12 +516,40 @@ pub fn is_external_import(imp: &str) -> bool {
 pub fn is_standard_library(imp: &str) -> bool {
     const STDLIBS: &[&str] = &[
         // Go.
-        "fmt", "os", "io", "net", "http", "encoding", "sync", "context", "time", "strings",
-        "bytes", "bufio", "path", "filepath", "regexp", "sort", "math",
+        "fmt",
+        "os",
+        "io",
+        "net",
+        "http",
+        "encoding",
+        "sync",
+        "context",
+        "time",
+        "strings",
+        "bytes",
+        "bufio",
+        "path",
+        "filepath",
+        "regexp",
+        "sort",
+        "math",
         // Python.
-        "sys", "typing", "collections", "itertools", "functools", "json", "re",
+        "sys",
+        "typing",
+        "collections",
+        "itertools",
+        "functools",
+        "json",
+        "re",
         // JavaScript/Node.
-        "fs", "path", "util", "events", "stream", "crypto", "http", "https",
+        "fs",
+        "path",
+        "util",
+        "events",
+        "stream",
+        "crypto",
+        "http",
+        "https",
     ];
     let base = base_package(imp);
     STDLIBS.contains(&base)
@@ -521,7 +567,12 @@ mod tests {
         let mut r = ReportValue::map();
         r.insert(
             "imports",
-            ReportValue::List(imports.iter().map(|s| ReportValue::Str(s.to_string())).collect()),
+            ReportValue::List(
+                imports
+                    .iter()
+                    .map(|s| ReportValue::Str(s.to_string()))
+                    .collect(),
+            ),
         );
         r.insert("count", ReportValue::Int(count));
         r
@@ -606,10 +657,34 @@ mod tests {
     #[test]
     fn test_is_standard_library() {
         let true_cases = [
-            "fmt", "os", "io", "net", "net/http", "encoding/json", "sync", "context", "time",
-            "strings", "bytes", "path/filepath", "regexp", "sort", "math/rand", "sys", "typing",
-            "collections", "itertools", "functools", "json", "re", "fs", "util", "events",
-            "stream", "crypto", "https",
+            "fmt",
+            "os",
+            "io",
+            "net",
+            "net/http",
+            "encoding/json",
+            "sync",
+            "context",
+            "time",
+            "strings",
+            "bytes",
+            "path/filepath",
+            "regexp",
+            "sort",
+            "math/rand",
+            "sys",
+            "typing",
+            "collections",
+            "itertools",
+            "functools",
+            "json",
+            "re",
+            "fs",
+            "util",
+            "events",
+            "stream",
+            "crypto",
+            "https",
         ];
         for imp in true_cases {
             assert!(is_standard_library(imp), "expected stdlib: {imp}");

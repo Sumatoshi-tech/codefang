@@ -45,8 +45,8 @@ struct Capture {
 /// Each entry is matched against the capture's argv after argv[0]. As bodies are
 /// ported, add their leading tokens here (e.g. "run", "uast parse").
 const IMPLEMENTED_PREFIXES: &[&[&str]] = &[
-    &["version"],        // codefang version
-    // uast version is dispatched via the uast binary; see `is_implemented`.
+    &["version"], // codefang version
+                  // uast version is dispatched via the uast binary; see `is_implemented`.
 ];
 
 /// Directory holding MANIFEST.json and the goldens.
@@ -64,7 +64,11 @@ fn binary_path(name: &str) -> Option<PathBuf> {
     let test_exe = std::env::current_exe().ok()?;
     let deps_dir = test_exe.parent()?; // target/<profile>/deps
     let profile_dir = deps_dir.parent()?; // target/<profile>
-    let exe_name = if cfg!(windows) { format!("{name}.exe") } else { name.to_string() };
+    let exe_name = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    };
     let mut candidates = vec![profile_dir.join(&exe_name), deps_dir.join(&exe_name)];
     if let Some(target_dir) = profile_dir.parent() {
         candidates.push(target_dir.join("debug").join(&exe_name));
@@ -92,9 +96,9 @@ fn is_implemented(capture: &Capture, bin: &str) -> bool {
         return true;
     }
     let _ = bin;
-    IMPLEMENTED_PREFIXES.iter().any(|prefix| {
-        rest.len() >= prefix.len() && rest[..prefix.len()] == **prefix
-    })
+    IMPLEMENTED_PREFIXES
+        .iter()
+        .any(|prefix| rest.len() >= prefix.len() && rest[..prefix.len()] == **prefix)
 }
 
 /// First differing byte offset between two slices, or None if identical.
@@ -118,8 +122,8 @@ fn golden_diff() {
     let manifest_path = gdir.join("MANIFEST.json");
     let raw = std::fs::read_to_string(&manifest_path)
         .unwrap_or_else(|e| panic!("read {}: {e}", manifest_path.display()));
-    let manifest: Manifest = serde_json::from_str(&raw)
-        .unwrap_or_else(|e| panic!("parse MANIFEST.json: {e}"));
+    let manifest: Manifest =
+        serde_json::from_str(&raw).unwrap_or_else(|e| panic!("parse MANIFEST.json: {e}"));
 
     let mut skipped = Vec::new();
     let mut hard_failures = Vec::new();

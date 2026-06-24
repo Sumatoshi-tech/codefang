@@ -65,7 +65,11 @@ pub fn read_rss_bytes() -> i64 {
     let mut fields = contents.split_ascii_whitespace();
 
     // First field: vsize. Go reads it but only uses it to advance the scanner.
-    if fields.next().and_then(|tok| tok.parse::<i64>().ok()).is_none() {
+    if fields
+        .next()
+        .and_then(|tok| tok.parse::<i64>().ok())
+        .is_none()
+    {
         return 0;
     }
 

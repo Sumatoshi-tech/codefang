@@ -76,7 +76,10 @@ impl std::fmt::Display for ConversionError {
             Self::InvalidHistoryFormat(e) => write!(f, "invalid history format: {e}"),
             Self::InvalidInputFormat(m) => write!(f, "invalid input format: {m}"),
             Self::BinaryEnvelopeCount { expected, got } => {
-                write!(f, "unexpected binary envelope count: expected {expected}, got {got}")
+                write!(
+                    f,
+                    "unexpected binary envelope count: expected {expected}, got {got}"
+                )
             }
             Self::UnsupportedFormat(e) => write!(f, "{e}"),
             Self::Encode(m) => write!(f, "{m}"),
@@ -168,7 +171,12 @@ impl UnifiedModel {
         }
         m.insert(
             "analyzers",
-            GoValue::Array(self.analyzers.iter().map(AnalyzerResult::to_go_value).collect()),
+            GoValue::Array(
+                self.analyzers
+                    .iter()
+                    .map(AnalyzerResult::to_go_value)
+                    .collect(),
+            ),
         );
         GoValue::Map(m)
     }
@@ -268,8 +276,8 @@ pub fn resolve_formats(
     has_history: bool,
 ) -> Result<(String, String), ConversionError> {
     if has_static && has_history {
-        let normalized = validate_universal_format(format)
-            .map_err(ConversionError::InvalidMixedFormat)?;
+        let normalized =
+            validate_universal_format(format).map_err(ConversionError::InvalidMixedFormat)?;
         return Ok((normalized.clone(), normalized));
     }
     if has_static {
@@ -278,8 +286,8 @@ pub fn resolve_formats(
         return Ok((normalized, String::new()));
     }
     if has_history {
-        let normalized = validate_universal_format(format)
-            .map_err(ConversionError::InvalidHistoryFormat)?;
+        let normalized =
+            validate_universal_format(format).map_err(ConversionError::InvalidHistoryFormat)?;
         return Ok((String::new(), normalized));
     }
     Ok((String::new(), String::new()))
@@ -306,7 +314,10 @@ pub fn resolve_formats(
 /// // An unsupported hint is an error.
 /// assert!(resolve_input_format("out.txt", "yaml").is_err());
 /// ```
-pub fn resolve_input_format(input_path: &str, input_format: &str) -> Result<String, ConversionError> {
+pub fn resolve_input_format(
+    input_path: &str,
+    input_format: &str,
+) -> Result<String, ConversionError> {
     let normalized_hint = input_format.trim();
     if normalized_hint.is_empty() || normalized_hint == INPUT_FORMAT_AUTO {
         if has_extension_ignore_ascii_case(input_path, ".bin") {
@@ -318,7 +329,9 @@ pub fn resolve_input_format(input_path: &str, input_format: &str) -> Result<Stri
     let normalized = crate::formats::normalize_format(normalized_hint);
     match normalized.as_str() {
         FORMAT_JSON | FORMAT_BINARY => Ok(normalized),
-        _ => Err(ConversionError::InvalidInputFormat(input_format.to_string())),
+        _ => Err(ConversionError::InvalidInputFormat(
+            input_format.to_string(),
+        )),
     }
 }
 
@@ -450,13 +463,17 @@ pub fn write_converted_output(
         FORMAT_NDJSON => write_converted_ndjson(model, writer),
         FORMAT_PLOT => match plot_renderer {
             Some(render) => render(model, writer),
-            None => Err(ConversionError::UnsupportedFormat(FormatError::Unsupported {
-                format: "plot renderer not registered".to_string(),
-            })),
+            None => Err(ConversionError::UnsupportedFormat(
+                FormatError::Unsupported {
+                    format: "plot renderer not registered".to_string(),
+                },
+            )),
         },
-        other => Err(ConversionError::UnsupportedFormat(FormatError::Unsupported {
-            format: other.to_string(),
-        })),
+        other => Err(ConversionError::UnsupportedFormat(
+            FormatError::Unsupported {
+                format: other.to_string(),
+            },
+        )),
     }
 }
 
@@ -464,7 +481,10 @@ pub fn write_converted_output(
 /// `{version, metadata}` line when metadata is present.
 ///
 ///
-fn write_converted_ndjson(model: &UnifiedModel, writer: &mut dyn Write) -> Result<(), ConversionError> {
+fn write_converted_ndjson(
+    model: &UnifiedModel,
+    writer: &mut dyn Write,
+) -> Result<(), ConversionError> {
     let enc = Encoder::compact().with_trailing_newline(true);
 
     if let Some(meta) = &model.metadata {
@@ -516,8 +536,7 @@ fn write_converted_time_series(
     let ts = build_merged_time_series_direct(&active, &commit_meta, 0.0);
 
     if ndjson {
-        write_time_series_ndjson(&ts, writer)
-            .map_err(|e| ConversionError::Encode(e.to_string()))
+        write_time_series_ndjson(&ts, writer).map_err(|e| ConversionError::Encode(e.to_string()))
     } else {
         write_merged_time_series(&ts, writer).map_err(|e| ConversionError::Encode(e.to_string()))
     }
@@ -777,8 +796,7 @@ mod tests {
         let mut buf = Vec::new();
         write_converted_output(&model, FORMAT_BINARY, &mut buf, None).expect("write");
         assert_eq!(&buf[..4], b"CFB1");
-        let (payload, rest) =
-            cf_reportutil::binary::decode_binary_envelope(&buf).expect("decode");
+        let (payload, rest) = cf_reportutil::binary::decode_binary_envelope(&buf).expect("decode");
         assert!(rest.is_empty());
         // version then analyzers (struct order); analyzers is [].
         let v: serde_json::Value = serde_json::from_slice(payload).unwrap();
@@ -857,7 +875,10 @@ mod tests {
         .unwrap_err();
         assert!(matches!(
             err,
-            ConversionError::BinaryEnvelopeCount { expected: 2, got: 1 }
+            ConversionError::BinaryEnvelopeCount {
+                expected: 2,
+                got: 1
+            }
         ));
     }
 }

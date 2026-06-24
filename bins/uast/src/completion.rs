@@ -23,7 +23,10 @@ pub fn command() -> Command {
 
 /// Runs `completion` (completion.go `runCompletion`).
 pub fn run(m: &ArgMatches) -> Result<(), String> {
-    let shell = m.get_one::<String>("shell").map(String::as_str).unwrap_or("");
+    let shell = m
+        .get_one::<String>("shell")
+        .map(String::as_str)
+        .unwrap_or("");
     run_for_shell(shell)
 }
 

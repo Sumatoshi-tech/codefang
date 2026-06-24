@@ -100,7 +100,11 @@ impl CommitStreamer {
     pub fn stream<T: Clone + Send + 'static>(
         &self,
         commits: Vec<T>,
-    ) -> (Receiver<CommitBatch<T>>, Arc<AtomicBool>, thread::JoinHandle<()>) {
+    ) -> (
+        Receiver<CommitBatch<T>>,
+        Arc<AtomicBool>,
+        thread::JoinHandle<()>,
+    ) {
         let (tx, rx) = sync_channel::<CommitBatch<T>>(self.lookahead);
         let stop = Arc::new(AtomicBool::new(false));
         let streamer = *self;
@@ -177,11 +181,7 @@ mod tests {
         handle.join().unwrap();
         assert_eq!(
             got,
-            vec![
-                (0, vec![10, 20]),
-                (1, vec![30, 40]),
-                (2, vec![50]),
-            ]
+            vec![(0, vec![10, 20]), (1, vec![30, 40]), (2, vec![50]),]
         );
     }
 

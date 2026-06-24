@@ -104,7 +104,7 @@ pub struct MergedCommitData {
 impl MergedCommitData {
     /// Flattens metadata and per-analyzer data into a single map-origin object
     /// (byte-sorted on encode).
-    #[must_use] 
+    #[must_use]
     pub fn to_go_value(&self) -> GoValue {
         let mut flat = GoMap::new_map();
         // Capacity hint parity only; ordering comes from the map-origin sort.
@@ -146,7 +146,12 @@ impl MergedTimeSeries {
         );
         obj.push(
             "commits",
-            GoValue::Array(self.commits.iter().map(MergedCommitData::to_go_value).collect()),
+            GoValue::Array(
+                self.commits
+                    .iter()
+                    .map(MergedCommitData::to_go_value)
+                    .collect(),
+            ),
         );
         GoValue::Object(obj)
     }
@@ -154,7 +159,7 @@ impl MergedTimeSeries {
 
 /// Builds a unified time-series from pre-extracted per-analyzer commit data.
 ///
-#[must_use] 
+#[must_use]
 pub fn build_merged_time_series_direct(
     active: &[AnalyzerData],
     commit_meta: &[CommitMeta],
@@ -195,7 +200,11 @@ fn assemble_commits(active: &[AnalyzerData], commit_meta: &[CommitMeta]) -> Vec<
     let ordered = order_commits_by_meta(commit_meta, &commit_set);
     let mut commits = Vec::with_capacity(ordered.len());
     for hash in ordered {
-        let meta = meta_by_hash.get(&hash).copied().cloned().unwrap_or_default();
+        let meta = meta_by_hash
+            .get(&hash)
+            .copied()
+            .cloned()
+            .unwrap_or_default();
         let mut analyzer_map: BTreeMap<String, GoValue> = BTreeMap::new();
         for a in active {
             if let Some(v) = a.data.get(&hash) {

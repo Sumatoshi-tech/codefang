@@ -44,7 +44,10 @@ mod tests {
     #[test]
     fn equal_ignores_positions() {
         let mut a = Node::with_token("Function", "x");
-        a.pos = Some(crate::node::Positions { start_line: 1, ..Default::default() });
+        a.pos = Some(crate::node::Positions {
+            start_line: 1,
+            ..Default::default()
+        });
         let b = Node::with_token("Function", "x");
         assert!(a.equal(&b));
     }

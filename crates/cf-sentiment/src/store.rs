@@ -59,7 +59,10 @@ pub fn extract_store_time_series(time_series: &[TimeSeriesData]) -> Option<Store
     }
 
     let ticks: Vec<i64> = time_series.iter().map(|ts| ts.tick).collect();
-    let sentiments: Vec<f64> = time_series.iter().map(|ts| f64::from(ts.sentiment)).collect();
+    let sentiments: Vec<f64> = time_series
+        .iter()
+        .map(|ts| f64::from(ts.sentiment))
+        .collect();
 
     Some((ticks, vec![(DIM_SENTIMENT.to_string(), sentiments)]))
 }
@@ -79,8 +82,14 @@ mod tests {
     #[test]
     fn store_records_view_matches_metrics() {
         let metrics = ComputedMetrics {
-            time_series: vec![TimeSeriesData { tick: 7, ..Default::default() }],
-            aggregate: AggregateData { total_ticks: 1, ..Default::default() },
+            time_series: vec![TimeSeriesData {
+                tick: 7,
+                ..Default::default()
+            }],
+            aggregate: AggregateData {
+                total_ticks: 1,
+                ..Default::default()
+            },
             ..Default::default()
         };
         let records = StoreRecords::from_metrics(&metrics);
@@ -97,8 +106,16 @@ mod tests {
     #[test]
     fn extract_store_time_series_dimension() {
         let ts = vec![
-            TimeSeriesData { tick: 0, sentiment: 0.8, ..Default::default() },
-            TimeSeriesData { tick: 1, sentiment: 0.3, ..Default::default() },
+            TimeSeriesData {
+                tick: 0,
+                sentiment: 0.8,
+                ..Default::default()
+            },
+            TimeSeriesData {
+                tick: 1,
+                sentiment: 0.3,
+                ..Default::default()
+            },
         ];
         let (ticks, dims) = extract_store_time_series(&ts).expect("non-empty");
         assert_eq!(ticks, vec![0, 1]);

@@ -11,7 +11,7 @@ use cf_uast_node as _; // keep the dependency edge documented; not used directly
 
 use crate::analyzer::build_empty_report;
 use crate::engine::{build_index, find_clone_pairs, ClonePairResult, FuncEntry};
-use crate::report::{clone_type_dist_map, ClonePair, SIMILARITY_TYPE3, DEFAULT_MAX_CLONE_PAIRS};
+use crate::report::{clone_type_dist_map, ClonePair, DEFAULT_MAX_CLONE_PAIRS, SIMILARITY_TYPE3};
 use crate::{
     clone_message, compute_clone_ratio, KEY_ANALYZER_NAME, KEY_CLONE_PAIRS, KEY_CLONE_RATIO,
     KEY_CLONE_TYPE_DISTRIBUTION, KEY_FUNC_SIGNATURES, KEY_MESSAGE, KEY_TOTAL_CLONE_PAIRS,
@@ -84,7 +84,10 @@ impl Aggregator {
             };
 
             let qualified = qualify_func_name(&name, &source_file);
-            self.entries.push(FuncEntry { name: qualified, sig });
+            self.entries.push(FuncEntry {
+                name: qualified,
+                sig,
+            });
         }
     }
 
@@ -102,14 +105,25 @@ impl Aggregator {
             compute_clone_ratio(result.cloned_func.len(), self.total_functions as usize);
         let message = clone_message(result.total_count);
 
-        let pairs_value =
-            GoValue::Array(result.pairs.iter().map(ClonePair::to_go_value).collect::<Vec<_>>());
+        let pairs_value = GoValue::Array(
+            result
+                .pairs
+                .iter()
+                .map(ClonePair::to_go_value)
+                .collect::<Vec<_>>(),
+        );
         let dist = clone_type_dist_map(result.type_distribution);
 
         let mut report = GoMap::new(MapOrigin::Map);
-        report.push(KEY_ANALYZER_NAME, GoValue::Str(crate::ANALYZER_NAME.to_string()));
+        report.push(
+            KEY_ANALYZER_NAME,
+            GoValue::Str(crate::ANALYZER_NAME.to_string()),
+        );
         report.push(KEY_TOTAL_FUNCTIONS, GoValue::Int(self.total_functions));
-        report.push(KEY_TOTAL_CLONE_PAIRS, GoValue::Int(result.total_count as i64));
+        report.push(
+            KEY_TOTAL_CLONE_PAIRS,
+            GoValue::Int(result.total_count as i64),
+        );
         report.push(KEY_CLONE_RATIO, GoValue::Float(clone_ratio));
         report.push(KEY_CLONE_PAIRS, pairs_value);
         report.push(KEY_CLONE_TYPE_DISTRIBUTION, dist);
@@ -127,7 +141,12 @@ impl Aggregator {
             return ClonePairResult::default();
         };
 
-        find_clone_pairs(&self.entries, &idx, self.max_clone_pairs, self.similarity_type3)
+        find_clone_pairs(
+            &self.entries,
+            &idx,
+            self.max_clone_pairs,
+            self.similarity_type3,
+        )
     }
 }
 
@@ -155,10 +174,12 @@ fn extract_source_file(items: &[GoValue]) -> String {
 
 /// Reads a string field from a map entry, if present and a string.
 fn field_str(m: &GoMap, key: &str) -> Option<String> {
-    m.entries().iter().find_map(|(k, v)| match (k.as_str() == key, v) {
-        (true, GoValue::Str(s)) => Some(s.clone()),
-        _ => None,
-    })
+    m.entries()
+        .iter()
+        .find_map(|(k, v)| match (k.as_str() == key, v) {
+            (true, GoValue::Str(s)) => Some(s.clone()),
+            _ => None,
+        })
 }
 
 /// Reads a signature field from a map entry (the big-endian byte array produced
@@ -187,8 +208,14 @@ mod tests {
     use cf_uast_node::Node;
 
     fn function(name: &str) -> Node {
-        let name_node = NodeBuilder::new("Identifier").role("Name").token(name).build();
-        let mut f = NodeBuilder::new("Function").role("Function").child(name_node).build();
+        let name_node = NodeBuilder::new("Identifier")
+            .role("Name")
+            .token(name)
+            .build();
+        let mut f = NodeBuilder::new("Function")
+            .role("Function")
+            .child(name_node)
+            .build();
         let mut block = NodeBuilder::new("Block").build();
         for i in 0..24 {
             let kind = ["Identifier", "Call", "Literal", "Operator"][i % 4];
@@ -219,7 +246,10 @@ mod tests {
     fn no_functions_returns_empty_report() {
         let agg = Aggregator::new();
         let report = agg.get_result();
-        assert_eq!(cf_reportutil::get_string(&report, KEY_MESSAGE), MSG_NO_FUNCTIONS);
+        assert_eq!(
+            cf_reportutil::get_string(&report, KEY_MESSAGE),
+            MSG_NO_FUNCTIONS
+        );
     }
 
     #[test]

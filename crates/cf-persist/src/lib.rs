@@ -52,8 +52,8 @@ use std::io::{Read, Write};
 use std::marker::PhantomData;
 use std::path::Path;
 
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 pub use error::PersistError;
 pub use gob::{GobCodec, GOB_EXTENSION};
@@ -108,7 +108,9 @@ where
     C: Codec,
     T: Serialize,
 {
-    let path = dir.as_ref().join(format!("{basename}{}", codec.extension()));
+    let path = dir
+        .as_ref()
+        .join(format!("{basename}{}", codec.extension()));
     let file = File::create(&path).map_err(PersistError::CreateStateFile)?;
     codec
         .encode(file, state)
@@ -133,7 +135,9 @@ where
     C: Codec,
     T: DeserializeOwned,
 {
-    let path = dir.as_ref().join(format!("{basename}{}", codec.extension()));
+    let path = dir
+        .as_ref()
+        .join(format!("{basename}{}", codec.extension()));
     let file = File::open(&path).map_err(PersistError::OpenStateFile)?;
     codec
         .decode(file, state)

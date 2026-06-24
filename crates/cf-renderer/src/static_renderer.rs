@@ -35,7 +35,12 @@ impl DefaultStaticRenderer {
 
     /// Renders human-readable text output for the given sections.
     #[must_use]
-    pub fn render_text(&self, sections: &[&dyn ReportSection], verbose: bool, no_color: bool) -> String {
+    pub fn render_text(
+        &self,
+        sections: &[&dyn ReportSection],
+        verbose: bool,
+        no_color: bool,
+    ) -> String {
         let mut config = terminal::Config::new();
         if no_color {
             config.no_color = true;

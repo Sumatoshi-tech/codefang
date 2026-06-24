@@ -43,7 +43,10 @@ pub fn tick_stats_value(ts: &TickStats) -> GoValue {
     m.push("complexity_max", GoValue::Float(ts.complexity_max));
 
     m.push("halstead_vol_mean", GoValue::Float(ts.halstead_vol_mean));
-    m.push("halstead_vol_median", GoValue::Float(ts.halstead_vol_median));
+    m.push(
+        "halstead_vol_median",
+        GoValue::Float(ts.halstead_vol_median),
+    );
     m.push("halstead_vol_p95", GoValue::Float(ts.halstead_vol_p95));
     m.push("halstead_vol_sum", GoValue::Float(ts.halstead_vol_sum));
 

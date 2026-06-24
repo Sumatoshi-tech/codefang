@@ -40,7 +40,12 @@ pub fn command() -> Command {
                 .default_value(DEFAULT_SCHEMA_PATH)
                 .action(ArgAction::Set),
         )
-        .arg(Arg::new("color").long("color").help("force colored output").action(ArgAction::SetTrue))
+        .arg(
+            Arg::new("color")
+                .long("color")
+                .help("force colored output")
+                .action(ArgAction::SetTrue),
+        )
         .arg(
             Arg::new("no-color")
                 .long("no-color")
@@ -53,8 +58,14 @@ pub fn command() -> Command {
 /// `os.Exit` directly), so the returned `Result` is `Ok(())` only on the
 /// unreachable fall-through; in practice this function diverges.
 pub fn run(m: &ArgMatches) -> Result<(), String> {
-    let file = m.get_one::<String>("file").map(String::as_str).unwrap_or("");
-    let schema_path = m.get_one::<String>("schema").map(String::as_str).unwrap_or(DEFAULT_SCHEMA_PATH);
+    let file = m
+        .get_one::<String>("file")
+        .map(String::as_str)
+        .unwrap_or("");
+    let schema_path = m
+        .get_one::<String>("schema")
+        .map(String::as_str)
+        .unwrap_or(DEFAULT_SCHEMA_PATH);
     // --no-color wins over --color (validate.go); both are cosmetic.
     let _color = !m.get_flag("no-color") && m.get_flag("color");
 
@@ -159,8 +170,7 @@ fn calculate_compliance(input: &Value, error_count: usize) -> i64 {
         return 0;
     }
     let valid = total - error_count as i64;
-    let compliance =
-        ((valid as f64 / total as f64) * COMPLIANCE_MAX as f64) as i64;
+    let compliance = ((valid as f64 / total as f64) * COMPLIANCE_MAX as f64) as i64;
     compliance.clamp(0, COMPLIANCE_MAX)
 }
 
@@ -193,7 +203,8 @@ mod tests {
 
     #[test]
     fn count_nodes_counts_self_and_children() {
-        let v = json!({"type":"File","children":[{"type":"A"},{"type":"B","children":[{"type":"C"}]}]});
+        let v =
+            json!({"type":"File","children":[{"type":"A"},{"type":"B","children":[{"type":"C"}]}]});
         // File + A + B + C = 4.
         assert_eq!(count_nodes(&v), 4);
     }

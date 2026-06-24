@@ -456,7 +456,12 @@ pub fn burndown_run_aggregate(sub: &clap::ArgMatches) -> Option<BurndownRunAggre
 
     // ticksToReport: findLastTick scans the merged GlobalHistory tick keys, so
     // lastTick is the max curTick present (which equals the running max).
-    let dense = cf_analyzer_burndown::group_sparse_history(&global_history, sampling, granularity, last_tick);
+    let dense = cf_analyzer_burndown::group_sparse_history(
+        &global_history,
+        sampling,
+        granularity,
+        last_tick,
+    );
     let metrics = cf_analyzer_burndown::compute_global_metrics(&dense, sampling, tick_size_hours);
 
     Some(BurndownRunAggregate {

@@ -259,8 +259,9 @@ mod tests {
         let mut agg = Aggregator::new(1);
         agg.add(0, &commit(&["a.go", "b.go"]));
         agg.add(0, &commit(&["a.go", "old.go"]));
-        let current: std::collections::HashSet<String> =
-            ["a.go".to_string(), "b.go".to_string()].into_iter().collect();
+        let current: std::collections::HashSet<String> = ["a.go".to_string(), "b.go".to_string()]
+            .into_iter()
+            .collect();
         let lines = BTreeMap::new();
         let report = agg.build_report(Some(&current), &lines);
         // old.go dropped.

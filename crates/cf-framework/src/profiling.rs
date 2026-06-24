@@ -83,13 +83,12 @@ pub fn maybe_start_cpu_profile<P: Profiler>(
         return Ok(Box::new(|| {}));
     }
 
-    let file = File::create(Path::new(path)).map_err(|e| {
-        io::Error::new(e.kind(), format!("could not create CPU profile: {e}"))
-    })?;
+    let file = File::create(Path::new(path))
+        .map_err(|e| io::Error::new(e.kind(), format!("could not create CPU profile: {e}")))?;
 
-    let guard = profiler.start_cpu_profile(file).map_err(|e| {
-        io::Error::new(e.kind(), format!("could not start CPU profile: {e}"))
-    })?;
+    let guard = profiler
+        .start_cpu_profile(file)
+        .map_err(|e| io::Error::new(e.kind(), format!("could not start CPU profile: {e}")))?;
 
     Ok(Box::new(move || guard.stop()))
 }
@@ -106,9 +105,8 @@ pub fn maybe_write_heap_profile<P: Profiler>(path: &str, profiler: &P) -> io::Re
         return Ok(());
     }
 
-    let file = File::create(Path::new(path)).map_err(|e| {
-        io::Error::new(e.kind(), format!("could not create heap profile: {e}"))
-    })?;
+    let file = File::create(Path::new(path))
+        .map_err(|e| io::Error::new(e.kind(), format!("could not create heap profile: {e}")))?;
 
     profiler.write_heap_profile(file)
 }

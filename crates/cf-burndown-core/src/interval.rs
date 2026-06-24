@@ -57,7 +57,8 @@ fn height(node: &Option<Box<Node>>) -> i32 {
 }
 
 fn balance_factor(node: &Option<Box<Node>>) -> i32 {
-    node.as_ref().map_or(0, |n| height(&n.left) - height(&n.right))
+    node.as_ref()
+        .map_or(0, |n| height(&n.left) - height(&n.right))
 }
 
 fn update_height_and_max(node: &mut Node) {
@@ -129,7 +130,8 @@ fn insert_node(node: Option<Box<Node>>, low: u32, high: u32, value: u32) -> Box<
     };
 
     // Insertion orders by low, then high; ties (and equal keys) go right.
-    let go_left = low < node.interval.low || (low == node.interval.low && high < node.interval.high);
+    let go_left =
+        low < node.interval.low || (low == node.interval.low && high < node.interval.high);
     if go_left {
         node.left = Some(insert_node(node.left.take(), low, high, value));
     } else {
@@ -229,7 +231,14 @@ mod tests {
         let mut t = Tree::new();
         t.insert(10, 20, 1);
         assert_eq!(t.len(), 1);
-        assert_eq!(t.query_overlap(15, 25), vec![Interval { low: 10, high: 20, value: 1 }]);
+        assert_eq!(
+            t.query_overlap(15, 25),
+            vec![Interval {
+                low: 10,
+                high: 20,
+                value: 1
+            }]
+        );
         assert!(t.query_overlap(21, 30).is_empty());
         assert!(t.query_overlap(0, 9).is_empty());
     }
@@ -262,7 +271,14 @@ mod tests {
     fn query_point_matches_overlap() {
         let mut t = Tree::new();
         t.insert(5, 15, 7);
-        assert_eq!(t.query_point(10), vec![Interval { low: 5, high: 15, value: 7 }]);
+        assert_eq!(
+            t.query_point(10),
+            vec![Interval {
+                low: 5,
+                high: 15,
+                value: 7
+            }]
+        );
         assert!(t.query_point(20).is_empty());
     }
 

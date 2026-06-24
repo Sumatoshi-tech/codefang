@@ -16,10 +16,12 @@ use std::io::Write;
 
 use cf_pipeline::ConfigurationOption;
 
-use crate::interfaces::{Aggregator, AggregatorOptions};
 use crate::descriptor::Descriptor;
-use crate::formats::{FormatError, FORMAT_BINARY, FORMAT_JSON, FORMAT_PLOT, FORMAT_TEXT, FORMAT_YAML};
+use crate::formats::{
+    FormatError, FORMAT_BINARY, FORMAT_JSON, FORMAT_PLOT, FORMAT_TEXT, FORMAT_YAML,
+};
 use crate::history::AnalyzerError;
+use crate::interfaces::{Aggregator, AggregatorOptions};
 use crate::tc::Tick;
 
 /// Sentinel error text: no `compute_metrics_fn` hook is set.
@@ -33,8 +35,9 @@ pub type TicksToReportFn = Box<dyn Fn(&[Tick]) -> crate::analyzer::Report + Send
 /// Hook: creates a per-analyzer aggregator.
 pub type AggregatorFn = Box<dyn Fn(AggregatorOptions) -> Box<dyn Aggregator> + Send + Sync>;
 /// Hook: custom report serializer (text/plot paths).
-pub type SerializeReportFn =
-    Box<dyn Fn(&crate::analyzer::Report, &mut dyn Write) -> Result<(), AnalyzerError> + Send + Sync>;
+pub type SerializeReportFn = Box<
+    dyn Fn(&crate::analyzer::Report, &mut dyn Write) -> Result<(), AnalyzerError> + Send + Sync,
+>;
 
 /// Serialization hooks for computed metrics.
 ///
@@ -281,7 +284,10 @@ impl<M> BaseHistoryAnalyzer<M> {
     ///
     /// # Errors
     /// [`AnalyzerError::NotImplemented`] when no `ticks_to_report_fn` is set.
-    pub fn report_from_ticks(&self, ticks: &[Tick]) -> Result<crate::analyzer::Report, AnalyzerError> {
+    pub fn report_from_ticks(
+        &self,
+        ticks: &[Tick],
+    ) -> Result<crate::analyzer::Report, AnalyzerError> {
         match &self.ticks_to_report_fn {
             Some(to_report) => Ok(to_report(ticks)),
             None => Err(AnalyzerError::NotImplemented),
@@ -411,7 +417,8 @@ mod tests {
     fn serialize_json() {
         let base = base_with_compute();
         let mut buf = Vec::new();
-        base.serialize(&empty_report(), FORMAT_JSON, &mut buf).expect("serialize");
+        base.serialize(&empty_report(), FORMAT_JSON, &mut buf)
+            .expect("serialize");
         let s = String::from_utf8(buf).unwrap();
         // Compact json.Marshal: no trailing newline, struct field order name,count.
         assert_eq!(s, r#"{"name":"dummy","count":42}"#);
@@ -422,7 +429,8 @@ mod tests {
     fn serialize_yaml() {
         let base = base_with_compute();
         let mut buf = Vec::new();
-        base.serialize(&empty_report(), FORMAT_YAML, &mut buf).expect("serialize");
+        base.serialize(&empty_report(), FORMAT_YAML, &mut buf)
+            .expect("serialize");
         let s = String::from_utf8(buf).unwrap();
         assert!(s.contains("count: 42"));
         assert!(s.contains("name: dummy"));
@@ -433,7 +441,8 @@ mod tests {
     fn serialize_binary() {
         let base = base_with_compute();
         let mut buf = Vec::new();
-        base.serialize(&empty_report(), FORMAT_BINARY, &mut buf).expect("serialize");
+        base.serialize(&empty_report(), FORMAT_BINARY, &mut buf)
+            .expect("serialize");
         let (payload, rest) =
             cf_reportutil::binary::decode_binary_envelope(&buf).expect("decode envelope");
         assert!(rest.is_empty());
@@ -445,7 +454,9 @@ mod tests {
     fn serialize_unsupported_format() {
         let base = base_with_compute();
         let mut buf = Vec::new();
-        let err = base.serialize(&empty_report(), "unsupported", &mut buf).unwrap_err();
+        let err = base
+            .serialize(&empty_report(), "unsupported", &mut buf)
+            .unwrap_err();
         assert!(matches!(err, AnalyzerError::UnsupportedFormat(_)));
     }
 
@@ -456,7 +467,9 @@ mod tests {
         let mut err_report = GoMap::new(MapOrigin::Map);
         err_report.insert("error", GoValue::Bool(true));
         let mut buf = Vec::new();
-        let err = base.serialize(&err_report, FORMAT_JSON, &mut buf).unwrap_err();
+        let err = base
+            .serialize(&err_report, FORMAT_JSON, &mut buf)
+            .unwrap_err();
         assert!(err.to_string().contains("mock error"));
     }
 
@@ -465,7 +478,9 @@ mod tests {
     fn serialize_missing_hook() {
         let base = BaseHistoryAnalyzer::new(dummy_descriptor(), dummy_to_value);
         let mut buf = Vec::new();
-        let err = base.serialize(&empty_report(), FORMAT_JSON, &mut buf).unwrap_err();
+        let err = base
+            .serialize(&empty_report(), FORMAT_JSON, &mut buf)
+            .unwrap_err();
         assert!(matches!(err, AnalyzerError::MissingComputeMetrics));
     }
 
@@ -480,9 +495,19 @@ mod tests {
             }
             r
         }));
-        let ticks = vec![Tick { tick: 1, ..Default::default() }, Tick { tick: 2, ..Default::default() }];
+        let ticks = vec![
+            Tick {
+                tick: 1,
+                ..Default::default()
+            },
+            Tick {
+                tick: 2,
+                ..Default::default()
+            },
+        ];
         let mut buf = Vec::new();
-        base.serialize_ticks(&ticks, FORMAT_JSON, &mut buf).expect("serialize ticks");
+        base.serialize_ticks(&ticks, FORMAT_JSON, &mut buf)
+            .expect("serialize ticks");
         let s = String::from_utf8(buf).unwrap();
         assert_eq!(s, r#"{"name":"dummy","count":42}"#);
     }
@@ -491,9 +516,14 @@ mod tests {
     #[test]
     fn serialize_ticks_missing_hook() {
         let base = BaseHistoryAnalyzer::new(dummy_descriptor(), dummy_to_value);
-        let ticks = vec![Tick { tick: 1, ..Default::default() }];
+        let ticks = vec![Tick {
+            tick: 1,
+            ..Default::default()
+        }];
         let mut buf = Vec::new();
-        let err = base.serialize_ticks(&ticks, FORMAT_JSON, &mut buf).unwrap_err();
+        let err = base
+            .serialize_ticks(&ticks, FORMAT_JSON, &mut buf)
+            .unwrap_err();
         assert!(matches!(err, AnalyzerError::NotImplemented));
     }
 

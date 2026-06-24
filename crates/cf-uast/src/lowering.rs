@@ -79,11 +79,7 @@ pub(crate) fn resolve_rules(
 /// Moved verbatim from the former `Lowering::resolve_inheritance` so the merge
 /// semantics are unchanged; it now runs once per rule at init rather than once
 /// per matched node.
-fn resolve_inheritance(
-    rules: &[Rule],
-    rule_index: &HashMap<String, usize>,
-    rule: Rule,
-) -> Rule {
+fn resolve_inheritance(rules: &[Rule], rule_index: &HashMap<String, usize>, rule: Rule) -> Rule {
     if rule.extends.is_empty() {
         return rule;
     }
@@ -113,7 +109,10 @@ fn resolve_inheritance(
         }
     }
     if !rule.uast_spec.children.is_empty() {
-        merged.uast_spec.children.clone_from(&rule.uast_spec.children);
+        merged
+            .uast_spec
+            .children
+            .clone_from(&rule.uast_spec.children);
     }
     if !rule.conditions.is_empty() {
         merged.conditions.extend(rule.conditions.iter().cloned());
@@ -229,7 +228,9 @@ impl<'a> Lowering<'a> {
         // assigns production aliases correctly (extras keep their raw kind) —
         // see [`Self::node_type`].
         for idx in 0..count {
-            let Some(child) = root.named_child(idx) else { continue };
+            let Some(child) = root.named_child(idx) else {
+                continue;
+            };
             if !self.should_exclude_child(child, mapping_rule) {
                 let child_ctx = self.derive_parent_context(root, mapping_rule);
                 if let Some(canonical) = self.to_canonical_node(child, &child_ctx) {
@@ -242,7 +243,11 @@ impl<'a> Lowering<'a> {
 
     /// The context string a child sees: the parent rule's UAST type, or the
     /// parent's raw node type when unmapped.
-    fn derive_parent_context(&self, root: TsNode<'_>, mapping_rule: Option<&ResolvedRule>) -> String {
+    fn derive_parent_context(
+        &self,
+        root: TsNode<'_>,
+        mapping_rule: Option<&ResolvedRule>,
+    ) -> String {
         if let Some(resolved) = mapping_rule {
             if !resolved.rule.uast_spec.r#type.is_empty() {
                 return resolved.rule.uast_spec.r#type.clone();
@@ -406,7 +411,12 @@ impl<'a> Lowering<'a> {
     // ---- mapped node construction ---------------------------------------------
 
     /// Builds the canonical node for a rule-mapped tree-sitter node.
-    fn create_mapped_node(&self, root: TsNode<'_>, resolved: &ResolvedRule, children: Vec<Node>) -> Node {
+    fn create_mapped_node(
+        &self,
+        root: TsNode<'_>,
+        resolved: &ResolvedRule,
+        children: Vec<Node>,
+    ) -> Node {
         let rule = &resolved.rule;
         let roles = self.extract_roles(rule);
 
@@ -467,7 +477,12 @@ impl<'a> Lowering<'a> {
     }
 
     /// Extracts the rule's props into the node's props map.
-    fn extract_properties(&self, root: TsNode<'_>, rule: &Rule, props: &mut HashMap<String, String>) {
+    fn extract_properties(
+        &self,
+        root: TsNode<'_>,
+        rule: &Rule,
+        props: &mut HashMap<String, String>,
+    ) {
         let rule_props = match &rule.uast_spec.props {
             Some(p) => p,
             None => return,
@@ -633,7 +648,9 @@ impl<'a> Lowering<'a> {
         // clean per-index construction for all sizes.)
         if count < CURSOR_THRESHOLD {
             for idx in 0..count {
-                let Some(child) = root.named_child(idx) else { continue };
+                let Some(child) = root.named_child(idx) else {
+                    continue;
+                };
                 if let Some(canonical) = self.to_canonical_node(child, parent_context) {
                     mapped.push(canonical);
                 }
@@ -693,8 +710,14 @@ impl<'a> Lowering<'a> {
             0 => None,
             _ => {
                 let pos = compute_children_span(&mapped_children);
-                let mut synth =
-                    Node::new(Vec::new(), "Synthetic".to_string(), String::new(), Vec::new(), pos, HashMap::new());
+                let mut synth = Node::new(
+                    Vec::new(),
+                    "Synthetic".to_string(),
+                    String::new(),
+                    Vec::new(),
+                    pos,
+                    HashMap::new(),
+                );
                 synth.children = mapped_children;
                 Some(synth)
             }

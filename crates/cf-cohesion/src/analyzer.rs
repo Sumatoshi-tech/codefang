@@ -254,7 +254,10 @@ impl Analyzer {
 
     /// Builds the typed per-function table.
     #[must_use]
-    pub fn build_detailed_functions_table(&self, functions: &[Function]) -> Vec<FunctionReportItem> {
+    pub fn build_detailed_functions_table(
+        &self,
+        functions: &[Function],
+    ) -> Vec<FunctionReportItem> {
         functions
             .iter()
             .map(|f| FunctionReportItem {

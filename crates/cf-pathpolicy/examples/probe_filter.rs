@@ -18,12 +18,18 @@ fn main() {
         "staging/src/k8s.io/api/admissionregistration/v1beta1/generated.proto",
         "staging/src/k8s.io/api/admissionregistration/v1beta1/types.go",
     ];
-    let opts = Options { include_vendored: false, include_generated: false, extra_excluded_prefixes: vec![] };
+    let opts = Options {
+        include_vendored: false,
+        include_generated: false,
+        extra_excluded_prefixes: vec![],
+    };
     let mut kept = 0;
     for n in names {
         let ex = exclude(n, None, &opts);
         println!("{n} excluded={ex}");
-        if !ex { kept += 1; }
+        if !ex {
+            kept += 1;
+        }
     }
     println!("KEPT = {kept}");
 }

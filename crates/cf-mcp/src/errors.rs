@@ -152,7 +152,9 @@ mod tests {
 
     #[test]
     fn unknown_history_analyzer_message() {
-        let err = ToolError::UnknownHistoryAnalyzer { name: "bogus".into() };
+        let err = ToolError::UnknownHistoryAnalyzer {
+            name: "bogus".into(),
+        };
         assert_eq!(err.to_string(), "unknown history analyzer: bogus");
     }
 

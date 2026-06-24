@@ -18,7 +18,8 @@ use crate::errors::ToolError;
 use crate::providers::{HistoryAnalysisProvider, StaticAnalysisProvider, UastParser};
 use crate::result::{ToolOutput, ToolResult};
 use crate::tools::{
-    AnalyzeInput, HistoryInput, UastParseInput, TOOL_NAME_ANALYZE, TOOL_NAME_HISTORY, TOOL_NAME_UAST,
+    AnalyzeInput, HistoryInput, UastParseInput, TOOL_NAME_ANALYZE, TOOL_NAME_HISTORY,
+    TOOL_NAME_UAST,
 };
 use crate::tools_analyze::handle_analyze;
 use crate::tools_history::handle_history;

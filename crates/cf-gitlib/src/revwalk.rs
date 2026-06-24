@@ -69,7 +69,9 @@ impl<'repo> RevWalk<'repo> {
         match walk.next() {
             Some(Ok(oid)) => Ok(Hash::from_oid(&oid)),
             Some(Err(e)) => Err(GitError::RevwalkNext(e)),
-            None => Err(GitError::RevwalkNext(git2::Error::from_str("revwalk exhausted"))),
+            None => Err(GitError::RevwalkNext(git2::Error::from_str(
+                "revwalk exhausted",
+            ))),
         }
     }
 

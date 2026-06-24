@@ -66,7 +66,10 @@ mod tests {
     #[test]
     fn descriptor_constants() {
         assert_eq!(ANALYZER_ID, "history/shotness");
-        assert_eq!(DEFAULT_SHOTNESS_DSL_STRUCT, r#"filter(.roles has "Function")"#);
+        assert_eq!(
+            DEFAULT_SHOTNESS_DSL_STRUCT,
+            r#"filter(.roles has "Function")"#
+        );
         assert_eq!(DEFAULT_SHOTNESS_DSL_NAME, ".props.name");
         assert_eq!(CONFIG_SHOTNESS_DSL_STRUCT, "Shotness.DSLStruct");
         assert_eq!(CONFIG_SHOTNESS_DSL_NAME, "Shotness.DSLName");

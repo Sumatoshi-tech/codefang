@@ -202,9 +202,7 @@ mod tests {
         let url = url.strip_prefix("http://").unwrap();
         let (authority, path) = url.split_once('/').unwrap();
         let mut stream = tokio::net::TcpStream::connect(authority).await.unwrap();
-        let req = format!(
-            "GET /{path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\n\r\n"
-        );
+        let req = format!("GET /{path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\n\r\n");
         stream.write_all(req.as_bytes()).await.unwrap();
         let mut buf = Vec::new();
         stream.read_to_end(&mut buf).await.unwrap();

@@ -5,7 +5,9 @@
 //! `computeFileTypos`, typo-count descending), exactly what
 //! `cf_typos::compute_file_typos` produces over the run's report data.
 
-use cf_plotpage::{build_bar_chart, get_chart_palette, BarSeries, Hint, Section, SeriesValue, Theme};
+use cf_plotpage::{
+    build_bar_chart, get_chart_palette, BarSeries, Hint, Section, SeriesValue, Theme,
+};
 
 /// The reference `topFilesLimit`.
 const TOP_FILES_LIMIT: usize = 20;

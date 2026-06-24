@@ -47,8 +47,8 @@ pub use classify::{all_categories, Category, Classifier, ALL_CATEGORIES};
 pub use metrics::{
     compute_aggregate_with_options, compute_all_metrics, compute_all_metrics_with_options,
     compute_composition, compute_file_churn, compute_file_contributors,
-    compute_hotspots_with_options, AggregateData, ComputedMetrics, CompositionData,
-    CompositionTimeSeriesEntry, ContributorEntry, FileChurnData, FileContributorData, FileHistory,
+    compute_hotspots_with_options, AggregateData, CompositionData, CompositionTimeSeriesEntry,
+    ComputedMetrics, ContributorEntry, FileChurnData, FileContributorData, FileHistory,
     HotspotData, MetricOptions, ReportData, HOTSPOT_THRESHOLD_CRITICAL, HOTSPOT_THRESHOLD_HIGH,
     HOTSPOT_THRESHOLD_MEDIUM,
 };
@@ -68,5 +68,6 @@ pub const FLAG: &str = "file-history";
 pub const NAME: &str = "FileHistoryAnalysis";
 
 /// The analyzer description shown in CLI help.
-pub const DESCRIPTION: &str = "Each file path is mapped to the list of commits which touch that file \
+pub const DESCRIPTION: &str =
+    "Each file path is mapped to the list of commits which touch that file \
 and the mapping from involved developers to the corresponding line statistics.";

@@ -68,10 +68,7 @@ mod tests {
 
     #[test]
     fn cache_stats_some_reports_counters() {
-        let c = FakeCache {
-            hits: 7,
-            misses: 3,
-        };
+        let c = FakeCache { hits: 7, misses: 3 };
         assert_eq!(cache_stats(Some(&c)), (7, 3));
     }
 }

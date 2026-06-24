@@ -260,8 +260,11 @@ fn dev_name_email(idx: usize, names: &[String]) -> (String, String) {
 #[must_use]
 #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)] // precision is a small positive int
 pub fn compute_file_ownership(input: &ReportData, opts: MetricOptions) -> Vec<FileOwnershipData> {
-    let contributors =
-        file_contributor_counts(input.files.len(), &input.people_files, opts.hll_precision as u8);
+    let contributors = file_contributor_counts(
+        input.files.len(),
+        &input.people_files,
+        opts.hll_precision as u8,
+    );
     let mut result = Vec::with_capacity(input.files.len());
     for (i, file) in input.files.iter().enumerate() {
         let lines = input.files_lines.get(i).copied().unwrap_or(0);
@@ -278,7 +281,11 @@ pub fn compute_file_ownership(input: &ReportData, opts: MetricOptions) -> Vec<Fi
 /// Per-file contributor cardinality, indexed by file.
 #[cfg(feature = "hll")]
 #[allow(clippy::cast_possible_truncation)] // HLL counts fit i32 in practice
-fn file_contributor_counts(num_files: usize, people_files: &[Vec<usize>], precision: u8) -> Vec<i32> {
+fn file_contributor_counts(
+    num_files: usize,
+    people_files: &[Vec<usize>],
+    precision: u8,
+) -> Vec<i32> {
     use cf_alg_hll::Sketch;
     let mut sketches: Vec<Option<Sketch>> = (0..num_files)
         .map(|_| Sketch::new(precision).ok())
@@ -300,7 +307,11 @@ fn file_contributor_counts(num_files: usize, people_files: &[Vec<usize>], precis
 /// Exact-count fallback used without the `hll` feature.
 #[cfg(not(feature = "hll"))]
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-fn file_contributor_counts(num_files: usize, people_files: &[Vec<usize>], _precision: u8) -> Vec<i32> {
+fn file_contributor_counts(
+    num_files: usize,
+    people_files: &[Vec<usize>],
+    _precision: u8,
+) -> Vec<i32> {
     use std::collections::HashSet;
     let mut sets: Vec<HashSet<usize>> = vec![HashSet::new(); num_files];
     for (dev_id, file_indices) in people_files.iter().enumerate() {
@@ -362,7 +373,11 @@ pub fn compute_aggregate(input: &ReportData, opts: MetricOptions) -> AggregateDa
 /// thresholds.
 #[must_use]
 pub fn bucket_ownership(ownership: &[FileOwnershipData]) -> Vec<OwnershipBucket> {
-    bucket_ownership_with_thresholds(ownership, OWNERSHIP_FEW_THRESHOLD, OWNERSHIP_MODERATE_THRESHOLD)
+    bucket_ownership_with_thresholds(
+        ownership,
+        OWNERSHIP_FEW_THRESHOLD,
+        OWNERSHIP_MODERATE_THRESHOLD,
+    )
 }
 
 /// Groups ownership data with configurable thresholds.
@@ -385,13 +400,22 @@ pub fn bucket_ownership_with_thresholds(
         }
     }
     vec![
-        OwnershipBucket { label: "Single owner".to_string(), count: single },
-        OwnershipBucket { label: format!("2-{few_threshold} owners"), count: few },
+        OwnershipBucket {
+            label: "Single owner".to_string(),
+            count: single,
+        },
+        OwnershipBucket {
+            label: format!("2-{few_threshold} owners"),
+            count: few,
+        },
         OwnershipBucket {
             label: format!("{}-{} owners", few_threshold + 1, moderate_threshold),
             count: moderate,
         },
-        OwnershipBucket { label: format!("{}+ owners", moderate_threshold + 1), count: many },
+        OwnershipBucket {
+            label: format!("{}+ owners", moderate_threshold + 1),
+            count: many,
+        },
     ]
 }
 
@@ -447,7 +471,10 @@ pub fn compute_all_metrics(input: &ReportData) -> ComputedMetrics {
 
 /// Runs all metrics with configurable thresholds.
 #[must_use]
-pub fn compute_all_metrics_with_options(input: &ReportData, opts: MetricOptions) -> ComputedMetrics {
+pub fn compute_all_metrics_with_options(
+    input: &ReportData,
+    opts: MetricOptions,
+) -> ComputedMetrics {
     ComputedMetrics {
         file_coupling: compute_file_coupling(input),
         developer_coupling: compute_developer_coupling(input),
@@ -536,12 +563,33 @@ mod tests {
     #[test]
     fn ownership_buckets() {
         let own = vec![
-            FileOwnershipData { file: "a".into(), lines: 0, contributors: 1, top_contributor: String::new() },
-            FileOwnershipData { file: "b".into(), lines: 0, contributors: 3, top_contributor: String::new() },
-            FileOwnershipData { file: "c".into(), lines: 0, contributors: 9, top_contributor: String::new() },
+            FileOwnershipData {
+                file: "a".into(),
+                lines: 0,
+                contributors: 1,
+                top_contributor: String::new(),
+            },
+            FileOwnershipData {
+                file: "b".into(),
+                lines: 0,
+                contributors: 3,
+                top_contributor: String::new(),
+            },
+            FileOwnershipData {
+                file: "c".into(),
+                lines: 0,
+                contributors: 9,
+                top_contributor: String::new(),
+            },
         ];
         let buckets = bucket_ownership(&own);
-        assert_eq!(buckets[0], OwnershipBucket { label: "Single owner".into(), count: 1 });
+        assert_eq!(
+            buckets[0],
+            OwnershipBucket {
+                label: "Single owner".into(),
+                count: 1
+            }
+        );
         assert_eq!(buckets[1].label, "2-3 owners");
         assert_eq!(buckets[1].count, 1);
         assert_eq!(buckets[3].label, "6+ owners");

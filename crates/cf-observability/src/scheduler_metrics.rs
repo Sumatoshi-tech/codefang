@@ -103,14 +103,11 @@ impl SchedulerMetrics {
 
         // Single callback observing all three instruments.
         meter
-            .register_callback(
-                &[g.as_any(), t.as_any(), gc.as_any()],
-                move |obs| {
-                    obs.observe_i64(&g, sampler.goroutines(), &[]);
-                    obs.observe_i64(&t, sampler.threads(), &[]);
-                    obs.observe_i64(&gc, sampler.goroutines_created(), &[]);
-                },
-            )
+            .register_callback(&[g.as_any(), t.as_any(), gc.as_any()], move |obs| {
+                obs.observe_i64(&g, sampler.goroutines(), &[]);
+                obs.observe_i64(&t, sampler.threads(), &[]);
+                obs.observe_i64(&gc, sampler.goroutines_created(), &[]);
+            })
             .map_err(|e: MetricsError| {
                 MetricBuildError::new("register scheduler metrics callback", e)
             })?;
@@ -140,6 +137,9 @@ mod tests {
     fn metric_names_match_contract() {
         assert_eq!(METRIC_GOROUTINES, "codefang.runtime.goroutines");
         assert_eq!(METRIC_THREADS, "codefang.runtime.threads");
-        assert_eq!(METRIC_GOROUTINES_CREATED, "codefang.runtime.goroutines.created");
+        assert_eq!(
+            METRIC_GOROUTINES_CREATED,
+            "codefang.runtime.goroutines.created"
+        );
     }
 }

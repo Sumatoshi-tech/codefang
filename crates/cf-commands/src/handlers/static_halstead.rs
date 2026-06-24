@@ -58,14 +58,31 @@ const CMS_TOKEN_THRESHOLD: i64 = 1000;
 
 // --- detector classification tables ---
 
-const OPERATOR_TYPES: &[&str] =
-    &["BinaryOp", "UnaryOp", "Assignment", "Call", "Index", "Slice", "Return"];
+const OPERATOR_TYPES: &[&str] = &[
+    "BinaryOp",
+    "UnaryOp",
+    "Assignment",
+    "Call",
+    "Index",
+    "Slice",
+    "Return",
+];
 const OPERATOR_ROLES: &[&str] = &["Operator", "Assignment", "Call", "Return"];
 const OPERAND_TYPES: &[&str] = &["Identifier", "Literal", "Field"];
 const OPERAND_ROLES: &[&str] = &["Name", "Literal", "Variable", "Argument"];
 const DECLARATION_TYPES: &[&str] = &[
-    "Function", "FunctionDecl", "Method", "Parameter", "Variable", "Field", "Import", "Package",
-    "Struct", "Class", "Interface", "Enum",
+    "Function",
+    "FunctionDecl",
+    "Method",
+    "Parameter",
+    "Variable",
+    "Field",
+    "Import",
+    "Package",
+    "Struct",
+    "Class",
+    "Interface",
+    "Enum",
 ];
 const DECLARATION_PARENT_ROLES: &[&str] = &["Declaration", "Parameter", "Import", "Type"];
 
@@ -257,7 +274,16 @@ fn derive(n1: i64, n2: i64, big_n1: i64, big_n2: i64) -> (i64, i64, f64, f64, f6
     let effort = volume * difficulty;
     let time_to_program = effort / TIME_CONSTANT;
     let delivered_bugs = volume / BUG_CONSTANT;
-    (vocabulary, length, estimated_length, volume, difficulty, effort, time_to_program, delivered_bugs)
+    (
+        vocabulary,
+        length,
+        estimated_length,
+        volume,
+        difficulty,
+        effort,
+        time_to_program,
+        delivered_bugs,
+    )
 }
 
 /// `node.HasAnyRole` over a string slice.
@@ -390,7 +416,12 @@ fn collect_function_metrics(root: &Node) -> Vec<FuncCounts> {
         child_idx: i64,
         is_fn: bool,
     }
-    let mut stack: Vec<Frame> = vec![Frame { node: root, parent: None, child_idx: -1, is_fn: false }];
+    let mut stack: Vec<Frame> = vec![Frame {
+        node: root,
+        parent: None,
+        child_idx: -1,
+        is_fn: false,
+    }];
 
     while let Some(top) = stack.last_mut() {
         if top.child_idx == -1 {
@@ -404,7 +435,11 @@ fn collect_function_metrics(root: &Node) -> Vec<FuncCounts> {
                     Some(s) if !s.is_empty() => s,
                     _ => "anonymous".to_string(),
                 };
-                contexts.push(Ctx { name, operators: HashMap::new(), operands: HashMap::new() });
+                contexts.push(Ctx {
+                    name,
+                    operators: HashMap::new(),
+                    operands: HashMap::new(),
+                });
             }
             // processNode against the current (innermost) context.
             if let Some(ctx) = contexts.last_mut() {
@@ -435,7 +470,12 @@ fn collect_function_metrics(root: &Node) -> Vec<FuncCounts> {
             // borrow checker by cloning the needed references first.
             let parent_node: &Node = top.node;
             let child: &Node = &top.node.children[idx];
-            stack.push(Frame { node: child, parent: Some(parent_node), child_idx: -1, is_fn: false });
+            stack.push(Frame {
+                node: child,
+                parent: Some(parent_node),
+                child_idx: -1,
+                is_fn: false,
+            });
             continue;
         }
 
@@ -465,7 +505,11 @@ fn analyze_file(root: &Node, source_file: &str, language: &str, directory: &str)
     let mut scalars: HashMap<&'static str, f64> = NUMERIC_KEYS.iter().map(|k| (*k, 0.0)).collect();
 
     if functions.is_empty() {
-        return FileReport { scalars, total_functions: 0, functions: Vec::new() };
+        return FileReport {
+            scalars,
+            total_functions: 0,
+            functions: Vec::new(),
+        };
     }
 
     // Per-function metrics.
@@ -550,7 +594,11 @@ fn analyze_file(root: &Node, source_file: &str, language: &str, directory: &str)
     scalars.insert("delivered_bugs", f_bugs);
     let _ = (est_total_ops, est_total_opnds);
 
-    FileReport { scalars, total_functions: fn_metrics.len() as i64, functions: fn_metrics }
+    FileReport {
+        scalars,
+        total_functions: fn_metrics.len() as i64,
+        functions: fn_metrics,
+    }
 }
 
 /// Aggregated cross-file Halstead result (`common.Aggregator.GetResult`).
@@ -591,7 +639,9 @@ fn aggregate_opts(root_path: &str, opts: &Options) -> Option<Aggregate> {
     collect_files(root, &parser, opts, &mut files);
 
     for path in &files {
-        let Ok(content) = std::fs::read(path) else { continue };
+        let Ok(content) = std::fs::read(path) else {
+            continue;
+        };
 
         let rel = make_relative(path, root_path);
         let directory = dir_of(&rel);
@@ -629,16 +679,24 @@ fn aggregate_opts(root_path: &str, opts: &Options) -> Option<Aggregate> {
         return None;
     }
 
-    let averages: HashMap<&'static str, f64> =
-        sums.iter().map(|(k, v)| (*k, *v / report_count as f64)).collect();
+    let averages: HashMap<&'static str, f64> = sums
+        .iter()
+        .map(|(k, v)| (*k, *v / report_count as f64))
+        .collect();
 
-    Some(Aggregate { averages, total_functions, functions })
+    Some(Aggregate {
+        averages,
+        total_functions,
+        functions,
+    })
 }
 
 /// Recursively gathers UAST-supported, non-excluded files in lexical order
 /// (`streamFiles` walk order; `filepath.WalkDir` visits entries name-sorted).
 fn collect_files(dir: &Path, parser: &Parser, opts: &Options, out: &mut Vec<String>) {
-    let Ok(read) = std::fs::read_dir(dir) else { return };
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return;
+    };
     let mut entries: Vec<_> = read.filter_map(Result::ok).collect();
     entries.sort_by_key(std::fs::DirEntry::file_name);
 
@@ -974,7 +1032,11 @@ mod gosort {
                 pivot = (b - 1) - (pivot - a);
                 hint = INCREASING;
             }
-            if was_balanced && was_partitioned && hint == INCREASING && partial_insertion_sort(v, p, a, b) {
+            if was_balanced
+                && was_partitioned
+                && hint == INCREASING
+                && partial_insertion_sort(v, p, a, b)
+            {
                 return;
             }
             if a > 0 && !less(v, a - 1, pivot) {
@@ -1082,7 +1144,10 @@ fn function_halstead_entry(f: &FunctionMetrics) -> GoValue {
     m.push("effort", GoValue::Float(f.effort));
     m.push("time_to_program", GoValue::Float(f.time_to_program));
     m.push("delivered_bugs", GoValue::Float(f.delivered_bugs));
-    m.push("complexity_level", GoValue::Str(classify_volume_level(f.volume).to_string()));
+    m.push(
+        "complexity_level",
+        GoValue::Str(classify_volume_level(f.volume).to_string()),
+    );
     GoValue::Map(m)
 }
 
@@ -1100,7 +1165,8 @@ fn computed_metrics(agg: &Aggregate) -> GoValue {
     let mut funcs: Vec<&FunctionMetrics> = agg.functions.iter().collect();
     let mut vols: Vec<f64> = funcs.iter().map(|f| f.volume).collect();
     gosort::slice_by_volume_desc(&mut vols, &mut funcs);
-    let function_halstead: Vec<GoValue> = funcs.iter().map(|f| function_halstead_entry(f)).collect();
+    let function_halstead: Vec<GoValue> =
+        funcs.iter().map(|f| function_halstead_entry(f)).collect();
 
     // distribution.
     let (mut low, mut medium, mut high, mut very_high) = (0i64, 0i64, 0i64, 0i64);
@@ -1122,14 +1188,21 @@ fn computed_metrics(agg: &Aggregate) -> GoValue {
     dist.push("very_high", GoValue::Int(very_high));
 
     // high_effort_functions: volume >= 1000, sorted by volume desc.
-    let mut high_eff: Vec<&FunctionMetrics> =
-        agg.functions.iter().filter(|f| f.volume >= VOL_MED).collect();
+    let mut high_eff: Vec<&FunctionMetrics> = agg
+        .functions
+        .iter()
+        .filter(|f| f.volume >= VOL_MED)
+        .collect();
     let mut he_vols: Vec<f64> = high_eff.iter().map(|f| f.volume).collect();
     gosort::slice_by_volume_desc(&mut he_vols, &mut high_eff);
     let high_effort_functions: Vec<GoValue> = high_eff
         .iter()
         .map(|f| {
-            let risk = if f.volume >= VOL_HIGH { "HIGH" } else { "MEDIUM" };
+            let risk = if f.volume >= VOL_HIGH {
+                "HIGH"
+            } else {
+                "MEDIUM"
+            };
             let mut m = GoMap::new(MapOrigin::Struct);
             m.push("name", GoValue::Str(f.name.clone()));
             if !f.source_file.is_empty() {
@@ -1169,12 +1242,18 @@ fn computed_metrics(agg: &Aggregate) -> GoValue {
         0.0
     };
     aggregate.push("health_score", GoValue::Float(health));
-    aggregate.push("message", GoValue::Str(build_aggregate_message(avg("difficulty")).to_string()));
+    aggregate.push(
+        "message",
+        GoValue::Str(build_aggregate_message(avg("difficulty")).to_string()),
+    );
 
     let mut root = GoMap::new(MapOrigin::Struct);
     root.push("function_halstead", GoValue::Array(function_halstead));
     root.push("distribution", GoValue::Map(dist));
-    root.push("high_effort_functions", GoValue::Array(high_effort_functions));
+    root.push(
+        "high_effort_functions",
+        GoValue::Array(high_effort_functions),
+    );
     root.push("aggregate", GoValue::Map(aggregate));
     GoValue::Map(root)
 }
@@ -1504,10 +1583,22 @@ fn halstead_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoV
     };
     let metrics = vec![
         metric("Total Functions", agg.total_functions.to_string()),
-        metric("Distinct Operators (n1)", get_int(avg("distinct_operators")).to_string()),
-        metric("Distinct Operands (n2)", get_int(avg("distinct_operands")).to_string()),
-        metric("Total Operators (N1)", get_int(avg("total_operators")).to_string()),
-        metric("Total Operands (N2)", get_int(avg("total_operands")).to_string()),
+        metric(
+            "Distinct Operators (n1)",
+            get_int(avg("distinct_operators")).to_string(),
+        ),
+        metric(
+            "Distinct Operands (n2)",
+            get_int(avg("distinct_operands")).to_string(),
+        ),
+        metric(
+            "Total Operators (N1)",
+            get_int(avg("total_operators")).to_string(),
+        ),
+        metric(
+            "Total Operands (N2)",
+            get_int(avg("total_operands")).to_string(),
+        ),
         metric("Vocabulary", get_int(avg("vocabulary")).to_string()),
         metric("Volume", fmt_f(avg("volume"))),
         metric("Difficulty", fmt_f(difficulty)),
@@ -1533,7 +1624,11 @@ fn halstead_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoV
     let dist_item = |label: &str, count: i64| {
         let mut m = GoMap::new(MapOrigin::Struct);
         m.push("label", GoValue::Str(label.to_string()));
-        let percent = if total == 0 { 0.0 } else { count as f64 / total as f64 };
+        let percent = if total == 0 {
+            0.0
+        } else {
+            count as f64 / total as f64
+        };
         m.push("percent", GoValue::Float(percent));
         m.push("count", GoValue::Int(count));
         GoValue::Map(m)
@@ -1560,8 +1655,14 @@ fn halstead_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoV
             let mut m = GoMap::new(MapOrigin::Struct);
             m.push("name", GoValue::Str(f.name.clone()));
             m.push("location", GoValue::Str(f.source_file.clone()));
-            m.push("value", GoValue::Str(format_issue_value(f.effort, f.volume, f.delivered_bugs)));
-            m.push("severity", GoValue::Str(severity_for_function(f.effort, f.delivered_bugs).to_string()));
+            m.push(
+                "value",
+                GoValue::Str(format_issue_value(f.effort, f.volume, f.delivered_bugs)),
+            );
+            m.push(
+                "severity",
+                GoValue::Str(severity_for_function(f.effort, f.delivered_bugs).to_string()),
+            );
             GoValue::Map(m)
         })
         .collect();
@@ -1570,7 +1671,10 @@ fn halstead_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoV
     let mut section = GoMap::new(MapOrigin::Struct);
     section.push("title", GoValue::Str("HALSTEAD".to_string()));
     section.push("score_label", GoValue::Str(score_label));
-    section.push("status", GoValue::Str(build_aggregate_message(difficulty).to_string()));
+    section.push(
+        "status",
+        GoValue::Str(build_aggregate_message(difficulty).to_string()),
+    );
     section.push("metrics", GoValue::Array(metrics));
     if !distribution.is_empty() {
         section.push("distribution", GoValue::Array(distribution));

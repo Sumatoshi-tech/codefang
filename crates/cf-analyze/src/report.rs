@@ -43,9 +43,13 @@ pub fn new_report() -> Report {
 }
 
 /// Returns a reference to the value stored under `key`, if present.
-#[must_use] 
+#[must_use]
 pub fn report_get<'a>(report: &'a Report, key: &str) -> Option<&'a GoValue> {
-    report.entries().iter().find(|(k, _)| k == key).map(|(_, v)| v)
+    report
+        .entries()
+        .iter()
+        .find(|(k, _)| k == key)
+        .map(|(_, v)| v)
 }
 
 /// Extracts a list of objects from a report key.
@@ -57,7 +61,7 @@ pub fn report_get<'a>(report: &'a Report, key: &str) -> Option<&'a GoValue> {
 /// a directly-typed `[]map[string]any`; those typed cases collapse to the same
 /// array-of-objects representation here because [`GoValue`] is the post-decode
 /// model. Returns `None` when the key is absent or holds no object elements.
-#[must_use] 
+#[must_use]
 pub fn report_function_list<'a>(report: &'a Report, key: &str) -> Option<Vec<&'a GoMap>> {
     let val = report_get(report, key)?;
     let arr = match val {
@@ -79,14 +83,13 @@ pub fn report_function_list<'a>(report: &'a Report, key: &str) -> Option<Vec<&'a
 
 /// Extracts a function list trying `primary_key` first, then `fallback_key`.
 ///
-#[must_use] 
+#[must_use]
 pub fn report_function_list_with_fallback<'a>(
     report: &'a Report,
     primary_key: &str,
     fallback_key: &str,
 ) -> Option<Vec<&'a GoMap>> {
-    report_function_list(report, primary_key)
-        .or_else(|| report_function_list(report, fallback_key))
+    report_function_list(report, primary_key).or_else(|| report_function_list(report, fallback_key))
 }
 
 #[cfg(test)]

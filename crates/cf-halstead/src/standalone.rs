@@ -133,7 +133,10 @@ mod tests {
 
     #[test]
     fn empty_tree_is_zero() {
-        let root = Node { node_type: "File".to_string(), ..Node::default() };
+        let root = Node {
+            node_type: "File".to_string(),
+            ..Node::default()
+        };
         let r = analyze(&root);
         assert_eq!(r, FileHalstead::default());
     }

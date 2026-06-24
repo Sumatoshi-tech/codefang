@@ -329,10 +329,7 @@ fn clean(path: &str) -> String {
         } else if bytes[r] == b'.' && (r + 1 == n || bytes[r + 1] == SEP) {
             // "." element
             r += 1;
-        } else if bytes[r] == b'.'
-            && bytes[r + 1] == b'.'
-            && (r + 2 == n || bytes[r + 2] == SEP)
-        {
+        } else if bytes[r] == b'.' && bytes[r + 1] == b'.' && (r + 2 == n || bytes[r + 2] == SEP) {
             // ".." element: back up if possible
             r += 2;
             if out.len() > dotdot {

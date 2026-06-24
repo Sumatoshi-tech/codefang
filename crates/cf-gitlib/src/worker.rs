@@ -553,8 +553,8 @@ mod tests {
 
         let repo = Repository::open(tr.path()).unwrap();
         let commit = repo.lookup_commit(first).unwrap();
-        let changes = crate::changes::initial_tree_changes(&repo, Some(&commit.tree().unwrap()))
-            .unwrap();
+        let changes =
+            crate::changes::initial_tree_changes(&repo, Some(&commit.tree().unwrap())).unwrap();
         assert!(!changes.is_empty());
 
         let worker = Worker::new(&repo);
@@ -671,7 +671,9 @@ mod tests {
         let second_th = repo.lookup_commit(second).unwrap().tree_hash();
 
         let worker = Worker::new(&repo);
-        let baseline = worker.tree_diff_with_pathspec(first_th, second_th, &[]).unwrap();
+        let baseline = worker
+            .tree_diff_with_pathspec(first_th, second_th, &[])
+            .unwrap();
         assert_eq!(baseline.len(), 3);
 
         let filtered = worker

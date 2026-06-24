@@ -207,7 +207,10 @@ mod tests {
     #[test]
     fn error_messages_are_frozen() {
         assert_eq!(
-            ParseError::NoFileExtension { filename: "x".into() }.to_string(),
+            ParseError::NoFileExtension {
+                filename: "x".into()
+            }
+            .to_string(),
             "no file extension found for x"
         );
         assert_eq!(
@@ -215,11 +218,17 @@ mod tests {
             "no parser found for extension .xyz"
         );
         assert_eq!(
-            ParseError::MappingNotFound { language: "go".into() }.to_string(),
+            ParseError::MappingNotFound {
+                language: "go".into()
+            }
+            .to_string(),
             "mapping not found: go"
         );
         assert_eq!(
-            ParseError::ParserLoadPanic { detail: "boom".into() }.to_string(),
+            ParseError::ParserLoadPanic {
+                detail: "boom".into()
+            }
+            .to_string(),
             "panic while loading parser: boom"
         );
     }

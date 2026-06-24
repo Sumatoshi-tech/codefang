@@ -134,7 +134,12 @@ impl TestRepo {
     /// # Panics
     ///
     /// Panics on any libgit2 error (test-only helper).
-    pub fn create_merge_commit(&self, message: &str, first_parent: Hash, second_parent: Hash) -> Hash {
+    pub fn create_merge_commit(
+        &self,
+        message: &str,
+        first_parent: Hash,
+        second_parent: Hash,
+    ) -> Hash {
         let p1 = self
             .repo
             .find_commit(first_parent.to_oid())
@@ -217,7 +222,12 @@ pub struct TestCommit {
 impl TestCommit {
     /// Creates a mock commit.
     #[must_use]
-    pub fn new(hash: Hash, author: crate::Signature, message: &str, parent_hashes: Vec<Hash>) -> Self {
+    pub fn new(
+        hash: Hash,
+        author: crate::Signature,
+        message: &str,
+        parent_hashes: Vec<Hash>,
+    ) -> Self {
         TestCommit {
             hash,
             committer: author.clone(),

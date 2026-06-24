@@ -148,7 +148,10 @@ mod enry {
     /// upper-case `.GIF` (e.g. ioq3's `RADIANT3.GIF`) is NOT an image and falls
     /// through to `source`, which is what the reference binary reports.
     pub fn is_image(path: &str) -> bool {
-        matches!(super::ext(path).as_str(), ".png" | ".jpg" | ".jpeg" | ".gif")
+        matches!(
+            super::ext(path).as_str(),
+            ".png" | ".jpg" | ".jpeg" | ".gif"
+        )
     }
 
     /// The cleaned base name starts with `.` and is not exactly `.`.
@@ -167,8 +170,7 @@ mod enry {
     /// long XML-family tail) and added wrong ones, so files now bucket exactly
     /// as the reference binary does.
     pub fn is_configuration(path: &str) -> bool {
-        const CONFIGURATION_LANGUAGES: [&str; 6] =
-            ["XML", "JSON", "TOML", "YAML", "INI", "SQL"];
+        const CONFIGURATION_LANGUAGES: [&str; 6] = ["XML", "JSON", "TOML", "YAML", "INI", "SQL"];
         match cf_langpath::language_by_extension(path) {
             Some(lang) => CONFIGURATION_LANGUAGES.contains(&lang.as_str()),
             None => false,
@@ -388,14 +390,18 @@ mod pathfilter {
             return true;
         }
         let base = base_clean(path);
-        DEFAULT_FILENAME_PREFIXES.iter().any(|p| base.starts_with(p))
+        DEFAULT_FILENAME_PREFIXES
+            .iter()
+            .any(|p| base.starts_with(p))
     }
 
     /// A generated marker appears within the first
     /// [`GENERATED_MARKER_SCAN_LIMIT`] bytes of `content`.
     pub fn is_generated_content(content: &[u8]) -> bool {
         let window = &content[..content.len().min(GENERATED_MARKER_SCAN_LIMIT)];
-        GENERATED_MARKERS.iter().any(|m| contains_subslice(window, m))
+        GENERATED_MARKERS
+            .iter()
+            .any(|m| contains_subslice(window, m))
     }
 
     /// Returns whether `haystack` contains `needle` as a contiguous subslice.

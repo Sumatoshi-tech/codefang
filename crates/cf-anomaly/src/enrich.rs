@@ -85,7 +85,10 @@ mod tests {
         // Mirrors reference test TestEnrichFromStore_Basic.
         let extracted = BTreeMap::from([(
             "test-source".to_string(),
-            series(vec![0, 1, 2, 3, 4], &[("metric_a", vec![1.0, 1.0, 1.0, 1.0, 100.0])]),
+            series(
+                vec![0, 1, 2, 3, 4],
+                &[("metric_a", vec![1.0, 1.0, 1.0, 1.0, 100.0])],
+            ),
         )]);
 
         let (anomalies, _) = run_store_enrichment(&extracted, 3, 2.0);
@@ -136,7 +139,10 @@ mod tests {
 
         let extracted = BTreeMap::from([(
             "equiv-src".to_string(),
-            ExtractedSeries { ticks: ticks.clone(), dimensions: dims.clone() },
+            ExtractedSeries {
+                ticks: ticks.clone(),
+                dimensions: dims.clone(),
+            },
         )]);
         let (store_anomalies, store_summaries) = run_store_enrichment(&extracted, 3, 2.0);
 

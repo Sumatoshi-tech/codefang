@@ -530,17 +530,35 @@ mod tests {
     // Mirrors reference test TestClassifyChangeRisk.
     #[test]
     fn classify_change_risk_thresholds() {
-        assert_eq!(classify_change_risk(HOTSPOT_THRESHOLD_MEDIUM - 1), RISK_LEVEL_LOW);
-        assert_eq!(classify_change_risk(HOTSPOT_THRESHOLD_MEDIUM), RISK_LEVEL_MEDIUM);
-        assert_eq!(classify_change_risk(HOTSPOT_THRESHOLD_HIGH - 1), RISK_LEVEL_MEDIUM);
-        assert_eq!(classify_change_risk(HOTSPOT_THRESHOLD_HIGH), RISK_LEVEL_HIGH);
-        assert_eq!(classify_change_risk(HOTSPOT_THRESHOLD_HIGH + 100), RISK_LEVEL_HIGH);
+        assert_eq!(
+            classify_change_risk(HOTSPOT_THRESHOLD_MEDIUM - 1),
+            RISK_LEVEL_LOW
+        );
+        assert_eq!(
+            classify_change_risk(HOTSPOT_THRESHOLD_MEDIUM),
+            RISK_LEVEL_MEDIUM
+        );
+        assert_eq!(
+            classify_change_risk(HOTSPOT_THRESHOLD_HIGH - 1),
+            RISK_LEVEL_MEDIUM
+        );
+        assert_eq!(
+            classify_change_risk(HOTSPOT_THRESHOLD_HIGH),
+            RISK_LEVEL_HIGH
+        );
+        assert_eq!(
+            classify_change_risk(HOTSPOT_THRESHOLD_HIGH + 100),
+            RISK_LEVEL_HIGH
+        );
     }
 
     // Mirrors reference test TestAggregateMetric_Empty.
     #[test]
     fn compute_aggregate_empty() {
-        assert_eq!(compute_aggregate(&ReportData::default()), AggregateData::default());
+        assert_eq!(
+            compute_aggregate(&ReportData::default()),
+            AggregateData::default()
+        );
     }
 
     // Mirrors reference test TestAggregateMetric_ValidData.

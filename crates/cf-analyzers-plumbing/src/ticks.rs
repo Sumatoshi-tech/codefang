@@ -16,7 +16,9 @@ use std::sync::Arc;
 use crate::analyzer::{dep, Analyzer, AnalyzerError, ValueMap};
 use crate::clock::{Clock, SystemClock};
 use crate::git_model::{Commit, Hash};
-use crate::ticks_anomaly::{TimeAnomalyStats, TimeAnomalyTracker, MAX_CLOCK_SKEW_SECS, MIN_SANE_COMMIT_TIME_UNIX};
+use crate::ticks_anomaly::{
+    TimeAnomalyStats, TimeAnomalyTracker, MAX_CLOCK_SKEW_SECS, MIN_SANE_COMMIT_TIME_UNIX,
+};
 
 /// Default tick size in hours.
 pub const DEFAULT_TICKS_SINCE_START_TICK_SIZE_HOURS: i64 = 24;
@@ -131,7 +133,12 @@ impl TicksSinceStart {
     /// 4. accumulate the commit hash under `commits[tick]` (dedup tail-scan
     ///    for commits with parents);
     /// 5. record `tick`.
-    pub fn tick_for(&mut self, committer_when_unix: i64, commit_hash: Hash, num_parents: usize) -> i64 {
+    pub fn tick_for(
+        &mut self,
+        committer_when_unix: i64,
+        commit_hash: Hash,
+        num_parents: usize,
+    ) -> i64 {
         let when = self.sanitize_when(committer_when_unix);
 
         let tick0 = *self
@@ -243,7 +250,7 @@ mod tests {
     fn monotonic_clamp() {
         let mut ts = fixed();
         assert_eq!(ts.tick_for(START_2020 + 2 * DAY, h(1), 0), 0); // tick0 floor at +2d
-        // Earlier but still in window -> raw negative, clamped to previousTick.
+                                                                   // Earlier but still in window -> raw negative, clamped to previousTick.
         assert_eq!(ts.tick_for(START_2020, h(2), 1), 0);
     }
 

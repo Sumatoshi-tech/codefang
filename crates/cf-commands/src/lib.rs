@@ -76,9 +76,9 @@ pub use flags::{
 // re-export because it is also referenced internally via `crate::formats`.
 #[allow(unused_imports)]
 pub use formats::{
-    apply_ndjson_modifier, normalize_format, resolve_formats, resolve_input_format, validate_format,
-    validate_universal_format, FormatError, FORMAT_BINARY, FORMAT_BIN_ALIAS, FORMAT_COMPACT,
-    FORMAT_JSON, FORMAT_NDJSON, FORMAT_PLOT, FORMAT_TEXT, FORMAT_TIMESERIES,
+    apply_ndjson_modifier, normalize_format, resolve_formats, resolve_input_format,
+    validate_format, validate_universal_format, FormatError, FORMAT_BINARY, FORMAT_BIN_ALIAS,
+    FORMAT_COMPACT, FORMAT_JSON, FORMAT_NDJSON, FORMAT_PLOT, FORMAT_TEXT, FORMAT_TIMESERIES,
     FORMAT_TIMESERIES_NDJSON, FORMAT_YAML, INPUT_FORMAT_AUTO, INPUT_FORMAT_BINARY,
     INPUT_FORMAT_JSON,
 };
@@ -233,7 +233,10 @@ impl RunProgress {
                 "progress: resolved analyzers: static={static_n} history={history_n} output_format={output_format}"
             );
         }
-        Self { start: std::time::Instant::now(), silent }
+        Self {
+            start: std::time::Instant::now(),
+            silent,
+        }
     }
 }
 
@@ -263,16 +266,15 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
     // OTEL_EXPORTER_OTLP_ENDPOINT the providers are no-op: zero output, zero
     // report-byte impact. The guard's Drop performs the shutdown.
     #[cfg(feature = "runtime")]
-    let _observability =
-        match observability::init_run_observability(sub.get_flag("debug-trace")) {
-            Ok(guard) => guard,
-            Err(e) => {
-                // Reference: return fmt.Errorf("init observability: %w", err) → cobra
-                // prints `Error: <msg>` and exits 1.
-                eprintln!("Error: init observability: {e}");
-                return 1;
-            }
-        };
+    let _observability = match observability::init_run_observability(sub.get_flag("debug-trace")) {
+        Ok(guard) => guard,
+        Err(e) => {
+            // Reference: return fmt.Errorf("init observability: %w", err) → cobra
+            // prints `Error: <msg>` and exits 1.
+            eprintln!("Error: init observability: {e}");
+            return 1;
+        }
+    };
 
     let registry = handlers::default_registry();
 
@@ -360,7 +362,9 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
     if raw_format == "bin"
         && !analyzer_strs.is_empty()
         && analyzer_strs.iter().any(|a| a.contains(['*', '?', '[']))
-        && analyzer_strs.iter().all(|a| handlers::is_static_id_or_glob(a))
+        && analyzer_strs
+            .iter()
+            .all(|a| handlers::is_static_id_or_glob(a))
     {
         if let Some(bytes) = handlers::static_multi_bin(&analyzer_strs, &ctx.path) {
             std::io::stdout().write_all(&bytes).expect("write stdout");
@@ -377,7 +381,9 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
     // history analyzer (e.g. `*`) uses the UnifiedModel path, not this merge.
     if raw_format == "json"
         && !analyzer_strs.is_empty()
-        && analyzer_strs.iter().all(|a| handlers::is_static_id_or_glob(a))
+        && analyzer_strs
+            .iter()
+            .all(|a| handlers::is_static_id_or_glob(a))
         && handlers::static_json_selects_multiple(&analyzer_strs)
     {
         if let Some(bytes) = handlers::static_multi_json(&analyzer_strs, &ctx.path) {
@@ -425,7 +431,11 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
             let (s, _h) = handlers::expand_combined_ids(&analyzer_strs);
             let mut v = s;
             v.extend(handlers::expand_history_phase_ids(&analyzer_strs));
-            if v.is_empty() { ids.clone() } else { v }
+            if v.is_empty() {
+                ids.clone()
+            } else {
+                v
+            }
         } else {
             ids.clone()
         }
@@ -449,7 +459,9 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
         let history_format = formats::apply_ndjson_modifier(&normalized, ctx.ndjson());
         let special = match history_format.as_str() {
             formats::FORMAT_TEXT => handlers::history_formats::history_text(&ctx, &resolved_ids),
-            formats::FORMAT_NDJSON => handlers::history_formats::history_ndjson(&ctx, &resolved_ids),
+            formats::FORMAT_NDJSON => {
+                handlers::history_formats::history_ndjson(&ctx, &resolved_ids)
+            }
             formats::FORMAT_TIMESERIES => {
                 handlers::history_formats::history_timeseries(&ctx, &resolved_ids, false)
             }
@@ -467,7 +479,9 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
             Some(Err(fail)) => {
                 // The reference implementation streams the partial bytes to stdout BEFORE the serializer
                 // fails; cobra then prints `Error: <msg>` to stderr and exits 1.
-                std::io::stdout().write_all(&fail.partial).expect("write stdout");
+                std::io::stdout()
+                    .write_all(&fail.partial)
+                    .expect("write stdout");
                 eprintln!("Error: {}", fail.message);
                 return 1;
             }

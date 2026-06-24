@@ -90,7 +90,10 @@ mod tests {
             GoValue::Object(vec![("value".to_string(), GoValue::Int(self.json_value))])
         }
         fn to_yaml(&self) -> GoValue {
-            GoValue::Object(vec![("text".to_string(), GoValue::Str(self.yaml_text.clone()))])
+            GoValue::Object(vec![(
+                "text".to_string(),
+                GoValue::Str(self.yaml_text.clone()),
+            )])
         }
     }
 

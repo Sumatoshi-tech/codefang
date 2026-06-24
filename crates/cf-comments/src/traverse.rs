@@ -7,7 +7,6 @@
 
 use cf_uast_node::Node;
 
-
 /// Returns, in pre-order, all descendants of `root` (including `root`) whose
 /// node type is one of `types`, in document (pre-order, children-in-order)
 /// order.
@@ -47,7 +46,11 @@ fn walk<'a>(n: &'a Node, types: &[&str], out: &mut Vec<&'a Node>) {
 pub fn extract_entity_name(target: &Node) -> Option<String> {
     // Step 1: the "name" prop — key presence is decisive (see doc comment).
     if let Some(value) = target.props.get("name") {
-        return if value.is_empty() { None } else { Some(value.clone()) };
+        return if value.is_empty() {
+            None
+        } else {
+            Some(value.clone())
+        };
     }
     // Step 2: the node's own token.
     if !target.token.is_empty() {

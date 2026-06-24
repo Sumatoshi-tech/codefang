@@ -89,7 +89,10 @@ pub fn aggregate(reports: &[Report]) -> Report {
                 *numeric_counts.entry(k).or_insert(0) += 1;
             }
         }
-        if let Some(rows) = report.get(COLLECTION_KEY).and_then(ReportValue::as_functions) {
+        if let Some(rows) = report
+            .get(COLLECTION_KEY)
+            .and_then(ReportValue::as_functions)
+        {
             for row in rows {
                 let sf = row
                     .get(DEDUP_KEYS[0])
@@ -122,10 +125,7 @@ pub fn aggregate(reports: &[Report]) -> Report {
     let mut out = Report::new();
     out.insert("total_functions".into(), ReportValue::Int(total_functions));
     out.insert("lcom".into(), ReportValue::Float(mean("lcom")));
-    out.insert(
-        "cohesion_score".into(),
-        ReportValue::Float(cohesion_score),
-    );
+    out.insert("cohesion_score".into(), ReportValue::Float(cohesion_score));
     out.insert(
         "function_cohesion".into(),
         ReportValue::Float(mean("function_cohesion")),
@@ -203,7 +203,10 @@ mod tests {
         let mut row = BTreeMap::new();
         row.insert("_source_file".to_string(), ReportValue::Str("a.go".into()));
         row.insert("name".to_string(), ReportValue::Str("f".into()));
-        a.insert("functions".into(), ReportValue::Functions(vec![row.clone()]));
+        a.insert(
+            "functions".into(),
+            ReportValue::Functions(vec![row.clone()]),
+        );
         b.insert("functions".into(), ReportValue::Functions(vec![row]));
         let r = aggregate(&[a, b]);
         let funcs = r.get("functions").unwrap().as_functions().unwrap();

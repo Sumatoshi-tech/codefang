@@ -229,8 +229,14 @@ fn build_result(
     for fm in function_metrics {
         let mut fo = GoMap::new(MapOrigin::Map);
         fo.insert("name", GoValue::Str(fm.name.clone()));
-        fo.insert("cyclomatic_complexity", GoValue::Int(fm.cyclomatic_complexity));
-        fo.insert("cognitive_complexity", GoValue::Int(fm.cognitive_complexity));
+        fo.insert(
+            "cyclomatic_complexity",
+            GoValue::Int(fm.cyclomatic_complexity),
+        );
+        fo.insert(
+            "cognitive_complexity",
+            GoValue::Int(fm.cognitive_complexity),
+        );
         fo.insert("nesting_depth", GoValue::Int(fm.nesting_depth));
         fo.insert("lines_of_code", GoValue::Int(fm.lines_of_code));
         fo.insert(
@@ -453,7 +459,15 @@ fn calculate_cognitive_complexity(fn_node: &Node) -> i64 {
 
     let mut complexity: i64 = 0;
     for (idx, child) in fn_node.children.iter().enumerate() {
-        walk_node(child, fn_node, idx, 0, &ctx, &function_name, &mut complexity);
+        walk_node(
+            child,
+            fn_node,
+            idx,
+            0,
+            &ctx,
+            &function_name,
+            &mut complexity,
+        );
     }
     complexity
 }
@@ -470,19 +484,43 @@ fn walk_node(
 ) {
     match curr.node_type.as_str() {
         uast::IF => {
-            process_if_node(curr, parent, child_idx, nesting, ctx, function_name, complexity);
+            process_if_node(
+                curr,
+                parent,
+                child_idx,
+                nesting,
+                ctx,
+                function_name,
+                complexity,
+            );
             return;
         }
         uast::LOOP | uast::SWITCH | uast::TRY | uast::CATCH | uast::MATCH => {
             *complexity += nesting + 1;
             for (idx, child) in curr.children.iter().enumerate() {
-                walk_node(child, curr, idx, nesting + 1, ctx, function_name, complexity);
+                walk_node(
+                    child,
+                    curr,
+                    idx,
+                    nesting + 1,
+                    ctx,
+                    function_name,
+                    complexity,
+                );
             }
             return;
         }
         uast::LAMBDA => {
             for (idx, child) in curr.children.iter().enumerate() {
-                walk_node(child, curr, idx, nesting + 1, ctx, function_name, complexity);
+                walk_node(
+                    child,
+                    curr,
+                    idx,
+                    nesting + 1,
+                    ctx,
+                    function_name,
+                    complexity,
+                );
             }
             return;
         }
@@ -517,11 +555,27 @@ fn process_if_node(
 
     if !if_node.children.is_empty() {
         add_logical_sequence_complexity(&if_node.children[0], ctx, complexity);
-        walk_node(&if_node.children[0], if_node, 0, nesting, ctx, function_name, complexity);
+        walk_node(
+            &if_node.children[0],
+            if_node,
+            0,
+            nesting,
+            ctx,
+            function_name,
+            complexity,
+        );
     }
 
     if if_node.children.len() > 1 {
-        walk_node(&if_node.children[1], if_node, 1, nesting + 1, ctx, function_name, complexity);
+        walk_node(
+            &if_node.children[1],
+            if_node,
+            1,
+            nesting + 1,
+            ctx,
+            function_name,
+            complexity,
+        );
     }
 
     for idx in 2..if_node.children.len() {
@@ -538,11 +592,7 @@ fn process_if_node(
 /// Adds the logical-sequence increments: +1 for the first logical-operator run
 /// in the condition, +1 for each change of operator kind along the flattened
 /// left-to-right operator stream.
-fn add_logical_sequence_complexity(
-    expr: &Node,
-    ctx: &FunctionSourceContext,
-    complexity: &mut i64,
-) {
+fn add_logical_sequence_complexity(expr: &Node, ctx: &FunctionSourceContext, complexity: &mut i64) {
     let mut operators: Vec<String> = Vec::new();
     collect_logical_operators(expr, ctx, &mut operators);
     if operators.is_empty() {
@@ -984,10 +1034,12 @@ mod tests {
 
     #[test]
     fn simple_function() {
-        let mut function_node =
-            Node::new(uast::FUNCTION).with_roles(vec![crate::node::role::FUNCTION, crate::node::role::DECLARATION]);
-        let name_node =
-            Node::with_token(uast::IDENTIFIER, "simpleFunction").with_roles(vec![crate::node::role::NAME]);
+        let mut function_node = Node::new(uast::FUNCTION).with_roles(vec![
+            crate::node::role::FUNCTION,
+            crate::node::role::DECLARATION,
+        ]);
+        let name_node = Node::with_token(uast::IDENTIFIER, "simpleFunction")
+            .with_roles(vec![crate::node::role::NAME]);
         function_node.add_child(name_node);
 
         let mut root = Node::new(uast::FILE);
@@ -1001,8 +1053,8 @@ mod tests {
     #[test]
     fn extract_function_name_with_and_without_name() {
         let mut function_node = Node::new(uast::FUNCTION);
-        let name_node =
-            Node::with_token(uast::IDENTIFIER, "testFunction").with_roles(vec![crate::node::role::NAME]);
+        let name_node = Node::with_token(uast::IDENTIFIER, "testFunction")
+            .with_roles(vec![crate::node::role::NAME]);
         function_node.add_child(name_node);
         assert_eq!(extract_function_name(&function_node), "testFunction");
 
@@ -1032,10 +1084,13 @@ mod tests {
 
     #[test]
     fn with_if_statement() {
-        let mut function_node =
-            Node::new(uast::FUNCTION).with_roles(vec![crate::node::role::FUNCTION, crate::node::role::DECLARATION]);
+        let mut function_node = Node::new(uast::FUNCTION).with_roles(vec![
+            crate::node::role::FUNCTION,
+            crate::node::role::DECLARATION,
+        ]);
         function_node.add_child(
-            Node::with_token(uast::IDENTIFIER, "testFunction").with_roles(vec![crate::node::role::NAME]),
+            Node::with_token(uast::IDENTIFIER, "testFunction")
+                .with_roles(vec![crate::node::role::NAME]),
         );
         function_node.add_child(Node::new(uast::IF).with_roles(vec![crate::node::role::CONDITION]));
 
@@ -1076,7 +1131,10 @@ mod tests {
         let loop_node = Node::new(uast::LOOP).with_children(vec![inner_if]);
         let outer_if = Node::new(uast::IF).with_children(vec![loop_node]);
         let func = Node::new(uast::FUNCTION)
-            .with_roles(vec![crate::node::role::FUNCTION, crate::node::role::DECLARATION])
+            .with_roles(vec![
+                crate::node::role::FUNCTION,
+                crate::node::role::DECLARATION,
+            ])
             .with_children(vec![outer_if]);
 
         // cyclomatic: 1 + if + loop + if = 4
@@ -1130,8 +1188,10 @@ mod tests {
     /// assessments.
     #[test]
     fn result_shape_has_report_keys_and_assessments() {
-        let mut func =
-            Node::new(uast::FUNCTION).with_roles(vec![crate::node::role::FUNCTION, crate::node::role::DECLARATION]);
+        let mut func = Node::new(uast::FUNCTION).with_roles(vec![
+            crate::node::role::FUNCTION,
+            crate::node::role::DECLARATION,
+        ]);
         func.add_child(Node::new(uast::IF));
         let mut root = Node::new(uast::FILE);
         root.add_child(func);
@@ -1164,10 +1224,16 @@ mod tests {
     fn functions_sorted_by_report_predicate() {
         // aaa: cyclomatic 1; bbb: cyclomatic 2 (one if).
         let func_a = Node::new(uast::FUNCTION)
-            .with_roles(vec![crate::node::role::FUNCTION, crate::node::role::DECLARATION])
+            .with_roles(vec![
+                crate::node::role::FUNCTION,
+                crate::node::role::DECLARATION,
+            ])
             .with_prop("name", "aaa");
         let func_b = Node::new(uast::FUNCTION)
-            .with_roles(vec![crate::node::role::FUNCTION, crate::node::role::DECLARATION])
+            .with_roles(vec![
+                crate::node::role::FUNCTION,
+                crate::node::role::DECLARATION,
+            ])
             .with_prop("name", "bbb")
             .with_children(vec![Node::new(uast::IF)]);
         let root = Node::new(uast::FILE).with_children(vec![func_a, func_b]);

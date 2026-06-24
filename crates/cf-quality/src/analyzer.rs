@@ -75,10 +75,8 @@ pub trait ComponentSet {
 /// cohesion`. A component that errored (`None`) contributes nothing.
 pub fn accumulate_file<C: ComponentSet>(components: &C, root: &C::Node, tq: &mut TickQuality) {
     if let Some(r) = components.analyze_complexity(root) {
-        tq.complexities
-            .push(r.get_int("total_complexity") as f64);
-        tq.cognitives
-            .push(r.get_int("cognitive_complexity") as f64);
+        tq.complexities.push(r.get_int("total_complexity") as f64);
+        tq.cognitives.push(r.get_int("cognitive_complexity") as f64);
         tq.max_complexities.push(r.get_int("max_complexity"));
         tq.functions.push(r.get_int("total_functions"));
     }
@@ -89,8 +87,7 @@ pub fn accumulate_file<C: ComponentSet>(components: &C, root: &C::Node, tq: &mut
     }
     if let Some(r) = components.analyze_comments(root) {
         tq.comment_scores.push(r.get_float("overall_score"));
-        tq.doc_coverages
-            .push(r.get_float("documentation_coverage"));
+        tq.doc_coverages.push(r.get_float("documentation_coverage"));
     }
     if let Some(r) = components.analyze_cohesion(root) {
         tq.cohesion_scores.push(r.get_float("cohesion_score"));

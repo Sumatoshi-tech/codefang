@@ -225,7 +225,10 @@ fn get_interpreter(content: &[u8]) -> String {
     }
     // Skip `#!`, trim ASCII whitespace from both ends.
     let rest = trim_ascii_space(&line[2..]);
-    let fields: Vec<&[u8]> = rest.split(u8::is_ascii_whitespace).filter(|f| !f.is_empty()).collect();
+    let fields: Vec<&[u8]> = rest
+        .split(u8::is_ascii_whitespace)
+        .filter(|f| !f.is_empty())
+        .collect();
     if fields.is_empty() {
         return String::new();
     }
@@ -324,7 +327,10 @@ const fn is_word_byte(b: u8) -> bool {
 fn first_line(content: &[u8]) -> &[u8] {
     // enry reads the first line with a scanner that strips a trailing \r\n or
     // \n. We take bytes up to the first \n and strip a trailing \r.
-    let end = content.iter().position(|&b| b == b'\n').unwrap_or(content.len());
+    let end = content
+        .iter()
+        .position(|&b| b == b'\n')
+        .unwrap_or(content.len());
     let line = &content[..end];
     if line.last() == Some(&b'\r') {
         &line[..line.len() - 1]
@@ -334,8 +340,14 @@ fn first_line(content: &[u8]) -> &[u8] {
 }
 
 fn trim_ascii_space(s: &[u8]) -> &[u8] {
-    let start = s.iter().position(|b| !b.is_ascii_whitespace()).unwrap_or(s.len());
-    let end = s.iter().rposition(|b| !b.is_ascii_whitespace()).map_or(start, |p| p + 1);
+    let start = s
+        .iter()
+        .position(|b| !b.is_ascii_whitespace())
+        .unwrap_or(s.len());
+    let end = s
+        .iter()
+        .rposition(|b| !b.is_ascii_whitespace())
+        .map_or(start, |p| p + 1);
     &s[start..end]
 }
 
@@ -550,8 +562,9 @@ fn modeline_language(content: &[u8]) -> Option<String> {
         .get_or_init(|| Regex::new(r".*-\*-\s*(.+?)\s*-\*-.*(?m:$)").expect("emacs modeline re"));
     if let Some(last) = re_em.captures_iter(&scope).last() {
         let line = last.get(1).map_or(&b""[..], |m| m.as_bytes());
-        let re_lang = RE_EMACS_LANG
-            .get_or_init(|| Regex::new(r".*(?i:mode)\s*:\s*([^\s;]+)\s*;*.*").expect("emacs lang re"));
+        let re_lang = RE_EMACS_LANG.get_or_init(|| {
+            Regex::new(r".*(?i:mode)\s*:\s*([^\s;]+)\s*;*.*").expect("emacs lang re")
+        });
         let alias = re_lang
             .captures(line)
             .map_or(line, |c| c.get(1).map_or(&b""[..], |m| m.as_bytes()));
@@ -633,7 +646,9 @@ pub fn language_by_extension(filename: &str) -> Option<String> {
 /// full-Unicode lowercasing.
 fn convert_to_alias_key(lang_name: &str) -> String {
     // Everything up to (not including) the first comma.
-    let before_comma = lang_name.find(',').map_or(lang_name, |idx| &lang_name[..idx]);
+    let before_comma = lang_name
+        .find(',')
+        .map_or(lang_name, |idx| &lang_name[..idx]);
     // Replace the ASCII space byte (only) with underscore.
     let underscored = before_comma.replace(' ', "_");
     // Full-Unicode lowercasing, matching enry.
@@ -644,10 +659,7 @@ fn convert_to_alias_key(lang_name: &str) -> String {
 /// token, or `None` when unrecognized.
 fn get_language_by_alias(token: &str) -> Option<&'static str> {
     let key = convert_to_alias_key(token);
-    enry_data()
-        .alias_to_lang
-        .get(&key)
-        .map(String::as_str)
+    enry_data().alias_to_lang.get(&key).map(String::as_str)
 }
 
 /// Reproduces `enry.GetLanguageExtensions`: extensions (with leading dot) for a
@@ -857,7 +869,10 @@ mod tests {
         let r = globs(&["python", "go", "python"]).unwrap();
         assert!(!r.wants_all);
         assert!(!r.globs.is_empty());
-        assert!(r.globs.windows(2).all(|w| w[0] <= w[1]), "globs must be sorted");
+        assert!(
+            r.globs.windows(2).all(|w| w[0] <= w[1]),
+            "globs must be sorted"
+        );
         assert!(
             r.globs.contains(&"*.go".to_string()),
             "go extension must be present"
@@ -929,7 +944,11 @@ mod tests {
         // 234 filename records.
         let d = enry_data();
         assert_eq!(d.alias_to_lang.len(), 750, "alias count");
-        assert_eq!(d.extensions_by_language.len(), 504, "extension-language count");
+        assert_eq!(
+            d.extensions_by_language.len(),
+            504,
+            "extension-language count"
+        );
         // 234 F-records invert into a (smaller) set of distinct languages; just
         // assert it is non-empty and that a known mapping survived inversion.
         assert!(!d.filenames_by_language.is_empty());

@@ -323,8 +323,8 @@ fn load_history_commits<'repo>(
     } else {
         0
     };
-    let mut commits = collect_n(&mut iter, limit)
-        .expect("CommitIter::next never yields a non-EOF error");
+    let mut commits =
+        collect_n(&mut iter, limit).expect("CommitIter::next never yields a non-EOF error");
     commits.reverse();
     Ok(commits)
 }
@@ -341,10 +341,7 @@ mod tests {
 
     #[test]
     fn parse_rfc3339_z() {
-        assert_eq!(
-            parse_time("2024-01-01T00:00:00Z").unwrap(),
-            1_704_067_200
-        );
+        assert_eq!(parse_time("2024-01-01T00:00:00Z").unwrap(), 1_704_067_200);
     }
 
     #[test]

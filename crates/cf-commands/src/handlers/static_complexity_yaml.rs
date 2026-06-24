@@ -168,7 +168,9 @@ fn walk(
         if exclude(&path_str, None, &Options::default()) {
             continue;
         }
-        let Ok(content) = fs::read(&path) else { continue };
+        let Ok(content) = fs::read(&path) else {
+            continue;
+        };
         let Ok(uroot) = parser.parse(&path_str, &content) else {
             continue;
         };
@@ -377,7 +379,11 @@ fn build_high_risk(functions: &[FunctionData]) -> GoValue {
             continue;
         }
         let risk = classify_function_risk(f.cyclomatic, f.cognitive, f.nesting);
-        items.push(HighRisk { idx: i, issues, risk });
+        items.push(HighRisk {
+            idx: i,
+            issues,
+            risk,
+        });
     }
 
     go_sort::slice(&mut items, |a, b| {
@@ -395,8 +401,11 @@ fn build_high_risk(functions: &[FunctionData]) -> GoValue {
         o.push("cyclomatic_complexity", GoValue::Int(f.cyclomatic));
         o.push("cognitive_complexity", GoValue::Int(f.cognitive));
         o.push("risk_level", GoValue::Str(it.risk.to_string()));
-        let issues: Vec<GoValue> =
-            it.issues.iter().map(|s| GoValue::Str((*s).to_string())).collect();
+        let issues: Vec<GoValue> = it
+            .issues
+            .iter()
+            .map(|s| GoValue::Str((*s).to_string()))
+            .collect();
         o.push("issues", GoValue::Array(issues));
         arr.push(GoValue::Map(o));
     }

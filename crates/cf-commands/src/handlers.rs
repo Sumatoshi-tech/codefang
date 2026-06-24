@@ -60,7 +60,8 @@ pub(crate) fn run_concurrent<T: Send>(
     }
     let workers = cap.min(n);
     let next = std::sync::atomic::AtomicUsize::new(0);
-    let slots: Vec<std::sync::Mutex<Option<T>>> = (0..n).map(|_| std::sync::Mutex::new(None)).collect();
+    let slots: Vec<std::sync::Mutex<Option<T>>> =
+        (0..n).map(|_| std::sync::Mutex::new(None)).collect();
     {
         let f = &f;
         let next = &next;
@@ -128,7 +129,9 @@ pub fn run_repo_path(sub: &clap::ArgMatches) -> String {
             return p.clone();
         }
     }
-    sub.get_one::<String>("path").cloned().unwrap_or_else(|| ".".to_string())
+    sub.get_one::<String>("path")
+        .cloned()
+        .unwrap_or_else(|| ".".to_string())
 }
 
 /// The effective first-parent mode for the shared history revwalk, mirroring
@@ -183,7 +186,11 @@ pub fn load_history_commit_hashes(
     // reference binary at `--limit 2` on hercules emits the repo's first two commits —
     // analyser.go/LICENSE — proving the OLDEST set is selected, even though the
     // repo has 1006 commits.) Do NOT switch to `reverse: false` + post-reverse.
-    let log_opts = LogOptions { reverse: true, first_parent, ..LogOptions::default() };
+    let log_opts = LogOptions {
+        reverse: true,
+        first_parent,
+        ..LogOptions::default()
+    };
     let mut iter = repo.log(&log_opts).ok()?;
     let mut hashes = Vec::new();
     while limit <= 0 || (hashes.len() as i64) < limit {
@@ -336,7 +343,9 @@ pub fn serialize_history_metrics(
         "yaml" => {
             let mut out = Vec::new();
             out.extend_from_slice(b"codefang (v2):\n");
-            out.extend_from_slice(format!("  version: {}\n", cf_version::DEFAULT_BINARY).as_bytes());
+            out.extend_from_slice(
+                format!("  version: {}\n", cf_version::DEFAULT_BINARY).as_bytes(),
+            );
             out.extend_from_slice(format!("  hash: {}\n", cf_version::BINARY_GIT_HASH).as_bytes());
             out.extend_from_slice(format!("{analyzer_name}:\n").as_bytes());
             out.extend_from_slice(&cf_goyaml::marshal(yaml_value));
@@ -385,7 +394,9 @@ pub const STATIC_BIN_ANALYZERS: &[(&str, bool)] = &[
 #[must_use]
 pub fn is_static_id_or_glob(pat: &str) -> bool {
     if pat.contains(['*', '?', '[']) {
-        let any_static = STATIC_BIN_ANALYZERS.iter().any(|(id, _)| go_path_match(pat, id));
+        let any_static = STATIC_BIN_ANALYZERS
+            .iter()
+            .any(|(id, _)| go_path_match(pat, id));
         any_static && !history_glob_matches(pat)
     } else {
         STATIC_BIN_ANALYZERS.iter().any(|(id, _)| *id == pat)
@@ -466,7 +477,10 @@ use cf_gojson::{GoMap, GoValue, MapOrigin};
 
 const STATIC_JSON_VALUE_BUILDERS: &[(&str, ReportValueFn)] = &[
     ("static/clones", static_clones::clones_report_value),
-    ("static/complexity", static_complexity::complexity_report_value),
+    (
+        "static/complexity",
+        static_complexity::complexity_report_value,
+    ),
     ("static/comments", static_comments::comments_report_value),
     ("static/halstead", static_halstead::halstead_report_value),
     ("static/cohesion", static_cohesion::cohesion_report_value),
@@ -557,7 +571,10 @@ pub fn static_multi_json(patterns: &[&str], path: &str) -> Option<Vec<u8>> {
     };
 
     let mut root = GoMap::new(MapOrigin::Struct);
-    root.push("overall_score_label", GoValue::Str(overall_score_label(overall)));
+    root.push(
+        "overall_score_label",
+        GoValue::Str(overall_score_label(overall)),
+    );
     root.push("sections", GoValue::Array(sections));
     root.push("overall_score", GoValue::Float(overall));
 
@@ -793,10 +810,11 @@ pub fn render_combined(
     // repository handle and parsers), so they are COMPUTED concurrently and
     // then appended in the same deterministic static-then-history order.
     let all_ids: Vec<&String> = static_ids.iter().chain(history_ids.iter()).collect();
-    let envelopes: Vec<Option<Vec<u8>>> = run_concurrent(all_ids.len(), ANALYZER_CONCURRENCY, |i| {
-        let entry = registry.lookup(all_ids[i])?;
-        (entry.run)(ctx, "binary")
-    });
+    let envelopes: Vec<Option<Vec<u8>>> =
+        run_concurrent(all_ids.len(), ANALYZER_CONCURRENCY, |i| {
+            let entry = registry.lookup(all_ids[i])?;
+            (entry.run)(ctx, "binary")
+        });
     for (i, (id, env)) in all_ids.iter().zip(envelopes).enumerate() {
         raw.extend_from_slice(&env?);
         ids.push((*id).clone());
@@ -807,7 +825,8 @@ pub fn render_combined(
         });
     }
 
-    let mut model = cf_analyze::conversion::decode_combined_binary_reports(&raw, &ids, &modes).ok()?;
+    let mut model =
+        cf_analyze::conversion::decode_combined_binary_reports(&raw, &ids, &modes).ok()?;
     model.metadata = Some(cf_analyze::metadata::new_analysis_metadata(&ctx.path));
 
     // Normalize the requested format to the canonical name the conversion
@@ -904,7 +923,11 @@ fn match_class(pat: &[u8], ch: u8) -> (bool, &[u8]) {
             matched = true;
         }
     }
-    let rest = if i < pat.len() { &pat[i + 1..] } else { &pat[i..] };
+    let rest = if i < pat.len() {
+        &pat[i + 1..]
+    } else {
+        &pat[i..]
+    };
     (matched ^ negate, rest)
 }
 
@@ -1204,7 +1227,9 @@ fn h_history_burndown(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
             let metrics = history::burndown_head_metrics(sub)?;
             let bytes = match format {
                 "json" => cf_gojson::marshal(&metrics.to_go_value()),
-                "binary" | "bin" => cf_reportutil::encode_binary_envelope(&metrics.to_go_value()).ok()?,
+                "binary" | "bin" => {
+                    cf_reportutil::encode_binary_envelope(&metrics.to_go_value()).ok()?
+                }
                 _ => {
                     let mut out = Vec::new();
                     out.extend_from_slice(b"codefang (v2):\n");
@@ -1264,4 +1289,3 @@ pub fn default_registry() -> Registry {
 
     r
 }
-

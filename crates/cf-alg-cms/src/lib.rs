@@ -326,8 +326,20 @@ mod tests {
     #[test]
     fn new_parameters() {
         let cases = [
-            ("standard", STANDARD_EPSILON, STANDARD_DELTA, EXPECTED_WIDTH, EXPECTED_DEPTH),
-            ("loose", LOOSE_EPSILON, LOOSE_DELTA, LOOSE_WIDTH, LOOSE_DEPTH),
+            (
+                "standard",
+                STANDARD_EPSILON,
+                STANDARD_DELTA,
+                EXPECTED_WIDTH,
+                EXPECTED_DEPTH,
+            ),
+            (
+                "loose",
+                LOOSE_EPSILON,
+                LOOSE_DELTA,
+                LOOSE_WIDTH,
+                LOOSE_DEPTH,
+            ),
         ];
         for (name, eps, delta, want_w, want_d) in cases {
             let sk = Sketch::new(eps, delta).unwrap_or_else(|e| panic!("{name}: {e}"));
@@ -338,18 +350,39 @@ mod tests {
 
     #[test]
     fn new_edge_cases() {
-        assert_eq!(Sketch::new(0.0, STANDARD_DELTA).unwrap_err(), Error::InvalidEpsilon);
-        assert_eq!(Sketch::new(-0.01, STANDARD_DELTA).unwrap_err(), Error::InvalidEpsilon);
-        assert_eq!(Sketch::new(STANDARD_EPSILON, 0.0).unwrap_err(), Error::InvalidDelta);
-        assert_eq!(Sketch::new(STANDARD_EPSILON, -0.01).unwrap_err(), Error::InvalidDelta);
-        assert_eq!(Sketch::new(STANDARD_EPSILON, 1.0).unwrap_err(), Error::InvalidDelta);
-        assert_eq!(Sketch::new(STANDARD_EPSILON, 1.5).unwrap_err(), Error::InvalidDelta);
+        assert_eq!(
+            Sketch::new(0.0, STANDARD_DELTA).unwrap_err(),
+            Error::InvalidEpsilon
+        );
+        assert_eq!(
+            Sketch::new(-0.01, STANDARD_DELTA).unwrap_err(),
+            Error::InvalidEpsilon
+        );
+        assert_eq!(
+            Sketch::new(STANDARD_EPSILON, 0.0).unwrap_err(),
+            Error::InvalidDelta
+        );
+        assert_eq!(
+            Sketch::new(STANDARD_EPSILON, -0.01).unwrap_err(),
+            Error::InvalidDelta
+        );
+        assert_eq!(
+            Sketch::new(STANDARD_EPSILON, 1.0).unwrap_err(),
+            Error::InvalidDelta
+        );
+        assert_eq!(
+            Sketch::new(STANDARD_EPSILON, 1.5).unwrap_err(),
+            Error::InvalidDelta
+        );
     }
 
     // The error Display strings are frozen (CLI/log compatibility contract).
     #[test]
     fn error_messages_are_frozen() {
-        assert_eq!(Error::InvalidEpsilon.to_string(), "cms: epsilon must be positive");
+        assert_eq!(
+            Error::InvalidEpsilon.to_string(),
+            "cms: epsilon must be positive"
+        );
         assert_eq!(
             Error::InvalidDelta.to_string(),
             "cms: delta must be in the open interval (0, 1)"
@@ -362,7 +395,10 @@ mod tests {
         let key = b"token-operator";
         let add_count: i64 = 42;
         sk.add(key, add_count);
-        assert!(sk.count(key) >= add_count, "CMS count must be >= true count");
+        assert!(
+            sk.count(key) >= add_count,
+            "CMS count must be >= true count"
+        );
     }
 
     #[test]
@@ -390,7 +426,10 @@ mod tests {
     fn count_never_added() {
         let sk = Sketch::new(LOOSE_EPSILON, LOOSE_DELTA).unwrap();
         sk.add(b"exists", 100);
-        assert!(sk.count(b"never-added") >= 0, "count of absent key must be >= 0");
+        assert!(
+            sk.count(b"never-added") >= 0,
+            "count of absent key must be >= 0"
+        );
     }
 
     #[test]
@@ -482,7 +521,11 @@ mod tests {
         }
         for i in 0..100 {
             let key = test_key("det", i);
-            assert_eq!(sk1.count(&key), sk2.count(&key), "determinism violated for key {i}");
+            assert_eq!(
+                sk1.count(&key),
+                sk2.count(&key),
+                "determinism violated for key {i}"
+            );
         }
     }
 

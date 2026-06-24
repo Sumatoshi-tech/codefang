@@ -108,9 +108,28 @@ pub fn vader_compound_to_score(compound: f64) -> f32 {
 
 /// SE-domain terms VADER misclassifies, neutralized toward `0`.
 const SE_DOMAIN_NEUTRALIZERS: &[&str] = &[
-    "kill", "killed", "killing", "abort", "aborted", "aborting", "fatal", "dead", "terminate",
-    "terminated", "destroy", "panic", "deprecated", "obsolete", "master", "execute", "exploit",
-    "conflict", "revert", "reject", "rejected", "critical",
+    "kill",
+    "killed",
+    "killing",
+    "abort",
+    "aborted",
+    "aborting",
+    "fatal",
+    "dead",
+    "terminate",
+    "terminated",
+    "destroy",
+    "panic",
+    "deprecated",
+    "obsolete",
+    "master",
+    "execute",
+    "exploit",
+    "conflict",
+    "revert",
+    "reject",
+    "rejected",
+    "critical",
 ];
 
 /// SE-domain terms that are genuinely negative, with their valence shift.
@@ -273,13 +292,19 @@ mod tests {
     #[test]
     fn compute_sentiment_positive() {
         let score = compute_sentiment(&s(&["This is a great fix!"]));
-        assert!(f64::from(score) >= SENTIMENT_POSITIVE_THRESHOLD, "score = {score}");
+        assert!(
+            f64::from(score) >= SENTIMENT_POSITIVE_THRESHOLD,
+            "score = {score}"
+        );
     }
 
     #[test]
     fn compute_sentiment_negative() {
         let score = compute_sentiment(&s(&["This code is broken and terrible."]));
-        assert!(f64::from(score) <= SENTIMENT_NEGATIVE_THRESHOLD, "score = {score}");
+        assert!(
+            f64::from(score) <= SENTIMENT_NEGATIVE_THRESHOLD,
+            "score = {score}"
+        );
     }
 
     #[test]
@@ -299,13 +324,19 @@ mod tests {
     #[test]
     fn compute_sentiment_multiple_comments() {
         let score = compute_sentiment(&s(&["good work", "nice refactor", "clean code"]));
-        assert!(f64::from(score) >= SENTIMENT_POSITIVE_THRESHOLD, "score = {score}");
+        assert!(
+            f64::from(score) >= SENTIMENT_POSITIVE_THRESHOLD,
+            "score = {score}"
+        );
     }
 
     #[test]
     fn compute_sentiment_heavy_negative() {
         let score = compute_sentiment(&s(&["This is terrible awful horrible broken bug hack"]));
-        assert!(f64::from(score) <= SENTIMENT_NEGATIVE_THRESHOLD, "score = {score}");
+        assert!(
+            f64::from(score) <= SENTIMENT_NEGATIVE_THRESHOLD,
+            "score = {score}"
+        );
     }
 
     #[test]
@@ -356,19 +387,28 @@ mod tests {
 
     #[test]
     fn apply_se_no_terms() {
-        let r = apply_se_domain_adjustment_with_weight("simple regular comment", 0.5, NEUTRALIZER_WEIGHT);
+        let r = apply_se_domain_adjustment_with_weight(
+            "simple regular comment",
+            0.5,
+            NEUTRALIZER_WEIGHT,
+        );
         assert!((r - 0.5).abs() < FLOAT_DELTA);
     }
 
     #[test]
     fn apply_se_with_neutralizer() {
-        let r = apply_se_domain_adjustment_with_weight("kill the process", -0.6, NEUTRALIZER_WEIGHT);
+        let r =
+            apply_se_domain_adjustment_with_weight("kill the process", -0.6, NEUTRALIZER_WEIGHT);
         assert!(r > -0.6);
     }
 
     #[test]
     fn apply_se_with_negative_term() {
-        let r = apply_se_domain_adjustment_with_weight("this is a terrible hack", 0.0, NEUTRALIZER_WEIGHT);
+        let r = apply_se_domain_adjustment_with_weight(
+            "this is a terrible hack",
+            0.0,
+            NEUTRALIZER_WEIGHT,
+        );
         assert!(r < 0.0);
     }
 
@@ -414,7 +454,11 @@ mod tests {
     #[test]
     fn inject_multilingual_grows_lexicon() {
         let analyzer = vader_analyzer();
-        assert!(analyzer.lexicon.len() > 7500, "lexicon size = {}", analyzer.lexicon.len());
+        assert!(
+            analyzer.lexicon.len() > 7500,
+            "lexicon size = {}",
+            analyzer.lexicon.len()
+        );
     }
 
     #[test]

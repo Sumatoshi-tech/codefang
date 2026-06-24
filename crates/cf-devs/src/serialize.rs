@@ -49,7 +49,10 @@ pub fn commit_dev_data_to_go(cdd: &CommitDevData) -> GoValue {
     obj.insert("lines_changed".to_string(), GoValue::Int(cdd.changed));
     obj.insert("author_id".to_string(), GoValue::Int(cdd.author_id));
     if !cdd.languages.is_empty() {
-        obj.insert("languages".to_string(), line_stats_map_value(&cdd.languages));
+        obj.insert(
+            "languages".to_string(),
+            line_stats_map_value(&cdd.languages),
+        );
     }
     GoValue::Object(obj)
 }
@@ -169,7 +172,10 @@ pub fn bus_factor_data_to_go(b: &BusFactorData) -> GoValue {
             GoValue::Str(b.primary_dev_email.clone()),
         );
     }
-    obj.insert("primary_percentage".to_string(), GoValue::Float(b.primary_pct));
+    obj.insert(
+        "primary_percentage".to_string(),
+        GoValue::Float(b.primary_pct),
+    );
     if b.secondary_dev_id != 0 {
         obj.insert(
             "secondary_dev_id".to_string(),
@@ -280,7 +286,10 @@ pub fn aggregate_data_to_go(a: &AggregateData) -> GoValue {
         "project_bus_factor".to_string(),
         GoValue::Int(a.project_bus_factor),
     );
-    obj.insert("total_languages".to_string(), GoValue::Int(a.total_languages));
+    obj.insert(
+        "total_languages".to_string(),
+        GoValue::Int(a.total_languages),
+    );
     GoValue::Object(obj)
 }
 

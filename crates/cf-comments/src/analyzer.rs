@@ -411,7 +411,10 @@ impl Analyzer {
         m.push("comments", comments_table);
         m.push("functions", functions_table);
         m.push("function_summary", function_summary_iface);
-        m.push("message", GoValue::Str(comment_message(metrics.overall_score)));
+        m.push(
+            "message",
+            GoValue::Str(comment_message(metrics.overall_score)),
+        );
         GoValue::Map(m)
     }
 

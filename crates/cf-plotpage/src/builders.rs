@@ -74,7 +74,11 @@ pub fn build_pie_chart(
 ) -> Chart {
     let default_opts = ChartOpts::default_dark();
     let co = c_opts.unwrap_or(&default_opts);
-    let radius = if radius.is_empty() { PIE_DEFAULT_RADIUS } else { radius };
+    let radius = if radius.is_empty() {
+        PIE_DEFAULT_RADIUS
+    } else {
+        radius
+    };
 
     let mut pie = Chart::new(ChartKind::Pie);
     pie.tooltip = co.tooltip("item");

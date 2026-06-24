@@ -15,8 +15,8 @@ use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::Path;
 
-use clap::{Arg, ArgAction, ArgMatches, Command};
 use cf_uast::Parser;
+use clap::{Arg, ArgAction, ArgMatches, Command};
 
 use crate::govalue_bridge::node_to_value;
 use crate::{FORMAT_COMPACT, FORMAT_JSON, FORMAT_NONE};
@@ -29,9 +29,22 @@ pub fn command() -> Command {
         .arg(Arg::new("files").num_args(0..).index(1))
         .arg(opt("language", 'l', "", "force language detection"))
         .arg(opt("output", 'o', "", "output file (default: stdout)"))
-        .arg(opt("format", 'f', "json", "output format (json, compact, tree, none)"))
-        .arg(flag("progress", Some('p'), "show progress for multiple files"))
-        .arg(flag("all", None, "parse all source files in the codebase recursively"))
+        .arg(opt(
+            "format",
+            'f',
+            "json",
+            "output format (json, compact, tree, none)",
+        ))
+        .arg(flag(
+            "progress",
+            Some('p'),
+            "show progress for multiple files",
+        ))
+        .arg(flag(
+            "all",
+            None,
+            "parse all source files in the codebase recursively",
+        ))
         .arg(
             Arg::new("workers")
                 .long("workers")
@@ -45,11 +58,22 @@ pub fn command() -> Command {
 
 /// Runs `parse` (parse.go `runParse`).
 pub fn run(m: &ArgMatches) -> Result<(), String> {
-    let files: Vec<String> =
-        m.get_many::<String>("files").map(|v| v.cloned().collect()).unwrap_or_default();
-    let lang = m.get_one::<String>("language").map(String::as_str).unwrap_or("");
-    let output = m.get_one::<String>("output").map(String::as_str).unwrap_or("");
-    let format = m.get_one::<String>("format").map(String::as_str).unwrap_or(FORMAT_JSON);
+    let files: Vec<String> = m
+        .get_many::<String>("files")
+        .map(|v| v.cloned().collect())
+        .unwrap_or_default();
+    let lang = m
+        .get_one::<String>("language")
+        .map(String::as_str)
+        .unwrap_or("");
+    let output = m
+        .get_one::<String>("output")
+        .map(String::as_str)
+        .unwrap_or("");
+    let format = m
+        .get_one::<String>("format")
+        .map(String::as_str)
+        .unwrap_or(FORMAT_JSON);
     let all = m.get_flag("all");
 
     let parser = Parser::new();
@@ -87,11 +111,7 @@ fn resolve_files(files: Vec<String>, all: bool, parser: &Parser) -> Result<Vec<S
 
 /// Recursively collects supported source files, skipping hidden directories
 /// (parse.go `collectSourceFiles` / `isHiddenDir`).
-fn collect_source_files(
-    dir: &Path,
-    parser: &Parser,
-    out: &mut Vec<String>,
-) -> io::Result<()> {
+fn collect_source_files(dir: &Path, parser: &Parser, out: &mut Vec<String>) -> io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
@@ -191,7 +211,10 @@ fn opt(name: &'static str, short: char, default: &'static str, help: &'static st
 }
 
 fn flag(name: &'static str, short: Option<char>, help: &'static str) -> Arg {
-    let mut a = Arg::new(name).long(name).help(help).action(ArgAction::SetTrue);
+    let mut a = Arg::new(name)
+        .long(name)
+        .help(help)
+        .action(ArgAction::SetTrue);
     if let Some(s) = short {
         a = a.short(s);
     }

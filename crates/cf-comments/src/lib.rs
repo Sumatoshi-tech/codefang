@@ -100,7 +100,13 @@ mod tests {
     }
     fn get<'a>(v: &'a GoValue, key: &str) -> &'a GoValue {
         match v {
-            GoValue::Map(m) => &m.entries().iter().find(|(k, _)| k == key).expect("key present").1,
+            GoValue::Map(m) => {
+                &m.entries()
+                    .iter()
+                    .find(|(k, _)| k == key)
+                    .expect("key present")
+                    .1
+            }
             other => panic!("not a map: {other:?}"),
         }
     }
@@ -254,7 +260,11 @@ mod tests {
     #[test]
     fn analyze_unassociated_comment() {
         let mut root = file();
-        root.add_child(comment("// This comment is not associated with anything", 1, 1));
+        root.add_child(comment(
+            "// This comment is not associated with anything",
+            1,
+            1,
+        ));
         let res = Analyzer::new().analyze(Some(&root)).unwrap();
         assert_eq!(get_int(&res, "total_comments"), 1);
         assert_eq!(get_int(&res, "good_comments"), 0);

@@ -169,7 +169,10 @@ fn test_cache_size_based() {
     // Adding value=40 would exceed 100, so key 1 is evicted.
     cache.put(3, 40);
 
-    assert!(cache.get(&1).is_none(), "key 1 should be evicted (size limit)");
+    assert!(
+        cache.get(&1).is_none(),
+        "key 1 should be evicted (size limit)"
+    );
     assert!(cache.get(&2).is_some(), "key 2 should still exist");
 
     let stats = cache.stats();
@@ -185,7 +188,10 @@ fn test_cache_size_based_reject_oversized() {
     // Value larger than entire cache should be rejected.
     cache.put(1, 200);
 
-    assert!(cache.get(&1).is_none(), "oversized value should not be cached");
+    assert!(
+        cache.get(&1).is_none(),
+        "oversized value should not be cached"
+    );
 }
 
 #[test]
@@ -329,7 +335,10 @@ fn test_cache_cost_eviction() {
         cache.get(&1).is_some(),
         "key 1 (small, frequently accessed) should survive"
     );
-    assert!(cache.get(&3).is_some(), "key 3 (just inserted) should survive");
+    assert!(
+        cache.get(&3).is_some(),
+        "key 3 (just inserted) should survive"
+    );
 }
 
 #[test]

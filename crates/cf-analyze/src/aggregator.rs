@@ -20,7 +20,7 @@ pub struct GenericAggregator {
 
 impl GenericAggregator {
     /// Creates an aggregator with the provided merge function.
-    #[must_use] 
+    #[must_use]
     pub fn new(merge: ReportMergeFunc) -> Self {
         Self {
             report: new_report(),

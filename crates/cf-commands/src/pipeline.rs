@@ -77,7 +77,8 @@ impl<'a> RunContext<'a> {
         let path = matches
             .get_one::<String>("path-positional")
             .filter(|p| !p.is_empty())
-            .or_else(|| matches.get_one::<String>("path")).map_or_else(|| ".".to_owned(), String::to_owned);
+            .or_else(|| matches.get_one::<String>("path"))
+            .map_or_else(|| ".".to_owned(), String::to_owned);
         RunContext { path, matches }
     }
 
@@ -164,7 +165,9 @@ impl Registry {
     /// Builds an empty registry.
     #[must_use]
     pub fn new() -> Self {
-        Self { entries: BTreeMap::new() }
+        Self {
+            entries: BTreeMap::new(),
+        }
     }
 
     /// Registers one analyzer entry, keyed by its id.
@@ -271,9 +274,12 @@ pub fn run_pipeline(
 
     let (static_ids, history_ids) = registry.split(ids);
 
-    let (static_format, history_format) =
-        resolve_formats(&ctx.raw_format(), !static_ids.is_empty(), !history_ids.is_empty())
-            .map_err(|_| PipelineError::UnsupportedFormat(ctx.raw_format()))?;
+    let (static_format, history_format) = resolve_formats(
+        &ctx.raw_format(),
+        !static_ids.is_empty(),
+        !history_ids.is_empty(),
+    )
+    .map_err(|_| PipelineError::UnsupportedFormat(ctx.raw_format()))?;
 
     let mut outputs = Vec::with_capacity(ids.len());
 
@@ -286,11 +292,18 @@ pub fn run_pipeline(
     let static_reports: Vec<Option<Vec<u8>>> = crate::handlers::run_concurrent(
         static_ids.len(),
         crate::handlers::ANALYZER_CONCURRENCY,
-        |i| registry.lookup(static_ids[i]).and_then(|entry| (entry.run)(ctx, &static_format)),
+        |i| {
+            registry
+                .lookup(static_ids[i])
+                .and_then(|entry| (entry.run)(ctx, &static_format))
+        },
     );
     for (id, bytes) in static_ids.iter().zip(static_reports) {
         let bytes = bytes.ok_or_else(|| PipelineError::AnalyzerFailed((*id).clone()))?;
-        outputs.push(PhaseOutput { id: (*id).clone(), bytes });
+        outputs.push(PhaseOutput {
+            id: (*id).clone(),
+            bytes,
+        });
     }
 
     // History phase: one revwalk feeds each history analyzer (reference:
@@ -304,11 +317,18 @@ pub fn run_pipeline(
     let history_reports: Vec<Option<Vec<u8>>> = crate::handlers::run_concurrent(
         history_ids.len(),
         crate::handlers::ANALYZER_CONCURRENCY,
-        |i| registry.lookup(history_ids[i]).and_then(|entry| (entry.run)(ctx, &history_format)),
+        |i| {
+            registry
+                .lookup(history_ids[i])
+                .and_then(|entry| (entry.run)(ctx, &history_format))
+        },
     );
     for (id, bytes) in history_ids.iter().zip(history_reports) {
         let bytes = bytes.ok_or_else(|| PipelineError::AnalyzerFailed((*id).clone()))?;
-        outputs.push(PhaseOutput { id: (*id).clone(), bytes });
+        outputs.push(PhaseOutput {
+            id: (*id).clone(),
+            bytes,
+        });
     }
 
     Ok(outputs)
@@ -351,7 +371,10 @@ mod tests {
     #[test]
     fn split_routes_by_mode() {
         let r = test_registry();
-        let ids = vec!["history/burndown".to_string(), "static/complexity".to_string()];
+        let ids = vec![
+            "history/burndown".to_string(),
+            "static/complexity".to_string(),
+        ];
         let (s, h) = r.split(&ids);
         assert_eq!(s, vec![&"static/complexity".to_string()]);
         assert_eq!(h, vec![&"history/burndown".to_string()]);
@@ -373,7 +396,10 @@ mod tests {
         let ctx = RunContext::from_matches(&m);
         assert_eq!(
             ctx.analyzer_ids(),
-            vec!["history/burndown".to_string(), "static/complexity".to_string()]
+            vec![
+                "history/burndown".to_string(),
+                "static/complexity".to_string()
+            ]
         );
     }
 
@@ -399,9 +425,17 @@ mod tests {
     #[test]
     fn dispatches_static_then_history_in_order() {
         let r = test_registry();
-        let m = run_matches(&["-a", "history/burndown,static/complexity", "--format", "json"]);
+        let m = run_matches(&[
+            "-a",
+            "history/burndown,static/complexity",
+            "--format",
+            "json",
+        ]);
         let ctx = RunContext::from_matches(&m);
-        let ids = vec!["history/burndown".to_string(), "static/complexity".to_string()];
+        let ids = vec![
+            "history/burndown".to_string(),
+            "static/complexity".to_string(),
+        ];
         let out = run_pipeline(&r, &ctx, &ids).unwrap();
         assert_eq!(out.len(), 2);
         // Static is dispatched first regardless of request order.

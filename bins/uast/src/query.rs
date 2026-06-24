@@ -14,9 +14,9 @@
 use std::fs::File;
 use std::io::{self, Read, Write};
 
-use clap::{Arg, ArgAction, ArgMatches, Command};
 use cf_textutil::{GoMap, GoValue};
 use cf_uast::{Node, Parser};
+use clap::{Arg, ArgAction, ArgMatches, Command};
 
 use crate::govalue_bridge::node_to_value;
 use crate::{FORMAT_COMPACT, FORMAT_JSON};
@@ -27,19 +27,40 @@ pub fn command() -> Command {
         .about("Query UAST with DSL expressions")
         .override_usage("uast query [query] [files...] [flags]")
         .arg(Arg::new("args").num_args(0..).index(1))
-        .arg(opt("input", 'i', "", "input file (UAST JSON or source code)"))
+        .arg(opt(
+            "input",
+            'i',
+            "",
+            "input file (UAST JSON or source code)",
+        ))
         .arg(opt("output", 'o', "", "output file (default: stdout)"))
-        .arg(opt("format", 'f', "json", "output format (json, compact, count)"))
+        .arg(opt(
+            "format",
+            'f',
+            "json",
+            "output format (json, compact, count)",
+        ))
         .arg(flag("interactive", Some('t'), "interactive query mode"))
 }
 
 /// Runs `query` (query.go `RunE` + `runQuery`).
 pub fn run(m: &ArgMatches) -> Result<(), String> {
-    let args: Vec<String> =
-        m.get_many::<String>("args").map(|v| v.cloned().collect()).unwrap_or_default();
-    let input = m.get_one::<String>("input").map(String::as_str).unwrap_or("");
-    let output = m.get_one::<String>("output").map(String::as_str).unwrap_or("");
-    let format = m.get_one::<String>("format").map(String::as_str).unwrap_or(FORMAT_JSON);
+    let args: Vec<String> = m
+        .get_many::<String>("args")
+        .map(|v| v.cloned().collect())
+        .unwrap_or_default();
+    let input = m
+        .get_one::<String>("input")
+        .map(String::as_str)
+        .unwrap_or("");
+    let output = m
+        .get_one::<String>("output")
+        .map(String::as_str)
+        .unwrap_or("");
+    let format = m
+        .get_one::<String>("format")
+        .map(String::as_str)
+        .unwrap_or(FORMAT_JSON);
     let interactive = m.get_flag("interactive");
 
     if interactive {
@@ -71,14 +92,18 @@ fn query_stdin(query: &str, output: &str, format: &str) -> Result<(), String> {
         .read_to_end(&mut buf)
         .map_err(|e| format!("failed to decode UAST from stdin: {e}"))?;
     let node = decode_uast(&buf).map_err(|e| format!("failed to decode UAST from stdin: {e}"))?;
-    let results = node.find_dsl(query).map_err(|e| format!("query error: {e}"))?;
+    let results = node
+        .find_dsl(query)
+        .map_err(|e| format!("query error: {e}"))?;
     output_results(&results, output, format)
 }
 
 /// Queries a single file (query.go `queryFile` / `parseFileForQuery`).
 fn query_file(file: &str, query: &str, output: &str, format: &str) -> Result<(), String> {
     let node = load_query_node(file)?;
-    let results = node.find_dsl(query).map_err(|e| format!("query error: {e}"))?;
+    let results = node
+        .find_dsl(query)
+        .map_err(|e| format!("query error: {e}"))?;
     output_results(&results, output, format)
 }
 
@@ -112,8 +137,12 @@ fn load_uast_from_json(file: &str) -> Result<Node, String> {
 fn run_interactive(input: &str) -> Result<(), String> {
     let node = if input.is_empty() {
         let mut buf = Vec::new();
-        io::stdin().read_to_end(&mut buf).map_err(|e| format!("failed to read stdin: {e}"))?;
-        Parser::new().parse("stdin.go", &buf).map_err(|e| format!("parse error: {e}"))?
+        io::stdin()
+            .read_to_end(&mut buf)
+            .map_err(|e| format!("failed to read stdin: {e}"))?;
+        Parser::new()
+            .parse("stdin.go", &buf)
+            .map_err(|e| format!("parse error: {e}"))?
     } else {
         load_query_node(input)?
     };
@@ -179,7 +208,9 @@ fn output_results(results: &[Node], output: &str, format: &str) -> Result<(), St
     let mapped = nodes_to_value(results);
 
     match format {
-        FORMAT_JSON => cf_textutil::write_json(&mut writer, &mapped, true).map_err(|e| e.to_string()),
+        FORMAT_JSON => {
+            cf_textutil::write_json(&mut writer, &mapped, true).map_err(|e| e.to_string())
+        }
         FORMAT_COMPACT => {
             cf_textutil::write_json(&mut writer, &mapped, false).map_err(|e| e.to_string())
         }
@@ -199,7 +230,10 @@ fn nodes_to_value(nodes: &[Node]) -> GoValue {
     let results: Vec<GoValue> = if nodes.is_empty() {
         Vec::new()
     } else if nodes.iter().all(|n| n.node_type == "Literal") {
-        nodes.iter().map(|n| GoValue::Str(n.token.clone())).collect()
+        nodes
+            .iter()
+            .map(|n| GoValue::Str(n.token.clone()))
+            .collect()
     } else {
         nodes.iter().map(node_to_value).collect()
     };
@@ -241,7 +275,10 @@ fn json_to_node(v: &serde_json::Value) -> Node {
         n.token = tok.to_string();
     }
     if let Some(roles) = obj.get("roles").and_then(|x| x.as_array()) {
-        n.roles = roles.iter().filter_map(|r| r.as_str().map(str::to_string)).collect();
+        n.roles = roles
+            .iter()
+            .filter_map(|r| r.as_str().map(str::to_string))
+            .collect();
     }
     if let Some(props) = obj.get("props").and_then(|x| x.as_object()) {
         for (k, pv) in props {
@@ -251,7 +288,11 @@ fn json_to_node(v: &serde_json::Value) -> Node {
         }
     }
     if let Some(pos) = obj.get("pos").and_then(|x| x.as_object()) {
-        let g = |key: &str| pos.get(key).and_then(serde_json::Value::as_u64).unwrap_or(0);
+        let g = |key: &str| {
+            pos.get(key)
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0)
+        };
         n.pos = Some(cf_uast_node::Positions {
             start_line: g("start_line"),
             start_col: g("start_col"),
@@ -270,9 +311,18 @@ fn json_to_node(v: &serde_json::Value) -> Node {
 /// Prints DSL help (query.go `printDSLHelp`). Human/non-binding.
 fn print_dsl_help(out: &mut dyn Write) {
     let _ = writeln!(out, "DSL Syntax:");
-    let _ = writeln!(out, "  filter(.type == \"Function\")     - Filter by node type");
-    let _ = writeln!(out, "  filter(.type == \"Call\")         - Find function calls");
-    let _ = writeln!(out, "  filter(.type == \"Identifier\")   - Find identifiers");
+    let _ = writeln!(
+        out,
+        "  filter(.type == \"Function\")     - Filter by node type"
+    );
+    let _ = writeln!(
+        out,
+        "  filter(.type == \"Call\")         - Find function calls"
+    );
+    let _ = writeln!(
+        out,
+        "  filter(.type == \"Identifier\")   - Find identifiers"
+    );
     let _ = writeln!(out, "  filter(.type == \"Literal\")      - Find literals");
     let _ = writeln!(out);
 }
@@ -292,7 +342,10 @@ fn opt(name: &'static str, short: char, default: &'static str, help: &'static st
 }
 
 fn flag(name: &'static str, short: Option<char>, help: &'static str) -> Arg {
-    let mut a = Arg::new(name).long(name).help(help).action(ArgAction::SetTrue);
+    let mut a = Arg::new(name)
+        .long(name)
+        .help(help)
+        .action(ArgAction::SetTrue);
     if let Some(s) = short {
         a = a.short(s);
     }

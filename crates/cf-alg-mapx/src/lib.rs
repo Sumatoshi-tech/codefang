@@ -447,13 +447,20 @@ mod tests {
     fn clone_nested_nil_inner_maps_preserved() {
         let mut src: HashMap<String, Option<HashMap<String, i32>>> = HashMap::new();
         src.insert("a".into(), None);
-        src.insert("b".into(), Some([("x".to_string(), 1)].into_iter().collect()));
+        src.insert(
+            "b".into(),
+            Some([("x".to_string(), 1)].into_iter().collect()),
+        );
 
         let got = clone_nested(Some(&src)).unwrap();
         assert!(got["a"].is_none());
         assert_eq!(
             got["b"],
-            Some([("x".to_string(), 1)].into_iter().collect::<HashMap<_, _>>())
+            Some(
+                [("x".to_string(), 1)]
+                    .into_iter()
+                    .collect::<HashMap<_, _>>()
+            )
         );
     }
 
@@ -525,7 +532,10 @@ mod tests {
         let mut src: HashMap<i32, HashMap<i32, i64>> = HashMap::new();
         src.insert(1, HashMap::new());
         merge_nested_additive(Some(&mut dst), &src);
-        assert!(!dst.contains_key(&1), "empty inner map should not allocate dst entry");
+        assert!(
+            !dst.contains_key(&1),
+            "empty inner map should not allocate dst entry"
+        );
     }
 
     #[test]
@@ -614,17 +624,19 @@ mod tests {
 
     #[test]
     fn sorted_keys_string_keys_sorted() {
-        let m: HashMap<&str, i32> =
-            [("banana", 2), ("apple", 1), ("cherry", 3)].into_iter().collect();
-        assert_eq!(sorted_keys(Some(&m)), Some(vec!["apple", "banana", "cherry"]));
+        let m: HashMap<&str, i32> = [("banana", 2), ("apple", 1), ("cherry", 3)]
+            .into_iter()
+            .collect();
+        assert_eq!(
+            sorted_keys(Some(&m)),
+            Some(vec!["apple", "banana", "cherry"])
+        );
     }
 
     #[test]
     fn sorted_keys_is_deterministic_across_insertion_orders() {
-        let a: HashMap<i32, ()> =
-            [3, 1, 4, 5, 9, 2, 6].into_iter().map(|k| (k, ())).collect();
-        let b: HashMap<i32, ()> =
-            [9, 6, 5, 4, 3, 2, 1].into_iter().map(|k| (k, ())).collect();
+        let a: HashMap<i32, ()> = [3, 1, 4, 5, 9, 2, 6].into_iter().map(|k| (k, ())).collect();
+        let b: HashMap<i32, ()> = [9, 6, 5, 4, 3, 2, 1].into_iter().map(|k| (k, ())).collect();
         assert_eq!(sorted_keys(Some(&a)), Some(vec![1, 2, 3, 4, 5, 6, 9]));
         assert_eq!(sorted_keys(Some(&b)), Some(vec![1, 2, 3, 4, 5, 6, 9]));
     }

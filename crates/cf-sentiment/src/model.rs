@@ -119,7 +119,10 @@ impl ToGoValue for TrendData {
         m.push("end_tick", GoValue::Int(self.end_tick));
         m.push("start_sentiment", f32_float(self.start_sentiment));
         m.push("end_sentiment", f32_float(self.end_sentiment));
-        m.push("trend_direction", GoValue::Str(self.trend_direction.clone()));
+        m.push(
+            "trend_direction",
+            GoValue::Str(self.trend_direction.clone()),
+        );
         m.push("change_percent", GoValue::Float(self.change_percent));
         GoValue::Object(m)
     }
@@ -150,7 +153,11 @@ impl LowSentimentPeriodData {
         if self.comments.is_empty() {
             m.push(
                 "comments",
-                if nil_as_empty { GoValue::Array(Vec::new()) } else { GoValue::Null },
+                if nil_as_empty {
+                    GoValue::Array(Vec::new())
+                } else {
+                    GoValue::Null
+                },
             );
         } else {
             m.push("comments", string_array(&self.comments));
@@ -231,7 +238,12 @@ impl ComputedMetrics {
         let mut m = GoMap::new_struct();
         m.push(
             "time_series",
-            GoValue::Array(self.time_series.iter().map(ToGoValue::to_go_value).collect()),
+            GoValue::Array(
+                self.time_series
+                    .iter()
+                    .map(ToGoValue::to_go_value)
+                    .collect(),
+            ),
         );
         m.push("trend", self.trend.to_go_value());
         // `low_sentiment_periods` has no omitempty: an absent list renders as
@@ -239,7 +251,11 @@ impl ComputedMetrics {
         if self.low_sentiment_periods.is_empty() {
             m.push(
                 "low_sentiment_periods",
-                if nil_as_empty { GoValue::Array(Vec::new()) } else { GoValue::Null },
+                if nil_as_empty {
+                    GoValue::Array(Vec::new())
+                } else {
+                    GoValue::Null
+                },
             );
         } else {
             m.push(

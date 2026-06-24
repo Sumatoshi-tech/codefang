@@ -134,7 +134,10 @@ impl ToGoValue for ZScoreSet {
         m.push("files_changed", GoValue::Float(self.files_changed));
         m.push("lines_added", GoValue::Float(self.lines_added));
         m.push("lines_removed", GoValue::Float(self.lines_removed));
-        m.push("language_diversity", GoValue::Float(self.language_diversity));
+        m.push(
+            "language_diversity",
+            GoValue::Float(self.language_diversity),
+        );
         m.push("author_count", GoValue::Float(self.author_count));
         GoValue::Object(m)
     }
@@ -252,10 +255,19 @@ impl ToGoValue for AggregateData {
         m.push("churn_stddev", GoValue::Float(self.churn_stddev));
         m.push("files_mean", GoValue::Float(self.files_mean));
         m.push("files_stddev", GoValue::Float(self.files_stddev));
-        m.push("lang_diversity_mean", GoValue::Float(self.lang_diversity_mean));
-        m.push("lang_diversity_stddev", GoValue::Float(self.lang_diversity_stddev));
+        m.push(
+            "lang_diversity_mean",
+            GoValue::Float(self.lang_diversity_mean),
+        );
+        m.push(
+            "lang_diversity_stddev",
+            GoValue::Float(self.lang_diversity_stddev),
+        );
         m.push("author_count_mean", GoValue::Float(self.author_count_mean));
-        m.push("author_count_stddev", GoValue::Float(self.author_count_stddev));
+        m.push(
+            "author_count_stddev",
+            GoValue::Float(self.author_count_stddev),
+        );
         GoValue::Object(m)
     }
 }
@@ -404,10 +416,16 @@ impl ToGoValue for ComputedMetrics {
         m.push("time_series", time_series_array(&self.time_series));
         m.push("aggregate", self.aggregate.to_go_value());
         if !self.external_anomalies.is_empty() {
-            m.push("external_anomalies", external_anomalies_array(&self.external_anomalies));
+            m.push(
+                "external_anomalies",
+                external_anomalies_array(&self.external_anomalies),
+            );
         }
         if !self.external_summaries.is_empty() {
-            m.push("external_summaries", external_summaries_array(&self.external_summaries));
+            m.push(
+                "external_summaries",
+                external_summaries_array(&self.external_summaries),
+            );
         }
         GoValue::Object(m)
     }

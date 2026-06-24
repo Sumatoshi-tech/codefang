@@ -108,10 +108,7 @@ impl Parser {
     /// [`ParseError::ParseFailed`], one with no rules yields
     /// [`ParseError::NoRules`], and one with no language declaration yields
     /// [`ParseError::NoLangDeclaration`] (checked in that order).
-    pub fn parse_mapping(
-        &self,
-        input: &str,
-    ) -> Result<(Vec<Rule>, LanguageInfo), ParseError> {
+    pub fn parse_mapping(&self, input: &str) -> Result<(Vec<Rule>, LanguageInfo), ParseError> {
         let input = input.replace("\r\n", "\n").replace('\r', "\n");
 
         // Parse-then-walk pipeline: first parse, then build rules, then extract
@@ -339,7 +336,10 @@ impl<'a> PegParser<'a> {
         while let Some(c) = self.peek() {
             self.pos += 1;
             if c == ']' {
-                return Some(LangDecl { begin: start, end: self.pos });
+                return Some(LangDecl {
+                    begin: start,
+                    end: self.pos,
+                });
             }
             if c == '\n' {
                 // Declarations are single-line in the corpus; bail out if the
@@ -799,7 +799,8 @@ fn extract_rule(node: &RuleNode, src: &[char]) -> Option<Rule> {
     rule.conditions = conditions;
     rule.extends = extends;
 
-    let broken = rule.name.is_empty() || rule.pattern.is_empty() || rule.uast_spec.r#type.is_empty();
+    let broken =
+        rule.name.is_empty() || rule.pattern.is_empty() || rule.uast_spec.r#type.is_empty();
     if broken {
         return None;
     }
@@ -826,9 +827,7 @@ fn field_values(value: &FieldValue, src: &[char]) -> Vec<String> {
             let raw = slice(src, *span);
             vec![go_unquote(&raw).unwrap_or(raw)]
         }
-        FieldValue::MultipleCaptures(spans) => {
-            spans.iter().map(|s| slice(src, *s)).collect()
-        }
+        FieldValue::MultipleCaptures(spans) => spans.iter().map(|s| slice(src, *s)).collect(),
         FieldValue::MultipleStrings(spans) => spans
             .iter()
             .map(|s| {
@@ -914,7 +913,9 @@ fn extract_language(doc: &Document, src: &[char]) -> Result<LanguageInfo, ParseE
 /// and files lists.
 fn parse_language_declaration(text: &str) -> Result<LanguageInfo, ParseError> {
     let lang_marker = "language \"";
-    let lang_start = text.find(lang_marker).ok_or(ParseError::InvalidLangFormat)?;
+    let lang_start = text
+        .find(lang_marker)
+        .ok_or(ParseError::InvalidLangFormat)?;
     let after = &text[lang_start + lang_marker.len()..];
     let name_end = after.find('"').ok_or(ParseError::InvalidLangFormat)?;
     let language_name = after[..name_end].to_string();
@@ -1091,8 +1092,9 @@ mod tests {
 
     #[test]
     fn parse_rule_with_token() {
-        let rules =
-            parse_rules(r#"identifier <- (identifier) => uast(type: "Identifier", token: "@name")"#);
+        let rules = parse_rules(
+            r#"identifier <- (identifier) => uast(type: "Identifier", token: "@name")"#,
+        );
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0].uast_spec.token, "@name");
     }
@@ -1204,8 +1206,9 @@ call <- (call_expression function: (identifier) @func) => uast(type: \"Call\", t
 
     #[test]
     fn parse_rule_with_props() {
-        let rules =
-            parse_rules(r#"typed <- (typed_declaration) => uast(type: "Typed", custom_prop: "value")"#);
+        let rules = parse_rules(
+            r#"typed <- (typed_declaration) => uast(type: "Typed", custom_prop: "value")"#,
+        );
         assert_eq!(rules.len(), 1);
         let props = rules[0].uast_spec.props.as_ref().expect("props parsed");
         assert_eq!(props.get("custom_prop").map(String::as_str), Some("value"));
@@ -1272,10 +1275,7 @@ type_declaration <- (type_declaration) => uast(type: \"TypeDeclaration\", roles:
             sb.push_str(&"x".repeat(i % 5 + 1));
             sb.push_str(" <- (node) => uast(type: \"Node\")\n");
         }
-        let rules = Parser::new()
-            .parse_mapping(&sb)
-            .expect("ParseMapping")
-            .0;
+        let rules = Parser::new().parse_mapping(&sb).expect("ParseMapping").0;
         assert!(!rules.is_empty());
     }
 

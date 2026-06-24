@@ -123,23 +123,43 @@ impl Config {
         apply_positive_int(facts, "Burndown.Sampling", bd.sampling);
         apply_bool(facts, "Burndown.TrackFiles", bd.track_files);
         apply_bool(facts, "Burndown.TrackPeople", bd.track_people);
-        apply_positive_int(facts, "Burndown.HibernationThreshold", bd.hibernation_threshold);
+        apply_positive_int(
+            facts,
+            "Burndown.HibernationThreshold",
+            bd.hibernation_threshold,
+        );
         apply_bool(facts, "Burndown.HibernationOnDisk", bd.hibernation_to_disk);
-        apply_non_empty(facts, "Burndown.HibernationDirectory", &bd.hibernation_directory);
+        apply_non_empty(
+            facts,
+            "Burndown.HibernationDirectory",
+            &bd.hibernation_directory,
+        );
         apply_bool(facts, "Burndown.Debug", bd.debug);
         apply_positive_int(facts, "Burndown.Goroutines", bd.goroutines);
     }
 
     fn apply_couples_facts(&self, facts: &mut Facts) {
         let cp: &CouplesConfig = &self.history.couples;
-        apply_positive_int(facts, "Couples.CouplingThresholdHigh", cp.coupling_threshold_high);
-        apply_positive_int(facts, "Couples.OwnershipFewThreshold", cp.ownership_few_threshold);
+        apply_positive_int(
+            facts,
+            "Couples.CouplingThresholdHigh",
+            cp.coupling_threshold_high,
+        );
+        apply_positive_int(
+            facts,
+            "Couples.OwnershipFewThreshold",
+            cp.ownership_few_threshold,
+        );
         apply_positive_int(
             facts,
             "Couples.OwnershipModerateThreshold",
             cp.ownership_moderate_threshold,
         );
-        apply_positive_int(facts, "Couples.BatchCouplingThreshold", cp.batch_coupling_threshold);
+        apply_positive_int(
+            facts,
+            "Couples.BatchCouplingThreshold",
+            cp.batch_coupling_threshold,
+        );
         apply_positive_int(facts, "Couples.HLLPrecision", cp.hll_precision);
         apply_positive_int(facts, "Couples.TopKPerFile", cp.top_k_per_file);
         apply_positive_int(facts, "Couples.MinEdgeWeight", cp.min_edge_weight);
@@ -147,13 +167,25 @@ impl Config {
 
     fn apply_devs_facts(&self, facts: &mut Facts) {
         let dv: &DevsConfig = &self.history.devs;
-        apply_bool(facts, "Devs.ConsiderEmptyCommits", dv.consider_empty_commits);
+        apply_bool(
+            facts,
+            "Devs.ConsiderEmptyCommits",
+            dv.consider_empty_commits,
+        );
         apply_bool(facts, "Devs.Anonymize", dv.anonymize);
         apply_positive_float(facts, "Devs.BusFactorThreshold", dv.bus_factor_threshold);
-        apply_positive_float(facts, "Devs.RiskThresholdCritical", dv.risk_threshold_critical);
+        apply_positive_float(
+            facts,
+            "Devs.RiskThresholdCritical",
+            dv.risk_threshold_critical,
+        );
         apply_positive_float(facts, "Devs.RiskThresholdHigh", dv.risk_threshold_high);
         apply_positive_float(facts, "Devs.RiskThresholdMedium", dv.risk_threshold_medium);
-        apply_positive_float(facts, "Devs.ActiveThresholdRatio", dv.active_threshold_ratio);
+        apply_positive_float(
+            facts,
+            "Devs.ActiveThresholdRatio",
+            dv.active_threshold_ratio,
+        );
         apply_positive_int(facts, "Devs.DefaultActiveDays", dv.default_active_days);
         apply_positive_int(facts, "Devs.HLLPrecision", dv.hll_precision);
     }
@@ -165,7 +197,11 @@ impl Config {
             "FileHistory.HotspotThresholdCritical",
             fh.hotspot_threshold_critical,
         );
-        apply_positive_int(facts, "FileHistory.HotspotThresholdHigh", fh.hotspot_threshold_high);
+        apply_positive_int(
+            facts,
+            "FileHistory.HotspotThresholdHigh",
+            fh.hotspot_threshold_high,
+        );
         apply_positive_int(
             facts,
             "FileHistory.HotspotThresholdMedium",
@@ -177,17 +213,37 @@ impl Config {
         let im: &ImportsConfig = &self.history.imports;
         apply_positive_int(facts, "Imports.Goroutines", im.goroutines);
         apply_positive_int(facts, "Imports.MaxFileSize", im.max_file_size);
-        apply_positive_int(facts, "Imports.MaxDependencyRiskRows", im.max_dependency_risk_rows);
+        apply_positive_int(
+            facts,
+            "Imports.MaxDependencyRiskRows",
+            im.max_dependency_risk_rows,
+        );
     }
 
     fn apply_sentiment_facts(&self, facts: &mut Facts) {
         let se: &SentimentConfig = &self.history.sentiment;
         apply_positive_int(facts, "CommentSentiment.MinLength", se.min_comment_length);
         apply_positive_float(facts, "CommentSentiment.Gap", se.gap);
-        apply_positive_float(facts, "CommentSentiment.NeutralizerWeight", se.neutralizer_weight);
-        apply_positive_float(facts, "CommentSentiment.MaxWeightRatio", se.max_weight_ratio);
-        apply_positive_float(facts, "CommentSentiment.PositiveThreshold", se.positive_threshold);
-        apply_positive_float(facts, "CommentSentiment.NegativeThreshold", se.negative_threshold);
+        apply_positive_float(
+            facts,
+            "CommentSentiment.NeutralizerWeight",
+            se.neutralizer_weight,
+        );
+        apply_positive_float(
+            facts,
+            "CommentSentiment.MaxWeightRatio",
+            se.max_weight_ratio,
+        );
+        apply_positive_float(
+            facts,
+            "CommentSentiment.PositiveThreshold",
+            se.positive_threshold,
+        );
+        apply_positive_float(
+            facts,
+            "CommentSentiment.NegativeThreshold",
+            se.negative_threshold,
+        );
         apply_positive_float(facts, "CommentSentiment.TrendThreshold", se.trend_threshold);
         apply_positive_float(
             facts,
@@ -225,9 +281,17 @@ impl Config {
         apply_positive_int(facts, "Clones.ShingleSize", cl.shingle_size);
         apply_positive_float(facts, "Clones.SimilarityType2", cl.similarity_type2);
         apply_positive_float(facts, "Clones.SimilarityType3", cl.similarity_type3);
-        apply_positive_float(facts, "Clones.ThresholdRatioYellow", cl.threshold_ratio_yellow);
+        apply_positive_float(
+            facts,
+            "Clones.ThresholdRatioYellow",
+            cl.threshold_ratio_yellow,
+        );
         apply_positive_float(facts, "Clones.ThresholdRatioRed", cl.threshold_ratio_red);
-        apply_positive_int(facts, "Clones.ThresholdPairsYellow", cl.threshold_pairs_yellow);
+        apply_positive_int(
+            facts,
+            "Clones.ThresholdPairsYellow",
+            cl.threshold_pairs_yellow,
+        );
         apply_positive_int(facts, "Clones.ThresholdPairsRed", cl.threshold_pairs_red);
     }
 }

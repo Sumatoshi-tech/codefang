@@ -451,7 +451,10 @@ mod tests {
     }
 
     fn cq(pairs: &[(&str, TickQuality)]) -> BTreeMap<String, TickQuality> {
-        pairs.iter().map(|(h, q)| ((*h).into(), q.clone())).collect()
+        pairs
+            .iter()
+            .map(|(h, q)| ((*h).into(), q.clone()))
+            .collect()
     }
 
     fn ct(pairs: &[(i64, &[&str])]) -> BTreeMap<i64, Vec<String>> {
@@ -713,8 +716,7 @@ mod tests {
                 ..TickQuality::default()
             },
         )]);
-        let commits_by_tick =
-            ct(&[(0, &[HASH_A, "cccccccccccccccccccccccccccccccccccccccc"])]);
+        let commits_by_tick = ct(&[(0, &[HASH_A, "cccccccccccccccccccccccccccccccccccccccc"])]);
         let result = aggregate_commits_to_ticks(&commit_quality, &commits_by_tick);
         assert_eq!(result.len(), 1);
         assert_eq!(result[&0].complexities.len(), 1);

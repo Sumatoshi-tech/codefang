@@ -29,8 +29,8 @@
 
 use std::io::{Read, Write};
 
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 use serde_json::Value;
 
 use crate::error::PersistError;

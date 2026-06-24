@@ -141,7 +141,10 @@ mod tests {
         assert_eq!(c.get(Category::Binary), 1);
         assert_eq!(c.total(), 3);
 
-        let other = CategoryCounts { vendor: 5, ..Default::default() };
+        let other = CategoryCounts {
+            vendor: 5,
+            ..Default::default()
+        };
         c.add(&other);
         assert_eq!(c.get(Category::Vendor), 5);
         assert_eq!(c.total(), 8);
@@ -149,8 +152,23 @@ mod tests {
 
     #[test]
     fn line_stats_add() {
-        let a = LineStats { added: 1, removed: 2, changed: 3 };
-        let b = LineStats { added: 10, removed: 20, changed: 30 };
-        assert_eq!(a + b, LineStats { added: 11, removed: 22, changed: 33 });
+        let a = LineStats {
+            added: 1,
+            removed: 2,
+            changed: 3,
+        };
+        let b = LineStats {
+            added: 10,
+            removed: 20,
+            changed: 30,
+        };
+        assert_eq!(
+            a + b,
+            LineStats {
+                added: 11,
+                removed: 22,
+                changed: 33
+            }
+        );
     }
 }

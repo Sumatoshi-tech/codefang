@@ -159,8 +159,8 @@ const GRAMMARS: &[Grammar] = &[
 ];
 
 fn main() {
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-        .expect("CARGO_MANIFEST_DIR is always set by cargo");
+    let manifest_dir =
+        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is always set by cargo");
     let vendor = Path::new(&manifest_dir).join("vendor");
 
     let mut build = cc::Build::new();

@@ -99,9 +99,11 @@ impl GoValue {
             GoValue::Null => out.push_str("null"),
             GoValue::Int(n) => out.push_str(&n.to_string()),
             GoValue::Str(s) => write_json_string(s, out),
-            GoValue::Array(items) => write_seq(out, indent, depth, items.iter(), |out, item, ind, d| {
-                item.write_json(out, ind, d)
-            }),
+            GoValue::Array(items) => {
+                write_seq(out, indent, depth, items.iter(), |out, item, ind, d| {
+                    item.write_json(out, ind, d)
+                })
+            }
             GoValue::Map(entries) => {
                 // map-origin: sort keys by raw UTF-8 bytes at encode time.
                 let mut sorted: Vec<&(String, GoValue)> = entries.iter().collect();
@@ -238,7 +240,10 @@ mod tests {
             ("correct".to_string(), GoValue::Str("test".to_string())),
             ("line".to_string(), GoValue::Int(10)),
         ]);
-        assert_eq!(v.to_json(), r#"{"wrong":"tets","correct":"test","line":10}"#);
+        assert_eq!(
+            v.to_json(),
+            r#"{"wrong":"tets","correct":"test","line":10}"#
+        );
     }
 
     #[test]

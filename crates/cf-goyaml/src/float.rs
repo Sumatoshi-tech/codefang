@@ -21,7 +21,11 @@ fn shortest_decimal(f: f64) -> Shortest {
     let neg = f.is_sign_negative();
     let abs = f.abs();
     if abs == 0.0 {
-        return Shortest { neg, digits: vec![b'0'], dp: 1 };
+        return Shortest {
+            neg,
+            digits: vec![b'0'],
+            dp: 1,
+        };
     }
     // Rust's `{:e}` => shortest mantissa + decimal exponent, e.g. "1.234e2".
     let s = format!("{abs:e}");
@@ -104,7 +108,11 @@ pub fn format_g(f: f64) -> String {
         return ".nan".to_string();
     }
     if f.is_infinite() {
-        return if f < 0.0 { "-.inf".into() } else { ".inf".into() };
+        return if f < 0.0 {
+            "-.inf".into()
+        } else {
+            ".inf".into()
+        };
     }
     let s = shortest_decimal(f);
     if s.digits == [b'0'] {

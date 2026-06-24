@@ -47,7 +47,10 @@ pub type Thresholds = cf_gojson::GoMap;
 /// the dynamic-array branch). Returns `(maps, found)` where `found` reports
 /// `len(result) > 0`.
 #[must_use]
-pub fn report_function_list<'a>(report: &'a Report, key: &str) -> (Vec<&'a cf_gojson::GoMap>, bool) {
+pub fn report_function_list<'a>(
+    report: &'a Report,
+    key: &str,
+) -> (Vec<&'a cf_gojson::GoMap>, bool) {
     let Some(val) = lookup(report, key) else {
         return (Vec::new(), false);
     };
@@ -305,7 +308,10 @@ mod tests {
 
     #[test]
     fn error_constants_match_reference() {
-        assert_eq!(ERR_UNREGISTERED_ANALYZER, "no registered analyzer with name");
+        assert_eq!(
+            ERR_UNREGISTERED_ANALYZER,
+            "no registered analyzer with name"
+        );
         assert_eq!(ERR_ANALYSIS_FAILED, "analysis failed");
         assert_eq!(ERR_NIL_ROOT_NODE, "root node is nil");
     }

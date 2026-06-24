@@ -242,7 +242,10 @@ mod tests {
 
         // No tmp file remains.
         let tmp = format!("{}{TEST_TMP_SUFFIX}", target.display());
-        assert!(!Path::new(&tmp).exists(), "tmp file should not exist after success");
+        assert!(
+            !Path::new(&tmp).exists(),
+            "tmp file should not exist after success"
+        );
     }
 
     /// Mirrors the reference test `TestWriteAtomic_OverwritesExistingFile`.
@@ -276,7 +279,10 @@ mod tests {
         assert!(err.message().starts_with("atomic write "));
 
         // Target should not exist.
-        assert!(!target.exists(), "target file should not exist after write error");
+        assert!(
+            !target.exists(),
+            "target file should not exist after write error"
+        );
 
         // Tmp file should be cleaned up.
         let tmp = format!("{}{TEST_TMP_SUFFIX}", target.display());
@@ -290,7 +296,11 @@ mod tests {
     #[test]
     fn write_atomic_create_error_invalid_dir() {
         let dir = tempfile::tempdir().unwrap();
-        let target = dir.path().join("nonexistent").join("subdir").join("file.dat");
+        let target = dir
+            .path()
+            .join("nonexistent")
+            .join("subdir")
+            .join("file.dat");
 
         let err = write_atomic(&target, TEST_PERM, |w| write_string(w, TEST_CONTENT)).unwrap_err();
 
@@ -323,13 +333,23 @@ mod tests {
 
         let mode = fs::metadata(&target).unwrap().permissions().mode() & 0o777;
         // The on-disk mode is `perm & ~umask`; assert no bit beyond perm is set.
-        assert_eq!(mode & !0o640, 0, "unexpected extra permission bits: {mode:o}");
+        assert_eq!(
+            mode & !0o640,
+            0,
+            "unexpected extra permission bits: {mode:o}"
+        );
     }
 
     /// The tmp path is exactly `<path>.tmp` (fixed suffix, not random).
     #[test]
     fn tmp_path_appends_fixed_suffix() {
-        assert_eq!(super::tmp_path(Path::new("/a/b/c.dat")), Path::new("/a/b/c.dat.tmp"));
-        assert_eq!(super::tmp_path(Path::new("rel.json")), Path::new("rel.json.tmp"));
+        assert_eq!(
+            super::tmp_path(Path::new("/a/b/c.dat")),
+            Path::new("/a/b/c.dat.tmp")
+        );
+        assert_eq!(
+            super::tmp_path(Path::new("rel.json")),
+            Path::new("rel.json.tmp")
+        );
     }
 }

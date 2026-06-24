@@ -7,14 +7,13 @@ use cf_gojson::GoValue;
 use cf_plotpage::components::{
     Alert, Badge, BadgeColor, Card, GridLayout, Renderable, Stat, TabItem, Table, Tabs, Text,
 };
-use cf_plotpage::ChartIdGen;
 use cf_plotpage::echarts::{
     AreaStyle, Chart, ChartKind, ItemStyle, LineStyle, RadarData, TreeMapLevel, TreeMapNode,
     UpperLabel,
 };
+use cf_plotpage::ChartIdGen;
 use cf_plotpage::{
-    build_bar_chart, build_line_chart, BarSeries, ChartOpts, Hint, LineSeries, Section,
-    SeriesValue,
+    build_bar_chart, build_line_chart, BarSeries, ChartOpts, Hint, LineSeries, Section, SeriesValue,
 };
 
 use crate::handlers::go_sort;
@@ -133,22 +132,46 @@ fn create_overview_tab(metrics: &ComputedMetrics) -> Box<dyn Renderable> {
     parts.push(Box::new(GridLayout::new(
         STATS_GRID_COLS,
         vec![
-            Box::new(Stat::new("Total Commits", &format_number(agg.total_commits))),
-            Box::new(Stat::new("Total Developers", &agg.total_developers.to_string())),
-            Box::new(Stat::new("Active Developers", &agg.active_developers.to_string())),
-            Box::new(Stat::new("Project Bus Factor", &agg.project_bus_factor.to_string())),
+            Box::new(Stat::new(
+                "Total Commits",
+                &format_number(agg.total_commits),
+            )),
+            Box::new(Stat::new(
+                "Total Developers",
+                &agg.total_developers.to_string(),
+            )),
+            Box::new(Stat::new(
+                "Active Developers",
+                &agg.active_developers.to_string(),
+            )),
+            Box::new(Stat::new(
+                "Project Bus Factor",
+                &agg.project_bus_factor.to_string(),
+            )),
         ],
     )));
 
     // renderContributorsTable.
     parts.push(Box::new(Raw(r#"<div class="mt-6">"#)));
     let mut table = Table::new(
-        ["Rank", "Developer", "Commits", "Lines Added", "Lines Removed", "Net Lines"]
-            .iter()
-            .map(|s| (*s).to_string())
-            .collect(),
+        [
+            "Rank",
+            "Developer",
+            "Commits",
+            "Lines Added",
+            "Lines Removed",
+            "Net Lines",
+        ]
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect(),
     );
-    for (i, dev) in metrics.developers.iter().take(OVERVIEW_TABLE_LIMIT).enumerate() {
+    for (i, dev) in metrics
+        .developers
+        .iter()
+        .take(OVERVIEW_TABLE_LIMIT)
+        .enumerate()
+    {
         table.add_row(vec![
             (i + 1).to_string(),
             dev.name.clone(),
@@ -165,8 +188,16 @@ fn create_overview_tab(metrics: &ComputedMetrics) -> Box<dyn Renderable> {
     parts.push(Box::new(Raw("</div>")));
 
     // renderRiskAlert.
-    let critical = metrics.busfactor.iter().filter(|b| b.risk_level == "CRITICAL").count();
-    let high = metrics.busfactor.iter().filter(|b| b.risk_level == "HIGH").count();
+    let critical = metrics
+        .busfactor
+        .iter()
+        .filter(|b| b.risk_level == "CRITICAL")
+        .count();
+    let high = metrics
+        .busfactor
+        .iter()
+        .filter(|b| b.risk_level == "HIGH")
+        .count();
     if critical > 0 || high > 0 {
         parts.push(Box::new(Raw(r#"<div class="mt-6">"#)));
         parts.push(Box::new(Alert::new(
@@ -191,11 +222,23 @@ fn create_activity_tab(metrics: &ComputedMetrics) -> Box<dyn Renderable> {
         return Box::new(Text::new("No activity data available"));
     }
 
-    let top_devs: Vec<i64> = metrics.developers.iter().take(MAX_DEVS).map(|d| d.id).collect();
-    let labels: Vec<String> = metrics.activity.iter().map(|a| a.tick.to_string()).collect();
+    let top_devs: Vec<i64> = metrics
+        .developers
+        .iter()
+        .take(MAX_DEVS)
+        .map(|d| d.id)
+        .collect();
+    let labels: Vec<String> = metrics
+        .activity
+        .iter()
+        .map(|a| a.tick.to_string())
+        .collect();
 
-    let name_by_id: std::collections::HashMap<i64, &str> =
-        metrics.developers.iter().map(|d| (d.id, d.name.as_str())).collect();
+    let name_by_id: std::collections::HashMap<i64, &str> = metrics
+        .developers
+        .iter()
+        .map(|d| (d.id, d.name.as_str()))
+        .collect();
 
     let commits_for = |entries: &[cf_devs::model::DeveloperCommits], dev_id: i64| -> i64 {
         entries
@@ -260,7 +303,11 @@ fn find_primary_language(dev: &DeveloperData) -> &str {
     for entry in &dev.languages {
         if entry.added > max_lines {
             max_lines = entry.added;
-            primary = if entry.language.is_empty() { LANG_OTHER } else { &entry.language };
+            primary = if entry.language.is_empty() {
+                LANG_OTHER
+            } else {
+                &entry.language
+            };
         }
     }
     primary
@@ -372,8 +419,11 @@ fn create_languages_tab(metrics: &ComputedMetrics, top_langs: &[String]) -> Box<
             .filter_map(|lang| by_lang.get(lang.as_str()))
             .sum()
     };
-    let mut scored: Vec<(&DeveloperData, i64)> =
-        metrics.developers.iter().map(|d| (d, contribution(d))).collect();
+    let mut scored: Vec<(&DeveloperData, i64)> = metrics
+        .developers
+        .iter()
+        .map(|d| (d, contribution(d)))
+        .collect();
     go_sort::slice(&mut scored, |a, b| a.1 > b.1);
     scored.truncate(TOP_DEVS_FOR_RADAR);
 
@@ -421,13 +471,11 @@ fn create_languages_tab(metrics: &ComputedMetrics, top_langs: &[String]) -> Box<
             })
             .collect();
 
-        let data = GoValue::Array(vec![
-            RadarData {
-                value: Some(GoValue::Array(values)),
-                ..RadarData::default()
-            }
-            .value(),
-        ]);
+        let data = GoValue::Array(vec![RadarData {
+            value: Some(GoValue::Array(values)),
+            ..RadarData::default()
+        }
+        .value()]);
         let series = radar.add_series(&dev.name, data);
         series.area_style = Some(AreaStyle {
             opacity: Some(RADAR_AREA_OPACITY),
@@ -470,7 +518,11 @@ fn create_busfactor_tab(metrics: &ComputedMetrics) -> Box<dyn Renderable> {
     }
 
     let count = |level: &str| -> usize {
-        metrics.busfactor.iter().filter(|b| b.risk_level == level).count()
+        metrics
+            .busfactor
+            .iter()
+            .filter(|b| b.risk_level == level)
+            .count()
     };
 
     let mut parts: Vec<Box<dyn Renderable>> = Vec::new();
@@ -558,13 +610,21 @@ fn create_churn_tab(metrics: &ComputedMetrics) -> Box<dyn Renderable> {
     let series = vec![
         BarSeries {
             name: "Added".to_string(),
-            data: metrics.churn.iter().map(|c| SeriesValue::Int(c.added)).collect(),
+            data: metrics
+                .churn
+                .iter()
+                .map(|c| SeriesValue::Int(c.added))
+                .collect(),
             color: "#22c55e".to_string(),
             ..BarSeries::default()
         },
         BarSeries {
             name: "Removed".to_string(),
-            data: metrics.churn.iter().map(|c| SeriesValue::Int(-c.removed)).collect(),
+            data: metrics
+                .churn
+                .iter()
+                .map(|c| SeriesValue::Int(-c.removed))
+                .collect(),
             color: "#ef4444".to_string(),
             ..BarSeries::default()
         },

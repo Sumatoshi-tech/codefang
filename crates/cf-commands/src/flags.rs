@@ -128,86 +128,218 @@ pub fn build_run_command() -> Command {
 /// and `registerExclusionFlags`).
 #[allow(clippy::too_many_lines)]
 fn add_literal_run_flags(cmd: Command) -> Command {
-    cmd
-        .arg(str_slice_arg("analyzers", Some('a'),
-            "Analyzer IDs or glob patterns (example: static/complexity,history/*,*)"))
-        .arg(str_arg("format", None, FORMAT_JSON,
-            "Output format: json, yaml, plot, bin, timeseries, ndjson, text, compact"))
-        .arg(bool_arg("ndjson",
-            "With --format timeseries: emit one JSON line per commit (NDJSON)"))
-        .arg(str_arg("input", None, "",
-            "Input report path for cross-format conversion"))
-        .arg(str_arg("input-format", None, INPUT_FORMAT_AUTO,
-            "Input format: auto, json, bin"))
-        .arg(int_arg("gogc", 0,
-            "GC percent for history pipeline (0 = auto, >0 = exact)"))
-        .arg(str_arg("ballast-size", None, "0",
-            "Optional GC ballast size for history pipeline (0 = disabled)"))
-        .arg(bool_arg("silent", "Disable progress output"))
-        .arg(bool_arg("no-color", "Disable colored static output"))
-        .arg(str_arg("path", Some('p'), ".",
-            "Folder/repository path to analyze"))
-        .arg(bool_arg("debug-trace", "Enable 100% trace sampling for debugging"))
-        .arg(str_arg("cpuprofile", None, "", "Write CPU profile to file"))
-        .arg(str_arg("heapprofile", None, "", "Write heap profile to file"))
-        .arg(int_arg("limit", 0, "Limit number of commits to analyze (0 = no limit)"))
-        .arg(bool_arg("first-parent", "Follow only first parent of merge commits"))
-        .arg(bool_arg("head", "Analyze only HEAD commit"))
-        .arg(str_arg("since", None, "",
-            "Only analyze commits after this time (e.g., '24h', '2024-01-01', RFC3339)"))
-        .arg(int_arg("workers", 0, "Number of parallel workers (0 = use CPU count)"))
-        .arg(int_arg("static-workers", 0,
-            "Number of parallel static analysis workers (0 = min(CPU count, 8))"))
-        // registerExclusionFlags
-        .arg(bool_arg("include-vendored",
-            "Re-include vendored dependencies (detected by enry / Linguist) in analysis. \
-Default: exclude vendor/, node_modules/, third_party/, testdata/, minified bundles, etc."))
-        .arg(bool_arg("include-generated",
-            "Re-include auto-generated files in analysis. \
+    cmd.arg(str_slice_arg(
+        "analyzers",
+        Some('a'),
+        "Analyzer IDs or glob patterns (example: static/complexity,history/*,*)",
+    ))
+    .arg(str_arg(
+        "format",
+        None,
+        FORMAT_JSON,
+        "Output format: json, yaml, plot, bin, timeseries, ndjson, text, compact",
+    ))
+    .arg(bool_arg(
+        "ndjson",
+        "With --format timeseries: emit one JSON line per commit (NDJSON)",
+    ))
+    .arg(str_arg(
+        "input",
+        None,
+        "",
+        "Input report path for cross-format conversion",
+    ))
+    .arg(str_arg(
+        "input-format",
+        None,
+        INPUT_FORMAT_AUTO,
+        "Input format: auto, json, bin",
+    ))
+    .arg(int_arg(
+        "gogc",
+        0,
+        "GC percent for history pipeline (0 = auto, >0 = exact)",
+    ))
+    .arg(str_arg(
+        "ballast-size",
+        None,
+        "0",
+        "Optional GC ballast size for history pipeline (0 = disabled)",
+    ))
+    .arg(bool_arg("silent", "Disable progress output"))
+    .arg(bool_arg("no-color", "Disable colored static output"))
+    .arg(str_arg(
+        "path",
+        Some('p'),
+        ".",
+        "Folder/repository path to analyze",
+    ))
+    .arg(bool_arg(
+        "debug-trace",
+        "Enable 100% trace sampling for debugging",
+    ))
+    .arg(str_arg("cpuprofile", None, "", "Write CPU profile to file"))
+    .arg(str_arg(
+        "heapprofile",
+        None,
+        "",
+        "Write heap profile to file",
+    ))
+    .arg(int_arg(
+        "limit",
+        0,
+        "Limit number of commits to analyze (0 = no limit)",
+    ))
+    .arg(bool_arg(
+        "first-parent",
+        "Follow only first parent of merge commits",
+    ))
+    .arg(bool_arg("head", "Analyze only HEAD commit"))
+    .arg(str_arg(
+        "since",
+        None,
+        "",
+        "Only analyze commits after this time (e.g., '24h', '2024-01-01', RFC3339)",
+    ))
+    .arg(int_arg(
+        "workers",
+        0,
+        "Number of parallel workers (0 = use CPU count)",
+    ))
+    .arg(int_arg(
+        "static-workers",
+        0,
+        "Number of parallel static analysis workers (0 = min(CPU count, 8))",
+    ))
+    // registerExclusionFlags
+    .arg(bool_arg(
+        "include-vendored",
+        "Re-include vendored dependencies (detected by enry / Linguist) in analysis. \
+Default: exclude vendor/, node_modules/, third_party/, testdata/, minified bundles, etc.",
+    ))
+    .arg(bool_arg(
+        "include-generated",
+        "Re-include auto-generated files in analysis. \
 Default: exclude *.pb.go, zz_generated_*.go, *_pb2.py, *.min.js, and any file whose \
-first 512 bytes contain a generated-file marker (\"DO NOT EDIT\", \"Code generated\", etc.)."))
-        .arg(str_slice_arg("extra-excluded-prefixes", None,
-            "Additional UNIX path prefixes to exclude on top of enry heuristics (e.g. \
-\".venv/,target/,build/\"). Applies to both static and history phases."))
-        .arg(bool_arg("per-file",
-            "Include per-file breakdowns and summary statistics in static output")
-            .short('F'))
-        .arg(int_arg("buffer-size", 0, "Size of internal pipeline channels (0 = workers*2)"))
-        .arg(int_arg("commit-batch-size", 0, "Commits per processing batch (0 = default 100)"))
-        .arg(str_arg("blob-cache-size", None, "",
-            "Max blob cache size (e.g., '256MB', '1GB'; empty = default 1GB)"))
-        .arg(int_arg("diff-cache-size", 0, "Max diff cache entries (0 = default 10000)"))
-        .arg(str_arg("blob-arena-size", None, "",
-            "Memory arena size for blob loading (e.g., '4MB'; empty = default 4MB)"))
-        .arg(str_arg("memory-budget", None, "",
-            "Memory budget for auto-tuning (e.g., '512MB', '2GB')"))
-        .arg(int_arg("max-changes-per-commit", 0,
-            "Skip commits whose tree diff exceeds this many changes (0 = default 10000). \
+first 512 bytes contain a generated-file marker (\"DO NOT EDIT\", \"Code generated\", etc.).",
+    ))
+    .arg(str_slice_arg(
+        "extra-excluded-prefixes",
+        None,
+        "Additional UNIX path prefixes to exclude on top of enry heuristics (e.g. \
+\".venv/,target/,build/\"). Applies to both static and history phases.",
+    ))
+    .arg(
+        bool_arg(
+            "per-file",
+            "Include per-file breakdowns and summary statistics in static output",
+        )
+        .short('F'),
+    )
+    .arg(int_arg(
+        "buffer-size",
+        0,
+        "Size of internal pipeline channels (0 = workers*2)",
+    ))
+    .arg(int_arg(
+        "commit-batch-size",
+        0,
+        "Commits per processing batch (0 = default 100)",
+    ))
+    .arg(str_arg(
+        "blob-cache-size",
+        None,
+        "",
+        "Max blob cache size (e.g., '256MB', '1GB'; empty = default 1GB)",
+    ))
+    .arg(int_arg(
+        "diff-cache-size",
+        0,
+        "Max diff cache entries (0 = default 10000)",
+    ))
+    .arg(str_arg(
+        "blob-arena-size",
+        None,
+        "",
+        "Memory arena size for blob loading (e.g., '4MB'; empty = default 4MB)",
+    ))
+    .arg(str_arg(
+        "memory-budget",
+        None,
+        "",
+        "Memory budget for auto-tuning (e.g., '512MB', '2GB')",
+    ))
+    .arg(int_arg(
+        "max-changes-per-commit",
+        0,
+        "Skip commits whose tree diff exceeds this many changes (0 = default 10000). \
 Commits over the cap are silently dropped from history, which can desync \
 burndown's tracked state for affected files. Raise on monorepos with \
-legitimate large commits (Pods updates, generated code dumps)."))
-        // registerPersistenceFlags (tri-state checkpoint/resume default true)
-        .arg(tristate_bool_arg("checkpoint", true,
-            "Enable checkpointing for crash recovery"))
-        .arg(str_arg("checkpoint-dir", None, "",
-            "Checkpoint directory (default: ~/.codefang/checkpoints)"))
-        .arg(tristate_bool_arg("resume", true,
-            "Resume from checkpoint if available"))
-        .arg(bool_arg("clear-checkpoint", "Clear existing checkpoint before run"))
-        .arg(str_arg("cache-dir", None, "",
-            "Incremental analysis cache directory (skip already-processed commits)"))
-        .arg(bool_arg("no-cache", "Force full re-analysis, overwriting any existing cache"))
-        .arg(str_arg("config", None, "",
-            "Configuration file path (default: .codefang.yaml in CWD or $HOME)"))
-        .arg(bool_arg("list-analyzers", "List all available analyzer IDs and exit"))
-        .arg(str_arg("diagnostics-addr", None, "",
-            "Start diagnostics HTTP server (health/metrics) at this address (e.g., :6060)"))
-        .arg(str_arg("output", Some('o'), "",
-            "Output directory for plot HTML files (required with --format plot)"))
-        .arg(bool_arg("keep-store",
-            "Keep temp ReportStore directory after rendering (with --format plot)"))
-        .arg(str_arg("tmp-dir", None, "",
-            "Directory for temporary spill files (default: system temp)"))
+legitimate large commits (Pods updates, generated code dumps).",
+    ))
+    // registerPersistenceFlags (tri-state checkpoint/resume default true)
+    .arg(tristate_bool_arg(
+        "checkpoint",
+        true,
+        "Enable checkpointing for crash recovery",
+    ))
+    .arg(str_arg(
+        "checkpoint-dir",
+        None,
+        "",
+        "Checkpoint directory (default: ~/.codefang/checkpoints)",
+    ))
+    .arg(tristate_bool_arg(
+        "resume",
+        true,
+        "Resume from checkpoint if available",
+    ))
+    .arg(bool_arg(
+        "clear-checkpoint",
+        "Clear existing checkpoint before run",
+    ))
+    .arg(str_arg(
+        "cache-dir",
+        None,
+        "",
+        "Incremental analysis cache directory (skip already-processed commits)",
+    ))
+    .arg(bool_arg(
+        "no-cache",
+        "Force full re-analysis, overwriting any existing cache",
+    ))
+    .arg(str_arg(
+        "config",
+        None,
+        "",
+        "Configuration file path (default: .codefang.yaml in CWD or $HOME)",
+    ))
+    .arg(bool_arg(
+        "list-analyzers",
+        "List all available analyzer IDs and exit",
+    ))
+    .arg(str_arg(
+        "diagnostics-addr",
+        None,
+        "",
+        "Start diagnostics HTTP server (health/metrics) at this address (e.g., :6060)",
+    ))
+    .arg(str_arg(
+        "output",
+        Some('o'),
+        "",
+        "Output directory for plot HTML files (required with --format plot)",
+    ))
+    .arg(bool_arg(
+        "keep-store",
+        "Keep temp ReportStore directory after rendering (with --format plot)",
+    ))
+    .arg(str_arg(
+        "tmp-dir",
+        None,
+        "",
+        "Directory for temporary spill files (default: system temp)",
+    ))
 }
 
 /// Marks the two legacy exclusion flags as deprecated and hidden, with the exact
@@ -217,14 +349,8 @@ legitimate large commits (Pods updates, generated code dumps)."))
 /// the flag is used (mirroring cobra's deprecation warning behavior).
 #[must_use]
 pub fn mark_deprecated_exclusion_flags(cmd: Command) -> Command {
-    cmd.arg(
-        bool_arg("skip-blacklist", "DEPRECATED")
-            .hide(true),
-    )
-    .arg(
-        str_slice_arg("blacklisted-prefixes", None, "DEPRECATED")
-            .hide(true),
-    )
+    cmd.arg(bool_arg("skip-blacklist", "DEPRECATED").hide(true))
+        .arg(str_slice_arg("blacklisted-prefixes", None, "DEPRECATED").hide(true))
 }
 
 /// Returns the exact cobra deprecation message for a deprecated flag, or `None`
@@ -264,7 +390,10 @@ for back-compat but will be removed in the next minor release.",
 /// `registerConfigFlag`: options whose declared kind does not match their
 /// default value's type are skipped (the reference implementation's failed type assertion path).
 #[must_use]
-pub fn register_analyzer_flags(mut cmd: Command, providers: &[&dyn ConfigOptionProvider]) -> Command {
+pub fn register_analyzer_flags(
+    mut cmd: Command,
+    providers: &[&dyn ConfigOptionProvider],
+) -> Command {
     let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
 
     for provider in providers {
@@ -660,10 +789,7 @@ See each sub-command's help for details on how to use the generated script.",
 /// subcommand (bash/fish/powershell/zsh). A value-less boolean flag, matching
 /// cobra's surface ("disable completion descriptions").
 fn completion_no_descriptions_flag() -> Arg {
-    bool_arg(
-        "no-descriptions",
-        "disable completion descriptions",
-    )
+    bool_arg("no-descriptions", "disable completion descriptions")
 }
 
 // --- small flag-builder helpers (cobra-style: long name + short + default) ---
@@ -709,7 +835,12 @@ fn tristate_bool_arg(name: &'static str, default: bool, help: &'static str) -> A
 
 /// A string `--flag` (optionally with a short), with the given default. Mirrors
 /// cobra `Flags().StringVar`/`StringVarP`.
-fn str_arg(name: &'static str, short: Option<char>, default: &'static str, help: &'static str) -> Arg {
+fn str_arg(
+    name: &'static str,
+    short: Option<char>,
+    default: &'static str,
+    help: &'static str,
+) -> Arg {
     let mut a = Arg::new(name)
         .long(name)
         .help(help)
@@ -773,9 +904,7 @@ mod tests {
     // --- TestRunCommandConfig_Defaults ---
     #[test]
     fn run_defaults_format_gogc_ballast() {
-        let m = run()
-            .try_get_matches_from(["run"])
-            .expect("defaults parse");
+        let m = run().try_get_matches_from(["run"]).expect("defaults parse");
         assert_eq!(m.get_one::<String>("format").unwrap(), "json");
         assert_eq!(*m.get_one::<i64>("gogc").unwrap(), 0);
         assert_eq!(m.get_one::<String>("ballast-size").unwrap(), "0");
@@ -858,7 +987,9 @@ mod tests {
         assert_eq!(*m.get_one::<i64>("granularity").unwrap(), 60);
         // The old name must be gone (reference: dropped it).
         assert!(
-            run().try_get_matches_from(["run", "--burndown-granularity", "60"]).is_err(),
+            run()
+                .try_get_matches_from(["run", "--burndown-granularity", "60"])
+                .is_err(),
             "--burndown-granularity must no longer exist (renamed to --granularity)"
         );
     }
@@ -873,10 +1004,16 @@ mod tests {
         assert_eq!(*m.get_one::<i64>("typos-max-distance").unwrap(), 4);
         assert_eq!(*m.get_one::<i64>("min-comment-len").unwrap(), 20);
         assert_eq!(*m.get_one::<i64>("diff-timeout").unwrap(), 1000);
-        assert_eq!(*m.get_one::<i64>("burndown-hibernation-threshold").unwrap(), 1000);
+        assert_eq!(
+            *m.get_one::<i64>("burndown-hibernation-threshold").unwrap(),
+            1000
+        );
         assert!(*m.get_one::<bool>("burndown-hibernation-disk").unwrap());
         assert!(!m.get_flag("anonymize"));
-        assert_eq!(m.get_one::<String>("shotness-dsl-name").unwrap(), ".props.name");
+        assert_eq!(
+            m.get_one::<String>("shotness-dsl-name").unwrap(),
+            ".props.name"
+        );
         assert_eq!(m.get_one::<String>("people-dict").unwrap(), "");
         assert_eq!(m.get_one::<String>("whitelist").unwrap(), "");
     }
@@ -885,7 +1022,9 @@ mod tests {
     // a CommandLine source (reference: Changed==true) — surface is value-less.
     #[test]
     fn checkpoint_value_form_still_parses() {
-        let m = run().try_get_matches_from(["run", "--checkpoint=false"]).unwrap();
+        let m = run()
+            .try_get_matches_from(["run", "--checkpoint=false"])
+            .unwrap();
         assert!(!*m.get_one::<bool>("checkpoint").unwrap());
         assert_eq!(
             m.value_source("checkpoint"),

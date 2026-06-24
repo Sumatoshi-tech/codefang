@@ -45,7 +45,8 @@ pub mod descriptor {
     /// Analyzer id.
     pub const ID: &str = "history/couples";
     /// Human-readable description.
-    pub const DESCRIPTION: &str = "The result is a square matrix, the value in each cell corresponds to the number of times \
+    pub const DESCRIPTION: &str =
+        "The result is a square matrix, the value in each cell corresponds to the number of times \
 the pair of files appeared in the same commit or pair of developers committed to the same file.";
     /// The analyzer is NOT sequential-only (it can be parallelized).
     pub const SEQUENTIAL: bool = false;
@@ -90,8 +91,8 @@ pub fn split_identity(s: &str) -> (String, String) {
 pub use metrics::{
     bucket_ownership, bucket_ownership_with_thresholds, compute_aggregate, compute_all_metrics,
     compute_all_metrics_with_options, compute_developer_coupling, compute_file_coupling,
-    compute_file_ownership, filter_top_devs, sort_ownership_by_risk, AggregateData, ComputedMetrics,
-    DeveloperCouplingData, FileCouplingData, FileOwnershipData, MetricOptions, OwnershipBucket,
-    ReportData, COUPLING_THRESHOLD_HIGH, FILE_CONTRIB_HLL_PRECISION,
+    compute_file_ownership, filter_top_devs, sort_ownership_by_risk, AggregateData,
+    ComputedMetrics, DeveloperCouplingData, FileCouplingData, FileOwnershipData, MetricOptions,
+    OwnershipBucket, ReportData, COUPLING_THRESHOLD_HIGH, FILE_CONTRIB_HLL_PRECISION,
 };
 pub use tc::{CommitData, CommitSummary, RenamePair, TickData};

@@ -71,8 +71,8 @@ pub use metrics::{
     MetricOptions, TickBounds, TickData, HLL_PRECISION,
 };
 pub use model::{
-    ActivityData, AggregateData, BusFactorData, ChurnData, CommitDevData, ComputedMetrics,
-    DeveloperCommits, DeveloperData, DevTick, LanguageData, LanguageStatsEntry, LineStats,
+    ActivityData, AggregateData, BusFactorData, ChurnData, CommitDevData, ComputedMetrics, DevTick,
+    DeveloperCommits, DeveloperData, LanguageData, LanguageStatsEntry, LineStats,
 };
 
 #[cfg(test)]
@@ -166,7 +166,10 @@ mod tests {
     #[test]
     fn aggregate_commits_to_ticks_basic() {
         let mut commit_dev_data = BTreeMap::new();
-        commit_dev_data.insert(HASH_A.to_string(), cdd(1, 20, 5, 3, 1, &[("Go", ls(20, 5, 3))]));
+        commit_dev_data.insert(
+            HASH_A.to_string(),
+            cdd(1, 20, 5, 3, 1, &[("Go", ls(20, 5, 3))]),
+        );
         commit_dev_data.insert(
             HASH_B.to_string(),
             cdd(1, 10, 3, 2, 2, &[("Python", ls(10, 3, 2))]),
@@ -224,7 +227,14 @@ mod tests {
     #[test]
     fn merge_commit_dev_data() {
         let mut existing = cdd(1, 10, 2, 1, 0, &[("Go", ls(10, 2, 0))]);
-        let incoming = cdd(2, 20, 5, 3, 0, &[("Go", ls(15, 3, 0)), ("Python", ls(5, 2, 0))]);
+        let incoming = cdd(
+            2,
+            20,
+            5,
+            3,
+            0,
+            &[("Go", ls(15, 3, 0)), ("Python", ls(5, 2, 0))],
+        );
         existing.merge(&incoming);
         assert_eq!(existing.commits, 3);
         assert_eq!(existing.added, 30);
@@ -309,7 +319,11 @@ mod tests {
         let mut t0 = BTreeMap::new();
         t0.insert(
             0,
-            dev_tick(10, ls(0, 0, 0), &[("Go", ls(50, 10, 5)), ("Python", ls(30, 5, 2))]),
+            dev_tick(
+                10,
+                ls(0, 0, 0),
+                &[("Go", ls(50, 10, 5)), ("Python", ls(30, 5, 2))],
+            ),
         );
         let mut t1 = BTreeMap::new();
         t1.insert(0, dev_tick(10, ls(0, 0, 0), &[("Go", ls(20, 5, 3))]));
@@ -320,7 +334,11 @@ mod tests {
         let input = tick_data(ticks, &["Alice"]);
         let result = compute_developers(&input);
         assert_eq!(result.len(), 1);
-        let go = result[0].languages.iter().find(|l| l.language == "Go").unwrap();
+        let go = result[0]
+            .languages
+            .iter()
+            .find(|l| l.language == "Go")
+            .unwrap();
         assert_eq!(go.added, 70);
         assert_eq!(go.removed, 15);
         assert_eq!(go.changed, 8);
@@ -767,7 +785,10 @@ mod tests {
     #[test]
     fn compute_all_metrics_from_commit_data() {
         let mut commit_dev_data = BTreeMap::new();
-        commit_dev_data.insert(HASH_A.to_string(), cdd(1, 20, 5, 3, 0, &[("Go", ls(20, 5, 3))]));
+        commit_dev_data.insert(
+            HASH_A.to_string(),
+            cdd(1, 20, 5, 3, 0, &[("Go", ls(20, 5, 3))]),
+        );
         commit_dev_data.insert(
             HASH_B.to_string(),
             cdd(1, 10, 3, 2, 1, &[("Python", ls(10, 3, 2))]),

@@ -57,7 +57,10 @@ pub fn compute_score(m: &ComputedMetrics) -> (f64, String) {
         score = 0.0;
     }
     let msg = if score >= GOOD_THRESHOLD {
-        format!("Good - low coupling across {} files", m.aggregate.total_files)
+        format!(
+            "Good - low coupling across {} files",
+            m.aggregate.total_files
+        )
     } else if score >= FAIR_THRESHOLD {
         format!(
             "Fair - moderate coupling ({} highly coupled pairs)",
@@ -162,13 +165,41 @@ mod tests {
     #[test]
     fn distribution_categorization() {
         let couples = vec![
-            FileCouplingData { file1: "a".into(), file2: "b".into(), co_changes: 1, strength: 0.8 },
-            FileCouplingData { file1: "c".into(), file2: "d".into(), co_changes: 1, strength: 0.5 },
-            FileCouplingData { file1: "e".into(), file2: "f".into(), co_changes: 1, strength: 0.2 },
-            FileCouplingData { file1: "g".into(), file2: "h".into(), co_changes: 1, strength: 0.05 },
+            FileCouplingData {
+                file1: "a".into(),
+                file2: "b".into(),
+                co_changes: 1,
+                strength: 0.8,
+            },
+            FileCouplingData {
+                file1: "c".into(),
+                file2: "d".into(),
+                co_changes: 1,
+                strength: 0.5,
+            },
+            FileCouplingData {
+                file1: "e".into(),
+                file2: "f".into(),
+                co_changes: 1,
+                strength: 0.2,
+            },
+            FileCouplingData {
+                file1: "g".into(),
+                file2: "h".into(),
+                co_changes: 1,
+                strength: 0.05,
+            },
         ];
         let c = categorize_strength(&couples);
-        assert_eq!(c, StrengthDistCounts { strong: 1, moderate: 1, weak: 1, minimal: 1 });
+        assert_eq!(
+            c,
+            StrengthDistCounts {
+                strong: 1,
+                moderate: 1,
+                weak: 1,
+                minimal: 1
+            }
+        );
     }
 
     #[test]

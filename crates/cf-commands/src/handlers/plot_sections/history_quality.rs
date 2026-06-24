@@ -153,8 +153,11 @@ fn build_multi_series_chart(
         return create_empty_chart(title);
     }
 
-    let labels: Vec<String> =
-        metrics.time_series.iter().map(|e| e.tick.to_string()).collect();
+    let labels: Vec<String> = metrics
+        .time_series
+        .iter()
+        .map(|e| e.tick.to_string())
+        .collect();
 
     let co = ChartOpts::default_dark();
     let mut line = Chart::new(ChartKind::Line);
@@ -188,7 +191,11 @@ fn build_multi_series_chart(
         });
         added.line_style = Some(LineStyle {
             width: s.width,
-            type_: if s.dashed { "dashed".to_string() } else { String::new() },
+            type_: if s.dashed {
+                "dashed".to_string()
+            } else {
+                String::new()
+            },
             ..LineStyle::default()
         });
     }
@@ -200,13 +207,25 @@ fn build_multi_series_chart(
 fn build_quality_stats_section(metrics: &cf_quality::ComputedMetrics) -> Section {
     let agg = &metrics.aggregate;
     let grid = GridStats::new(MAX_STATS_COLUMNS)
-        .stat("Median Complexity", &format_float(agg.complexity_median_mean, 2))
+        .stat(
+            "Median Complexity",
+            &format_float(agg.complexity_median_mean, 2),
+        )
         .stat("P95 Complexity", &format_float(agg.complexity_p95_mean, 2))
-        .stat("Median Halstead Vol", &format_float(agg.halstead_vol_median_mean, 1))
-        .stat("Total Delivered Bugs", &format_float(agg.total_delivered_bugs, 1))
+        .stat(
+            "Median Halstead Vol",
+            &format_float(agg.halstead_vol_median_mean, 1),
+        )
+        .stat(
+            "Total Delivered Bugs",
+            &format_float(agg.total_delivered_bugs, 1),
+        )
         .stat("Min Comment Score", &format_float(agg.min_comment_score, 2))
         .stat("Min Cohesion", &format_float(agg.min_cohesion, 2))
-        .stat("Total Files Analyzed", &agg.total_files_analyzed.to_string())
+        .stat(
+            "Total Files Analyzed",
+            &agg.total_files_analyzed.to_string(),
+        )
         .into_grid();
 
     Section {

@@ -172,7 +172,12 @@ impl ComputedMetrics {
         } else {
             m.push(
                 "clone_pairs",
-                GoValue::Array(self.clone_pairs.iter().map(ClonePair::to_go_value).collect()),
+                GoValue::Array(
+                    self.clone_pairs
+                        .iter()
+                        .map(ClonePair::to_go_value)
+                        .collect(),
+                ),
             );
         }
         m.push("message", GoValue::Str(self.message.clone()));

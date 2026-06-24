@@ -70,7 +70,9 @@ impl MappingRule {
             conditions: self
                 .conditions
                 .iter()
-                .map(|e| Condition { expr: (*e).to_string() })
+                .map(|e| Condition {
+                    expr: (*e).to_string(),
+                })
                 .collect(),
         }
     }
@@ -207,7 +209,10 @@ qualified_type <- (qualified_type package: (package_identifier) @pkg) => uast(
 
         // Explicit pattern + capture token + populated props.
         let r1 = &rules[1];
-        assert_eq!(r1.pattern, "(qualified_type package: (package_identifier) @pkg)");
+        assert_eq!(
+            r1.pattern,
+            "(qualified_type package: (package_identifier) @pkg)"
+        );
         assert_eq!(r1.uast_spec.token, "@pkg");
         let props = r1.uast_spec.props.as_ref().expect("props Some");
         assert_eq!(props.get("custom_prop").map(String::as_str), Some("v"));
@@ -234,7 +239,10 @@ qualified_type <- (qualified_type package: (package_identifier) @pkg) => uast(
         assert_eq!(r.conditions.len(), 1);
         assert_eq!(r.conditions[0].expr, "field == \"v\"");
 
-        let none = MappingRule { token: TokenSource::None, ..rule };
+        let none = MappingRule {
+            token: TokenSource::None,
+            ..rule
+        };
         assert_eq!(none.to_rule().uast_spec.token, "");
     }
 
@@ -243,8 +251,7 @@ qualified_type <- (qualified_type package: (package_identifier) @pkg) => uast(
     #[test]
     fn micro_equality_vs_parser() {
         let parser = crate::Parser::new();
-        let (parsed_rules, parsed_info) =
-            parser.parse_mapping(TWO_RULES_DSL).expect("DSL parses");
+        let (parsed_rules, parsed_info) = parser.parse_mapping(TWO_RULES_DSL).expect("DSL parses");
         let (static_rules, static_info) = TWO_RULES.to_rules();
         assert_eq!(parsed_info, static_info);
         assert_eq!(parsed_rules, static_rules);

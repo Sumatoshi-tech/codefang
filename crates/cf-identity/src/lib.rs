@@ -35,8 +35,7 @@ pub const FACT_IDENTITY_DETECTOR_PEOPLE_DICT: &str = "IdentityDetector.PeopleDic
 
 /// Name of the fact corresponding to the identity detector's reversed people
 /// dictionary — the mapping from author indices to the main signature.
-pub const FACT_IDENTITY_DETECTOR_REVERSED_PEOPLE_DICT: &str =
-    "IdentityDetector.ReversedPeopleDict";
+pub const FACT_IDENTITY_DETECTOR_REVERSED_PEOPLE_DICT: &str = "IdentityDetector.ReversedPeopleDict";
 
 /// Name of the configuration option which allows setting the external people
 /// dictionary mapping from a file.
@@ -207,7 +206,10 @@ mod tests {
     #[test]
     fn constant_strings_match_contract() {
         assert_eq!(AUTHOR_MISSING_NAME, "<unmatched>");
-        assert_eq!(FACT_IDENTITY_DETECTOR_PEOPLE_DICT, "IdentityDetector.PeopleDict");
+        assert_eq!(
+            FACT_IDENTITY_DETECTOR_PEOPLE_DICT,
+            "IdentityDetector.PeopleDict"
+        );
         assert_eq!(
             FACT_IDENTITY_DETECTOR_REVERSED_PEOPLE_DICT,
             "IdentityDetector.ReversedPeopleDict"

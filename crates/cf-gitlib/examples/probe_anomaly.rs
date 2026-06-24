@@ -9,8 +9,16 @@ fn main() {
     println!("num_parents = {}", commit.num_parents());
     let auth = commit.author();
     let comm = commit.committer();
-    println!("author when secs={} off={}", auth.when.seconds(), auth.when.offset_minutes());
-    println!("committer when secs={} off={}", comm.when.seconds(), comm.when.offset_minutes());
+    println!(
+        "author when secs={} off={}",
+        auth.when.seconds(),
+        auth.when.offset_minutes()
+    );
+    println!(
+        "committer when secs={} off={}",
+        comm.when.seconds(),
+        comm.when.offset_minutes()
+    );
 
     let new_tree = commit.tree().unwrap();
     let parent = commit.parent(0).unwrap();
@@ -18,7 +26,11 @@ fn main() {
     let changes = tree_diff(&repo, Some(&old_tree), Some(&new_tree)).unwrap();
     println!("changes = {}", changes.len());
     for c in &changes {
-        let name = if c.to.name.is_empty() { &c.from.name } else { &c.to.name };
+        let name = if c.to.name.is_empty() {
+            &c.from.name
+        } else {
+            &c.to.name
+        };
         println!("  {:?} {}", c.action, name);
     }
 }

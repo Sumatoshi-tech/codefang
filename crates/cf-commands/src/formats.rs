@@ -256,10 +256,7 @@ pub fn resolve_input_format(input_path: &str, input_format: &str) -> Result<Stri
 fn extension_lower(path: &str) -> String {
     // Restrict to the final path element so dots in directory names are ignored,
     // matching the reference implementation's filepath.Ext.
-    let base = path
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or(path);
+    let base = path.rsplit(['/', '\\']).next().unwrap_or(path);
     match base.rfind('.') {
         Some(idx) => base[idx..].to_lowercase(),
         None => String::new(),
@@ -406,8 +403,14 @@ mod tests {
     #[test]
     fn resolve_input_format_auto_uses_extension() {
         assert_eq!(resolve_input_format("report.json", "auto").unwrap(), "json");
-        assert_eq!(resolve_input_format("report.BIN", "auto").unwrap(), "binary");
-        assert_eq!(resolve_input_format("report.binary", "auto").unwrap(), "binary");
+        assert_eq!(
+            resolve_input_format("report.BIN", "auto").unwrap(),
+            "binary"
+        );
+        assert_eq!(
+            resolve_input_format("report.binary", "auto").unwrap(),
+            "binary"
+        );
         // Unknown / no extension -> json.
         assert_eq!(resolve_input_format("report.txt", "auto").unwrap(), "json");
         assert_eq!(resolve_input_format("report", "auto").unwrap(), "json");
@@ -417,7 +420,10 @@ mod tests {
 
     #[test]
     fn ndjson_modifier_composes_only_timeseries() {
-        assert_eq!(apply_ndjson_modifier("timeseries", true), "timeseries+ndjson");
+        assert_eq!(
+            apply_ndjson_modifier("timeseries", true),
+            "timeseries+ndjson"
+        );
         assert_eq!(apply_ndjson_modifier("timeseries", false), "timeseries");
         assert_eq!(apply_ndjson_modifier("json", true), "json");
     }

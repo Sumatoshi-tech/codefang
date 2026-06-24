@@ -323,7 +323,12 @@ mod tests {
         let mut m = GoMap::new(MapOrigin::Map);
         m.push(
             "imports",
-            GoValue::Array(imports.iter().map(|s| GoValue::Str((*s).to_string())).collect()),
+            GoValue::Array(
+                imports
+                    .iter()
+                    .map(|s| GoValue::Str((*s).to_string()))
+                    .collect(),
+            ),
         );
         m.push("import_counts", GoValue::Map(counts));
         m.push("count", GoValue::Int(3));
@@ -343,8 +348,8 @@ mod tests {
     #[test]
     fn bar_sorted_by_count_desc_with_primary_color() {
         let report = raw_report();
-        let metrics = cf_imports::compute_all_metrics(&imports_report_value(&report))
-            .expect("infallible");
+        let metrics =
+            cf_imports::compute_all_metrics(&imports_report_value(&report)).expect("infallible");
         let json = static_imports_bar_chart(&report, &metrics).option_json();
         assert!(json.contains("\"data\":[\"fmt\",\"github.com/x/y\",\"./../../../deep\"]"));
         assert!(json.contains(
@@ -356,15 +361,17 @@ mod tests {
     #[test]
     fn categories_pie_title_and_label_colors_match_go() {
         let report = raw_report();
-        let metrics = cf_imports::compute_all_metrics(&imports_report_value(&report))
-            .expect("infallible");
+        let metrics =
+            cf_imports::compute_all_metrics(&imports_report_value(&report)).expect("infallible");
         let json = import_categories_pie(&metrics).option_json();
         // Title with both text styles, empty subtext omitted.
         assert!(json.contains(
             "\"title\":{\"text\":\"Import Categories\",\"textStyle\":{\"color\":\"#d6d3d1\"},\"subtextStyle\":{\"color\":\"#a8a29e\"},\"left\":\"center\"}"
         ));
         // Label color is the PRIMARY text color (not muted).
-        assert!(json.contains("\"label\":{\"show\":true,\"color\":\"#d6d3d1\",\"formatter\":\"{b}: {c} ({d}%)\"}"));
+        assert!(json.contains(
+            "\"label\":{\"show\":true,\"color\":\"#d6d3d1\",\"formatter\":\"{b}: {c} ({d}%)\"}"
+        ));
         // Scroll legend (co.Legend), not the bottom pie legend.
         assert!(json.contains("\"legend\":{\"type\":\"scroll\",\"show\":true,\"left\":\"center\",\"top\":\"10%\",\"textStyle\":{\"color\":\"#a8a29e\"}}"));
     }
@@ -372,8 +379,8 @@ mod tests {
     #[test]
     fn risk_table_sorts_and_caps_rows() {
         let report = raw_report();
-        let metrics = cf_imports::compute_all_metrics(&imports_report_value(&report))
-            .expect("infallible");
+        let metrics =
+            cf_imports::compute_all_metrics(&imports_report_value(&report)).expect("infallible");
         let table = dependency_risk_table(&metrics, MAX_DEPENDENCY_RISK_ROWS);
         assert_eq!(table.rows.len(), 1);
         assert_eq!(table.rows[0][0], "./../../../deep");

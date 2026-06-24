@@ -38,7 +38,11 @@ pub enum DslNode {
     /// `rfilter(<expr>)` — reverse filter (identity).
     RFilter(Box<Self>),
     /// A comparison `<lhs> <op> <rhs>` produced by the grammar's `Comparison`.
-    Comparison { lhs: Box<Self>, op: String, rhs: Box<Self> },
+    Comparison {
+        lhs: Box<Self>,
+        op: String,
+        rhs: Box<Self>,
+    },
 }
 
 impl DslNode {

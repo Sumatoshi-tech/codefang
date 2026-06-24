@@ -7,8 +7,8 @@
 
 use std::io::{self, Write};
 
-use clap::{Arg, ArgAction, ArgMatches, Command};
 use cf_uast::{Node, Parser};
+use clap::{Arg, ArgAction, ArgMatches, Command};
 
 /// Builds the `explore` subcommand (explore.go:28-45).
 pub fn command() -> Command {
@@ -27,8 +27,14 @@ pub fn command() -> Command {
 
 /// Runs `explore` (explore.go `runExplore`).
 pub fn run(m: &ArgMatches) -> Result<(), String> {
-    let file = m.get_one::<String>("file").map(String::as_str).unwrap_or("");
-    let lang = m.get_one::<String>("language").map(String::as_str).unwrap_or("");
+    let file = m
+        .get_one::<String>("file")
+        .map(String::as_str)
+        .unwrap_or("");
+    let lang = m
+        .get_one::<String>("language")
+        .map(String::as_str)
+        .unwrap_or("");
 
     if file.is_empty() {
         return Err("no file specified for exploration".to_string());
@@ -38,11 +44,17 @@ pub fn run(m: &ArgMatches) -> Result<(), String> {
     if !parser.is_supported(file) {
         return Err(format!("unsupported file type: {file}"));
     }
-    let node = parser.parse_file(file, lang).map_err(|e| format!("failed to parse {file}: {e}"))?;
+    let node = parser
+        .parse_file(file, lang)
+        .map_err(|e| format!("failed to parse {file}: {e}"))?;
 
     let out = io::stdout();
     let mut out = out.lock();
-    let _ = writeln!(out, "Exploring {}", cf_iosafety::sanitize_for_terminal(file));
+    let _ = writeln!(
+        out,
+        "Exploring {}",
+        cf_iosafety::sanitize_for_terminal(file)
+    );
     let _ = writeln!(out, "Type 'help' for commands, 'quit' to exit");
     let _ = writeln!(out);
 
@@ -116,7 +128,11 @@ fn handle(parts: &[&str], node: &Node, out: &mut dyn Write) {
             }
         }
         Some(other) => {
-            let _ = writeln!(out, "Unknown command: {}", cf_iosafety::sanitize_for_terminal(other));
+            let _ = writeln!(
+                out,
+                "Unknown command: {}",
+                cf_iosafety::sanitize_for_terminal(other)
+            );
             let _ = writeln!(out, "Type 'help' for available commands");
         }
         None => {}
@@ -197,6 +213,9 @@ mod tests {
     fn unsupported_file_type_errors() {
         let m = matches(&["nonexistent.unknownext"]);
         // Unsupported extension is reported before any file read.
-        assert_eq!(run(&m).unwrap_err(), "unsupported file type: nonexistent.unknownext");
+        assert_eq!(
+            run(&m).unwrap_err(),
+            "unsupported file type: nonexistent.unknownext"
+        );
     }
 }

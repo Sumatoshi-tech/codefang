@@ -139,7 +139,6 @@ impl Parser {
 
         lang_parser.parse(filename, content)
     }
-
 }
 
 impl Default for Parser {
@@ -232,5 +231,4 @@ mod tests {
             }
         );
     }
-
 }

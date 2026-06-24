@@ -122,7 +122,10 @@ pub struct JsonFileEntry {
 impl JsonFileEntry {
     fn to_go_value(&self) -> GoValue {
         let mut fields: Vec<(String, GoValue)> = Vec::with_capacity(7);
-        fields.push(("file_path".to_string(), GoValue::Str(self.file_path.clone())));
+        fields.push((
+            "file_path".to_string(),
+            GoValue::Str(self.file_path.clone()),
+        ));
         fields.push((
             "score_label".to_string(),
             GoValue::Str(self.score_label.clone()),
@@ -347,7 +350,8 @@ pub fn sections_to_json(sections: &[&dyn ReportSection]) -> JsonReport {
 mod tests {
     use super::*;
     use crate::analyze::{
-        severity, BaseReportSection, DistributionItem, Issue, Metric, ReportSection, SCORE_INFO_ONLY,
+        severity, BaseReportSection, DistributionItem, Issue, Metric, ReportSection,
+        SCORE_INFO_ONLY,
     };
 
     /// A ReportSection backed by explicit metric/distribution/issue lists.
@@ -608,6 +612,9 @@ mod tests {
         let title_pos = json.find(r#""title""#).unwrap();
         let issues_pos = json.find(r#""issues""#).unwrap();
         assert!(title_pos < score_pos);
-        assert!(issues_pos < score_pos, "score must come after issues: {json}");
+        assert!(
+            issues_pos < score_pos,
+            "score must come after issues: {json}"
+        );
     }
 }

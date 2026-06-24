@@ -2,7 +2,9 @@
 
 use crate::components::Renderable;
 use crate::echarts::ChartIdGen;
-use crate::templates::{render_header, render_page, render_section, HeaderData, PageShell, SCRIPTS_HTML};
+use crate::templates::{
+    render_header, render_page, render_section, HeaderData, PageShell, SCRIPTS_HTML,
+};
 use crate::theme::{get_theme_config, Theme};
 
 /// Chart dimensions and grid margins.
@@ -159,7 +161,11 @@ impl HtmlRenderer {
             ));
         }
 
-        let dark_class = if page.theme == Theme::Dark { "dark" } else { "" };
+        let dark_class = if page.theme == Theme::Dark {
+            "dark"
+        } else {
+            ""
+        };
 
         render_page(&PageShell {
             title: &page.title,
@@ -213,7 +219,9 @@ mod tests {
         // reference binary's plot output).
         assert!(html.starts_with("<!doctype html>\n<html class=\"dark\">\n"));
         // CSS comment replaced by one space: 21-space line inside <style>.
-        assert!(html.contains("; }\n                     \n                    .tab-panel .container,"));
+        assert!(
+            html.contains("; }\n                     \n                    .tab-panel .container,")
+        );
         // JS comment removed: bare-indentation line inside the scripts block.
         assert!(html.contains("});\n\n        \n        setTimeout(function () {"));
         // Title slot: "<Title> - <ProjectName>".

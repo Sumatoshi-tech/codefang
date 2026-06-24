@@ -124,10 +124,16 @@ impl ConfigError {
                 "pipeline.max_intra_commit_workers must be non-negative"
             }
             Self::InvalidMaxUastBlobSize => "pipeline.max_uast_blob_size must be non-negative",
-            Self::InvalidMaxChangesPerCommit => "pipeline.max_changes_per_commit must be non-negative",
+            Self::InvalidMaxChangesPerCommit => {
+                "pipeline.max_changes_per_commit must be non-negative"
+            }
             Self::InvalidMaxDiffBatchSize => "pipeline.max_diff_batch_size must be non-negative",
-            Self::InvalidMemoryBudgetRatio => "pipeline.memory_budget_ratio must be between 0 and 100",
-            Self::InvalidMemoryLimitRatio => "pipeline.memory_limit_ratio must be between 0 and 100",
+            Self::InvalidMemoryBudgetRatio => {
+                "pipeline.memory_budget_ratio must be between 0 and 100"
+            }
+            Self::InvalidMemoryLimitRatio => {
+                "pipeline.memory_limit_ratio must be between 0 and 100"
+            }
             Self::InvalidBurndownGranularity => "history.burndown.granularity must be positive",
             Self::InvalidBurndownSampling => "history.burndown.sampling must be positive",
             Self::InvalidCouplingThreshold => {
@@ -170,12 +176,16 @@ impl ConfigError {
             Self::InvalidHotspotThresholdMedium => {
                 "history.file_history.hotspot_threshold_medium must be non-negative"
             }
-            Self::InvalidSentimentMinLength => "history.sentiment.min_comment_length must be positive",
+            Self::InvalidSentimentMinLength => {
+                "history.sentiment.min_comment_length must be positive"
+            }
             Self::InvalidSentimentGap => "history.sentiment.gap must be between 0 and 1",
             Self::InvalidNeutralizerWeight => {
                 "history.sentiment.neutralizer_weight must be between 0 and 1"
             }
-            Self::InvalidMaxWeightRatio => "history.sentiment.max_weight_ratio must be non-negative",
+            Self::InvalidMaxWeightRatio => {
+                "history.sentiment.max_weight_ratio must be non-negative"
+            }
             Self::InvalidTyposMaxDistance => "history.typos.max_distance must be positive",
             Self::InvalidImportsGoroutines => "history.imports.goroutines must be positive",
             Self::InvalidImportsMaxFileSize => "history.imports.max_file_size must be positive",
@@ -184,7 +194,9 @@ impl ConfigError {
             }
             Self::InvalidAnomalyThreshold => "history.anomaly.threshold must be positive",
             Self::InvalidAnomalyWindowSize => "history.anomaly.window_size must be at least 2",
-            Self::InvalidClonesMaxClonePairs => "history.clones.max_clone_pairs must be non-negative",
+            Self::InvalidClonesMaxClonePairs => {
+                "history.clones.max_clone_pairs must be non-negative"
+            }
         }
     }
 }

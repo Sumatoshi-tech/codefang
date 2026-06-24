@@ -78,7 +78,10 @@ pub fn compute_sparse_coupling(
 /// Sorts sparse coupling pairs by `co_changes` descending and truncates to
 /// `top_k`.
 #[must_use]
-pub fn top_k_file_coupling(mut pairs: Vec<FileCouplingData>, top_k: usize) -> Vec<FileCouplingData> {
+pub fn top_k_file_coupling(
+    mut pairs: Vec<FileCouplingData>,
+    top_k: usize,
+) -> Vec<FileCouplingData> {
     pairs.sort_by(|a, b| b.co_changes.cmp(&a.co_changes));
     let limit = pairs.len().min(top_k);
     pairs.truncate(limit);
@@ -153,7 +156,10 @@ mod tests {
             .map(|(f, inner)| {
                 (
                     (*f).to_string(),
-                    inner.iter().map(|(o, c)| ((*o).to_string(), *c)).collect::<BTreeMap<_, _>>(),
+                    inner
+                        .iter()
+                        .map(|(o, c)| ((*o).to_string(), *c))
+                        .collect::<BTreeMap<_, _>>(),
                 )
             })
             .collect()
@@ -177,9 +183,24 @@ mod tests {
     #[test]
     fn top_k_limits_and_sorts() {
         let pairs = vec![
-            FileCouplingData { file1: "a".into(), file2: "b".into(), co_changes: 1, strength: 0.0 },
-            FileCouplingData { file1: "c".into(), file2: "d".into(), co_changes: 5, strength: 0.0 },
-            FileCouplingData { file1: "e".into(), file2: "f".into(), co_changes: 3, strength: 0.0 },
+            FileCouplingData {
+                file1: "a".into(),
+                file2: "b".into(),
+                co_changes: 1,
+                strength: 0.0,
+            },
+            FileCouplingData {
+                file1: "c".into(),
+                file2: "d".into(),
+                co_changes: 5,
+                strength: 0.0,
+            },
+            FileCouplingData {
+                file1: "e".into(),
+                file2: "f".into(),
+                co_changes: 3,
+                strength: 0.0,
+            },
         ];
         let top = top_k_file_coupling(pairs, 2);
         assert_eq!(top.len(), 2);

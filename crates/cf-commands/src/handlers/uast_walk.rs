@@ -36,9 +36,7 @@ use cf_gitlib::blob::CachedBlob;
 use cf_gitlib::Hash;
 use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 
-use crate::handlers::history::{
-    self, ImportsCommit, QualityCommit, SentimentCommit, TyposCommit,
-};
+use crate::handlers::history::{self, ImportsCommit, QualityCommit, SentimentCommit, TyposCommit};
 use crate::handlers::shotness_run::{self, ShotnessChangeProduct, ShotnessCommit, ShotnessReducer};
 use crate::handlers::{
     effective_first_parent, expand_combined_ids, floor_tick_secs, load_history_commit_hashes,
@@ -309,9 +307,7 @@ pub(crate) fn shared_typos_walk(sub: &clap::ArgMatches) -> Option<Option<Vec<Typ
 }
 
 /// The `history/shotness` view of the shared walk.
-pub(crate) fn shared_shotness_walk(
-    sub: &clap::ArgMatches,
-) -> Option<Option<Vec<ShotnessCommit>>> {
+pub(crate) fn shared_shotness_walk(sub: &clap::ArgMatches) -> Option<Option<Vec<ShotnessCommit>>> {
     shared_component(sub, |sel| sel.shotness, |w| w.shotness.clone())
 }
 
@@ -442,12 +438,21 @@ fn compute_shared_walks(sel: UastSelection, key: &WalkKey) -> Option<SharedWalks
         prepared: &[SharedCommitProduct],
         build: impl Fn(&Stamp, &SharedCommitProduct) -> T,
     ) -> Option<Vec<T>> {
-        selected.then(|| stamps.iter().zip(prepared).map(|(s, p)| build(s, p)).collect())
+        selected.then(|| {
+            stamps
+                .iter()
+                .zip(prepared)
+                .map(|(s, p)| build(s, p))
+                .collect()
+        })
     }
 
     let quality = assemble(sel.quality, &stamps, &prepared, |s, p| QualityCommit {
         hash: s.hash_str.clone(),
-        tq: p.quality.clone().expect("quality product for selected analyzer"),
+        tq: p
+            .quality
+            .clone()
+            .expect("quality product for selected analyzer"),
         tick: s.tick,
         author_id: s.author_id,
         when: s.when,
@@ -455,7 +460,10 @@ fn compute_shared_walks(sel: UastSelection, key: &WalkKey) -> Option<SharedWalks
     });
     let sentiment = assemble(sel.sentiment, &stamps, &prepared, |s, p| SentimentCommit {
         hash: s.hash_str.clone(),
-        comments: p.sentiment.clone().expect("sentiment product for selected analyzer"),
+        comments: p
+            .sentiment
+            .clone()
+            .expect("sentiment product for selected analyzer"),
         tick: s.tick,
         author_id: s.author_id,
         when: s.when,
@@ -463,14 +471,20 @@ fn compute_shared_walks(sel: UastSelection, key: &WalkKey) -> Option<SharedWalks
     });
     let imports = assemble(sel.imports, &stamps, &prepared, |s, p| ImportsCommit {
         hash: s.hash_str.clone(),
-        entries: p.imports.clone().expect("imports product for selected analyzer"),
+        entries: p
+            .imports
+            .clone()
+            .expect("imports product for selected analyzer"),
         author_id: s.author_id,
         tick: s.tick,
         when: s.when,
         offset_min: s.offset_min,
     });
     let typos = assemble(sel.typos, &stamps, &prepared, |s, p| TyposCommit {
-        typos: p.typos.clone().expect("typos product for selected analyzer"),
+        typos: p
+            .typos
+            .clone()
+            .expect("typos product for selected analyzer"),
         tick: s.tick,
         author_id: s.author_id,
         when: s.when,
@@ -496,8 +510,10 @@ fn compute_shared_walks(sel: UastSelection, key: &WalkKey) -> Option<SharedWalks
                     offset_min: s.offset_min,
                 };
                 if reducer.should_consume(*hash, s.num_parents) {
-                    let products =
-                        p.shotness.as_ref().expect("shotness product for selected analyzer");
+                    let products = p
+                        .shotness
+                        .as_ref()
+                        .expect("shotness product for selected analyzer");
                     entry.touched = reducer.consume(products);
                 }
                 entry
@@ -505,5 +521,11 @@ fn compute_shared_walks(sel: UastSelection, key: &WalkKey) -> Option<SharedWalks
             .collect()
     });
 
-    Some(SharedWalks { quality, sentiment, imports, typos, shotness })
+    Some(SharedWalks {
+        quality,
+        sentiment,
+        imports,
+        typos,
+        shotness,
+    })
 }

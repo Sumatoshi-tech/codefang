@@ -66,11 +66,7 @@ impl UASTChanges {
     /// Build the list of UAST changes for one commit: parse before/after per
     /// change and keep only changes with at least one parsed side.
     #[must_use]
-    pub fn build(
-        &self,
-        changes: &Changes,
-        cache: &HashMap<Hash, CachedBlob>,
-    ) -> Vec<UASTChange> {
+    pub fn build(&self, changes: &Changes, cache: &HashMap<Hash, CachedBlob>) -> Vec<UASTChange> {
         let mut result: Vec<UASTChange> = Vec::new();
         for change in changes {
             let before = self.parse_before_version(change, cache);
@@ -139,7 +135,10 @@ impl UASTChanges {
         if blob.data.len() > limit {
             return None;
         }
-        if self.path_filter.is_excluded_with_content(filename, &blob.data) {
+        if self
+            .path_filter
+            .is_excluded_with_content(filename, &blob.data)
+        {
             return None;
         }
         parser.parse(filename, &blob.data)
@@ -212,8 +211,14 @@ mod tests {
         cache.insert(h(1), CachedBlob::new(b"old".to_vec()));
         cache.insert(h(2), CachedBlob::new(b"new".to_vec()));
         let changes = vec![Change {
-            from: ChangeEntry { name: "f.go".into(), hash: h(1) },
-            to: ChangeEntry { name: "f.go".into(), hash: h(2) },
+            from: ChangeEntry {
+                name: "f.go".into(),
+                hash: h(1),
+            },
+            to: ChangeEntry {
+                name: "f.go".into(),
+                hash: h(2),
+            },
         }];
         let out = uc.build(&changes, &cache);
         assert_eq!(out.len(), 1);
@@ -230,7 +235,10 @@ mod tests {
         // A .txt file is unsupported -> no node -> change dropped.
         let changes = vec![Change {
             from: ChangeEntry::default(),
-            to: ChangeEntry { name: "f.txt".into(), hash: h(1) },
+            to: ChangeEntry {
+                name: "f.txt".into(),
+                hash: h(1),
+            },
         }];
         assert!(uc.build(&changes, &cache).is_empty());
     }
@@ -244,7 +252,10 @@ mod tests {
         cache.insert(h(1), CachedBlob::new(b"too long".to_vec()));
         let changes = vec![Change {
             from: ChangeEntry::default(),
-            to: ChangeEntry { name: "f.go".into(), hash: h(1) },
+            to: ChangeEntry {
+                name: "f.go".into(),
+                hash: h(1),
+            },
         }];
         assert!(uc.build(&changes, &cache).is_empty());
     }
@@ -256,7 +267,10 @@ mod tests {
         cache.insert(h(1), CachedBlob::new(b"x".to_vec()));
         let changes = vec![Change {
             from: ChangeEntry::default(),
-            to: ChangeEntry { name: "f.go".into(), hash: h(1) },
+            to: ChangeEntry {
+                name: "f.go".into(),
+                hash: h(1),
+            },
         }];
         assert!(uc.build(&changes, &cache).is_empty());
     }

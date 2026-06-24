@@ -39,11 +39,21 @@ pub fn computed_metrics_to_value(m: &ComputedMetrics) -> GoValue {
     );
     obj.push(
         "developer_coupling",
-        GoValue::Array(m.developer_coupling.iter().map(developer_coupling_to_value).collect()),
+        GoValue::Array(
+            m.developer_coupling
+                .iter()
+                .map(developer_coupling_to_value)
+                .collect(),
+        ),
     );
     obj.push(
         "file_ownership",
-        GoValue::Array(m.file_ownership.iter().map(file_ownership_to_value).collect()),
+        GoValue::Array(
+            m.file_ownership
+                .iter()
+                .map(file_ownership_to_value)
+                .collect(),
+        ),
     );
     obj.push("aggregate", aggregate_to_value(&m.aggregate));
     GoValue::Object(obj)
@@ -87,10 +97,19 @@ fn file_ownership_to_value(d: &FileOwnershipData) -> GoValue {
 fn aggregate_to_value(d: &AggregateData) -> GoValue {
     let mut o = GoMap::new_struct();
     o.push("total_files", GoValue::Int(i64::from(d.total_files)));
-    o.push("total_developers", GoValue::Int(i64::from(d.total_developers)));
+    o.push(
+        "total_developers",
+        GoValue::Int(i64::from(d.total_developers)),
+    );
     o.push("total_co_changes", GoValue::Int(d.total_co_changes));
-    o.push("avg_coupling_strength", GoValue::Float(d.avg_coupling_strength));
-    o.push("highly_coupled_pairs", GoValue::Int(i64::from(d.highly_coupled_pairs)));
+    o.push(
+        "avg_coupling_strength",
+        GoValue::Float(d.avg_coupling_strength),
+    );
+    o.push(
+        "highly_coupled_pairs",
+        GoValue::Int(i64::from(d.highly_coupled_pairs)),
+    );
     GoValue::Object(o)
 }
 
@@ -120,12 +139,22 @@ pub fn dense_report_to_value(r: &ReportData) -> GoValue {
     );
     obj.push(
         "FilesLines",
-        GoValue::Array(r.files_lines.iter().map(|&l| GoValue::Int(i64::from(l))).collect()),
+        GoValue::Array(
+            r.files_lines
+                .iter()
+                .map(|&l| GoValue::Int(i64::from(l)))
+                .collect(),
+        ),
     );
     obj.push("FilesMatrix", matrix_to_value(&r.files_matrix));
     obj.push(
         "ReversedPeopleDict",
-        GoValue::Array(r.reversed_people_dict.iter().map(|s| GoValue::Str(s.clone())).collect()),
+        GoValue::Array(
+            r.reversed_people_dict
+                .iter()
+                .map(|s| GoValue::Str(s.clone()))
+                .collect(),
+        ),
     );
     GoValue::Object(obj)
 }
@@ -176,22 +205,39 @@ mod tests {
                 shared_files: 3,
                 strength: 0.5,
             }],
-            aggregate: AggregateData { total_files: 1, ..Default::default() },
+            aggregate: AggregateData {
+                total_files: 1,
+                ..Default::default()
+            },
             ..Default::default()
         };
         let v = computed_metrics_to_value(&m);
-        let GoValue::Map(obj) = v else { panic!("expected object") };
+        let GoValue::Map(obj) = v else {
+            panic!("expected object")
+        };
         // struct-origin: declaration order preserved.
         let keys: Vec<&str> = obj.keys().map(String::as_str).collect();
         assert_eq!(
             keys,
-            ["file_coupling", "developer_coupling", "file_ownership", "aggregate"]
+            [
+                "file_coupling",
+                "developer_coupling",
+                "file_ownership",
+                "aggregate"
+            ]
         );
         let dc_arr = obj.get("developer_coupling").unwrap();
-        let GoValue::Array(items) = dc_arr else { panic!("expected array") };
-        let GoValue::Map(dc) = &items[0] else { panic!("expected object") };
+        let GoValue::Array(items) = dc_arr else {
+            panic!("expected array")
+        };
+        let GoValue::Map(dc) = &items[0] else {
+            panic!("expected object")
+        };
         assert!(!dc.contains_key("developer1_email")); // omitempty, empty.
-        assert_eq!(dc.get("developer2_email"), Some(&GoValue::Str("b@x".into())));
+        assert_eq!(
+            dc.get("developer2_email"),
+            Some(&GoValue::Str("b@x".into()))
+        );
         assert_eq!(dc.get("shared_file_changes"), Some(&GoValue::Int(3)));
     }
 

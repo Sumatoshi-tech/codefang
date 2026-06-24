@@ -162,7 +162,10 @@ fn effort_bar_chart(report: &GoValue) -> Option<Chart> {
     };
     bar.y_axis = co.y_axis("Effort");
 
-    let labels: Vec<String> = sorted.iter().map(|f| function_name(f).to_string()).collect();
+    let labels: Vec<String> = sorted
+        .iter()
+        .map(|f| function_name(f).to_string())
+        .collect();
     bar.set_x_axis_labels(&labels);
 
     let bar_data = GoValue::Array(
@@ -257,8 +260,8 @@ fn volume_vs_difficulty_chart(report: &GoValue) -> Option<Chart> {
         let name = function_name(f);
 
         // min(scatterSymbolSize + int(bugs*bugsMultiplier), maxSymbolSize).
-        let symbol_size = (SCATTER_SYMBOL_SIZE + (bugs * BUGS_MULTIPLIER) as i64)
-            .min(MAX_SYMBOL_SIZE);
+        let symbol_size =
+            (SCATTER_SYMBOL_SIZE + (bugs * BUGS_MULTIPLIER) as i64).min(MAX_SYMBOL_SIZE);
         let point = ScatterData {
             value: Some(GoValue::Array(vec![
                 GoValue::Float(volume),
@@ -420,7 +423,9 @@ mod tests {
 
     #[test]
     fn scatter_splits_risk_series_and_sizes_bubbles() {
-        let json = volume_vs_difficulty_chart(&raw_report()).expect("scatter").option_json();
+        let json = volume_vs_difficulty_chart(&raw_report())
+            .expect("scatter")
+            .option_json();
         // small → low risk (symbol 12); big → high risk (12 + 20 = 32).
         assert!(json.contains(
             "{\"name\":\"Low risk\",\"type\":\"scatter\",\"data\":[{\"value\":[50,2,\"small\"],\"symbolSize\":12}],\"itemStyle\":{\"color\":\"#22c55e\"}}"

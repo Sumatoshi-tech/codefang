@@ -30,7 +30,9 @@ pub(crate) fn with_uast_parser<R>(f: impl FnOnce(&cf_uast::Parser) -> R) -> R {
 
 /// Closed-form `history/burndown --head` metrics (single HEAD-commit window),
 /// shared by the json/yaml/bin head formats.
-pub fn burndown_head_metrics(sub: &clap::ArgMatches) -> Option<cf_analyzer_burndown::ComputedMetrics> {
+pub fn burndown_head_metrics(
+    sub: &clap::ArgMatches,
+) -> Option<cf_analyzer_burndown::ComputedMetrics> {
     use cf_analyzer_burndown::metrics::{AggregateData, SurvivalData};
     use cf_gitlib::blob::CachedBlob;
     use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
@@ -148,7 +150,8 @@ pub fn burndown_head_timeseries(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     }
 
     let committer = commit.committer();
-    let timestamp = format_rfc3339_offset(committer.when.seconds(), committer.when.offset_minutes());
+    let timestamp =
+        format_rfc3339_offset(committer.when.seconds(), committer.when.offset_minutes());
     let hash = commit.hash().to_string();
 
     // burndown ExtractCommitTimeSeries map: sorted keys lines_added, lines_removed.
@@ -170,7 +173,10 @@ pub fn burndown_head_timeseries(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let mut root = GoMap::new_struct();
     root.insert("version", GoValue::Str("codefang.timeseries.v1".into()));
     root.insert("tick_size_hours", GoValue::Int(24));
-    root.insert("analyzers", GoValue::Array(vec![GoValue::Str("burndown".into())]));
+    root.insert(
+        "analyzers",
+        GoValue::Array(vec![GoValue::Str("burndown".into())]),
+    );
     root.insert("commits", GoValue::Array(vec![GoValue::Map(commit_obj)]));
 
     // json.Encoder.SetIndent("", "  ").Encode → 2-space indent + trailing newline.
@@ -553,8 +559,12 @@ pub(crate) fn anomaly_walk(sub: &clap::ArgMatches) -> Option<AnomalyWalk> {
                             continue;
                         }
                         let old_lines = blob_from.count_lines().map_or(0, |n| n as i64);
-                        let (a, r, _changed) =
-                            compute_diff_line_stats(repo, change.from.hash, change.to.hash, old_lines);
+                        let (a, r, _changed) = compute_diff_line_stats(
+                            repo,
+                            change.from.hash,
+                            change.to.hash,
+                            old_lines,
+                        );
                         added += a;
                         removed += r;
                     }
@@ -569,7 +579,9 @@ pub(crate) fn anomaly_walk(sub: &clap::ArgMatches) -> Option<AnomalyWalk> {
         // count each non-empty value into cm.languages.
         let mut by_blob: BTreeMap<cf_gitlib::hash::Hash, String> = BTreeMap::new();
         let mut detect = |entry: &cf_gitlib::changes::ChangeEntry| {
-            let data = CachedBlob::from_repo(repo, entry.hash).map(|b| b.data).unwrap_or_default();
+            let data = CachedBlob::from_repo(repo, entry.hash)
+                .map(|b| b.data)
+                .unwrap_or_default();
             by_blob.insert(entry.hash, devs_detect_language(&entry.name, &data));
         };
         for change in &changes {
@@ -627,7 +639,10 @@ pub(crate) fn anomaly_walk(sub: &clap::ArgMatches) -> Option<AnomalyWalk> {
                 }
             })
             .or_insert((when, when));
-        commits_by_tick.entry(tick).or_default().push(hash_str.clone());
+        commits_by_tick
+            .entry(tick)
+            .or_default()
+            .push(hash_str.clone());
         tick_by_hash.entry(hash_str.clone()).or_insert(tick);
         when_by_hash
             .entry(hash_str.clone())
@@ -790,8 +805,8 @@ pub fn anomaly_timeseries_contribution(
 /// serialized compact through cf-gojson (`to_json_compact`: the reference `json.Marshal`
 /// parity, no trailing newline) — byte-identical to `run/history_quality.json`.
 pub fn quality_metrics(sub: &clap::ArgMatches) -> Option<cf_quality::ComputedMetrics> {
-    use std::collections::BTreeMap;
     use cf_quality::{compute_all_metrics, ReportData, TickBounds, TickQuality};
+    use std::collections::BTreeMap;
 
     let walk = quality_walk(sub)?;
 
@@ -827,7 +842,10 @@ pub fn quality_metrics(sub: &clap::ArgMatches) -> Option<cf_quality::ComputedMet
         );
     }
 
-    let input = ReportData { tick_quality, tick_bounds };
+    let input = ReportData {
+        tick_quality,
+        tick_bounds,
+    };
     Some(compute_all_metrics(&input))
 }
 
@@ -897,14 +915,14 @@ pub(crate) fn quality_walk(sub: &clap::ArgMatches) -> Option<Vec<QualityCommit>>
     let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
     let opts_ref = &opts;
     let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
-      // Per-thread UAST parser, reused across this thread's commits (tree-sitter
-      // parsers are not thread-safe, so never shared across threads).
-      crate::handlers::history::with_uast_parser(|parser| {
-        let commit = repo.lookup_commit(hash).ok()?;
-        let changes = commit_tree_changes(repo, &commit)?;
-        let mut cache = super::uast_walk::CommitParseCache::new(repo, parser, opts_ref);
-        Some(quality_commit_product(&changes, &mut cache))
-      })
+        // Per-thread UAST parser, reused across this thread's commits (tree-sitter
+        // parsers are not thread-safe, so never shared across threads).
+        crate::handlers::history::with_uast_parser(|parser| {
+            let commit = repo.lookup_commit(hash).ok()?;
+            let changes = commit_tree_changes(repo, &commit)?;
+            let mut cache = super::uast_walk::CommitParseCache::new(repo, parser, opts_ref);
+            Some(quality_commit_product(&changes, &mut cache))
+        })
     })?;
 
     // ---- sequential ordered identity/tick stamping ----------------------------
@@ -1066,7 +1084,10 @@ pub fn quality_timeseries_contribution(
     let mut commit_meta = Vec::new();
     for c in &walk {
         let summary = cf_quality::commit_summary(&c.tq);
-        per_commit.push((c.hash.clone(), cf_quality::serialize::commit_summary_value(&summary)));
+        per_commit.push((
+            c.hash.clone(),
+            cf_quality::serialize::commit_summary_value(&summary),
+        ));
         commit_meta.push((
             c.hash.clone(),
             c.tick,
@@ -1088,10 +1109,13 @@ pub fn quality_timeseries_contribution(
 fn merge_tick_quality(dst: &mut cf_quality::TickQuality, src: &cf_quality::TickQuality) {
     dst.complexities.extend_from_slice(&src.complexities);
     dst.cognitives.extend_from_slice(&src.cognitives);
-    dst.max_complexities.extend_from_slice(&src.max_complexities);
+    dst.max_complexities
+        .extend_from_slice(&src.max_complexities);
     dst.functions.extend_from_slice(&src.functions);
-    dst.halstead_volumes.extend_from_slice(&src.halstead_volumes);
-    dst.halstead_efforts.extend_from_slice(&src.halstead_efforts);
+    dst.halstead_volumes
+        .extend_from_slice(&src.halstead_volumes);
+    dst.halstead_efforts
+        .extend_from_slice(&src.halstead_efforts);
     dst.delivered_bugs.extend_from_slice(&src.delivered_bugs);
     dst.comment_scores.extend_from_slice(&src.comment_scores);
     dst.doc_coverages.extend_from_slice(&src.doc_coverages);
@@ -1123,8 +1147,10 @@ fn accumulate_quality_file(root: &cf_uast::Node, tq: &mut cf_quality::TickQualit
     // --- complexity (cf_complexity::Analyzer::analyze over its node model) ---
     let cx_root = uast_to_cx_node(root);
     let cx = cf_complexity::Analyzer.analyze(Some(&cx_root));
-    tq.complexities.push(govalue_int(&cx, "total_complexity") as f64);
-    tq.cognitives.push(govalue_int(&cx, "cognitive_complexity") as f64);
+    tq.complexities
+        .push(govalue_int(&cx, "total_complexity") as f64);
+    tq.cognitives
+        .push(govalue_int(&cx, "cognitive_complexity") as f64);
     tq.max_complexities.push(govalue_int(&cx, "max_complexity"));
     tq.functions.push(govalue_int(&cx, "total_functions"));
 
@@ -1138,7 +1164,8 @@ fn accumulate_quality_file(root: &cf_uast::Node, tq: &mut cf_quality::TickQualit
     match cf_comments::Analyzer::new().analyze(Some(root)) {
         Ok(c) => {
             tq.comment_scores.push(govalue_float(&c, "overall_score"));
-            tq.doc_coverages.push(govalue_float(&c, "documentation_coverage"));
+            tq.doc_coverages
+                .push(govalue_float(&c, "documentation_coverage"));
         }
         Err(_) => {
             tq.comment_scores.push(0.0);
@@ -1188,7 +1215,11 @@ fn uast_to_cx_node(n: &cf_uast::Node) -> cf_complexity::node::Node {
     let mut out = cf_complexity::node::Node::new(n.node_type.clone());
     out.token = n.token.clone();
     out.roles = n.roles.clone();
-    out.props = n.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    out.props = n
+        .props
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
     out.pos = n.pos.as_ref().map(|p| cf_complexity::node::Positions {
         start_line: p.start_line as u32,
         start_col: p.start_col as u32,
@@ -1245,8 +1276,8 @@ pub fn sentiment_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 /// serializer (json / yaml / bin) is chosen by the caller so all formats follow
 /// from the one computation (the reference `ComputeAllMetrics` → `FormatReport*`).
 pub fn sentiment_metrics(sub: &clap::ArgMatches) -> Option<cf_sentiment::ComputedMetrics> {
-    use std::collections::BTreeMap;
     use cf_sentiment::{compute_all_metrics, ReportData, TickBounds};
+    use std::collections::BTreeMap;
 
     let walk = sentiment_walk(sub)?;
 
@@ -1254,7 +1285,10 @@ pub fn sentiment_metrics(sub: &clap::ArgMatches) -> Option<cf_sentiment::Compute
     let mut commits_by_tick: BTreeMap<i64, Vec<String>> = BTreeMap::new();
     let mut tick_when: BTreeMap<i64, (i64, i64)> = BTreeMap::new();
     for c in &walk {
-        commits_by_tick.entry(c.tick).or_default().push(c.hash.clone());
+        commits_by_tick
+            .entry(c.tick)
+            .or_default()
+            .push(c.hash.clone());
         tick_when
             .entry(c.tick)
             .and_modify(|(lo, hi)| {
@@ -1356,14 +1390,14 @@ pub(crate) fn sentiment_walk(sub: &clap::ArgMatches) -> Option<Vec<SentimentComm
     let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
     let opts_ref = &opts;
     let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
-      // Per-thread UAST parser, reused across this thread's commits (tree-sitter
-      // parsers are not thread-safe, so never shared across threads).
-      crate::handlers::history::with_uast_parser(|parser| {
-        let commit = repo.lookup_commit(hash).ok()?;
-        let changes = commit_tree_changes(repo, &commit)?;
-        let mut cache = super::uast_walk::CommitParseCache::new(repo, parser, opts_ref);
-        Some(sentiment_commit_product(&changes, &mut cache))
-      })
+        // Per-thread UAST parser, reused across this thread's commits (tree-sitter
+        // parsers are not thread-safe, so never shared across threads).
+        crate::handlers::history::with_uast_parser(|parser| {
+            let commit = repo.lookup_commit(hash).ok()?;
+            let changes = commit_tree_changes(repo, &commit)?;
+            let mut cache = super::uast_walk::CommitParseCache::new(repo, parser, opts_ref);
+            Some(sentiment_commit_product(&changes, &mut cache))
+        })
     })?;
 
     // ---- sequential ordered identity/tick stamping ----------------------------
@@ -1408,7 +1442,9 @@ pub(crate) fn sentiment_commit_product(
 ) -> Option<Vec<String>> {
     use super::uast_walk::{ParseOutcome, SPILL_THRESHOLD};
     use cf_gitlib::changes::ChangeAction;
-    use cf_sentiment::analyzer::{merge_comments, CommentNode, DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH};
+    use cf_sentiment::analyzer::{
+        merge_comments, CommentNode, DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH,
+    };
     use cf_uast_node::UAST_COMMENT;
 
     // Spill rule: > 32 changes ⇒ the analyzer sees zero UAST changes; the
@@ -1449,7 +1485,10 @@ pub(crate) fn sentiment_commit_product(
         }
     }
 
-    Some(merge_comments(&comment_nodes, DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH))
+    Some(merge_comments(
+        &comment_nodes,
+        DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH,
+    ))
 }
 
 /// Per-commit sentiment NDJSON records (forked leaf): EVERY commit emits a
@@ -1514,7 +1553,10 @@ pub fn sentiment_timeseries_contribution(
         let empty: Vec<String> = Vec::new();
         let comments = c.comments.as_ref().unwrap_or(&empty);
         let mut entry = GoMap::new_map();
-        entry.insert("comment_count".to_string(), GoValue::Int(comments.len() as i64));
+        entry.insert(
+            "comment_count".to_string(),
+            GoValue::Int(comments.len() as i64),
+        );
         if !comments.is_empty() {
             entry.insert(
                 "sentiment".to_string(),
@@ -1562,7 +1604,9 @@ fn collect_comment_nodes(
 /// files pass `is_supported` but fail to parse; this gate scopes the line-based
 /// comment fallback to exactly those files.
 fn is_shell_path(name: &str) -> bool {
-    name.rsplit('.').next().is_some_and(|ext| ext.eq_ignore_ascii_case("sh"))
+    name.rsplit('.')
+        .next()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("sh"))
         && name.contains('.')
 }
 
@@ -1780,14 +1824,14 @@ pub(crate) fn imports_walk(sub: &clap::ArgMatches) -> Option<Vec<ImportsCommit>>
     let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
     let opts_ref = &opts;
     let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
-      // Per-thread UAST parser, reused across this thread's commits (tree-sitter
-      // parsers are not thread-safe, so never shared across threads).
-      crate::handlers::history::with_uast_parser(|parser| {
-        let commit = repo.lookup_commit(hash).ok()?;
-        let changes = commit_tree_changes(repo, &commit)?;
-        let mut cache = super::uast_walk::CommitParseCache::new(repo, parser, opts_ref);
-        Some(imports_commit_product(&changes, &mut cache))
-      })
+        // Per-thread UAST parser, reused across this thread's commits (tree-sitter
+        // parsers are not thread-safe, so never shared across threads).
+        crate::handlers::history::with_uast_parser(|parser| {
+            let commit = repo.lookup_commit(hash).ok()?;
+            let changes = commit_tree_changes(repo, &commit)?;
+            let mut cache = super::uast_walk::CommitParseCache::new(repo, parser, opts_ref);
+            Some(imports_commit_product(&changes, &mut cache))
+        })
     })?;
 
     // ---- sequential ordered identity/tick stamping ----------------------------
@@ -1865,7 +1909,10 @@ pub(crate) fn imports_commit_product(
         // Lang is the "uast" fallback in the live binary.
         let lang = "uast";
         for imp in imports {
-            entries.push(ImportEntry { lang: lang.to_string(), import: imp });
+            entries.push(ImportEntry {
+                lang: lang.to_string(),
+                import: imp,
+            });
         }
     }
     entries
@@ -1929,12 +1976,16 @@ pub fn imports_timeseries_contribution(
         if c.entries.is_empty() {
             continue;
         }
-        let mut languages: std::collections::BTreeMap<&str, i64> = std::collections::BTreeMap::new();
+        let mut languages: std::collections::BTreeMap<&str, i64> =
+            std::collections::BTreeMap::new();
         for e in &c.entries {
             *languages.entry(e.lang.as_str()).or_insert(0) += 1;
         }
         let mut entry = GoMap::new_map();
-        entry.insert("import_count".to_string(), GoValue::Int(c.entries.len() as i64));
+        entry.insert(
+            "import_count".to_string(),
+            GoValue::Int(c.entries.len() as i64),
+        );
         let mut langs = GoMap::new_map();
         for (lang, n) in &languages {
             langs.insert((*lang).to_string(), GoValue::Int(*n));
@@ -2048,7 +2099,9 @@ pub fn file_history_report_value(sub: &clap::ArgMatches) -> Option<cf_gojson::Go
 /// serializer reads struct fields directly (the reference implementation
 /// `generateText` calls `ComputeAllMetrics` on the report), so it must see the
 /// identical metrics the json/yaml bytes encode.
-pub fn file_history_run_metrics(sub: &clap::ArgMatches) -> Option<cf_file_history::ComputedMetrics> {
+pub fn file_history_run_metrics(
+    sub: &clap::ArgMatches,
+) -> Option<cf_file_history::ComputedMetrics> {
     file_history_run(sub).map(|r| r.metrics)
 }
 
@@ -2105,7 +2158,9 @@ pub(crate) fn file_history_run(sub: &clap::ArgMatches) -> Option<FileHistoryRun>
     use cf_composition::classifier::Classifier;
     use cf_file_history::metrics::{FileHistory, ReportData, TickBounds};
     use cf_file_history::tc::{CategoryCounts, LineStats};
-    use cf_file_history::{compute_all_metrics_with_options, computed_metrics_to_go, MetricOptions};
+    use cf_file_history::{
+        compute_all_metrics_with_options, computed_metrics_to_go, MetricOptions,
+    };
     use cf_gitlib::blob::CachedBlob;
     use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
     use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
@@ -2185,7 +2240,8 @@ pub(crate) fn file_history_run(sub: &clap::ArgMatches) -> Option<FileHistoryRun>
     // assignment are consumed in plain oldest-first order, independent of W.
     let leaf_workers = crate::handlers::leaf_worker_count();
     let consume_order: Vec<(usize, cf_gitlib::hash::Hash)> = {
-        let mut v: Vec<(usize, cf_gitlib::hash::Hash)> = hashes.iter().copied().enumerate().collect();
+        let mut v: Vec<(usize, cf_gitlib::hash::Hash)> =
+            hashes.iter().copied().enumerate().collect();
         v.sort_by_key(|(p, _)| (*p % leaf_workers, *p));
         v
     };
@@ -2205,7 +2261,9 @@ pub(crate) fn file_history_run(sub: &clap::ArgMatches) -> Option<FileHistoryRun>
     let author_id_by_hash: HashMap<cf_gitlib::hash::Hash, i64> = {
         let mut m = HashMap::with_capacity(hashes.len());
         for hash in &hashes {
-            let Ok(commit) = repo.lookup_commit(*hash) else { continue };
+            let Ok(commit) = repo.lookup_commit(*hash) else {
+                continue;
+            };
             let gsig = commit.author();
             let id = identity.consume_signature(&cf_analyzers_plumbing::Signature {
                 name: gsig.name.clone(),
@@ -2286,15 +2344,33 @@ pub(crate) fn file_history_run(sub: &clap::ArgMatches) -> Option<FileHistoryRun>
                         let Ok(blob) = CachedBlob::from_repo(repo, change.to.hash) else {
                             continue;
                         };
-                        let Ok(added) = blob.count_lines() else { continue };
-                        (change.to.name.clone(), LineStats { added: added as i64, removed: 0, changed: 0 })
+                        let Ok(added) = blob.count_lines() else {
+                            continue;
+                        };
+                        (
+                            change.to.name.clone(),
+                            LineStats {
+                                added: added as i64,
+                                removed: 0,
+                                changed: 0,
+                            },
+                        )
                     }
                     ChangeAction::Delete => {
                         let Ok(blob) = CachedBlob::from_repo(repo, change.from.hash) else {
                             continue;
                         };
-                        let Ok(removed) = blob.count_lines() else { continue };
-                        (change.from.name.clone(), LineStats { added: 0, removed: removed as i64, changed: 0 })
+                        let Ok(removed) = blob.count_lines() else {
+                            continue;
+                        };
+                        (
+                            change.from.name.clone(),
+                            LineStats {
+                                added: 0,
+                                removed: removed as i64,
+                                changed: 0,
+                            },
+                        )
                     }
                     ChangeAction::Modify => {
                         let Ok(blob_from) = CachedBlob::from_repo(repo, change.from.hash) else {
@@ -2310,9 +2386,21 @@ pub(crate) fn file_history_run(sub: &clap::ArgMatches) -> Option<FileHistoryRun>
                             (0, 0, 0)
                         } else {
                             let old_lines = blob_from.count_lines().map_or(0, |n| n as i64);
-                            compute_diff_line_stats(repo, change.from.hash, change.to.hash, old_lines)
+                            compute_diff_line_stats(
+                                repo,
+                                change.from.hash,
+                                change.to.hash,
+                                old_lines,
+                            )
                         };
-                        (change.to.name.clone(), LineStats { added, removed, changed })
+                        (
+                            change.to.name.clone(),
+                            LineStats {
+                                added,
+                                removed,
+                                changed,
+                            },
+                        )
                     }
                 };
                 line_stats.push(entry);
@@ -2331,7 +2419,12 @@ pub(crate) fn file_history_run(sub: &clap::ArgMatches) -> Option<FileHistoryRun>
             category_counts.increment(map_category(cat));
         }
 
-        Some(FileHistoryPrepared { num_parents, changes, line_stats, category_counts })
+        Some(FileHistoryPrepared {
+            num_parents,
+            changes,
+            line_stats,
+            category_counts,
+        })
     })?;
 
     // Cumulative per-path file history (BTreeMap ⇒ deterministic path order).
@@ -2640,7 +2733,10 @@ pub fn file_history_timeseries_contribution(
             }
         }
         let mut entry = GoMap::new_map();
-        entry.insert("files_touched".to_string(), GoValue::Int(cd.path_actions.len() as i64));
+        entry.insert(
+            "files_touched".to_string(),
+            GoValue::Int(cd.path_actions.len() as i64),
+        );
         entry.insert("lines_added".to_string(), GoValue::Int(added));
         entry.insert("lines_removed".to_string(), GoValue::Int(removed));
         entry.insert("lines_changed".to_string(), GoValue::Int(changed));
@@ -2832,7 +2928,11 @@ fn compute_diff_line_stats(
 /// is the cf-gojson-parity compact encoder (no trailing newline).
 pub fn typos_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let report = typos_report_data(sub)?;
-    Some(cf_typos::metrics_report_value(&report).to_json().into_bytes())
+    Some(
+        cf_typos::metrics_report_value(&report)
+            .to_json()
+            .into_bytes(),
+    )
 }
 
 /// `--format yaml` bytes for `history/typos`: the run-level YAML header (reference:
@@ -3046,7 +3146,12 @@ pub(crate) fn typos_walk(sub: &clap::ArgMatches) -> Option<Vec<TyposCommit>> {
 /// Configure/Initialize).
 pub(crate) fn typos_max_distance(sub: &clap::ArgMatches) -> i64 {
     const DEFAULT_MAX_DISTANCE: i64 = 4;
-    let v = sub.try_get_one::<i64>("typos-max-distance").ok().flatten().copied().unwrap_or(0);
+    let v = sub
+        .try_get_one::<i64>("typos-max-distance")
+        .ok()
+        .flatten()
+        .copied()
+        .unwrap_or(0);
     if v <= 0 {
         DEFAULT_MAX_DISTANCE
     } else {
@@ -3147,13 +3252,7 @@ pub(crate) fn typos_commit_product(
         )
         .unwrap_or_default();
 
-        let cand = find_typo_candidates(
-            &ops,
-            &lines_before,
-            &lines_after,
-            max_distance,
-            lctx,
-        );
+        let cand = find_typo_candidates(&ops, &lines_before, &lines_after, max_distance, lctx);
         if cand.candidates.is_empty() {
             continue;
         }
@@ -3207,13 +3306,24 @@ pub fn typos_ndjson_records(
                 m.insert("File".to_string(), GoValue::Str(t.file.clone()));
                 m.insert(
                     "Commit".to_string(),
-                    GoValue::Array(t.commit.0.iter().map(|b| GoValue::Int(i64::from(*b))).collect()),
+                    GoValue::Array(
+                        t.commit
+                            .0
+                            .iter()
+                            .map(|b| GoValue::Int(i64::from(*b)))
+                            .collect(),
+                    ),
                 );
                 m.insert("Line".to_string(), GoValue::Int(t.line));
                 GoValue::Object(m)
             })
             .collect();
-        let hash_hex: String = c.typos[0].commit.0.iter().map(|b| format!("{b:02x}")).collect();
+        let hash_hex: String = c.typos[0]
+            .commit
+            .0
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
         records.push(super::history_formats::NdjsonRecord {
             pos,
             hash: hash_hex,
@@ -3226,7 +3336,6 @@ pub fn typos_ndjson_records(
     }
     Some(records)
 }
-
 
 /// A focused typo candidate line pair.
 #[derive(Clone, Copy)]
@@ -3302,7 +3411,10 @@ fn find_typo_candidates(
                         let sa = String::from_utf8_lossy(lines_after[lau]);
                         let dist = lctx.distance(&sb, &sa) as i64;
                         if dist <= max_distance {
-                            candidates.push(TypoCandidate { before: lb, after: la });
+                            candidates.push(TypoCandidate {
+                                before: lb,
+                                after: la,
+                            });
                             focused_before.insert(lb);
                             focused_after.insert(la);
                         }
@@ -3359,7 +3471,11 @@ fn collect_identifiers_on_lines(
 /// `ac.FileDiffs`, which the framework computes with libgit2 (the diff pipeline
 /// `processDiffResponse` → `convertDiffOpsToDMP`), so byte-parity requires the
 /// libgit2 op stream, reproduced here by `cf_gitlib::worker::Worker::batch_diff_blobs`.
-fn devs_modify_line_stats(worker: &cf_gitlib::worker::Worker, old_data: &[u8], new_data: &[u8]) -> (i64, i64, i64) {
+fn devs_modify_line_stats(
+    worker: &cf_gitlib::worker::Worker,
+    old_data: &[u8],
+    new_data: &[u8],
+) -> (i64, i64, i64) {
     use cf_gitlib::worker::{DiffOpType, DiffRequest};
     let req = DiffRequest {
         old_data: old_data.to_vec(),
@@ -3493,7 +3609,9 @@ fn devs_detect_language(name: &str, data: &[u8]) -> String {
 /// fast-path extension). [`devs_detect_language`].
 pub fn devs_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let metrics = devs_run_metrics(sub)?;
-    Some(cf_gojson::marshal(&cf_devs::serialize::computed_metrics_to_go(&metrics)))
+    Some(cf_gojson::marshal(
+        &cf_devs::serialize::computed_metrics_to_go(&metrics),
+    ))
 }
 
 /// Builds the full-revwalk `history/devs --format yaml` report bytes (no
@@ -3539,7 +3657,10 @@ pub fn devs_run_metrics(sub: &clap::ArgMatches) -> Option<cf_devs::ComputedMetri
         0,
         walk.tick_bounds,
     );
-    Some(cf_devs::compute_all_metrics(&input, &MetricOptions::default()))
+    Some(cf_devs::compute_all_metrics(
+        &input,
+        &MetricOptions::default(),
+    ))
 }
 
 /// The raw products of one `history/devs` revwalk, shared by the aggregated
@@ -3628,7 +3749,11 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
         let raw_change_count = raw_changes.len();
         // Oversized commits are dropped before any analyzer — no per-change work.
         if raw_change_count > MAX_CHANGES_PER_COMMIT {
-            return Some(DevsPrepared { raw_change_count, filtered_count: 0, attributions: Vec::new() });
+            return Some(DevsPrepared {
+                raw_change_count,
+                filtered_count: 0,
+                attributions: Vec::new(),
+            });
         }
         let changes: Vec<_> = raw_changes
             .into_iter()
@@ -3657,18 +3782,21 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
             // per change.
             let mut langs: std::collections::HashMap<cf_gitlib::hash::Hash, String> =
                 std::collections::HashMap::new();
-            let detect_into = |langs: &mut std::collections::HashMap<cf_gitlib::hash::Hash, String>,
-                                   name: &str,
-                                   h: cf_gitlib::hash::Hash| {
-                let lang = match CachedBlob::from_repo(repo, h) {
-                    Ok(b) => devs_detect_language(name, &b.data),
-                    Err(_) => String::new(),
+            let detect_into =
+                |langs: &mut std::collections::HashMap<cf_gitlib::hash::Hash, String>,
+                 name: &str,
+                 h: cf_gitlib::hash::Hash| {
+                    let lang = match CachedBlob::from_repo(repo, h) {
+                        Ok(b) => devs_detect_language(name, &b.data),
+                        Err(_) => String::new(),
+                    };
+                    langs.insert(h, lang);
                 };
-                langs.insert(h, lang);
-            };
             for change in &changes {
                 match change.action {
-                    ChangeAction::Insert => detect_into(&mut langs, &change.to.name, change.to.hash),
+                    ChangeAction::Insert => {
+                        detect_into(&mut langs, &change.to.name, change.to.hash)
+                    }
                     ChangeAction::Delete => {
                         detect_into(&mut langs, &change.from.name, change.from.hash);
                     }
@@ -3685,15 +3813,27 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
                         let Ok(blob) = CachedBlob::from_repo(repo, change.to.hash) else {
                             continue;
                         };
-                        let Ok(lines) = blob.count_lines() else { continue };
-                        cf_devs::LineStats { added: lines as i64, removed: 0, changed: 0 }
+                        let Ok(lines) = blob.count_lines() else {
+                            continue;
+                        };
+                        cf_devs::LineStats {
+                            added: lines as i64,
+                            removed: 0,
+                            changed: 0,
+                        }
                     }
                     ChangeAction::Delete => {
                         let Ok(blob) = CachedBlob::from_repo(repo, change.from.hash) else {
                             continue;
                         };
-                        let Ok(lines) = blob.count_lines() else { continue };
-                        cf_devs::LineStats { added: 0, removed: lines as i64, changed: 0 }
+                        let Ok(lines) = blob.count_lines() else {
+                            continue;
+                        };
+                        cf_devs::LineStats {
+                            added: 0,
+                            removed: lines as i64,
+                            changed: 0,
+                        }
                     }
                     ChangeAction::Modify => {
                         let Ok(blob_from) = CachedBlob::from_repo(repo, change.from.hash) else {
@@ -3714,11 +3854,19 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
                         // per-dev language lists (and busfactor contributor
                         // counts) carry. Only nil/binary blobs are skipped.
                         if change.from.hash == change.to.hash {
-                            cf_devs::LineStats { added: 0, removed: 0, changed: 0 }
+                            cf_devs::LineStats {
+                                added: 0,
+                                removed: 0,
+                                changed: 0,
+                            }
                         } else {
                             let (added, removed, changed) =
                                 devs_modify_line_stats(&worker, &blob_from.data, &blob_to.data);
-                            cf_devs::LineStats { added, removed, changed }
+                            cf_devs::LineStats {
+                                added,
+                                removed,
+                                changed,
+                            }
                         }
                     }
                 };
@@ -3733,7 +3881,11 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
                 attributions.push((lang, stats));
             }
         }
-        Some(DevsPrepared { raw_change_count, filtered_count, attributions })
+        Some(DevsPrepared {
+            raw_change_count,
+            filtered_count,
+            attributions,
+        })
     })?;
 
     // ---- sequential ordered-reduce stage -------------------------------------
@@ -3833,7 +3985,9 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
         // CommitMeta: tick + committer-time
         // RFC3339 for the per-commit time-series stream, deduped by first TC.
         tick_by_hash.entry(hex.clone()).or_insert(tick);
-        when_by_hash.entry(hex.clone()).or_insert((when, when_offset));
+        when_by_hash
+            .entry(hex.clone())
+            .or_insert((when, when_offset));
 
         // Tick bounds: min/max committer time over CDD commits (tc.Timestamp).
         tick_when
@@ -3918,7 +4072,10 @@ pub fn devs_run_timeseries_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
             devs.insert("lines_added".to_string(), GoValue::Int(cdd.added));
             devs.insert("lines_removed".to_string(), GoValue::Int(cdd.removed));
             devs.insert("lines_changed".to_string(), GoValue::Int(cdd.changed));
-            devs.insert("net_change".to_string(), GoValue::Int(cdd.added - cdd.removed));
+            devs.insert(
+                "net_change".to_string(),
+                GoValue::Int(cdd.added - cdd.removed),
+            );
             devs.insert("author_id".to_string(), GoValue::Int(cdd.author_id));
             if !cdd.languages.is_empty() {
                 // languages: map[string]LineStats (key-sorted by language name).
@@ -4021,7 +4178,10 @@ pub fn devs_timeseries_contribution(
         entry.insert("lines_added".to_string(), GoValue::Int(cdd.added));
         entry.insert("lines_removed".to_string(), GoValue::Int(cdd.removed));
         entry.insert("lines_changed".to_string(), GoValue::Int(cdd.changed));
-        entry.insert("net_change".to_string(), GoValue::Int(cdd.added - cdd.removed));
+        entry.insert(
+            "net_change".to_string(),
+            GoValue::Int(cdd.added - cdd.removed),
+        );
         entry.insert("author_id".to_string(), GoValue::Int(cdd.author_id));
         if !cdd.languages.is_empty() {
             let mut langs = GoMap::new_map();
@@ -4063,7 +4223,9 @@ pub fn devs_timeseries_contribution(
 ///    emitting subtly-divergent bytes.
 pub fn devs_head_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let metrics = devs_head_metrics(sub)?;
-    Some(cf_gojson::marshal(&cf_devs::serialize::computed_metrics_to_go(&metrics)))
+    Some(cf_gojson::marshal(
+        &cf_devs::serialize::computed_metrics_to_go(&metrics),
+    ))
 }
 
 /// Builds the `history/devs --head --format yaml` report bytes for the HEAD
@@ -4123,7 +4285,10 @@ pub fn devs_head_metrics(sub: &clap::ArgMatches) -> Option<cf_devs::ComputedMetr
             0,
             BTreeMap::new(),
         );
-        return Some(cf_devs::compute_all_metrics(&empty, &MetricOptions::default()));
+        return Some(cf_devs::compute_all_metrics(
+            &empty,
+            &MetricOptions::default(),
+        ));
     }
 
     let author = commit.author();
@@ -4179,6 +4344,10 @@ pub fn devs_head_metrics(sub: &clap::ArgMatches) -> Option<cf_devs::ComputedMetr
 
     // TickSize defaults to 24h (no --tick-size on run); 0 → resolve_tick_size
     // applies the default inside parse_tick_data_with_bounds.
-    let input = parse_tick_data_with_bounds(&commit_dev_data, &commits_by_tick, names, 0, tick_bounds);
-    Some(cf_devs::compute_all_metrics(&input, &MetricOptions::default()))
+    let input =
+        parse_tick_data_with_bounds(&commit_dev_data, &commits_by_tick, names, 0, tick_bounds);
+    Some(cf_devs::compute_all_metrics(
+        &input,
+        &MetricOptions::default(),
+    ))
 }

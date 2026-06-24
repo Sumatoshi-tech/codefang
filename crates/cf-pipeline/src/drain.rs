@@ -16,9 +16,7 @@ use std::thread;
 /// The drained channel carries `()` and is never sent to — receivers observe
 /// closure via `recv()` returning `Err`.
 #[must_use]
-pub fn signal_on_drain<T: Send + 'static>(
-    src: Receiver<T>,
-) -> (Receiver<T>, Receiver<()>) {
+pub fn signal_on_drain<T: Send + 'static>(src: Receiver<T>) -> (Receiver<T>, Receiver<()>) {
     let (out_tx, out_rx) = crossbeam_channel::unbounded::<T>();
     let (sig_tx, sig_rx) = crossbeam_channel::bounded::<()>(0);
 

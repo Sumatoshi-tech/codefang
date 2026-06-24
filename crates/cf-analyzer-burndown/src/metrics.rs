@@ -35,7 +35,12 @@ impl SurvivalData {
         m.push("survival_rate", GoValue::Float(self.survival_rate));
         m.push(
             "band_breakdown",
-            GoValue::Array(self.band_breakdown.iter().map(|&v| GoValue::Int(v)).collect()),
+            GoValue::Array(
+                self.band_breakdown
+                    .iter()
+                    .map(|&v| GoValue::Int(v))
+                    .collect(),
+            ),
         );
         GoValue::Map(m)
     }
@@ -65,10 +70,19 @@ pub struct AggregateData {
 impl AggregateData {
     fn to_go_value(&self) -> GoValue {
         let mut m = GoMap::new_struct();
-        m.push("total_current_lines", GoValue::Int(self.total_current_lines));
+        m.push(
+            "total_current_lines",
+            GoValue::Int(self.total_current_lines),
+        );
         m.push("total_peak_lines", GoValue::Int(self.total_peak_lines));
-        m.push("overall_survival_rate", GoValue::Float(self.overall_survival_rate));
-        m.push("analysis_period_days", GoValue::Int(self.analysis_period_days));
+        m.push(
+            "overall_survival_rate",
+            GoValue::Float(self.overall_survival_rate),
+        );
+        m.push(
+            "analysis_period_days",
+            GoValue::Int(self.analysis_period_days),
+        );
         m.push("num_bands", GoValue::Int(self.num_bands));
         m.push("num_samples", GoValue::Int(self.num_samples));
         m.push("tracked_files", GoValue::Int(self.tracked_files));
@@ -115,7 +129,12 @@ impl ComputedMetrics {
         m.push("aggregate", self.aggregate.to_go_value());
         m.push(
             "global_survival",
-            GoValue::Array(self.global_survival.iter().map(SurvivalData::to_go_value).collect()),
+            GoValue::Array(
+                self.global_survival
+                    .iter()
+                    .map(SurvivalData::to_go_value)
+                    .collect(),
+            ),
         );
         m.push("file_survival", nil(&self.file_survival));
         m.push("developer_survival", nil(&self.developer_survival));
@@ -181,7 +200,12 @@ pub type DenseHistory = Vec<Vec<i64>>;
 /// assert!(group_sparse_history(&SparseHistory::new(), 10, 10, 0).is_empty());
 /// ```
 #[must_use]
-pub fn group_sparse_history(history: &SparseHistory, sampling: i64, granularity: i64, last_tick: i64) -> DenseHistory {
+pub fn group_sparse_history(
+    history: &SparseHistory,
+    sampling: i64,
+    granularity: i64,
+    last_tick: i64,
+) -> DenseHistory {
     if history.is_empty() {
         return Vec::new();
     }
@@ -256,8 +280,17 @@ fn compute_survival_sample(index: i64, sample: &[i64], peak_lines: i64) -> Survi
             breakdown[j] = v;
         }
     }
-    let survival_rate = if peak_lines > 0 { total as f64 / peak_lines as f64 } else { 0.0 };
-    SurvivalData { sample_index: index, total_lines: total, survival_rate, band_breakdown: breakdown }
+    let survival_rate = if peak_lines > 0 {
+        total as f64 / peak_lines as f64
+    } else {
+        0.0
+    };
+    SurvivalData {
+        sample_index: index,
+        total_lines: total,
+        survival_rate,
+        band_breakdown: breakdown,
+    }
 }
 
 /// Computes all metrics for the default report shape (no per-people and no
@@ -269,7 +302,11 @@ fn compute_survival_sample(index: i64, sample: &[i64], peak_lines: i64) -> Survi
 /// `analysis_period_days = (num_samples-1) * sampling * tick_size_hours / 24`,
 /// integer-truncated (report contract).
 #[must_use]
-pub fn compute_global_metrics(global_dense: &DenseHistory, sampling: i64, tick_size_hours: i64) -> ComputedMetrics {
+pub fn compute_global_metrics(
+    global_dense: &DenseHistory,
+    sampling: i64,
+    tick_size_hours: i64,
+) -> ComputedMetrics {
     // Global survival per sample row.
     let peak = find_peak_lines(global_dense);
     let global_survival: Vec<SurvivalData> = global_dense

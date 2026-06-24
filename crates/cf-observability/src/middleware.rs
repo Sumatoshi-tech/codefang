@@ -44,7 +44,12 @@ pub const ERR_SOURCE_DEPENDENCY: &str = "dependency";
 /// Records the error as an exception event, sets `Status::error` with the
 /// error's message as description, sets `error.type`, and (when non-empty)
 /// sets `error.source`.
-pub fn record_span_error<S: Span>(span: &mut S, err: &dyn std::error::Error, err_type: &str, err_source: &str) {
+pub fn record_span_error<S: Span>(
+    span: &mut S,
+    err: &dyn std::error::Error,
+    err_type: &str,
+    err_source: &str,
+) {
     let msg = err.to_string();
     span.add_event(
         "exception",

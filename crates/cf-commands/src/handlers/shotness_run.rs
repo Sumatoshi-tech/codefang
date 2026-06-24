@@ -195,8 +195,7 @@ pub(crate) fn shotness_walk(sub: &clap::ArgMatches) -> Option<Vec<ShotnessCommit
         // the SAME per-commit parse/extract/diff product the shared
         // multi-analyzer walk computes, fed to the sequential state machine.
         let changes = crate::handlers::history::commit_tree_changes(&repo, &commit)?;
-        let mut cache =
-            crate::handlers::uast_walk::CommitParseCache::new(&repo, &parser, &opts);
+        let mut cache = crate::handlers::uast_walk::CommitParseCache::new(&repo, &parser, &opts);
         let products = shotness_commit_product(&changes, &mut cache);
         entry.touched = reducer.consume(&products);
 
@@ -271,8 +270,7 @@ pub(crate) fn shotness_commit_product(
                 from_name: change.from.name.clone(),
             }),
             ChangeAction::Insert => {
-                if let ParseOutcome::Parsed(after) =
-                    &*cache.parse(&change.to.name, change.to.hash)
+                if let ParseOutcome::Parsed(after) = &*cache.parse(&change.to.name, change.to.hash)
                 {
                     let (nodes, _winner) = extract_nodes(after);
                     products.push(ShotnessChangeProduct::Insert {
@@ -351,10 +349,15 @@ impl ShotnessReducer {
                     // under its OWN name (the reference implementation iterates
                     // `res` (name→node) directly).
                     for n in nodes {
-                        self.state.add_node(&n.name, &n.type_, to_name, &mut all_nodes);
+                        self.state
+                            .add_node(&n.name, &n.type_, to_name, &mut all_nodes);
                     }
                 }
-                ShotnessChangeProduct::Modify { from_name, to_name, detail } => {
+                ShotnessChangeProduct::Modify {
+                    from_name,
+                    to_name,
+                    detail,
+                } => {
                     if from_name != to_name {
                         self.state.apply_rename(from_name, to_name);
                     }
@@ -535,7 +538,11 @@ fn node_span(n: &Node) -> (usize, usize) {
     let mut end = start;
     n.visit_pre_order(|child| {
         if let Some(cp) = &child.pos {
-            let candidate = if cp.end_line > cp.start_line { cp.end_line } else { cp.start_line };
+            let candidate = if cp.end_line > cp.start_line {
+                cp.end_line
+            } else {
+                cp.start_line
+            };
             if candidate as usize > end {
                 end = candidate as usize;
             }
@@ -598,7 +605,8 @@ fn file_diff(
     if change.action != ChangeAction::Modify {
         return None;
     }
-    if change.from.hash == change.to.hash || change.from.hash.is_zero() || change.to.hash.is_zero() {
+    if change.from.hash == change.to.hash || change.from.hash.is_zero() || change.to.hash.is_zero()
+    {
         return None;
     }
     let blob_from = cache.blob(change.from.hash)?;
@@ -617,7 +625,10 @@ fn file_diff(
         return Some(FileDiff {
             old_lines_of_code: lc,
             new_lines_of_code: lc,
-            edits: vec![DiffEdit { op: DiffOp::Equal, line_count: lc }],
+            edits: vec![DiffEdit {
+                op: DiffOp::Equal,
+                line_count: lc,
+            }],
         });
     }
 
@@ -647,7 +658,11 @@ fn file_diff(
         edits.push(DiffEdit { op, line_count: n });
     }
 
-    Some(FileDiff { old_lines_of_code: old_loc, new_lines_of_code: new_loc, edits })
+    Some(FileDiff {
+        old_lines_of_code: old_loc,
+        new_lines_of_code: new_loc,
+        edits,
+    })
 }
 
 /// Counts lines the way the reference implementation's identical-string fast path does
@@ -692,7 +707,8 @@ impl ShotnessState {
         let count = self.nodes.get(&key).map_or(0, |n| n.count);
 
         if count == 0 {
-            self.nodes.insert(key.clone(), StateNode { summary, count: 1 });
+            self.nodes
+                .insert(key.clone(), StateNode { summary, count: 1 });
             self.files.entry(file.to_string()).or_default().insert(key);
         } else if !exists {
             if let Some(n) = self.nodes.get_mut(&key) {

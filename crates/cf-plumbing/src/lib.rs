@@ -312,7 +312,10 @@ mod tests {
             FACT_TICK_SIZE.to_string(),
             FactValue::Duration(Duration::from_secs(24 * 60 * 60)),
         );
-        assert_eq!(get_tick_size(&facts), Some(Duration::from_secs(24 * 60 * 60)));
+        assert_eq!(
+            get_tick_size(&facts),
+            Some(Duration::from_secs(24 * 60 * 60))
+        );
 
         // absent
         let facts = Facts::new();

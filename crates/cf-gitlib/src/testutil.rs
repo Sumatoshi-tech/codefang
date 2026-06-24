@@ -44,7 +44,8 @@ fn fixed_sig<'a>(secs: i64) -> std::result::Result<git2::Signature<'a>, git2::Er
 /// Propagates filesystem and libgit2 init errors.
 pub fn init_repo() -> Result<TestRepo> {
     let dir = unique_temp_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| GitError::Message(format!("create temp dir: {e}")))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| GitError::Message(format!("create temp dir: {e}")))?;
     let g = git2::Repository::init(&dir).map_err(|e| GitError::lib("init repository", e))?;
     drop(g);
     let repo = Repository::open(
@@ -86,7 +87,9 @@ pub fn commit_files(
     }
 
     for (path, contents) in files {
-        let oid = repo.blob(contents).map_err(|e| GitError::lib("write blob", e))?;
+        let oid = repo
+            .blob(contents)
+            .map_err(|e| GitError::lib("write blob", e))?;
         let entry = git2::IndexEntry {
             ctime: git2::IndexTime::new(0, 0),
             mtime: git2::IndexTime::new(0, 0),
@@ -109,7 +112,9 @@ pub fn commit_files(
     let tree_oid = index
         .write_tree_to(repo)
         .map_err(|e| GitError::lib("tree write", e))?;
-    let tree = repo.find_tree(tree_oid).map_err(|e| GitError::lib("find tree", e))?;
+    let tree = repo
+        .find_tree(tree_oid)
+        .map_err(|e| GitError::lib("find tree", e))?;
     let sig = fixed_sig(time_secs).map_err(|e| GitError::lib("signature", e))?;
     let parents: Vec<&git2::Commit> = parent_commit.iter().collect();
     let commit_oid = repo

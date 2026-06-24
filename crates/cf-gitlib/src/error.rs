@@ -191,7 +191,10 @@ impl GitError {
     /// ```
     #[must_use]
     pub fn lib(context: impl Into<String>, cause: impl Into<GitCause>) -> Self {
-        GitError::Lib { context: context.into(), cause: cause.into() }
+        GitError::Lib {
+            context: context.into(),
+            cause: cause.into(),
+        }
     }
 }
 
@@ -211,7 +214,10 @@ mod tests {
     // Mirrors reference test TestErrParentNotFoundExists.
     #[test]
     fn err_parent_not_found_display() {
-        assert_eq!(GitError::ParentNotFound.to_string(), "parent commit not found");
+        assert_eq!(
+            GitError::ParentNotFound.to_string(),
+            "parent commit not found"
+        );
     }
 
     // Mirrors reference test TestErrMockNotImplementedExists.
@@ -227,7 +233,10 @@ mod tests {
     #[test]
     fn batch_error_messages() {
         let cases: &[(GitError, &str)] = &[
-            (GitError::RepositoryPointer, "failed to get repository pointer"),
+            (
+                GitError::RepositoryPointer,
+                "failed to get repository pointer",
+            ),
             (GitError::BlobLookup, "blob lookup failed"),
             (GitError::BlobMemory, "memory allocation failed for blob"),
             (GitError::BlobBinary, "blob is binary"),

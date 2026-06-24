@@ -19,9 +19,9 @@ use std::io::Write;
 
 use cf_pipeline::ConfigurationOption;
 
-use crate::interfaces::{Aggregator, AggregatorOptions};
 use crate::analyzer::{Analyzer, Report};
 use crate::descriptor::Descriptor;
+use crate::interfaces::{Aggregator, AggregatorOptions};
 use crate::tc::{Tc, Tick};
 
 /// `ModeStatic` — analyzers that run during the UAST/static phase (`"static"`).
@@ -154,7 +154,9 @@ pub trait HistoryAnalyzer: Analyzer {
     /// Merges forked branches back into self.
     fn merge(
         &mut self,
-        branches: Vec<Box<dyn HistoryAnalyzer<Repository = Self::Repository, Context = Self::Context>>>,
+        branches: Vec<
+            Box<dyn HistoryAnalyzer<Repository = Self::Repository, Context = Self::Context>>,
+        >,
     );
 
     /// Serializes a finalized report in `format`.

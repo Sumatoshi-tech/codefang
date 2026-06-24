@@ -80,7 +80,10 @@ mod tests {
         assert_eq!(records[0].import, "fmt");
         assert_eq!(records[0].count, 10);
 
-        let os = records.iter().find(|r| r.import == "os").expect("os record");
+        let os = records
+            .iter()
+            .find(|r| r.import == "os")
+            .expect("os record");
         assert_eq!(os.count, 5);
     }
 

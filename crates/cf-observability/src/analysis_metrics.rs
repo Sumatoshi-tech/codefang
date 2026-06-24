@@ -101,19 +101,22 @@ impl AnalysisMetrics {
     /// use [`AnalysisMetrics::record_run_opt`].
     pub fn record_run(&self, stats: &AnalysisStats) {
         self.commits_total.add(saturating_u64(stats.commits), &[]);
-        self.chunks_total.add(saturating_u64(i64::from(stats.chunks)), &[]);
+        self.chunks_total
+            .add(saturating_u64(i64::from(stats.chunks)), &[]);
 
         for d in &stats.chunk_durations {
             self.chunk_duration.record(d.as_secs_f64(), &[]);
         }
 
         let blob_attrs = [KeyValue::new(ATTR_CACHE, "blob")];
-        self.cache_hits.add(saturating_u64(stats.blob_cache_hits), &blob_attrs);
+        self.cache_hits
+            .add(saturating_u64(stats.blob_cache_hits), &blob_attrs);
         self.cache_misses
             .add(saturating_u64(stats.blob_cache_misses), &blob_attrs);
 
         let diff_attrs = [KeyValue::new(ATTR_CACHE, "diff")];
-        self.cache_hits.add(saturating_u64(stats.diff_cache_hits), &diff_attrs);
+        self.cache_hits
+            .add(saturating_u64(stats.diff_cache_hits), &diff_attrs);
         self.cache_misses
             .add(saturating_u64(stats.diff_cache_misses), &diff_attrs);
     }
@@ -187,8 +190,17 @@ mod tests {
     fn metric_names_match_contract() {
         assert_eq!(METRIC_COMMITS_TOTAL, "codefang.analysis.commits.total");
         assert_eq!(METRIC_CHUNKS_TOTAL, "codefang.analysis.chunks.total");
-        assert_eq!(METRIC_CHUNK_DURATION, "codefang.analysis.chunk.duration.seconds");
-        assert_eq!(METRIC_CACHE_HITS_TOTAL, "codefang.analysis.cache.hits.total");
-        assert_eq!(METRIC_CACHE_MISSES_TOTAL, "codefang.analysis.cache.misses.total");
+        assert_eq!(
+            METRIC_CHUNK_DURATION,
+            "codefang.analysis.chunk.duration.seconds"
+        );
+        assert_eq!(
+            METRIC_CACHE_HITS_TOTAL,
+            "codefang.analysis.cache.hits.total"
+        );
+        assert_eq!(
+            METRIC_CACHE_MISSES_TOTAL,
+            "codefang.analysis.cache.misses.total"
+        );
     }
 }

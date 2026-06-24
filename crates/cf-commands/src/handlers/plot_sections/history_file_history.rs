@@ -98,7 +98,10 @@ fn build_bar_chart_from_churn(file_churn: &[FileChurnData]) -> Chart {
     let labels: Vec<String> = top.iter().map(|c| c.path.clone()).collect();
     let series = vec![BarSeries {
         name: "Commits".to_string(),
-        data: top.iter().map(|c| SeriesValue::Int(c.commit_count)).collect(),
+        data: top
+            .iter()
+            .map(|c| SeriesValue::Int(c.commit_count))
+            .collect(),
         color: get_chart_palette(Theme::Dark).semantic.bad.to_string(),
         ..BarSeries::default()
     }];

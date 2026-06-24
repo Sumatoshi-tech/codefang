@@ -7,12 +7,12 @@
 
 use std::io::{self, Write};
 
-use clap::{Arg, ArgAction, ArgMatches, Command};
 use cf_textutil::{GoMap, GoValue};
 use cf_uast_mapping::grammar_analysis::{
     apply_heuristic_classification, coverage_analysis, generate_mapping_dsl, parse_node_types,
 };
 use cf_uast_mapping::{NodeTypeInfo, Parser as MappingParser, Rule};
+use clap::{Arg, ArgAction, ArgMatches, Command};
 
 use crate::{COVERAGE_PERCENT, FORMAT_JSON};
 
@@ -42,16 +42,33 @@ pub fn command() -> Command {
 
 /// Runs `mapping` (mapping.go `runMappingHelper`).
 pub fn run(m: &ArgMatches) -> Result<(), String> {
-    let node_types_path = m.get_one::<String>("node-types").map(String::as_str).unwrap_or("");
-    let mapping_path = m.get_one::<String>("mapping").map(String::as_str).unwrap_or("");
-    let format = m.get_one::<String>("format").map(String::as_str).unwrap_or("text");
+    let node_types_path = m
+        .get_one::<String>("node-types")
+        .map(String::as_str)
+        .unwrap_or("");
+    let mapping_path = m
+        .get_one::<String>("mapping")
+        .map(String::as_str)
+        .unwrap_or("");
+    let format = m
+        .get_one::<String>("format")
+        .map(String::as_str)
+        .unwrap_or("text");
     let coverage = m.get_flag("coverage");
     let generate = m.get_flag("generate");
     let show_treesitter = m.get_flag("show-treesitter");
-    let language = m.get_one::<String>("language").map(String::as_str).unwrap_or("");
-    let extensions = m.get_one::<String>("extensions").map(String::as_str).unwrap_or("");
-    let files: Vec<String> =
-        m.get_many::<String>("files").map(|v| v.cloned().collect()).unwrap_or_default();
+    let language = m
+        .get_one::<String>("language")
+        .map(String::as_str)
+        .unwrap_or("");
+    let extensions = m
+        .get_one::<String>("extensions")
+        .map(String::as_str)
+        .unwrap_or("");
+    let files: Vec<String> = m
+        .get_many::<String>("files")
+        .map(|v| v.cloned().collect())
+        .unwrap_or_default();
 
     if show_treesitter {
         return show_tree_sitter(&files, language);
@@ -63,7 +80,10 @@ pub fn run(m: &ArgMatches) -> Result<(), String> {
         let exts: Vec<String> = if extensions.is_empty() {
             Vec::new()
         } else {
-            extensions.split(',').map(|s| s.trim().to_string()).collect()
+            extensions
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .collect()
         };
         let dsl = generate_mapping_dsl(&nodes, language, &exts);
         print!("{dsl}");
@@ -86,7 +106,8 @@ fn load_node_types(path: &str) -> Result<Vec<NodeTypeInfo>, String> {
         return Err("--node-types is required for non-treesitter operations".to_string());
     }
     let data = std::fs::read(path).map_err(|e| format!("failed to read node-types.json: {e}"))?;
-    let nodes = parse_node_types(&data).map_err(|e| format!("failed to parse node-types.json: {e}"))?;
+    let nodes =
+        parse_node_types(&data).map_err(|e| format!("failed to parse node-types.json: {e}"))?;
     Ok(apply_heuristic_classification(nodes))
 }
 
@@ -97,8 +118,8 @@ fn load_mapping_rules(path: &str) -> Result<Vec<Rule>, String> {
     if path.is_empty() {
         return Ok(Vec::new());
     }
-    let data = std::fs::read_to_string(path)
-        .map_err(|e| format!("failed to open mapping DSL: {e}"))?;
+    let data =
+        std::fs::read_to_string(path).map_err(|e| format!("failed to open mapping DSL: {e}"))?;
     MappingParser::new()
         .parse_mapping(&data)
         .map_err(|e| format!("failed to load mapping DSL: {e}"))?;
@@ -242,17 +263,26 @@ fn show_tree_sitter(files: &[String], language: &str) -> Result<(), String> {
                 "failed to process {filename}: tree-sitter parsing requires a language to be set"
             ));
         }
-        return Err(format!("failed to process {filename}: unsupported language: {language}"));
+        return Err(format!(
+            "failed to process {filename}: unsupported language: {language}"
+        ));
     }
     Ok(())
 }
 
 fn long_opt(name: &'static str, default: &'static str, help: &'static str) -> Arg {
-    Arg::new(name).long(name).help(help).default_value(default).action(ArgAction::Set)
+    Arg::new(name)
+        .long(name)
+        .help(help)
+        .default_value(default)
+        .action(ArgAction::Set)
 }
 
 fn long_flag(name: &'static str, help: &'static str) -> Arg {
-    Arg::new(name).long(name).help(help).action(ArgAction::SetTrue)
+    Arg::new(name)
+        .long(name)
+        .help(help)
+        .action(ArgAction::SetTrue)
 }
 
 #[cfg(test)]
@@ -262,7 +292,10 @@ mod tests {
     #[test]
     fn node_types_required_error() {
         let err = load_node_types("").unwrap_err();
-        assert_eq!(err, "--node-types is required for non-treesitter operations");
+        assert_eq!(
+            err,
+            "--node-types is required for non-treesitter operations"
+        );
     }
 
     #[test]

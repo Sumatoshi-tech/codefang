@@ -74,8 +74,8 @@ fn heat_map_section(
     counters: &[HashMap<usize, i64>],
     co: &ChartOpts,
 ) -> Section {
-    let chart: Option<Box<dyn cf_plotpage::Renderable>> =
-        create_heat_map(nodes, counters, co).map(|c| Box::new(c) as Box<dyn cf_plotpage::Renderable>);
+    let chart: Option<Box<dyn cf_plotpage::Renderable>> = create_heat_map(nodes, counters, co)
+        .map(|c| Box::new(c) as Box<dyn cf_plotpage::Renderable>);
     Section {
         title: "Function Coupling Matrix".to_string(),
         subtitle: "Co-change frequency between functions. Diagonal = self, off-diagonal = coupled."
@@ -146,12 +146,19 @@ fn create_tree_map(
         std::collections::BTreeMap::new();
     let mut file_totals: std::collections::BTreeMap<&str, i64> = std::collections::BTreeMap::new();
     for (idx, node) in nodes.iter().enumerate() {
-        let count = counters.get(idx).and_then(|c| c.get(&idx)).copied().unwrap_or(0);
-        file_map.entry(node.file.as_str()).or_default().push(TreeMapNode {
-            name: node.name.clone(),
-            value: count,
-            children: Vec::new(),
-        });
+        let count = counters
+            .get(idx)
+            .and_then(|c| c.get(&idx))
+            .copied()
+            .unwrap_or(0);
+        file_map
+            .entry(node.file.as_str())
+            .or_default()
+            .push(TreeMapNode {
+                name: node.name.clone(),
+                value: count,
+                children: Vec::new(),
+            });
         *file_totals.entry(node.file.as_str()).or_insert(0) += count;
     }
 
@@ -256,9 +263,15 @@ fn create_heat_map(
     for (row, row_active) in actives.iter().enumerate() {
         for (col, col_active) in actives.iter().enumerate() {
             let val = if row == col {
-                counters[row_active.idx].get(&row_active.idx).copied().unwrap_or(0)
+                counters[row_active.idx]
+                    .get(&row_active.idx)
+                    .copied()
+                    .unwrap_or(0)
             } else {
-                counters[row_active.idx].get(&col_active.idx).copied().unwrap_or(0)
+                counters[row_active.idx]
+                    .get(&col_active.idx)
+                    .copied()
+                    .unwrap_or(0)
             };
             data.push(
                 HeatMapData {
@@ -280,7 +293,14 @@ fn create_heat_map(
         max_val = 1.0;
     }
 
-    Some(build_heat_map_chart(&names, max_val, data, co, HEAT_MAP_HEIGHT, true))
+    Some(build_heat_map_chart(
+        &names,
+        max_val,
+        data,
+        co,
+        HEAT_MAP_HEIGHT,
+        true,
+    ))
 }
 
 /// The shared heatmap frame (the reference `createHeatMap` global options — also the
@@ -305,7 +325,11 @@ fn build_heat_map_chart(
         split_area: Some(SplitArea { show: Some(true) }),
         axis_label: Some(AxisLabel {
             rotate: if rotate_x { ROTATE_DEGREES } else { 0.0 },
-            interval: if rotate_x { "0".to_string() } else { String::new() },
+            interval: if rotate_x {
+                "0".to_string()
+            } else {
+                String::new()
+            },
             font_size: LABEL_FONT_SIZE,
             color: co.text_muted_color().to_string(),
             ..AxisLabel::default()

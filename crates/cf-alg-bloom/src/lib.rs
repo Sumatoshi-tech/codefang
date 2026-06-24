@@ -319,14 +319,22 @@ fn test_bits(arr: &[u64], m: u64, k: u64, h1: u64, h2: u64) -> bool {
 ///
 /// The `f64`-to-integer conversion deliberately truncates toward zero
 /// (reference-implementation behavior).
-#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 fn optimal_m(n: u64, fp: f64) -> u64 {
     (-(n as f64) * fp.ln() / LN2_SQUARED).ceil() as u64
 }
 
 /// Computes the optimal number of hash functions using the formula
 /// `k = round(m/n * ln(2))`, clamped to a minimum of 1.
-#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 fn optimal_k(m: u64, n: u64) -> u64 {
     let k = (m as f64 / n as f64 * std::f64::consts::LN_2).round() as u64;
     k.max(1)
@@ -587,9 +595,19 @@ mod tests {
     #[test]
     fn new_with_estimates_parameters() {
         let cases = [
-            (STANDARD_N, STANDARD_FP, EXPECTED_M_10M_1PCT, EXPECTED_K_10M_1PCT),
+            (
+                STANDARD_N,
+                STANDARD_FP,
+                EXPECTED_M_10M_1PCT,
+                EXPECTED_K_10M_1PCT,
+            ),
             (SMALL_N, STANDARD_FP, EXPECTED_M_1K_1PCT, EXPECTED_K_1K_1PCT),
-            (TIGHT_N, TIGHT_FP, EXPECTED_M_100_01PCT, EXPECTED_K_100_01PCT),
+            (
+                TIGHT_N,
+                TIGHT_FP,
+                EXPECTED_M_100_01PCT,
+                EXPECTED_K_100_01PCT,
+            ),
         ];
         for (n, fp, want_m, want_k) in cases {
             let f = Filter::new_with_estimates(n, fp).unwrap();
@@ -629,7 +647,10 @@ mod tests {
             f.add(&uint64_to_bytes(i));
         }
         for i in 0..SMALL_N {
-            assert!(f.test(&uint64_to_bytes(i)), "false negative for element {i}");
+            assert!(
+                f.test(&uint64_to_bytes(i)),
+                "false negative for element {i}"
+            );
         }
     }
 
@@ -759,7 +780,8 @@ mod tests {
         const CONC_OPS_PER_THREAD: u64 = 1000;
 
         let f = Arc::new(
-            SyncFilter::new_with_estimates(CONC_THREADS * CONC_OPS_PER_THREAD, STANDARD_FP).unwrap(),
+            SyncFilter::new_with_estimates(CONC_THREADS * CONC_OPS_PER_THREAD, STANDARD_FP)
+                .unwrap(),
         );
 
         let handles: Vec<_> = (0..CONC_THREADS)

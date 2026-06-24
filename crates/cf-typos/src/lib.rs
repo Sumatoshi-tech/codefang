@@ -40,7 +40,9 @@ pub const CRATE_NAME: &str = "cf-typos";
 /// ```
 #[must_use]
 pub fn report_json(typos: &[Typo]) -> String {
-    let input = ReportData { typos: typos.to_vec() };
+    let input = ReportData {
+        typos: typos.to_vec(),
+    };
     metrics_report_value(&input).to_json()
 }
 

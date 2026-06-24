@@ -31,7 +31,8 @@ pub trait Timeline {
     /// Apply delete `[pos, pos+del_lines)` then insert `ins_lines` at `pos` with
     /// time `t`. Returns delta reports for the caller to apply to updaters (e.g.
     /// from deleted intervals).
-    fn replace(&mut self, pos: i64, del_lines: i64, ins_lines: i64, t: TimeKey) -> Vec<DeltaReport>;
+    fn replace(&mut self, pos: i64, del_lines: i64, ins_lines: i64, t: TimeKey)
+        -> Vec<DeltaReport>;
 
     /// Call `f(offset, length, time_key)` for each segment in order; return
     /// `false` from `f` to stop early.

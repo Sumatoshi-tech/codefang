@@ -227,13 +227,7 @@ impl<K: Endpoint, V: Value> Tree<K, V> {
         self.query_overlap(p, p)
     }
 
-    fn collect_overlap(
-        &self,
-        idx: usize,
-        low: K,
-        high: K,
-        results: &mut Vec<Interval<K, V>>,
-    ) {
+    fn collect_overlap(&self, idx: usize, low: K, high: K, results: &mut Vec<Interval<K, V>>) {
         if idx == NIL {
             return;
         }
@@ -846,7 +840,10 @@ mod tests {
         }
         assert_eq!(tree.len(), COUNT as usize);
         for i in 0..COUNT {
-            assert!(tree.delete(i * 10, i * 10 + 5, &i), "delete failed at index {i}");
+            assert!(
+                tree.delete(i * 10, i * 10 + 5, &i),
+                "delete failed at index {i}"
+            );
         }
         assert_eq!(tree.len(), 0);
     }
@@ -968,7 +965,10 @@ mod tests {
         tree.insert(50, 100, 3);
         assert_eq!(sorted_values_i64(tree.query_point(0)), vec![2]);
         assert_eq!(sorted_values_i64(tree.query_point(-75)), vec![1]);
-        assert_eq!(sorted_values_i64(tree.query_overlap(-200, 200)), vec![1, 2, 3]);
+        assert_eq!(
+            sorted_values_i64(tree.query_overlap(-200, 200)),
+            vec![1, 2, 3]
+        );
         assert!(tree.query_point(40).is_empty());
     }
 
@@ -991,7 +991,11 @@ mod tests {
             let low = next() % 1000;
             let high = low + next() % 50;
             tree.insert(low, high, i);
-            reference.push(Interval { low, high, value: i });
+            reference.push(Interval {
+                low,
+                high,
+                value: i,
+            });
         }
         assert_eq!(tree.len(), reference.len());
 
@@ -1010,8 +1014,11 @@ mod tests {
         }
 
         // Delete the even-valued half.
-        let to_delete: Vec<Interval<u32, u32>> =
-            reference.iter().filter(|iv| iv.value % 2 == 0).cloned().collect();
+        let to_delete: Vec<Interval<u32, u32>> = reference
+            .iter()
+            .filter(|iv| iv.value % 2 == 0)
+            .cloned()
+            .collect();
         for iv in &to_delete {
             assert!(tree.delete(iv.low, iv.high, &iv.value));
         }

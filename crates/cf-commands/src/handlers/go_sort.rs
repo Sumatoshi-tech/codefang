@@ -122,7 +122,11 @@ fn pdqsort<T, F: FnMut(&T, &T) -> bool>(
             hint = INCREASING_HINT;
         }
 
-        if was_balanced && was_partitioned && hint == INCREASING_HINT && partial_insertion_sort(data, a, b, less) {
+        if was_balanced
+            && was_partitioned
+            && hint == INCREASING_HINT
+            && partial_insertion_sort(data, a, b, less)
+        {
             return;
         }
 

@@ -313,7 +313,9 @@ impl Builder {
     /// Creates a new builder around a zero-valued node.
     #[must_use]
     pub fn new() -> Self {
-        Self { node: Node::default() }
+        Self {
+            node: Node::default(),
+        }
     }
 
     /// Sets the node ID (raw bytes).
@@ -387,7 +389,14 @@ impl Node {
 
     /// Creates a node with a type and token.
     pub fn with_token(node_type: impl Into<Type>, token: impl Into<String>) -> Self {
-        Self::new(Vec::new(), node_type, token, Vec::new(), None, std::collections::HashMap::default())
+        Self::new(
+            Vec::new(),
+            node_type,
+            token,
+            Vec::new(),
+            None,
+            std::collections::HashMap::default(),
+        )
     }
 
     /// Creates a literal node (type [`uast_types::UAST_LITERAL`]).
@@ -580,9 +589,7 @@ mod tests {
     fn remove_child_removes_first_match() {
         let child1 = Node::with_token("Function", "a");
         let child2 = Node::with_token("Function", "b");
-        let mut root = Builder::new()
-            .with_type("File")
-            .build();
+        let mut root = Builder::new().with_type("File").build();
         root.children = vec![child1.clone(), child2];
         assert!(root.remove_child(&child1));
         assert_eq!(root.children.len(), 1);
@@ -630,12 +637,18 @@ mod tests {
             .with_type("Function")
             .with_roles(vec!["Declaration".into()])
             .build();
-        assert_eq!(with_roles.to_display_string(), "Node{Type:Function,Roles:[Declaration]}");
+        assert_eq!(
+            with_roles.to_display_string(),
+            "Node{Type:Function,Roles:[Declaration]}"
+        );
     }
 
     #[test]
     fn assign_stable_ids_is_deterministic_and_8_bytes() {
-        let mut a = Builder::new().with_type("Function").with_token("foo").build();
+        let mut a = Builder::new()
+            .with_type("Function")
+            .with_token("foo")
+            .build();
         a.add_child(Node::with_token("Identifier", "x"));
         let mut b = a.clone();
         a.assign_stable_ids();

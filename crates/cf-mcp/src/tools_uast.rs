@@ -25,7 +25,10 @@ pub const FILTERED_RESULTS_TYPE: &str = "filtered_results";
 ///    holding every node whose type equals the query.
 /// 5. return the root as pretty JSON.
 #[must_use]
-pub fn handle_uast_parse(parser: &dyn UastParser, input: &UastParseInput) -> (ToolResult, ToolOutput) {
+pub fn handle_uast_parse(
+    parser: &dyn UastParser,
+    input: &UastParseInput,
+) -> (ToolResult, ToolOutput) {
     if let Err(err) = validate_code_input(&input.code, &input.language) {
         return (ToolResult::error(&err), ToolOutput::empty());
     }

@@ -11,8 +11,8 @@
 
 use std::io::{Read, Write};
 
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 use crate::error::PersistError;
 use crate::Codec;

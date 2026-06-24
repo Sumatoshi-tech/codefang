@@ -665,7 +665,12 @@ impl TreeMapLevel {
         if !self.color_saturation.is_empty() {
             m.push(
                 "colorSaturation",
-                GoValue::Array(self.color_saturation.iter().map(|v| GoValue::Float(*v)).collect()),
+                GoValue::Array(
+                    self.color_saturation
+                        .iter()
+                        .map(|v| GoValue::Float(*v))
+                        .collect(),
+                ),
             );
         }
         if let Some(ul) = &self.upper_label {
@@ -1265,10 +1270,7 @@ impl ChartKind {
     /// Whether this chart family carries XY axes (go-echarts `hasXYAxis`).
     #[must_use]
     pub const fn has_xy_axis(self) -> bool {
-        !matches!(
-            self,
-            Self::Pie | Self::Liquid | Self::TreeMap | Self::Radar
-        )
+        !matches!(self, Self::Pie | Self::Liquid | Self::TreeMap | Self::Radar)
     }
 }
 
@@ -1368,10 +1370,22 @@ impl Chart {
     /// `charts.WithInitializationOpts` — canvas size + background + theme
     /// (`Validate` maps an empty theme to `"white"`).
     pub fn set_init(&mut self, width: &str, height: &str, background_color: &str, theme: &str) {
-        self.width = if width.is_empty() { "900px".into() } else { width.to_string() };
-        self.height = if height.is_empty() { "500px".into() } else { height.to_string() };
+        self.width = if width.is_empty() {
+            "900px".into()
+        } else {
+            width.to_string()
+        };
+        self.height = if height.is_empty() {
+            "500px".into()
+        } else {
+            height.to_string()
+        };
         self.background_color = background_color.to_string();
-        self.theme = if theme.is_empty() { "white".into() } else { theme.to_string() };
+        self.theme = if theme.is_empty() {
+            "white".into()
+        } else {
+            theme.to_string()
+        };
     }
 
     /// `SetXAxis` — category labels for bar/line charts.
@@ -1404,7 +1418,10 @@ impl Chart {
         if self.kind == ChartKind::Radar {
             let mut legend = self.legend.clone();
             legend.data = Some(GoValue::Array(
-                self.series.iter().map(|s| GoValue::Str(s.name.clone())).collect(),
+                self.series
+                    .iter()
+                    .map(|s| GoValue::Str(s.name.clone()))
+                    .collect(),
             ));
             obj.push("legend", legend.value());
         } else {
@@ -1457,12 +1474,18 @@ impl Chart {
         if self.theme == "white" {
             let palette: Vec<GoValue> = match &self.colors {
                 Some(colors) => colors.iter().map(|c| GoValue::Str(c.clone())).collect(),
-                None => DEFAULT_COLORS.iter().map(|c| GoValue::Str((*c).to_string())).collect(),
+                None => DEFAULT_COLORS
+                    .iter()
+                    .map(|c| GoValue::Str((*c).to_string()))
+                    .collect(),
             };
             obj.push("color", GoValue::Array(palette));
         }
         if !self.background_color.is_empty() {
-            obj.push("backgroundColor", GoValue::Str(self.background_color.clone()));
+            obj.push(
+                "backgroundColor",
+                GoValue::Str(self.background_color.clone()),
+            );
         }
         if !self.grid.is_empty() {
             obj.push(
@@ -1526,8 +1549,14 @@ mod tests {
             text: "T".into(),
             subtext: "No data".into(),
             left: "center".into(),
-            title_style: Some(TextStyle { color: "#d6d3d1".into(), ..TextStyle::default() }),
-            subtitle_style: Some(TextStyle { color: "#a8a29e".into(), ..TextStyle::default() }),
+            title_style: Some(TextStyle {
+                color: "#d6d3d1".into(),
+                ..TextStyle::default()
+            }),
+            subtitle_style: Some(TextStyle {
+                color: "#a8a29e".into(),
+                ..TextStyle::default()
+            }),
             ..Title::default()
         };
         let json = c.option_json();

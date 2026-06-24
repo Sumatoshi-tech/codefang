@@ -85,8 +85,16 @@ fn build_summary_section(metrics: &cf_analyzer_burndown::ComputedMetrics) -> Sec
     let mut grid = GridStats::new(PLOT_MAX_STATS_COLUMNS)
         .stat("Current Lines", &format_int64(agg.total_current_lines))
         .stat("Peak Lines", &format_int64(agg.total_peak_lines))
-        .stat_with_trend("Survival Rate", &survival_pct, &survival_pct, survival_color)
-        .stat("Analysis Period", &format!("{} days", agg.analysis_period_days));
+        .stat_with_trend(
+            "Survival Rate",
+            &survival_pct,
+            &survival_pct,
+            survival_color,
+        )
+        .stat(
+            "Analysis Period",
+            &format!("{} days", agg.analysis_period_days),
+        );
 
     if agg.tracked_developers > 0 {
         grid = grid.stat("Developers", &agg.tracked_developers.to_string());
@@ -116,8 +124,11 @@ fn survival_badge_color(rate: f64) -> BadgeColor {
 
 /// The reference `buildChartFromStoreData` → `createLineChart` + `addSeries`.
 fn build_chart(data: &ChartData) -> Chart {
-    let project_name =
-        if data.project_name.is_empty() { "project" } else { &data.project_name };
+    let project_name = if data.project_name.is_empty() {
+        "project"
+    } else {
+        &data.project_name
+    };
 
     let co = ChartOpts::default_dark();
     let x_labels = build_x_labels(data);
@@ -180,7 +191,8 @@ fn build_x_labels(data: &ChartData) -> Vec<String> {
     (0..points)
         .map(|i| {
             let ticks = i * data.sampling;
-            let days = (ticks * data.tick_size_ns) as f64 / NS_PER_HOUR as f64 / HOURS_PER_DAY as f64;
+            let days =
+                (ticks * data.tick_size_ns) as f64 / NS_PER_HOUR as f64 / HOURS_PER_DAY as f64;
             format!("{}d", days as i64)
         })
         .collect()
@@ -214,7 +226,11 @@ fn add_series(line: &mut Chart, data: &ChartData) {
             .iter()
             .map(|sample| {
                 let v = sample.get(rev).copied().unwrap_or(0);
-                if v > 0 { v as f64 } else { 0.0 }
+                if v > 0 {
+                    v as f64
+                } else {
+                    0.0
+                }
             })
             .collect();
         let label = band_label(rev as i64, data);
@@ -250,7 +266,10 @@ fn push_band_series(line: &mut Chart, name: &str, values: &[i64]) {
 /// so the result is `int64(v + 0.5)` per sample).
 fn interpolate(values: &[f64]) -> Vec<i64> {
     if values.len() < MIN_INTERPOLATION_LEN {
-        return values.iter().map(|v| (*v + ROUNDING_OFFSET) as i64).collect();
+        return values
+            .iter()
+            .map(|v| (*v + ROUNDING_OFFSET) as i64)
+            .collect();
     }
     let n = values.len();
     (0..n)
@@ -307,9 +326,7 @@ fn year_start_ns(year: i64) -> i64 {
 /// when aggregation does not apply.
 fn aggregate_by_year(data: &ChartData) -> Option<(Vec<i64>, Vec<Vec<f64>>)> {
     // canAggregateByYear.
-    if data.end_time_ns == 0
-        || data.global_history.is_empty()
-        || data.global_history[0].is_empty()
+    if data.end_time_ns == 0 || data.global_history.is_empty() || data.global_history[0].is_empty()
     {
         return None;
     }

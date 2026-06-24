@@ -405,7 +405,13 @@ impl TreapTimeline {
 }
 
 impl Timeline for TreapTimeline {
-    fn replace(&mut self, pos: i64, del_lines: i64, ins_lines: i64, t: TimeKey) -> Vec<DeltaReport> {
+    fn replace(
+        &mut self,
+        pos: i64,
+        del_lines: i64,
+        ins_lines: i64,
+        t: TimeKey,
+    ) -> Vec<DeltaReport> {
         if self.root.is_none() {
             if pos != 0 || del_lines != 0 {
                 panic!("Replace on empty timeline with non-zero pos or delLines");
@@ -866,23 +872,53 @@ mod tests {
     #[test]
     fn coalesce_segments_merges_adjacent() {
         let segs = [
-            Segment { length: 10, value: 1 },
-            Segment { length: 20, value: 1 },
-            Segment { length: 30, value: 2 },
+            Segment {
+                length: 10,
+                value: 1,
+            },
+            Segment {
+                length: 20,
+                value: 1,
+            },
+            Segment {
+                length: 30,
+                value: 2,
+            },
         ];
         let result = coalesce_segments(&segs);
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0], Segment { length: 30, value: 1 });
-        assert_eq!(result[1], Segment { length: 30, value: 2 });
+        assert_eq!(
+            result[0],
+            Segment {
+                length: 30,
+                value: 1
+            }
+        );
+        assert_eq!(
+            result[1],
+            Segment {
+                length: 30,
+                value: 2
+            }
+        );
     }
 
     /// Mirrors reference test `TestCoalesceSegments_NoMerge`.
     #[test]
     fn coalesce_segments_no_merge() {
         let segs = [
-            Segment { length: 10, value: 1 },
-            Segment { length: 20, value: 2 },
-            Segment { length: 30, value: 3 },
+            Segment {
+                length: 10,
+                value: 1,
+            },
+            Segment {
+                length: 20,
+                value: 2,
+            },
+            Segment {
+                length: 30,
+                value: 3,
+            },
         ];
         assert_eq!(coalesce_segments(&segs), segs.to_vec());
     }
@@ -896,7 +932,10 @@ mod tests {
     /// Mirrors reference test `TestCoalesceSegments_SingleSegment`.
     #[test]
     fn coalesce_segments_single_segment() {
-        let segs = [Segment { length: 50, value: 1 }];
+        let segs = [Segment {
+            length: 50,
+            value: 1,
+        }];
         assert_eq!(coalesce_segments(&segs), segs.to_vec());
     }
 
@@ -904,13 +943,28 @@ mod tests {
     #[test]
     fn coalesce_segments_all_same_value() {
         let segs = [
-            Segment { length: 10, value: 1 },
-            Segment { length: 20, value: 1 },
-            Segment { length: 30, value: 1 },
+            Segment {
+                length: 10,
+                value: 1,
+            },
+            Segment {
+                length: 20,
+                value: 1,
+            },
+            Segment {
+                length: 30,
+                value: 1,
+            },
         ];
         let result = coalesce_segments(&segs);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0], Segment { length: 60, value: 1 });
+        assert_eq!(
+            result[0],
+            Segment {
+                length: 60,
+                value: 1
+            }
+        );
     }
 
     /// Mirrors reference test `TestMergeAdjacentSameValue_ReducesNodes`.
@@ -922,7 +976,10 @@ mod tests {
         let before = tl.nodes();
         tl.merge_adjacent_same_value();
         let after = tl.nodes();
-        assert!(after < before, "expected fewer nodes: before={before}, after={after}");
+        assert!(
+            after < before,
+            "expected fewer nodes: before={before}, after={after}"
+        );
         tl.validate();
     }
 
@@ -1007,7 +1064,10 @@ mod tests {
             tl.replace(0, 0, 10, 1);
         }
         let nodes_before = tl.nodes();
-        assert!(nodes_before >= HEAVY / 2, "expected fragmentation, got {nodes_before}");
+        assert!(
+            nodes_before >= HEAVY / 2,
+            "expected fragmentation, got {nodes_before}"
+        );
         tl.merge_adjacent_same_value();
         tl.validate();
         assert_eq!(tl.nodes(), 2, "expected 2 nodes (data + TreeEnd)");

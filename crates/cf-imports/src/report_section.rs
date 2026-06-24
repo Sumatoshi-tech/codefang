@@ -363,7 +363,10 @@ mod tests {
         counts.insert("fmt", ReportValue::Int(1));
         counts.insert("os", ReportValue::Int(1));
         r.insert(KEY_IMPORT_COUNTS, counts);
-        r.insert(SOURCE_FILE_KEY, ReportValue::Str("/repo/pkg/foo.go".to_string()));
+        r.insert(
+            SOURCE_FILE_KEY,
+            ReportValue::Str("/repo/pkg/foo.go".to_string()),
+        );
 
         let s = ReportSection::new(Some(r));
         let issues = s.all_issues();

@@ -107,24 +107,26 @@ pub fn diff_blob_line_ops(
         }
         true
     };
-    let mut line_cb =
-        |_d: git2::DiffDelta<'_>, _h: Option<git2::DiffHunk<'_>>, line: git2::DiffLine<'_>| -> bool {
-            let mut s = state.borrow_mut();
-            match line.origin_value() {
-                git2::DiffLineType::Context => {
-                    s.add(0, 1);
-                    s.old_pos += 1;
-                }
-                git2::DiffLineType::Addition => s.add(1, 1),
-                git2::DiffLineType::Deletion => {
-                    s.add(2, 1);
-                    s.old_pos += 1;
-                }
-                // Header / EOF-newline markers: skipped, like the C default arm.
-                _ => {}
+    let mut line_cb = |_d: git2::DiffDelta<'_>,
+                       _h: Option<git2::DiffHunk<'_>>,
+                       line: git2::DiffLine<'_>|
+     -> bool {
+        let mut s = state.borrow_mut();
+        match line.origin_value() {
+            git2::DiffLineType::Context => {
+                s.add(0, 1);
+                s.old_pos += 1;
             }
-            true
-        };
+            git2::DiffLineType::Addition => s.add(1, 1),
+            git2::DiffLineType::Deletion => {
+                s.add(2, 1);
+                s.old_pos += 1;
+            }
+            // Header / EOF-newline markers: skipped, like the C default arm.
+            _ => {}
+        }
+        true
+    };
 
     repo.diff_blobs(
         Some(&old_blob),
@@ -177,9 +179,10 @@ impl<'repo> Diff<'repo> {
     ///
     /// Returns [`GitError::GetDelta`] when the index is out of range.
     pub fn delta(&self, index: usize) -> Result<DiffDelta> {
-        let delta = self.diff.get_delta(index).ok_or_else(|| {
-            GitError::GetDelta(git2::Error::from_str("index out of range"))
-        })?;
+        let delta = self
+            .diff
+            .get_delta(index)
+            .ok_or_else(|| GitError::GetDelta(git2::Error::from_str("index out of range")))?;
 
         Ok(DiffDelta {
             status: delta.status(),

@@ -70,13 +70,19 @@ impl JsonValue {
     /// Builds a **map-origin** object (byte-sorted keys on encode).
     #[must_use]
     pub fn sorted_object(entries: Vec<(String, JsonValue)>) -> Self {
-        Self::Object { entries, sorted: true }
+        Self::Object {
+            entries,
+            sorted: true,
+        }
     }
 
     /// Builds a **struct-origin** object (declaration order preserved).
     #[must_use]
     pub fn struct_object(entries: Vec<(String, JsonValue)>) -> Self {
-        Self::Object { entries, sorted: false }
+        Self::Object {
+            entries,
+            sorted: false,
+        }
     }
 }
 
@@ -122,7 +128,11 @@ pub fn node_to_json(node: &cf_uast_node::Node) -> JsonValue {
         entries.push(("props".to_string(), JsonValue::sorted_object(prop_entries)));
     }
 
-    let roles: Vec<JsonValue> = node.roles.iter().map(|r| JsonValue::Str(r.clone())).collect();
+    let roles: Vec<JsonValue> = node
+        .roles
+        .iter()
+        .map(|r| JsonValue::Str(r.clone()))
+        .collect();
     entries.push(("roles".to_string(), JsonValue::Array(roles)));
 
     entries.push(("pos".to_string(), position_json(node.pos.as_ref())));
@@ -170,14 +180,20 @@ impl Encoder {
     /// The compact profile: no spaces, HTML-escape on, no trailing newline.
     #[must_use]
     pub fn compact() -> Self {
-        Self { mode: Mode::Compact, indent: String::new() }
+        Self {
+            mode: Mode::Compact,
+            indent: String::new(),
+        }
     }
 
     /// The indent profile: indented, HTML-escape on, no trailing newline. The
     /// tool results use `indent = "  "` (two spaces).
     #[must_use]
     pub fn indented(indent: &str) -> Self {
-        Self { mode: Mode::Indent, indent: indent.to_string() }
+        Self {
+            mode: Mode::Indent,
+            indent: indent.to_string(),
+        }
     }
 
     /// Encodes `value` to a UTF-8 byte vector. No trailing newline is appended.
@@ -371,7 +387,10 @@ mod tests {
 
     fn smap(entries: &[(&str, JsonValue)]) -> JsonValue {
         JsonValue::sorted_object(
-            entries.iter().map(|(k, v)| ((*k).to_string(), v.clone())).collect(),
+            entries
+                .iter()
+                .map(|(k, v)| ((*k).to_string(), v.clone()))
+                .collect(),
         )
     }
 

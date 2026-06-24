@@ -61,7 +61,12 @@ pub fn to_go_value(m: &ComputedMetrics) -> GoValue {
     GoValue::struct_obj(vec![
         (
             "function_cohesion".into(),
-            GoValue::Array(m.function_cohesion.iter().map(func_cohesion_value).collect()),
+            GoValue::Array(
+                m.function_cohesion
+                    .iter()
+                    .map(func_cohesion_value)
+                    .collect(),
+            ),
         ),
         ("distribution".into(), distribution_value(&m.distribution)),
         (

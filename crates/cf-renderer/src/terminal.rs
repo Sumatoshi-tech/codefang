@@ -114,7 +114,6 @@ const BOX_BORDER_WIDTH: usize = 4;
 const BOX_CORNER_WIDTH: usize = 2;
 const MIN_GAP: usize = 1;
 
-
 /// Draws a header box (heavy box-drawing characters) with a left-aligned title
 /// and right-aligned score.
 pub fn draw_header(left: &str, right: &str, width: usize) -> String {

@@ -19,13 +19,52 @@ use std::collections::BTreeSet;
 /// `cf-uast/src/languages.rs` makes the assertion below fail until it is
 /// removed from this list — at which point its rules join the conformance scope.
 const UNWIRED: &[&str] = &[
-    "ansible", "c_sharp", "clojure", "commonlisp", "crystal", "css", "csv",
-    "dart", "dockerfile", "dotenv", "elixir", "elm", "fish", "fortran",
-    "git_config", "gosum", "gotmpl", "gowork", "graphql", "groovy", "haskell",
-    "hcl", "helm", "ini", "kotlin", "latex", "lua", "make", "markdown", "nim",
-    "nim_format_string", "php", "properties", "proxima", "prql", "psv", "r",
-    "rego", "ruby", "rust_with_rstml", "scala", "sql", "ssh_config", "swift",
-    "tcl", "zig",
+    "ansible",
+    "c_sharp",
+    "clojure",
+    "commonlisp",
+    "crystal",
+    "css",
+    "csv",
+    "dart",
+    "dockerfile",
+    "dotenv",
+    "elixir",
+    "elm",
+    "fish",
+    "fortran",
+    "git_config",
+    "gosum",
+    "gotmpl",
+    "gowork",
+    "graphql",
+    "groovy",
+    "haskell",
+    "hcl",
+    "helm",
+    "ini",
+    "kotlin",
+    "latex",
+    "lua",
+    "make",
+    "markdown",
+    "nim",
+    "nim_format_string",
+    "php",
+    "properties",
+    "proxima",
+    "prql",
+    "psv",
+    "r",
+    "rego",
+    "ruby",
+    "rust_with_rstml",
+    "scala",
+    "sql",
+    "ssh_config",
+    "swift",
+    "tcl",
+    "zig",
 ];
 
 /// Dead rules: patterns that do not compile against the WIRED grammar version.
@@ -750,7 +789,10 @@ fn unwired_list_matches_get_language() {
     // No stale entries for languages that do not exist at all.
     let stems: BTreeSet<&str> = cf_uast_mappings::ALL.iter().map(|(s, _)| *s).collect();
     for u in UNWIRED {
-        assert!(stems.contains(u), "UNWIRED entry {u} is not a known language");
+        assert!(
+            stems.contains(u),
+            "UNWIRED entry {u} is not a known language"
+        );
     }
 }
 
@@ -777,7 +819,10 @@ fn every_pattern_compiles_on_wired_grammars() {
                     let _ = e; // acknowledged dead rule.
                 }
                 Err(e) => {
-                    failures.push(format!("{stem}/{}: pattern {:?}: {e}", rule.name, rule.pattern));
+                    failures.push(format!(
+                        "{stem}/{}: pattern {:?}: {e}",
+                        rule.name, rule.pattern
+                    ));
                 }
             }
         }
@@ -788,5 +833,8 @@ fn every_pattern_compiles_on_wired_grammars() {
         failures.len(),
         failures.join("\n")
     );
-    assert!(checked > 1_000, "only {checked} rules checked — wiring regressed?");
+    assert!(
+        checked > 1_000,
+        "only {checked} rules checked — wiring regressed?"
+    );
 }

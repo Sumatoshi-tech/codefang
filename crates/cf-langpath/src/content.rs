@@ -62,7 +62,11 @@ fn parse_frequencies(tsv: &[u8]) -> Frequencies {
         }
         // Field 1: tag (single ASCII byte then a tab).
         let tag = line[0];
-        let rest = if line.len() > 1 && line[1] == b'\t' { &line[2..] } else { &line[..0] };
+        let rest = if line.len() > 1 && line[1] == b'\t' {
+            &line[2..]
+        } else {
+            &line[..0]
+        };
         match tag {
             b'T' => {
                 if let Ok(s) = std::str::from_utf8(rest) {
@@ -72,9 +76,10 @@ fn parse_frequencies(tsv: &[u8]) -> Frequencies {
             b'L' => {
                 // `language<TAB>log_prob` (language is valid UTF-8).
                 if let Some(tab) = rest.iter().rposition(|&b| b == b'\t') {
-                    if let (Ok(lang), Ok(prob)) =
-                        (std::str::from_utf8(&rest[..tab]), std::str::from_utf8(&rest[tab + 1..]))
-                    {
+                    if let (Ok(lang), Ok(prob)) = (
+                        std::str::from_utf8(&rest[..tab]),
+                        std::str::from_utf8(&rest[tab + 1..]),
+                    ) {
                         if let Ok(p) = prob.parse::<f64>() {
                             languages_log_prob.insert(lang.to_string(), p);
                         }
@@ -86,17 +91,25 @@ fn parse_frequencies(tsv: &[u8]) -> Frequencies {
                 // no tab; the token may contain non-UTF-8 bytes but no tab/newline
                 // (the tokenizer never emits those). Split on the FIRST tab (lang)
                 // and the LAST tab (prob); the middle bytes are the raw token.
-                let Some(first) = rest.iter().position(|&b| b == b'\t') else { continue };
+                let Some(first) = rest.iter().position(|&b| b == b'\t') else {
+                    continue;
+                };
                 let lang_bytes = &rest[..first];
                 let after = &rest[first + 1..];
-                let Some(last) = after.iter().rposition(|&b| b == b'\t') else { continue };
+                let Some(last) = after.iter().rposition(|&b| b == b'\t') else {
+                    continue;
+                };
                 let token = after[..last].to_vec();
                 let prob_bytes = &after[last + 1..];
-                if let (Ok(lang), Ok(prob_s)) =
-                    (std::str::from_utf8(lang_bytes), std::str::from_utf8(prob_bytes))
-                {
+                if let (Ok(lang), Ok(prob_s)) = (
+                    std::str::from_utf8(lang_bytes),
+                    std::str::from_utf8(prob_bytes),
+                ) {
                     if let Ok(p) = prob_s.parse::<f64>() {
-                        tokens_log_prob.entry(lang.to_string()).or_default().insert(token, p);
+                        tokens_log_prob
+                            .entry(lang.to_string())
+                            .or_default()
+                            .insert(token, p);
                     }
                 }
             }
@@ -167,7 +180,11 @@ fn tokenizer_regexes() -> &'static TokenizerRegexes {
 /// the ordered pass list extracts shebang, SGML, then skips comments/literals,
 /// then extracts punctuation, regular tokens, operators, and remainders.
 fn tokenize(content: &[u8]) -> Vec<Vec<u8>> {
-    let content = if content.len() > BYTE_LIMIT { &content[..BYTE_LIMIT] } else { content };
+    let content = if content.len() > BYTE_LIMIT {
+        &content[..BYTE_LIMIT]
+    } else {
+        content
+    };
     let mut buf = content.to_vec();
     let mut tokens: Vec<Vec<u8>> = Vec::with_capacity(50);
 
@@ -198,7 +215,10 @@ fn tokenize(content: &[u8]) -> Vec<Vec<u8>> {
 }
 
 fn common_extract_replace(content: &[u8], re: &Regex) -> (Vec<u8>, Vec<Vec<u8>>) {
-    let toks: Vec<Vec<u8>> = re.find_iter(content).map(|m| m.as_bytes().to_vec()).collect();
+    let toks: Vec<Vec<u8>> = re
+        .find_iter(content)
+        .map(|m| m.as_bytes().to_vec())
+        .collect();
     let replaced = re.replace_all(content, &b" "[..]).into_owned();
     (replaced, toks)
 }
@@ -244,7 +264,10 @@ fn extract_sgml(content: Vec<u8>) -> (Vec<u8>, Vec<Vec<u8>>) {
             continue;
         }
         // token = match[1] + '>'.
-        let mut token = caps.get(1).map(|m| m.as_bytes().to_vec()).unwrap_or_default();
+        let mut token = caps
+            .get(1)
+            .map(|m| m.as_bytes().to_vec())
+            .unwrap_or_default();
         token.push(b'>');
         sgml_tokens.push(token);
         sgml_tokens.extend(get_sgml_attributes(whole));
@@ -405,7 +428,10 @@ mod tests {
     #[test]
     fn tokenize_basic_words() {
         let toks = tokenize(b"package main\nfunc foo() {}\n");
-        let strs: Vec<String> = toks.iter().map(|t| String::from_utf8_lossy(t).into_owned()).collect();
+        let strs: Vec<String> = toks
+            .iter()
+            .map(|t| String::from_utf8_lossy(t).into_owned())
+            .collect();
         assert!(strs.contains(&"package".to_string()));
         assert!(strs.contains(&"main".to_string()));
         assert!(strs.contains(&"func".to_string()));

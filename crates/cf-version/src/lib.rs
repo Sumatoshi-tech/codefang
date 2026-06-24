@@ -126,8 +126,7 @@ pub fn uast_version_line() -> String {
 /// trailing newline.
 #[must_use]
 pub fn banner_with(name: &str, version: &str, commit: &str, date: &str) -> String {
-    let mut s =
-        String::with_capacity(name.len() + version.len() + commit.len() + date.len() + 24);
+    let mut s = String::with_capacity(name.len() + version.len() + commit.len() + date.len() + 24);
     // `write!` to a String is infallible; `let _ =` discards the Ok(()).
     let _ = write!(s, "{name} {version} (commit: {commit}, built: {date})");
     s
@@ -210,7 +209,10 @@ mod tests {
         assert_eq!(COMMIT, "none");
         assert_eq!(DATE, "unknown");
         assert_eq!(BINARY_GIT_HASH, "<unknown>");
-        assert_eq!(banner("codefang"), "codefang dev (commit: none, built: unknown)");
+        assert_eq!(
+            banner("codefang"),
+            "codefang dev (commit: none, built: unknown)"
+        );
         assert_eq!(banner("uast"), "uast dev (commit: none, built: unknown)");
     }
 

@@ -28,8 +28,7 @@ const LOGO_PNG: &[u8] = include_bytes!("../assets/uast_small.png");
 /// Standard-alphabet base64 with `=` padding.
 #[must_use]
 fn base64_std(data: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b = [
@@ -97,7 +96,9 @@ pub fn render_header(d: &HeaderData<'_>) -> String {
     out.push_str(&html_escape(d.title));
     out.push_str("\n        </h2>\n        ");
     if !d.description.is_empty() {
-        out.push_str("\n        <p class=\"mt-2 text-sm text-stone-500 dark:text-stone-400\">\n            ");
+        out.push_str(
+            "\n        <p class=\"mt-2 text-sm text-stone-500 dark:text-stone-400\">\n            ",
+        );
         out.push_str(&html_escape(d.description));
         out.push_str("\n        </p>\n        ");
     }
@@ -127,7 +128,9 @@ pub fn render_section(
     if !hint_items.is_empty() {
         out.push_str("\n    <div class=\"mx-5 mb-5 p-4 bg-stone-50 dark:bg-stone-800 border-l-4 border-accent rounded-sm\">\n");
         if !hint_title.is_empty() {
-            out.push_str("\n        <p class=\"font-medium text-stone-900 dark:text-stone-100 text-sm\">");
+            out.push_str(
+                "\n        <p class=\"font-medium text-stone-900 dark:text-stone-100 text-sm\">",
+            );
             out.push_str(&html_escape(hint_title));
             out.push_str("</p>\n");
         }

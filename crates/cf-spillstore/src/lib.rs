@@ -318,10 +318,9 @@ where
 
     /// Reads and decodes a single spill chunk by index.
     fn read_spill_file(&self, index: usize) -> Result<HashMap<String, V>, SpillError> {
-        let dir = self
-            .dir
-            .as_deref()
-            .ok_or_else(|| SpillError::OpenSpill(index, io::Error::from(io::ErrorKind::NotFound)))?;
+        let dir = self.dir.as_deref().ok_or_else(|| {
+            SpillError::OpenSpill(index, io::Error::from(io::ErrorKind::NotFound))
+        })?;
         let path = dir.join(chunk_file_name(index));
 
         let file = fs::File::open(&path).map_err(|e| SpillError::OpenSpill(index, e))?;

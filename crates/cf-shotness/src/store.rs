@@ -154,8 +154,9 @@ mod tests {
         let foo = NodeSummary::new("Function", "foo", "a.go");
         let bar = NodeSummary::new("Function", "bar", "a.go");
         let mut acc: TickNodes = BTreeMap::new();
-        let t: BTreeMap<String, NodeSummary> =
-            [(foo.key(), foo.clone()), (bar.key(), bar.clone())].into_iter().collect();
+        let t: BTreeMap<String, NodeSummary> = [(foo.key(), foo.clone()), (bar.key(), bar.clone())]
+            .into_iter()
+            .collect();
         accumulate_nodes(&mut acc, &t);
         compute_coupling_pairs(&mut acc, &t);
 
@@ -178,7 +179,9 @@ mod tests {
     fn counter_int_keys_byte_sorted_like_go() {
         let rec = NodeStoreRecord {
             summary: NodeSummary::new("Function", "foo", "a.go"),
-            counter: [(0usize, 5i64), (1, 9), (10, 1), (2, 3)].into_iter().collect(),
+            counter: [(0usize, 5i64), (1, 9), (10, 1), (2, 3)]
+                .into_iter()
+                .collect(),
         };
         let s = String::from_utf8(marshal(&rec.to_go_value())).unwrap();
         assert!(

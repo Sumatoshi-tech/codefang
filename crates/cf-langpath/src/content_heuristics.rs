@@ -167,9 +167,7 @@ fn content_heuristics() -> &'static HashMap<&'static str, Vec<Heuristic>> {
 /// Compilation happens once, behind the [`content_heuristics`] `OnceLock`.
 fn re(pattern: &str) -> Matcher {
     let sanitized = sanitize_braces(pattern);
-    Matcher::Regex(
-        Regex::new(&sanitized).expect("Linguist content heuristic regex must compile"),
-    )
+    Matcher::Regex(Regex::new(&sanitized).expect("Linguist content heuristic regex must compile"))
 }
 
 /// Reconciles the reference engine's lenient brace handling with Rust
@@ -331,16 +329,28 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
     m.insert(
         ".asy",
         vec![
-            Heuristic { langs: &["LTspice Symbol"], matcher: re(r"(?m)^SymbolType[ \t]") },
-            Heuristic { langs: &["Asymptote"], matcher: Matcher::Always },
+            Heuristic {
+                langs: &["LTspice Symbol"],
+                matcher: re(r"(?m)^SymbolType[ \t]"),
+            },
+            Heuristic {
+                langs: &["Asymptote"],
+                matcher: Matcher::Always,
+            },
         ],
     );
 
     m.insert(
         ".bb",
         vec![
-            Heuristic { langs: &["BlitzBasic"], matcher: re(r"(?m)(<^\s*; |End Function)") },
-            Heuristic { langs: &["BitBake"], matcher: re(r"(?m)^\s*(# |include|require)\b") },
+            Heuristic {
+                langs: &["BlitzBasic"],
+                matcher: re(r"(?m)(<^\s*; |End Function)"),
+            },
+            Heuristic {
+                langs: &["BitBake"],
+                matcher: re(r"(?m)^\s*(# |include|require)\b"),
+            },
         ],
     );
 
@@ -351,7 +361,10 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
                 langs: &["XML"],
                 matcher: re(r"(?m)^(\s*)(?i:<Project|<Import|<Property|<?xml|xmlns)"),
             },
-            Heuristic { langs: &["Text"], matcher: Matcher::Always },
+            Heuristic {
+                langs: &["Text"],
+                matcher: Matcher::Always,
+            },
         ],
     );
 
@@ -370,23 +383,38 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
                 langs: &["Common Lisp"],
                 matcher: re(r"(?m)^\s*\((?i:defun|in-package|defpackage) "),
             },
-            Heuristic { langs: &["Cool"], matcher: re(r"(?m)^class") },
-            Heuristic { langs: &["OpenCL"], matcher: re(r"(?m)\/\* |\/\/ |^\}") },
+            Heuristic {
+                langs: &["Cool"],
+                matcher: re(r"(?m)^class"),
+            },
+            Heuristic {
+                langs: &["OpenCL"],
+                matcher: re(r"(?m)\/\* |\/\/ |^\}"),
+            },
         ],
     );
 
     m.insert(
         ".cls",
         vec![
-            Heuristic { langs: &["TeX"], matcher: re(r"(?m)\\\w+{") },
-            Heuristic { langs: &["ObjectScript"], matcher: re(r"(?m)^Class\s") },
+            Heuristic {
+                langs: &["TeX"],
+                matcher: re(r"(?m)\\\w+{"),
+            },
+            Heuristic {
+                langs: &["ObjectScript"],
+                matcher: re(r"(?m)^Class\s"),
+            },
         ],
     );
 
     m.insert(
         ".cs",
         vec![
-            Heuristic { langs: &["Smalltalk"], matcher: re(r"(?m)![\w\s]+methodsFor: ") },
+            Heuristic {
+                langs: &["Smalltalk"],
+                matcher: re(r"(?m)![\w\s]+methodsFor: "),
+            },
             Heuristic {
                 langs: &["C#"],
                 matcher: re(r"(?m)^(\s*namespace\s*[\w\.]+\s*{|\s*\/\/)"),
@@ -415,8 +443,14 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
     m.insert(
         ".ecl",
         vec![
-            Heuristic { langs: &["ECLiPSe"], matcher: re(r"(?m)^[^#]+:-") },
-            Heuristic { langs: &["ECL"], matcher: re(r"(?m):=") },
+            Heuristic {
+                langs: &["ECLiPSe"],
+                matcher: re(r"(?m)^[^#]+:-"),
+            },
+            Heuristic {
+                langs: &["ECL"],
+                matcher: re(r"(?m):="),
+            },
         ],
     );
 
@@ -431,8 +465,14 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
     m.insert(
         ".f",
         vec![
-            Heuristic { langs: &["Forth"], matcher: re(r"(?m)^: ") },
-            Heuristic { langs: &["Filebench WML"], matcher: re(r"(?m)flowop") },
+            Heuristic {
+                langs: &["Forth"],
+                matcher: re(r"(?m)^: "),
+            },
+            Heuristic {
+                langs: &["Filebench WML"],
+                matcher: re(r"(?m)flowop"),
+            },
             Heuristic {
                 langs: &["Fortran"],
                 matcher: re(r"(?m)^(?i:[c*][^abd-z]|      (subroutine|program|end|data)\s|\s*!)"),
@@ -443,7 +483,10 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
     m.insert(
         ".for",
         vec![
-            Heuristic { langs: &["Forth"], matcher: re(r"(?m)^: ") },
+            Heuristic {
+                langs: &["Forth"],
+                matcher: re(r"(?m)^: "),
+            },
             Heuristic {
                 langs: &["Fortran"],
                 matcher: re(r"(?m)^(?i:[c*][^abd-z]|      (subroutine|program|end|data)\s|\s*!)"),
@@ -462,14 +505,20 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
                 langs: &["Frege"],
                 matcher: re(r"(?m)^\s*(import|module|package|data|type) "),
             },
-            Heuristic { langs: &["Text"], matcher: Matcher::Always },
+            Heuristic {
+                langs: &["Text"],
+                matcher: Matcher::Always,
+            },
         ],
     );
 
     m.insert(
         ".fs",
         vec![
-            Heuristic { langs: &["Forth"], matcher: re(r"(?m)^(: |new-device)") },
+            Heuristic {
+                langs: &["Forth"],
+                matcher: re(r"(?m)^(: |new-device)"),
+            },
             Heuristic {
                 langs: &["F#"],
                 matcher: re(r"(?m)^\s*(#light|import|let|module|namespace|open|type)"),
@@ -494,7 +543,9 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
             },
             Heuristic {
                 langs: &["GDScript"],
-                matcher: re(r"(?m)\s*(extends|var|const|enum|func|class|signal|tool|yield|assert|onready)"),
+                matcher: re(
+                    r"(?m)\s*(extends|var|const|enum|func|class|signal|tool|yield|assert|onready)",
+                ),
             },
         ],
     );
@@ -502,19 +553,31 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
     m.insert(
         ".gml",
         vec![
-            Heuristic { langs: &["XML"], matcher: re(r"(?m)(?i:^\s*(\<\?xml|xmlns))") },
+            Heuristic {
+                langs: &["XML"],
+                matcher: re(r"(?m)(?i:^\s*(\<\?xml|xmlns))"),
+            },
             Heuristic {
                 langs: &["Graph Modeling Language"],
                 matcher: re(r"(?m)(?i:^\s*(graph|node)\s+\[$)"),
             },
-            Heuristic { langs: &["Gerber Image"], matcher: re(r"(?m)\*\%$") },
-            Heuristic { langs: &["Game Maker Language"], matcher: Matcher::Always },
+            Heuristic {
+                langs: &["Gerber Image"],
+                matcher: re(r"(?m)\*\%$"),
+            },
+            Heuristic {
+                langs: &["Game Maker Language"],
+                matcher: Matcher::Always,
+            },
         ],
     );
 
     m.insert(
         ".gs",
-        vec![Heuristic { langs: &["Gosu"], matcher: re(r"(?m)^uses java\.") }],
+        vec![Heuristic {
+            langs: &["Gosu"],
+            matcher: re(r"(?m)^uses java\."),
+        }],
     );
 
     m.insert(
@@ -538,14 +601,23 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
 
     m.insert(
         ".hh",
-        vec![Heuristic { langs: &["Hack"], matcher: re(r"(?m)<\?hh") }],
+        vec![Heuristic {
+            langs: &["Hack"],
+            matcher: re(r"(?m)<\?hh"),
+        }],
     );
 
     m.insert(
         ".ice",
         vec![
-            Heuristic { langs: &["JSON"], matcher: re(r"(?m)\A\s*[{\[]") },
-            Heuristic { langs: &["Slice"], matcher: Matcher::Always },
+            Heuristic {
+                langs: &["JSON"],
+                matcher: re(r"(?m)\A\s*[{\[]"),
+            },
+            Heuristic {
+                langs: &["Slice"],
+                matcher: Matcher::Always,
+            },
         ],
     );
 
@@ -567,9 +639,18 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
     m.insert(
         ".l",
         vec![
-            Heuristic { langs: &["Common Lisp"], matcher: re(r"(?m)\(def(un|macro)\s") },
-            Heuristic { langs: &["Lex"], matcher: re(r"(?m)^(%[%{}]xs|<.*>)") },
-            Heuristic { langs: &["Roff"], matcher: re(r"(?m)^\.[A-Za-z]{2}(\s|$)") },
+            Heuristic {
+                langs: &["Common Lisp"],
+                matcher: re(r"(?m)\(def(un|macro)\s"),
+            },
+            Heuristic {
+                langs: &["Lex"],
+                matcher: re(r"(?m)^(%[%{}]xs|<.*>)"),
+            },
+            Heuristic {
+                langs: &["Roff"],
+                matcher: re(r"(?m)^\.[A-Za-z]{2}(\s|$)"),
+            },
             Heuristic {
                 langs: &["PicoLisp"],
                 matcher: re(r"(?m)^\((de|class|rel|code|data|must)\s"),
@@ -584,7 +665,10 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
                 langs: &["Common Lisp"],
                 matcher: re(r"(?m)^\s*\((?i:defun|in-package|defpackage) "),
             },
-            Heuristic { langs: &["NewLisp"], matcher: re(r"(?m)^\s*\(define ") },
+            Heuristic {
+                langs: &["NewLisp"],
+                matcher: re(r"(?m)^\s*\(define "),
+            },
         ],
     );
 
@@ -595,7 +679,10 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
                 langs: &["LoomScript"],
                 matcher: re(r"(?m)^\s*package\s*[\w\.\/\*\s]*\s*{"),
             },
-            Heuristic { langs: &["LiveScript"], matcher: Matcher::Always },
+            Heuristic {
+                langs: &["LiveScript"],
+                matcher: Matcher::Always,
+            },
         ],
     );
 
@@ -606,7 +693,10 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
                 langs: &["Common Lisp"],
                 matcher: re(r"(?m)^\s*\((?i:defun|in-package|defpackage) "),
             },
-            Heuristic { langs: &["NewLisp"], matcher: re(r"(?m)^\s*\(define ") },
+            Heuristic {
+                langs: &["NewLisp"],
+                matcher: re(r"(?m)^\s*\(define "),
+            },
         ],
     );
 
@@ -640,7 +730,10 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
                 langs: &["GCC Machine Description"],
                 matcher: re(r"(?m)^(;;|\(define_)"),
             },
-            Heuristic { langs: &["Markdown"], matcher: Matcher::Always },
+            Heuristic {
+                langs: &["Markdown"],
+                matcher: Matcher::Always,
+            },
         ],
     );
 
@@ -661,7 +754,10 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
     m.insert(
         ".mod",
         vec![
-            Heuristic { langs: &["XML"], matcher: re(r"(?m)<!ENTITY ") },
+            Heuristic {
+                langs: &["XML"],
+                matcher: re(r"(?m)<!ENTITY "),
+            },
             Heuristic {
                 langs: &["Modula-2"],
                 matcher: re(r"(?m)^\s*(?i:MODULE|END) [\w\.]+;"),
@@ -676,7 +772,10 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
     m.insert(
         ".ms",
         vec![
-            Heuristic { langs: &["Roff"], matcher: re(r"(?m)^[.'][A-Za-z]{2}(\s|$)") },
+            Heuristic {
+                langs: &["Roff"],
+                matcher: re(r"(?m)^[.'][A-Za-z]{2}(\s|$)"),
+            },
             Heuristic {
                 langs: &["Unix Assembly"],
                 matcher: Matcher::And(vec![
@@ -684,14 +783,20 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
                     re(r"(?m)^\s*\.(?:include\s|globa?l\s|[A-Za-z][_A-Za-z0-9]*:)"),
                 ]),
             },
-            Heuristic { langs: &["MAXScript"], matcher: Matcher::Always },
+            Heuristic {
+                langs: &["MAXScript"],
+                matcher: Matcher::Always,
+            },
         ],
     );
 
     m.insert(
         ".n",
         vec![
-            Heuristic { langs: &["Roff"], matcher: re(r"(?m)^[.']") },
+            Heuristic {
+                langs: &["Roff"],
+                matcher: re(r"(?m)^[.']"),
+            },
             Heuristic {
                 langs: &["Nemerle"],
                 matcher: re(r"(?m)^(module|namespace|using)\s"),
@@ -702,31 +807,52 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
     m.insert(
         ".ncl",
         vec![
-            Heuristic { langs: &["XML"], matcher: re(r"(?m)^\s*<\?xml\s+version") },
-            Heuristic { langs: &["Text"], matcher: re(r"(?m)THE_TITLE") },
+            Heuristic {
+                langs: &["XML"],
+                matcher: re(r"(?m)^\s*<\?xml\s+version"),
+            },
+            Heuristic {
+                langs: &["Text"],
+                matcher: re(r"(?m)THE_TITLE"),
+            },
         ],
     );
 
     m.insert(
         ".nl",
         vec![
-            Heuristic { langs: &["NL"], matcher: re(r"(?m)^(b|g)[0-9]+ ") },
-            Heuristic { langs: &["NewLisp"], matcher: Matcher::Always },
+            Heuristic {
+                langs: &["NL"],
+                matcher: re(r"(?m)^(b|g)[0-9]+ "),
+            },
+            Heuristic {
+                langs: &["NewLisp"],
+                matcher: Matcher::Always,
+            },
         ],
     );
 
     m.insert(
         ".php",
         vec![
-            Heuristic { langs: &["Hack"], matcher: re(r"(?m)<\?hh") },
-            Heuristic { langs: &["PHP"], matcher: re(r"(?m)<\?[^h]") },
+            Heuristic {
+                langs: &["Hack"],
+                matcher: re(r"(?m)<\?hh"),
+            },
+            Heuristic {
+                langs: &["PHP"],
+                matcher: re(r"(?m)<\?[^h]"),
+            },
         ],
     );
 
     m.insert(
         ".pl",
         vec![
-            Heuristic { langs: &["Prolog"], matcher: re(r"(?m)^[^#]*:-") },
+            Heuristic {
+                langs: &["Prolog"],
+                matcher: re(r"(?m)^[^#]*:-"),
+            },
             Heuristic {
                 langs: &["Perl"],
                 matcher: re(r"(?m)\buse\s+(?:strict\b|v?5\.)"),
@@ -763,23 +889,38 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
                 langs: &["Pod 6"],
                 matcher: re(r"(?m)^[\s&&[^\n]]*=(comment|begin pod|begin para|item\d+)"),
             },
-            Heuristic { langs: &["Pod"], matcher: Matcher::Always },
+            Heuristic {
+                langs: &["Pod"],
+                matcher: Matcher::Always,
+            },
         ],
     );
 
     m.insert(
         ".pp",
         vec![
-            Heuristic { langs: &["Pascal"], matcher: re(r"(?m)^\s*end[.;]") },
-            Heuristic { langs: &["Puppet"], matcher: re(r"(?m)^\s+\w+\s+=>\s") },
+            Heuristic {
+                langs: &["Pascal"],
+                matcher: re(r"(?m)^\s*end[.;]"),
+            },
+            Heuristic {
+                langs: &["Puppet"],
+                matcher: re(r"(?m)^\s+\w+\s+=>\s"),
+            },
         ],
     );
 
     m.insert(
         ".pro",
         vec![
-            Heuristic { langs: &["Prolog"], matcher: re(r"(?m)^[^\[#]+:-") },
-            Heuristic { langs: &["INI"], matcher: re(r"(?m)last_client=") },
+            Heuristic {
+                langs: &["Prolog"],
+                matcher: re(r"(?m)^[^\[#]+:-"),
+            },
+            Heuristic {
+                langs: &["INI"],
+                matcher: re(r"(?m)last_client="),
+            },
             Heuristic {
                 langs: &["QMake"],
                 matcher: Matcher::And(vec![re(r"(?m)HEADERS"), re(r"(?m)SOURCES")]),
@@ -802,8 +943,14 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
                 langs: &["Java Properties"],
                 matcher: Matcher::And(vec![re(r"(?m)^[^#!;][^=]*="), re(r"(?m)^[#!]")]),
             },
-            Heuristic { langs: &["INI"], matcher: re(r"(?m)^[^#!;][^=]*=") },
-            Heuristic { langs: &["Java properties"], matcher: re(r"(?m)^[^#!][^:]*:") },
+            Heuristic {
+                langs: &["INI"],
+                matcher: re(r"(?m)^[^#!;][^=]*="),
+            },
+            Heuristic {
+                langs: &["Java properties"],
+                matcher: re(r"(?m)^[^#!][^:]*:"),
+            },
         ],
     );
 
@@ -814,7 +961,10 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
                 langs: &["XML"],
                 matcher: re(r"(?m)^(\s*)(?i:<Project|<Import|<Property|<\?xml|xmlns)"),
             },
-            Heuristic { langs: &["INI"], matcher: re(r"(?m)(?i:\w+\s*=\s*)") },
+            Heuristic {
+                langs: &["INI"],
+                matcher: re(r"(?m)(?i:\w+\s*=\s*)"),
+            },
         ],
     );
 
@@ -835,14 +985,23 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
     m.insert(
         ".r",
         vec![
-            Heuristic { langs: &["Rebol"], matcher: re(r"(?m)(?i:\bRebol\b)") },
-            Heuristic { langs: &["R"], matcher: re(r"(?m)<-|^\s*#") },
+            Heuristic {
+                langs: &["Rebol"],
+                matcher: re(r"(?m)(?i:\bRebol\b)"),
+            },
+            Heuristic {
+                langs: &["R"],
+                matcher: re(r"(?m)<-|^\s*#"),
+            },
         ],
     );
 
     m.insert(
         ".rno",
-        vec![Heuristic { langs: &["Roff"], matcher: re(r#"(?m)^\.\\" "#) }],
+        vec![Heuristic {
+            langs: &["Roff"],
+            matcher: re(r#"(?m)^\.\\" "#),
+        }],
     );
 
     m.insert(
@@ -852,7 +1011,10 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
                 langs: &["Python"],
                 matcher: re(r"(?m)(?m:^(import|from|class|def)\s)"),
             },
-            Heuristic { langs: &["Ren'Py"], matcher: Matcher::Always },
+            Heuristic {
+                langs: &["Ren'Py"],
+                matcher: Matcher::Always,
+            },
         ],
     );
 
@@ -956,16 +1118,28 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
     m.insert(
         ".ts",
         vec![
-            Heuristic { langs: &["XML"], matcher: re(r"(?m)<TS\b") },
-            Heuristic { langs: &["TypeScript"], matcher: Matcher::Always },
+            Heuristic {
+                langs: &["XML"],
+                matcher: re(r"(?m)<TS\b"),
+            },
+            Heuristic {
+                langs: &["TypeScript"],
+                matcher: Matcher::Always,
+            },
         ],
     );
 
     m.insert(
         ".tst",
         vec![
-            Heuristic { langs: &["GAP"], matcher: re(r"(?m)gap> ") },
-            Heuristic { langs: &["Scilab"], matcher: Matcher::Always },
+            Heuristic {
+                langs: &["GAP"],
+                matcher: re(r"(?m)gap> "),
+            },
+            Heuristic {
+                langs: &["Scilab"],
+                matcher: Matcher::Always,
+            },
         ],
     );
 
@@ -974,7 +1148,9 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
         vec![
             Heuristic {
                 langs: &["TSX"],
-                matcher: re(r#"(?m)^\s*(import.+(from\s+|require\()['"]react|\/\/\/\s*<reference\s)"#),
+                matcher: re(
+                    r#"(?m)^\s*(import.+(from\s+|require\()['"]react|\/\/\/\s*<reference\s)"#,
+                ),
             },
             Heuristic {
                 langs: &["XML"],
@@ -986,8 +1162,14 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
     m.insert(
         ".vba",
         vec![
-            Heuristic { langs: &["Vim script"], matcher: re(r"(?m)^UseVimball") },
-            Heuristic { langs: &["Visual Basic"], matcher: Matcher::Always },
+            Heuristic {
+                langs: &["Vim script"],
+                matcher: re(r"(?m)^UseVimball"),
+            },
+            Heuristic {
+                langs: &["Visual Basic"],
+                matcher: Matcher::Always,
+            },
         ],
     );
 
@@ -998,7 +1180,10 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
                 langs: &["OpenEdge ABL"],
                 matcher: re(r"(?m)&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CUSTOM _DEFINITIONS"),
             },
-            Heuristic { langs: &["CWeb"], matcher: re(r"(?m)^@(<|\w+\.)") },
+            Heuristic {
+                langs: &["CWeb"],
+                matcher: re(r"(?m)^@(<|\w+\.)"),
+            },
         ],
     );
 
@@ -1009,7 +1194,10 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
                 langs: &["RPC"],
                 matcher: re(r"(?m)\b(program|version)\s+\w+\s*{|\bunion\s+\w+\s+switch\s*\("),
             },
-            Heuristic { langs: &["Logos"], matcher: re(r"(?m)^%(end|ctor|hook|group)\b") },
+            Heuristic {
+                langs: &["Logos"],
+                matcher: re(r"(?m)^%(end|ctor|hook|group)\b"),
+            },
             Heuristic {
                 langs: &["Linker Script"],
                 matcher: re(r"(?m)OUTPUT_ARCH\(|OUTPUT_FORMAT\(|SECTIONS"),
@@ -1024,7 +1212,10 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
                 langs: &["JSON"],
                 matcher: re(r#"(?m)\"modelName\"\:\s*\"GM"#),
             },
-            Heuristic { langs: &["Yacc"], matcher: Matcher::Always },
+            Heuristic {
+                langs: &["Yacc"],
+                matcher: Matcher::Always,
+            },
         ],
     );
 
@@ -1063,20 +1254,14 @@ mod tests {
     fn real_manpage_dot_one_is_roff_manpage() {
         // A man-style page with .TH and .SH matches the second And rule.
         let content = b".TH FOO 1 \"2020\"\n.SH NAME\nfoo \\- does things\n";
-        assert_eq!(
-            languages_by_content("foo.1", content),
-            vec!["Roff Manpage"]
-        );
+        assert_eq!(languages_by_content("foo.1", content), vec!["Roff Manpage"]);
     }
 
     #[test]
     fn mdoc_manpage_is_roff_manpage() {
         // An mdoc-style page (.Dd/.Dt/.Sh) matches the first And rule.
         let content = b".Dd June 9, 2026\n.Dt FOO 1\n.Sh NAME\n";
-        assert_eq!(
-            languages_by_content("foo.1", content),
-            vec!["Roff Manpage"]
-        );
+        assert_eq!(languages_by_content("foo.1", content), vec!["Roff Manpage"]);
     }
 
     #[test]

@@ -98,10 +98,7 @@ impl MultiPageRenderer {
         for entry in fs::read_dir(&self.output_dir)? {
             let entry = entry?;
             let name = entry.file_name().to_string_lossy().into_owned();
-            if entry.file_type()?.is_dir()
-                || !name.ends_with(".html")
-                || name == INDEX_FILE_NAME
-            {
+            if entry.file_type()?.is_dir() || !name.ends_with(".html") || name == INDEX_FILE_NAME {
                 continue;
             }
             let id = name.trim_end_matches(".html").to_string();

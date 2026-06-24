@@ -25,7 +25,8 @@ use serde_json::{json, Value};
 
 use crate::server::{descriptions, Server, SERVER_NAME, SERVER_VERSION};
 use crate::tools::{
-    AnalyzeInput, HistoryInput, UastParseInput, TOOL_NAME_ANALYZE, TOOL_NAME_HISTORY, TOOL_NAME_UAST,
+    AnalyzeInput, HistoryInput, UastParseInput, TOOL_NAME_ANALYZE, TOOL_NAME_HISTORY,
+    TOOL_NAME_UAST,
 };
 
 /// Error type for the transport loop. The `mcp server: ` prefix is the
@@ -182,7 +183,10 @@ impl Server {
 
     fn rpc_tools_call(&self, params: &Value) -> Value {
         let name = params.get("name").and_then(Value::as_str).unwrap_or("");
-        let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
+        let args = params
+            .get("arguments")
+            .cloned()
+            .unwrap_or_else(|| json!({}));
 
         let (result, _output) = match name {
             TOOL_NAME_ANALYZE => {
@@ -274,7 +278,9 @@ fn method_not_found_response(method: &str) -> Value {
 fn write_line<W: Write>(writer: &mut W, value: &Value) -> Result<(), TransportError> {
     let mut bytes = serde_json::to_vec(value).map_err(|e| TransportError(e.to_string()))?;
     bytes.push(b'\n');
-    writer.write_all(&bytes).map_err(|e| TransportError(e.to_string()))?;
+    writer
+        .write_all(&bytes)
+        .map_err(|e| TransportError(e.to_string()))?;
     writer.flush().map_err(|e| TransportError(e.to_string()))?;
     Ok(())
 }

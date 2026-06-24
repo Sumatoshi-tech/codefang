@@ -110,7 +110,10 @@ fn lines_to_indices<'a>(
 
 /// Index of the next `\n` at or after `from`, mirroring `indexOf(text, "\n", from)`.
 fn find_newline(text: &[u8], from: usize) -> Option<usize> {
-    text[from..].iter().position(|&b| b == b'\n').map(|p| p + from)
+    text[from..]
+        .iter()
+        .position(|&b| b == b'\n')
+        .map(|p| p + from)
 }
 
 /// Computes the line-level diff between `old` and `new`, returning the merged
@@ -182,7 +185,8 @@ pub fn added_removed(old: &[u8], new: &[u8], timeout_active: bool) -> (i64, i64)
 /// Constants of the diffmatchpatch index-to-character encoding.
 const UNICODE_INVALID_RANGE_START: u32 = 0xD800;
 const UNICODE_INVALID_RANGE_END: u32 = 0xDFFF;
-const UNICODE_INVALID_RANGE_DELTA: u32 = UNICODE_INVALID_RANGE_END - UNICODE_INVALID_RANGE_START + 1;
+const UNICODE_INVALID_RANGE_DELTA: u32 =
+    UNICODE_INVALID_RANGE_END - UNICODE_INVALID_RANGE_START + 1;
 
 const ONE_BYTE_BITS: u32 = 7;
 const TWO_BYTE_BITS: u32 = 11;
@@ -225,7 +229,10 @@ fn diff_main(text1: &[u32], text2: &[u32], timeout_active: bool) -> Vec<Segment>
         if text1.is_empty() {
             return Vec::new();
         }
-        return vec![Segment { op: Op::Equal, lines: text1.to_vec() }];
+        return vec![Segment {
+            op: Op::Equal,
+            lines: text1.to_vec(),
+        }];
     }
     // Trim common prefix.
     let common_prefix = common_prefix_length(text1, text2);
@@ -242,12 +249,18 @@ fn diff_main(text1: &[u32], text2: &[u32], timeout_active: bool) -> Vec<Segment>
 
     if !prefix.is_empty() {
         let mut v = Vec::with_capacity(diffs.len() + 1);
-        v.push(Segment { op: Op::Equal, lines: prefix.to_vec() });
+        v.push(Segment {
+            op: Op::Equal,
+            lines: prefix.to_vec(),
+        });
         v.append(&mut diffs);
         diffs = v;
     }
     if !suffix.is_empty() {
-        diffs.push(Segment { op: Op::Equal, lines: suffix.to_vec() });
+        diffs.push(Segment {
+            op: Op::Equal,
+            lines: suffix.to_vec(),
+        });
     }
 
     cleanup_merge(diffs)
@@ -255,10 +268,16 @@ fn diff_main(text1: &[u32], text2: &[u32], timeout_active: bool) -> Vec<Segment>
 
 fn diff_compute(text1: &[u32], text2: &[u32], timeout_active: bool) -> Vec<Segment> {
     if text1.is_empty() {
-        return vec![Segment { op: Op::Insert, lines: text2.to_vec() }];
+        return vec![Segment {
+            op: Op::Insert,
+            lines: text2.to_vec(),
+        }];
     }
     if text2.is_empty() {
-        return vec![Segment { op: Op::Delete, lines: text1.to_vec() }];
+        return vec![Segment {
+            op: Op::Delete,
+            lines: text1.to_vec(),
+        }];
     }
 
     let (longtext, shorttext) = if text1.len() > text2.len() {
@@ -268,17 +287,36 @@ fn diff_compute(text1: &[u32], text2: &[u32], timeout_active: bool) -> Vec<Segme
     };
 
     if let Some(i) = runes_index(longtext, shorttext) {
-        let op = if text1.len() > text2.len() { Op::Delete } else { Op::Insert };
+        let op = if text1.len() > text2.len() {
+            Op::Delete
+        } else {
+            Op::Insert
+        };
         return vec![
-            Segment { op, lines: longtext[..i].to_vec() },
-            Segment { op: Op::Equal, lines: shorttext.to_vec() },
-            Segment { op, lines: longtext[i + shorttext.len()..].to_vec() },
+            Segment {
+                op,
+                lines: longtext[..i].to_vec(),
+            },
+            Segment {
+                op: Op::Equal,
+                lines: shorttext.to_vec(),
+            },
+            Segment {
+                op,
+                lines: longtext[i + shorttext.len()..].to_vec(),
+            },
         ];
     }
     if shorttext.len() == 1 {
         return vec![
-            Segment { op: Op::Delete, lines: text1.to_vec() },
-            Segment { op: Op::Insert, lines: text2.to_vec() },
+            Segment {
+                op: Op::Delete,
+                lines: text1.to_vec(),
+            },
+            Segment {
+                op: Op::Insert,
+                lines: text2.to_vec(),
+            },
         ];
     }
 
@@ -287,7 +325,10 @@ fn diff_compute(text1: &[u32], text2: &[u32], timeout_active: bool) -> Vec<Segme
             let (t1a, t1b, t2a, t2b, mid) = hm;
             let mut diffs_a = diff_main(&t1a, &t2a, timeout_active);
             let mut diffs_b = diff_main(&t1b, &t2b, timeout_active);
-            diffs_a.push(Segment { op: Op::Equal, lines: mid });
+            diffs_a.push(Segment {
+                op: Op::Equal,
+                lines: mid,
+            });
             diffs_a.append(&mut diffs_b);
             return diffs_a;
         }
@@ -322,7 +363,8 @@ fn diff_bisect(runes1: &[u32], runes2: &[u32]) -> Vec<Segment> {
         while k1 <= d - k1end {
             let k1_offset = v_offset + k1;
             let mut x1: isize;
-            if k1 == -d || (k1 != d && v1[(k1_offset - 1) as usize] < v1[(k1_offset + 1) as usize]) {
+            if k1 == -d || (k1 != d && v1[(k1_offset - 1) as usize] < v1[(k1_offset + 1) as usize])
+            {
                 x1 = v1[(k1_offset + 1) as usize];
             } else {
                 x1 = v1[(k1_offset - 1) as usize] + 1;
@@ -339,7 +381,8 @@ fn diff_bisect(runes1: &[u32], runes2: &[u32]) -> Vec<Segment> {
                 k1start += 2;
             } else if front {
                 let k2_offset = v_offset + delta - k1;
-                if k2_offset >= 0 && (k2_offset as usize) < v_length && v2[k2_offset as usize] != -1 {
+                if k2_offset >= 0 && (k2_offset as usize) < v_length && v2[k2_offset as usize] != -1
+                {
                     let x2 = runes1_len - v2[k2_offset as usize];
                     if x1 >= x2 {
                         return diff_bisect_split(runes1, runes2, x1 as usize, y1 as usize);
@@ -353,7 +396,8 @@ fn diff_bisect(runes1: &[u32], runes2: &[u32]) -> Vec<Segment> {
         while k2 <= d - k2end {
             let k2_offset = v_offset + k2;
             let mut x2: isize;
-            if k2 == -d || (k2 != d && v2[(k2_offset - 1) as usize] < v2[(k2_offset + 1) as usize]) {
+            if k2 == -d || (k2 != d && v2[(k2_offset - 1) as usize] < v2[(k2_offset + 1) as usize])
+            {
                 x2 = v2[(k2_offset + 1) as usize];
             } else {
                 x2 = v2[(k2_offset - 1) as usize] + 1;
@@ -373,7 +417,8 @@ fn diff_bisect(runes1: &[u32], runes2: &[u32]) -> Vec<Segment> {
                 k2start += 2;
             } else if !front {
                 let k1_offset = v_offset + delta - k2;
-                if k1_offset >= 0 && (k1_offset as usize) < v_length && v1[k1_offset as usize] != -1 {
+                if k1_offset >= 0 && (k1_offset as usize) < v_length && v1[k1_offset as usize] != -1
+                {
                     let x1 = v1[k1_offset as usize];
                     let y1 = v_offset + x1 - k1_offset;
                     let x2m = runes1_len - x2;
@@ -388,8 +433,14 @@ fn diff_bisect(runes1: &[u32], runes2: &[u32]) -> Vec<Segment> {
     }
 
     vec![
-        Segment { op: Op::Delete, lines: runes1.to_vec() },
-        Segment { op: Op::Insert, lines: runes2.to_vec() },
+        Segment {
+            op: Op::Delete,
+            lines: runes1.to_vec(),
+        },
+        Segment {
+            op: Op::Insert,
+            lines: runes2.to_vec(),
+        },
     ]
 }
 
@@ -477,7 +528,10 @@ fn diff_half_match_i(l: &[u32], s: &[u32], i: usize) -> Option<HalfMatch> {
 // ---------------------------------------------------------------------------
 
 fn cleanup_merge(mut diffs: Vec<Segment>) -> Vec<Segment> {
-    diffs.push(Segment { op: Op::Equal, lines: Vec::new() });
+    diffs.push(Segment {
+        op: Op::Equal,
+        lines: Vec::new(),
+    });
     let mut pointer = 0usize;
     let mut count_delete = 0usize;
     let mut count_insert = 0usize;
@@ -536,12 +590,24 @@ fn cleanup_merge(mut diffs: Vec<Segment>) -> Vec<Segment> {
                     let amount = count_delete + count_insert;
                     let mut replacement: Vec<Segment> = Vec::new();
                     if count_delete == 0 {
-                        replacement.push(Segment { op: Op::Insert, lines: text_insert.clone() });
+                        replacement.push(Segment {
+                            op: Op::Insert,
+                            lines: text_insert.clone(),
+                        });
                     } else if count_insert == 0 {
-                        replacement.push(Segment { op: Op::Delete, lines: text_delete.clone() });
+                        replacement.push(Segment {
+                            op: Op::Delete,
+                            lines: text_delete.clone(),
+                        });
                     } else {
-                        replacement.push(Segment { op: Op::Delete, lines: text_delete.clone() });
-                        replacement.push(Segment { op: Op::Insert, lines: text_insert.clone() });
+                        replacement.push(Segment {
+                            op: Op::Delete,
+                            lines: text_delete.clone(),
+                        });
+                        replacement.push(Segment {
+                            op: Op::Insert,
+                            lines: text_insert.clone(),
+                        });
                     }
                     let repl_start = if count_insert == 0 {
                         pointer - count_delete
@@ -658,8 +724,7 @@ fn cleanup_semantic_score(one: &[u32], two: &[u32]) -> i32 {
 /// The reference whitespace class `\s`: ASCII `[\t\n\f\r ]` plus the Unicode
 /// whitespace property. For the encoded line-index domain only these matter.
 fn is_go_whitespace(c: char) -> bool {
-    matches!(c, '\t' | '\n' | '\u{0B}' | '\u{0C}' | '\r' | ' ')
-        || c.is_whitespace()
+    matches!(c, '\t' | '\n' | '\u{0B}' | '\u{0C}' | '\r' | ' ') || c.is_whitespace()
 }
 
 /// `\n\r?\n$`: ends with `\n\n` or `\n\r\n`.
@@ -699,8 +764,8 @@ fn cleanup_semantic_lossless(mut diffs: Vec<Segment>) -> Vec<Segment> {
             let mut best_equality1 = equality1.clone();
             let mut best_edit = edit.clone();
             let mut best_equality2 = equality2.clone();
-            let mut best_score =
-                cleanup_semantic_score(&equality1, &edit) + cleanup_semantic_score(&edit, &equality2);
+            let mut best_score = cleanup_semantic_score(&equality1, &edit)
+                + cleanup_semantic_score(&edit, &equality2);
 
             while !edit.is_empty() && !equality2.is_empty() && edit[0] == equality2[0] {
                 equality1.push(edit[0]);

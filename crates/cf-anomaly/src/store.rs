@@ -60,9 +60,18 @@ mod tests {
     #[test]
     fn store_records_view_matches_metrics() {
         let metrics = ComputedMetrics {
-            time_series: vec![TimeSeriesEntry { tick: 7, ..Default::default() }],
-            anomalies: vec![Record { tick: 7, ..Default::default() }],
-            aggregate: AggregateData { total_ticks: 1, ..Default::default() },
+            time_series: vec![TimeSeriesEntry {
+                tick: 7,
+                ..Default::default()
+            }],
+            anomalies: vec![Record {
+                tick: 7,
+                ..Default::default()
+            }],
+            aggregate: AggregateData {
+                total_ticks: 1,
+                ..Default::default()
+            },
             ..Default::default()
         };
         let records = StoreRecords::from_metrics(&metrics);

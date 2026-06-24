@@ -37,8 +37,8 @@ fn parse_json_str_array(s: &str) -> Vec<String> {
 #[test]
 #[ignore = "requires the Go oracle output and corpus (see module docs)"]
 fn matches_go_enry_oracle() {
-    let path = std::env::var("CF_LANGPATH_ORACLE")
-        .unwrap_or_else(|_| "/tmp/oracle_out.tsv".to_string());
+    let path =
+        std::env::var("CF_LANGPATH_ORACLE").unwrap_or_else(|_| "/tmp/oracle_out.tsv".to_string());
     let tsv = fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("oracle file {path}: {e}; run the Go oracle first"));
 
@@ -61,7 +61,9 @@ fn matches_go_enry_oracle() {
         }
 
         // Skip files that vanished since the oracle ran.
-        let Ok(content) = fs::read(file) else { continue };
+        let Ok(content) = fs::read(file) else {
+            continue;
+        };
         // Pass the full path: enry computes filepath.Ext on it, and the Rust
         // port mirrors filepath.Ext including separator handling.
         let got = languages_by_content(file, &content);

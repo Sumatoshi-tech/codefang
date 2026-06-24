@@ -290,7 +290,13 @@ fn write_indented(out: &mut Vec<u8>, value: &GoValue, unit: &str, depth: usize) 
 }
 
 /// [`write_indented`] with the HTML-escaping mode threaded through.
-fn write_indented_opts(out: &mut Vec<u8>, value: &GoValue, unit: &str, depth: usize, escape_html: bool) {
+fn write_indented_opts(
+    out: &mut Vec<u8>,
+    value: &GoValue,
+    unit: &str,
+    depth: usize,
+    escape_html: bool,
+) {
     match value {
         GoValue::Array(items) if !items.is_empty() => {
             out.extend_from_slice(b"[\n");
@@ -432,9 +438,15 @@ mod tests {
         assert_eq!(st(marshal(&GoValue::Str("a\\b".into()))), r#""a\\b""#);
         assert_eq!(st(marshal(&GoValue::Str("x\ny\tz".into()))), r#""x\ny\tz""#);
         // 0x08 and 0x0c use the short escapes \b and \f (contract behavior).
-        assert_eq!(st(marshal(&GoValue::Str("\u{0008}\u{000c}".into()))), r#""\b\f""#);
+        assert_eq!(
+            st(marshal(&GoValue::Str("\u{0008}\u{000c}".into()))),
+            r#""\b\f""#
+        );
         // line/paragraph separators.
-        assert_eq!(st(marshal(&GoValue::Str("\u{2028}\u{2029}".into()))), r#""\u2028\u2029""#);
+        assert_eq!(
+            st(marshal(&GoValue::Str("\u{2028}\u{2029}".into()))),
+            r#""\u2028\u2029""#
+        );
         // forward slash is NOT escaped.
         assert_eq!(st(marshal(&GoValue::Str("a/b".into()))), r#""a/b""#);
     }
@@ -446,7 +458,10 @@ mod tests {
         map.push("apple", GoValue::Int(2));
         map.push("Mango", GoValue::Int(3));
         // byte order: 'M'(0x4d) < 'a'(0x61) < 'z'(0x7a).
-        assert_eq!(st(marshal(&GoValue::Map(map))), r#"{"Mango":3,"apple":2,"zebra":1}"#);
+        assert_eq!(
+            st(marshal(&GoValue::Map(map))),
+            r#"{"Mango":3,"apple":2,"zebra":1}"#
+        );
 
         let mut s = GoMap::new_struct();
         s.push("score", GoValue::Float(0.5));
@@ -478,7 +493,8 @@ mod tests {
         let mut top = GoMap::new(MapOrigin::Map);
         top.push("b", GoValue::Map(inner));
         top.push("a", GoValue::Array(vec![GoValue::Int(1), GoValue::Int(2)]));
-        let expected = "{\n  \"a\": [\n    1,\n    2\n  ],\n  \"b\": {\n    \"x\": 1,\n    \"y\": 2\n  }\n}";
+        let expected =
+            "{\n  \"a\": [\n    1,\n    2\n  ],\n  \"b\": {\n    \"x\": 1,\n    \"y\": 2\n  }\n}";
         assert_eq!(st(marshal_indent(&GoValue::Map(top))), expected);
     }
 
@@ -488,7 +504,10 @@ mod tests {
         assert_eq!(Encoder::marshal().encode(&v), b"7");
         assert_eq!(Encoder::compact().encode(&v), b"7");
         assert_eq!(Encoder::encoder().encode(&v), b"7\n");
-        assert_eq!(Encoder::compact().with_trailing_newline(true).encode(&v), b"7\n");
+        assert_eq!(
+            Encoder::compact().with_trailing_newline(true).encode(&v),
+            b"7\n"
+        );
         assert_eq!(
             Encoder::marshal().encode_to_string(&GoValue::Str("a<b".into())),
             r#""a\u003cb""#
@@ -497,7 +516,9 @@ mod tests {
         let mut m = GoMap::new(MapOrigin::Map);
         m.push("a", GoValue::Int(1));
         assert_eq!(
-            Encoder::indented("  ").with_trailing_newline(true).encode_to_string(&GoValue::Map(m)),
+            Encoder::indented("  ")
+                .with_trailing_newline(true)
+                .encode_to_string(&GoValue::Map(m)),
             "{\n  \"a\": 1\n}\n"
         );
     }

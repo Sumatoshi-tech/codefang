@@ -56,9 +56,7 @@ mod tests {
     #[test]
     fn collects_hashes_per_tick() {
         let ticks = vec![tick(0), tick(1)];
-        let ct = build_commits_by_tick(&ticks, |t| {
-            Some(vec![format!("hash{}", t.tick)])
-        });
+        let ct = build_commits_by_tick(&ticks, |t| Some(vec![format!("hash{}", t.tick)]));
         assert_eq!(ct.len(), 2);
         assert_eq!(ct[0].0, 0);
         assert_eq!(ct[0].1[0].as_str(), "hash0");

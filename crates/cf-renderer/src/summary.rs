@@ -103,7 +103,11 @@ impl SectionRenderer {
                 .colorize(&overall_label, terminal::color_for_score(overall_score));
         }
         let right_text = format!("{SUMMARY_OVERALL_PREFIX}{overall_label}");
-        parts.push(terminal::draw_header(&title, &right_text, self.config.width));
+        parts.push(terminal::draw_header(
+            &title,
+            &right_text,
+            self.config.width,
+        ));
 
         // Column headers.
         let indent = " ".repeat(INDENT_WIDTH);
@@ -123,7 +127,11 @@ impl SectionRenderer {
             .config
             .width
             .saturating_sub(INDENT_WIDTH * SEPARATOR_WIDTH_VALUE);
-        parts.push(format!("{}{}", indent, terminal::draw_separator(separator_width)));
+        parts.push(format!(
+            "{}{}",
+            indent,
+            terminal::draw_separator(separator_width)
+        ));
 
         // Analyzer rows.
         for section in &summary.sections {

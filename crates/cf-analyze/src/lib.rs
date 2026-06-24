@@ -54,22 +54,17 @@ pub mod schema_registry;
 pub mod streaming_sink;
 pub mod tc;
 pub mod thresholds;
-pub mod typed_collection;
 pub mod timeseries;
+pub mod typed_collection;
 
 pub use aggregation_mode::{AggregationMode, AggregationModeAware};
 pub use aggregator::GenericAggregator;
-pub use interfaces::{
-    Aggregator, AggregatorOptions, AggregatorSpillInfo, CommitStatsDrainer, CONFIG_TMP_DIR,
-};
 pub use analyzer::{
     Analyzer, FormattableAnalyzer, RawFileAnalyzer, Report, ResultAggregator, StateSizer,
     StaticAnalyzer, Thresholds, VisitorProvider, ERR_ANALYSIS_FAILED, ERR_NIL_ROOT_NODE,
     ERR_UNREGISTERED_ANALYZER,
 };
-pub use base_history::{
-    BaseHistoryAnalyzer, MetricsSerializer, ERR_MISSING_COMPUTE_METRICS,
-};
+pub use base_history::{BaseHistoryAnalyzer, MetricsSerializer, ERR_MISSING_COMPUTE_METRICS};
 pub use commits_by_tick::build_commits_by_tick;
 pub use conversion::{
     decode_combined_binary_reports, parse_unified_model_json, resolve_formats,
@@ -78,11 +73,14 @@ pub use conversion::{
 };
 pub use descriptor::{new_descriptor, normalize_name, Descriptor};
 pub use formats::{
-    normalize_format, universal_formats, validate_format, validate_universal_format,
-    FormatError, FORMAT_BINARY, FORMAT_BIN_ALIAS, FORMAT_COMPACT, FORMAT_JSON, FORMAT_NDJSON,
-    FORMAT_PLOT, FORMAT_TEXT, FORMAT_TIMESERIES, FORMAT_TIMESERIES_NDJSON, FORMAT_YAML,
+    normalize_format, universal_formats, validate_format, validate_universal_format, FormatError,
+    FORMAT_BINARY, FORMAT_BIN_ALIAS, FORMAT_COMPACT, FORMAT_JSON, FORMAT_NDJSON, FORMAT_PLOT,
+    FORMAT_TEXT, FORMAT_TIMESERIES, FORMAT_TIMESERIES_NDJSON, FORMAT_YAML,
 };
 pub use history::{AnalyzerMode, MODE_HISTORY, MODE_STATIC};
+pub use interfaces::{
+    Aggregator, AggregatorOptions, AggregatorSpillInfo, CommitStatsDrainer, CONFIG_TMP_DIR,
+};
 pub use metadata::{AnalysisMetadata, Clock, SystemClock};
 pub use schema_registry::{schema_for_analyzer, AnalyzerSchema, FieldMeta};
 pub use streaming_sink::{NdjsonLine, StreamingSink};
@@ -92,9 +90,7 @@ pub use timeseries::{
     AnalyzerData, CommitMeta, MergedCommitData, MergedTimeSeries, TimeSeriesError,
     TIMESERIES_MODEL_VERSION,
 };
-pub use typed_collection::{
-    TypedCollection, DIRECTORY_KEY, LANGUAGE_KEY, SOURCE_FILE_KEY,
-};
+pub use typed_collection::{TypedCollection, DIRECTORY_KEY, LANGUAGE_KEY, SOURCE_FILE_KEY};
 
 /// Sentinel error text returned by stub methods that are not yet wired.
 /// Kept crate-public so analyzers can match on it.

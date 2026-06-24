@@ -441,7 +441,11 @@ fn build_json_report(agg: &Aggregated) -> GoValue {
                 poor += 1;
             }
         }
-        dist_items.push(dist_item(DIST_LABEL_EXCELLENT, pct(excellent, total), excellent));
+        dist_items.push(dist_item(
+            DIST_LABEL_EXCELLENT,
+            pct(excellent, total),
+            excellent,
+        ));
         dist_items.push(dist_item(DIST_LABEL_GOOD, pct(good, total), good));
         dist_items.push(dist_item(DIST_LABEL_FAIR, pct(fair, total), fair));
         dist_items.push(dist_item(DIST_LABEL_POOR, pct(poor, total), poor));
@@ -462,7 +466,10 @@ fn build_json_report(agg: &Aggregated) -> GoValue {
             iss.push("name", GoValue::Str(f.name.clone()));
             iss.push("location", GoValue::Str(f.source_file.clone()));
             iss.push("value", GoValue::Str(format_float(f.cohesion)));
-            iss.push("severity", GoValue::Str(severity_for_cohesion(f.cohesion).to_string()));
+            iss.push(
+                "severity",
+                GoValue::Str(severity_for_cohesion(f.cohesion).to_string()),
+            );
             GoValue::Map(iss)
         })
         .collect();
@@ -481,7 +488,10 @@ fn build_json_report(agg: &Aggregated) -> GoValue {
 
     // ---- report ----
     let mut report = GoMap::new(MapOrigin::Struct);
-    report.push("overall_score_label", GoValue::Str(score_label(cohesion_score)));
+    report.push(
+        "overall_score_label",
+        GoValue::Str(score_label(cohesion_score)),
+    );
     report.push("sections", GoValue::Array(vec![GoValue::Map(section)]));
     report.push("overall_score", GoValue::Float(cohesion_score));
     GoValue::Map(report)

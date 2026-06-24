@@ -24,8 +24,7 @@ const CHART_SECTION_TITLE: &str = "Sentiment Analysis Over Time";
 const CHART_SECTION_SUBTITLE: &str =
     "Sentiment score and comment volume per time interval. Green zone = positive, red zone = negative.";
 const DISTRIBUTION_TITLE: &str = "Sentiment Distribution";
-const DISTRIBUTION_SUBTITLE: &str =
-    "Breakdown of positive, neutral, and negative time periods.";
+const DISTRIBUTION_SUBTITLE: &str = "Breakdown of positive, neutral, and negative time periods.";
 const SENTIMENT_LINE_WIDTH: f64 = 2.0;
 const ZONE_LINE_WIDTH: f64 = 1.0;
 const ZONE_OPACITY: f64 = 0.08;
@@ -63,7 +62,11 @@ fn build_sentiment_chart(metrics: &cf_sentiment::ComputedMetrics) -> Chart {
     let mut line = init_sentiment_line(&co);
 
     let n = metrics.time_series.len();
-    let labels: Vec<String> = metrics.time_series.iter().map(|ts| ts.tick.to_string()).collect();
+    let labels: Vec<String> = metrics
+        .time_series
+        .iter()
+        .map(|ts| ts.tick.to_string())
+        .collect();
     line.set_x_axis_labels(&labels);
 
     // prepareChartData.
@@ -71,15 +74,29 @@ fn build_sentiment_chart(metrics: &cf_sentiment::ComputedMetrics) -> Chart {
         GoValue::Array(
             values
                 .into_iter()
-                .map(|v| LineData { value: Some(v), ..LineData::default() }.value())
+                .map(|v| {
+                    LineData {
+                        value: Some(v),
+                        ..LineData::default()
+                    }
+                    .value()
+                })
                 .collect(),
         )
     };
     let sentiment = line_data(
-        metrics.time_series.iter().map(|ts| GoValue::Float(f64::from(ts.sentiment))).collect(),
+        metrics
+            .time_series
+            .iter()
+            .map(|ts| GoValue::Float(f64::from(ts.sentiment)))
+            .collect(),
     );
     let comments = line_data(
-        metrics.time_series.iter().map(|ts| GoValue::Int(ts.comment_count)).collect(),
+        metrics
+            .time_series
+            .iter()
+            .map(|ts| GoValue::Int(ts.comment_count))
+            .collect(),
     );
     let positive_zone = line_data(
         metrics
@@ -332,7 +349,9 @@ fn build_main_chart_hint(metrics: &cf_sentiment::ComputedMetrics) -> Hint {
     // though the run metrics carry the periods.
 
     items.push("Sudden drops may indicate stressful periods or difficult bugs".to_string());
-    items.push("SE-domain terms (kill, abort, fatal) are adjusted to avoid false negatives".to_string());
+    items.push(
+        "SE-domain terms (kill, abort, fatal) are adjusted to avoid false negatives".to_string(),
+    );
 
     Hint {
         title: "How to interpret:".to_string(),

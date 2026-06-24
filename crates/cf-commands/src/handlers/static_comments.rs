@@ -172,7 +172,13 @@ fn comments_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoV
         agg.functions.clear();
     }
     let report_count = agg.report_count.max(0);
-    let mean = |sum: f64| if report_count > 0 { sum / report_count as f64 } else { 0.0 };
+    let mean = |sum: f64| {
+        if report_count > 0 {
+            sum / report_count as f64
+        } else {
+            0.0
+        }
+    };
     let overall_score = mean(agg.sum_overall_score);
     let good_ratio = mean(agg.sum_good_comments_ratio);
     let doc_coverage = mean(agg.sum_documentation_coverage);
@@ -193,12 +199,21 @@ fn comments_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoV
         GoValue::Map(m)
     };
     let metrics = vec![
-        metric("Total Comments", cf_reportutil::format_int(agg.total_comments)),
-        metric("Good Comments", cf_reportutil::format_int(agg.good_comments)),
+        metric(
+            "Total Comments",
+            cf_reportutil::format_int(agg.total_comments),
+        ),
+        metric(
+            "Good Comments",
+            cf_reportutil::format_int(agg.good_comments),
+        ),
         metric("Bad Comments", cf_reportutil::format_int(agg.bad_comments)),
         metric("Doc Coverage", format_percent(doc_coverage)),
         metric("Good Ratio", format_percent(good_ratio)),
-        metric("Total Functions", cf_reportutil::format_int(agg.total_functions)),
+        metric(
+            "Total Functions",
+            cf_reportutil::format_int(agg.total_functions),
+        ),
     ];
 
     // --- distribution (Documented / Undocumented); nil when no functions ---
@@ -208,7 +223,13 @@ fn comments_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoV
     } else {
         let documented = agg.documented_functions;
         let undocumented = total_fns - documented;
-        let pct = |c: i64| if total_fns == 0 { 0.0 } else { c as f64 / total_fns as f64 };
+        let pct = |c: i64| {
+            if total_fns == 0 {
+                0.0
+            } else {
+                c as f64 / total_fns as f64
+            }
+        };
         let dist = |label: &str, count: i64| {
             let mut m = GoMap::new(MapOrigin::Struct);
             m.push("label", GoValue::Str(label.to_string()));
@@ -287,10 +308,7 @@ fn comments_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoV
 /// With no parsed files the reference implementation returns `buildEmptyResult` instead (8 keys, no
 /// `analyzer_name`/collections).
 #[must_use]
-pub fn comments_raw_report_value(
-    root_path: &str,
-    opts: &PathPolicyOptions,
-) -> Option<GoValue> {
+pub fn comments_raw_report_value(root_path: &str, opts: &PathPolicyOptions) -> Option<GoValue> {
     let agg = comments_aggregate_opts(root_path, opts)?;
 
     if agg.report_count == 0 {
@@ -365,7 +383,10 @@ pub fn comments_raw_report_value(
     m.push("good_comments", GoValue::Int(agg.good_comments));
     m.push("bad_comments", GoValue::Int(agg.bad_comments));
     m.push("total_functions", GoValue::Int(agg.total_functions));
-    m.push("documented_functions", GoValue::Int(agg.documented_functions));
+    m.push(
+        "documented_functions",
+        GoValue::Int(agg.documented_functions),
+    );
     m.push(
         "total_comment_details",
         GoValue::Int(agg.total_comment_details),
@@ -643,9 +664,15 @@ fn compute_metrics(agg: &Aggregated) -> GoValue {
     aggregate.push("bad_comments", GoValue::Int(agg.bad_comments));
     aggregate.push("overall_score", GoValue::Float(overall_score));
     aggregate.push("total_functions", GoValue::Int(agg.total_functions));
-    aggregate.push("documented_functions", GoValue::Int(agg.documented_functions));
+    aggregate.push(
+        "documented_functions",
+        GoValue::Int(agg.documented_functions),
+    );
     aggregate.push("good_comments_ratio", GoValue::Float(good_comments_ratio));
-    aggregate.push("documentation_coverage", GoValue::Float(documentation_coverage));
+    aggregate.push(
+        "documentation_coverage",
+        GoValue::Float(documentation_coverage),
+    );
     aggregate.push("health_score", GoValue::Float(overall_score * 100.0));
     // buildMessage over the overall_score average (the value captured in the
     // golden); ThresholdLabeler: ≥0.8 Excellent, ≥0.6 Good, ≥0.4 Fair, else Poor.
@@ -655,8 +682,14 @@ fn compute_metrics(agg: &Aggregated) -> GoValue {
     // undocumented_functions, aggregate.
     let mut root = GoMap::new(MapOrigin::Struct);
     root.push("comment_quality", GoValue::Array(comment_quality));
-    root.push("function_documentation", GoValue::Array(function_documentation));
-    root.push("undocumented_functions", GoValue::Array(undocumented_functions));
+    root.push(
+        "function_documentation",
+        GoValue::Array(function_documentation),
+    );
+    root.push(
+        "undocumented_functions",
+        GoValue::Array(undocumented_functions),
+    );
     root.push("aggregate", GoValue::Map(aggregate));
     GoValue::Map(root)
 }

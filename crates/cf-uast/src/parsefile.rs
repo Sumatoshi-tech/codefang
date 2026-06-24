@@ -27,8 +27,8 @@ impl Parser {
     /// already-resolved. Behavior matches for ordinary (non-symlinked,
     /// in-tree) paths.
     pub fn parse_file(&self, path: &str, lang: &str) -> Result<Node, ParseError> {
-        let code = std::fs::read(path)
-            .map_err(|e| ParseError::Other(format!("read {path}: {e}")))?;
+        let code =
+            std::fs::read(path).map_err(|e| ParseError::Other(format!("read {path}: {e}")))?;
 
         let resolved_path = path;
 
@@ -39,9 +39,7 @@ impl Parser {
                 .extension()
                 .map(|e| format!(".{}", e.to_string_lossy()))
                 .unwrap_or_default();
-            let stem = resolved_path
-                .strip_suffix(&ext)
-                .unwrap_or(resolved_path);
+            let stem = resolved_path.strip_suffix(&ext).unwrap_or(resolved_path);
             format!("{stem}.{lang}")
         };
 
@@ -92,6 +90,9 @@ mod tests {
         let node = res.expect("go-forced parse of a .txt file should succeed");
         // The go mapping lowers the `source_file` root to type `File`.
         assert_eq!(node.node_type, "File");
-        assert!(!node.children.is_empty(), "parsed tree should have children");
+        assert!(
+            !node.children.is_empty(),
+            "parsed tree should have children"
+        );
     }
 }

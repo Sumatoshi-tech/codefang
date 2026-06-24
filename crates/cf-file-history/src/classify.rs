@@ -259,7 +259,10 @@ mod tests {
         // Plain source files (default => Source).
         let c = Classifier::new();
         assert_eq!(c.classify("main.go", b""), Category::Source);
-        assert_eq!(c.classify("internal/server/handler.go", b""), Category::Source);
+        assert_eq!(
+            c.classify("internal/server/handler.go", b""),
+            Category::Source
+        );
         assert_eq!(c.classify("src/index.ts", b""), Category::Source);
     }
 

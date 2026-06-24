@@ -494,10 +494,7 @@ mod tests {
     fn test_merge_precision_mismatch() {
         let mut sk1 = Sketch::new(DEFAULT_PRECISION).unwrap();
         let sk2 = Sketch::new(MIN_PREC).unwrap();
-        assert_eq!(
-            sk1.merge(&sk2).unwrap_err(),
-            HllError::PrecisionMismatch
-        );
+        assert_eq!(sk1.merge(&sk2).unwrap_err(), HllError::PrecisionMismatch);
     }
 
     #[test]

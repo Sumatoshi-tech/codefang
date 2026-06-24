@@ -230,7 +230,12 @@ fn complexity_report_value_opts(
     // a map here — run-to-run random; the oracle's measured-variance
     // canonicalization compares the set).
     let file_entries: Option<Vec<GoValue>> = if per_file {
-        Some(files.iter().map(|f| build_file_entry(f, &records)).collect())
+        Some(
+            files
+                .iter()
+                .map(|f| build_file_entry(f, &records))
+                .collect(),
+        )
     } else {
         None
     };
@@ -428,7 +433,11 @@ struct FileBoundary {
 fn build_file_entry(f: &FileBoundary, records: &[FnRecord]) -> GoValue {
     let frecs = &records[f.start..f.end];
     let n_fns = frecs.len() as i64;
-    let avg = if n_fns > 0 { f.total_complexity as f64 / n_fns as f64 } else { 0.0 };
+    let avg = if n_fns > 0 {
+        f.total_complexity as f64 / n_fns as f64
+    } else {
+        0.0
+    };
     let score = calculate_score(avg);
     // Per-file status: the analyzer's single-file report message — the empty
     // result carries "No functions found" (reference buildEmptyResult).
@@ -468,7 +477,11 @@ fn build_file_entry(f: &FileBoundary, records: &[FnRecord]) -> GoValue {
         dist_items.push(dist_item(DIST_LABEL_SIMPLE, pct(simple, n_fns), simple));
         dist_items.push(dist_item(DIST_LABEL_MOD, pct(moderate, n_fns), moderate));
         dist_items.push(dist_item(DIST_LABEL_COMPLEX, pct(complex, n_fns), complex));
-        dist_items.push(dist_item(DIST_LABEL_VERYC, pct(very_complex, n_fns), very_complex));
+        dist_items.push(dist_item(
+            DIST_LABEL_VERYC,
+            pct(very_complex, n_fns),
+            very_complex,
+        ));
     }
 
     // Issues: this file's functions in the section comparator order.
@@ -501,7 +514,10 @@ fn build_file_entry(f: &FileBoundary, records: &[FnRecord]) -> GoValue {
                     r.cyclomatic, r.cognitive, r.nesting
                 )),
             );
-            iss.push("severity", GoValue::Str(severity_for_complexity(r.cyclomatic).to_string()));
+            iss.push(
+                "severity",
+                GoValue::Str(severity_for_complexity(r.cyclomatic).to_string()),
+            );
             GoValue::Map(iss)
         })
         .collect();
@@ -694,7 +710,11 @@ fn convert_node(n: &UastNode) -> CxNode {
     let mut out = CxNode::new(n.node_type.clone());
     out.token = n.token.clone();
     out.roles = n.roles.clone();
-    out.props = n.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    out.props = n
+        .props
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
     out.pos = n.pos.as_ref().map(|p| CxPositions {
         start_line: p.start_line as u32,
         start_col: p.start_col as u32,
@@ -803,7 +823,11 @@ fn build_json_report(
         dist_items.push(dist_item(DIST_LABEL_SIMPLE, pct(simple, total), simple));
         dist_items.push(dist_item(DIST_LABEL_MOD, pct(moderate, total), moderate));
         dist_items.push(dist_item(DIST_LABEL_COMPLEX, pct(complex, total), complex));
-        dist_items.push(dist_item(DIST_LABEL_VERYC, pct(very_complex, total), very_complex));
+        dist_items.push(dist_item(
+            DIST_LABEL_VERYC,
+            pct(very_complex, total),
+            very_complex,
+        ));
     }
 
     // ---- issues: ALL functions sorted by cc desc, cog desc, nest desc, name asc ----
@@ -837,7 +861,10 @@ fn build_json_report(
                     r.cyclomatic, r.cognitive, r.nesting
                 )),
             );
-            iss.push("severity", GoValue::Str(severity_for_complexity(r.cyclomatic).to_string()));
+            iss.push(
+                "severity",
+                GoValue::Str(severity_for_complexity(r.cyclomatic).to_string()),
+            );
             GoValue::Map(iss)
         })
         .collect();

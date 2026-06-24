@@ -82,8 +82,14 @@ pub fn aggregate_to_value(a: &AggregateData) -> GoValue {
     o.push("total_nodes", GoValue::Int(a.total_nodes));
     o.push("total_changes", GoValue::Int(a.total_changes));
     o.push("total_couplings", GoValue::Int(a.total_couplings));
-    o.push("avg_changes_per_node", GoValue::Float(a.avg_changes_per_node));
-    o.push("avg_coupling_strength", GoValue::Float(a.avg_coupling_strength));
+    o.push(
+        "avg_changes_per_node",
+        GoValue::Float(a.avg_changes_per_node),
+    );
+    o.push(
+        "avg_coupling_strength",
+        GoValue::Float(a.avg_coupling_strength),
+    );
     o.push("hot_nodes", GoValue::Int(a.hot_nodes));
     GoValue::Map(o)
 }
@@ -97,11 +103,21 @@ impl ComputedMetrics {
 
         root.push(
             "node_hotness",
-            GoValue::Array(self.node_hotness.iter().map(node_hotness_to_value).collect()),
+            GoValue::Array(
+                self.node_hotness
+                    .iter()
+                    .map(node_hotness_to_value)
+                    .collect(),
+            ),
         );
         root.push(
             "node_coupling",
-            GoValue::Array(self.node_coupling.iter().map(node_coupling_to_value).collect()),
+            GoValue::Array(
+                self.node_coupling
+                    .iter()
+                    .map(node_coupling_to_value)
+                    .collect(),
+            ),
         );
         root.push(
             "hotspot_nodes",

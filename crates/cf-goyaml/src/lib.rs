@@ -175,14 +175,20 @@ mod tests {
 
     #[test]
     fn top_level_seq_indents_four() {
-        let item = smap(vec![("name", GoValue::Str("X".into())), ("v", GoValue::Int(17))]);
+        let item = smap(vec![
+            ("name", GoValue::Str("X".into())),
+            ("v", GoValue::Int(17)),
+        ]);
         let v = smap(vec![("function_complexity", GoValue::Array(vec![item]))]);
         assert_eq!(s(&v), "function_complexity:\n    - name: X\n      v: 17\n");
     }
 
     #[test]
     fn nested_seq_indent() {
-        let bydev = smap(vec![("dev_id", GoValue::Int(0)), ("commits", GoValue::Int(1))]);
+        let bydev = smap(vec![
+            ("dev_id", GoValue::Int(0)),
+            ("commits", GoValue::Int(1)),
+        ]);
         let act = smap(vec![
             ("tick", GoValue::Int(0)),
             ("by_developer", GoValue::Array(vec![bydev])),
@@ -204,7 +210,10 @@ mod tests {
 
     #[test]
     fn seq_of_scalars() {
-        let v = smap(vec![("band_breakdown", GoValue::Array(vec![GoValue::Int(112539)]))]);
+        let v = smap(vec![(
+            "band_breakdown",
+            GoValue::Array(vec![GoValue::Int(112539)]),
+        )]);
         assert_eq!(s(&v), "band_breakdown:\n    - 112539\n");
     }
 

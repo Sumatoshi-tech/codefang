@@ -83,7 +83,11 @@ fn shotness_sections(ctx: &RunContext, _selected: &[&'static str]) -> Option<Vec
 
 fn couples_sections(ctx: &RunContext, _selected: &[&'static str]) -> Option<Vec<Section>> {
     let data = couples_run::couples_plot_data(ctx.matches)?;
-    Some(history_couples::sections(&data.file_coupling, &data.dev_names, &data.ownership))
+    Some(history_couples::sections(
+        &data.file_coupling,
+        &data.dev_names,
+        &data.ownership,
+    ))
 }
 
 fn imports_sections(ctx: &RunContext, _selected: &[&'static str]) -> Option<Vec<Section>> {
@@ -132,7 +136,8 @@ fn anomaly_sections(ctx: &RunContext, selected: &[&'static str]) -> Option<Vec<S
     }
     if selected.contains(&"sentiment") {
         if let Some(sm) = history::sentiment_metrics(ctx.matches) {
-            if let Some((ticks, dims)) = cf_sentiment::store::extract_store_time_series(&sm.time_series)
+            if let Some((ticks, dims)) =
+                cf_sentiment::store::extract_store_time_series(&sm.time_series)
             {
                 extracted.insert(
                     "sentiment".to_string(),
@@ -163,7 +168,11 @@ fn burndown_sections(ctx: &RunContext, _selected: &[&'static str]) -> Option<Vec
         let repo = cf_gitlib::Repository::open(&ctx.path).ok()?;
         let head = repo.head().ok()?;
         let commit = repo.lookup_commit(head).ok()?;
-        let end_time_ns = commit.committer().when.seconds().saturating_mul(1_000_000_000);
+        let end_time_ns = commit
+            .committer()
+            .when
+            .seconds()
+            .saturating_mul(1_000_000_000);
         let chart_data = history_burndown::ChartData {
             global_history: vec![vec![metrics.aggregate.total_current_lines]],
             sampling: 30,
@@ -216,7 +225,10 @@ fn devs_sections(ctx: &RunContext, _selected: &[&'static str]) -> Option<Vec<Sec
 
 fn file_history_sections(ctx: &RunContext, _selected: &[&'static str]) -> Option<Vec<Section>> {
     let metrics = history::file_history_run_metrics(ctx.matches)?;
-    Some(history_file_history::sections(&metrics.file_churn, &metrics.composition_ts))
+    Some(history_file_history::sections(
+        &metrics.file_churn,
+        &metrics.composition_ts,
+    ))
 }
 
 /// The plot-capable history analyzers in the separate-phase emit order
@@ -390,7 +402,12 @@ fn write_render_report_json(
     let mut root = GoMap::new(MapOrigin::Struct);
     root.push(
         "analyzer_ids",
-        GoValue::Array(analyzer_ids.iter().map(|id| GoValue::Str((*id).to_string())).collect()),
+        GoValue::Array(
+            analyzer_ids
+                .iter()
+                .map(|id| GoValue::Str((*id).to_string()))
+                .collect(),
+        ),
     );
     let page_values: Vec<GoValue> = pages
         .iter()

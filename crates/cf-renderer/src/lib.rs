@@ -78,7 +78,9 @@ pub use json::{
     section_to_json, section_to_json_file_entry, sections_to_json, JsonDistribution, JsonFileEntry,
     JsonIssue, JsonMetric, JsonReport, JsonSection,
 };
-pub use metrics_output::{render_metrics_json, render_metrics_yaml, MetricsOutput, NilMetricsOutput};
+pub use metrics_output::{
+    render_metrics_json, render_metrics_yaml, MetricsOutput, NilMetricsOutput,
+};
 pub use section_renderer::{color_for_severity, SectionRenderer};
 pub use static_renderer::DefaultStaticRenderer;
 pub use summary::{ExecutiveSummary, MIN_SECTIONS_FOR_SUMMARY};

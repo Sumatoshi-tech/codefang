@@ -224,7 +224,11 @@ fn leaf_timeseries(id: &str, ctx: &RunContext) -> Option<TimeSeriesContribution>
 /// `timeseries+ndjson` composition) each merged commit object is emitted as
 /// one compact line instead.
 #[must_use]
-pub fn history_timeseries(ctx: &RunContext, ids: &[String], ndjson_lines: bool) -> HistoryFormatResult {
+pub fn history_timeseries(
+    ctx: &RunContext,
+    ids: &[String],
+    ndjson_lines: bool,
+) -> HistoryFormatResult {
     // The co-selected heavy leaves share ONE memoized UAST walk: the first
     // leaf's contribution computes it, the rest re-read it.
     let mut contribs = Vec::with_capacity(ids.len());
@@ -242,8 +246,10 @@ pub fn history_timeseries(ctx: &RunContext, ids: &[String], ndjson_lines: bool) 
         .map_or(&[], |c| c.commit_meta.as_slice());
 
     // active = leaves with non-empty provider data, flag-sorted.
-    let active: Vec<&TimeSeriesContribution> =
-        contribs.iter().filter(|c| !c.per_commit.is_empty()).collect();
+    let active: Vec<&TimeSeriesContribution> = contribs
+        .iter()
+        .filter(|c| !c.per_commit.is_empty())
+        .collect();
 
     let bytes = render_merged_timeseries(&active, commit_meta, ndjson_lines);
     Some(Ok(bytes))
@@ -290,11 +296,19 @@ fn render_merged_timeseries(
 
     // Top level is a STRUCT (field order fixed by the reference json tags).
     let mut root = GoMap::new(MapOrigin::Struct);
-    root.push("version", GoValue::Str("codefang.timeseries.v1".to_string()));
+    root.push(
+        "version",
+        GoValue::Str("codefang.timeseries.v1".to_string()),
+    );
     root.push("tick_size_hours", GoValue::Int(24));
     root.push(
         "analyzers",
-        GoValue::Array(active.iter().map(|c| GoValue::Str(c.flag.to_string())).collect()),
+        GoValue::Array(
+            active
+                .iter()
+                .map(|c| GoValue::Str(c.flag.to_string()))
+                .collect(),
+        ),
     );
 
     if ndjson_lines {

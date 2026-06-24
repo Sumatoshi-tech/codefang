@@ -104,9 +104,12 @@ pub fn sections(report: &GoValue) -> Option<Vec<Section>> {
                 title: "How to interpret:".to_string(),
                 items: vec![
                     "<strong>Green (≥80%)</strong> = Excellent documentation quality".to_string(),
-                    "<strong>Yellow (60-80%)</strong> = Good quality with room for improvement".to_string(),
-                    "<strong>Orange (40-60%)</strong> = Fair quality - improvements needed".to_string(),
-                    "<strong>Red (<40%)</strong> = Poor quality - significant improvements needed".to_string(),
+                    "<strong>Yellow (60-80%)</strong> = Good quality with room for improvement"
+                        .to_string(),
+                    "<strong>Orange (40-60%)</strong> = Fair quality - improvements needed"
+                        .to_string(),
+                    "<strong>Red (<40%)</strong> = Poor quality - significant improvements needed"
+                        .to_string(),
                 ],
             },
         ),
@@ -120,7 +123,8 @@ pub fn sections(report: &GoValue) -> Option<Vec<Section>> {
                     "<strong>Green bars</strong> = Well-documented functions".to_string(),
                     "<strong>Red bars</strong> = Functions without documentation".to_string(),
                     "<strong>Taller bars</strong> = Larger functions (more lines)".to_string(),
-                    "<strong>Action:</strong> Prioritize documenting larger undocumented functions".to_string(),
+                    "<strong>Action:</strong> Prioritize documenting larger undocumented functions"
+                        .to_string(),
                 ],
             },
         ),
@@ -131,7 +135,8 @@ pub fn sections(report: &GoValue) -> Option<Vec<Section>> {
             Hint {
                 title: "How to interpret:".to_string(),
                 items: vec![
-                    "<strong>Documented</strong> = Functions with properly placed comments".to_string(),
+                    "<strong>Documented</strong> = Functions with properly placed comments"
+                        .to_string(),
                     "<strong>Undocumented</strong> = Functions missing documentation".to_string(),
                     "<strong>Goal:</strong> Maximize the Documented segment".to_string(),
                 ],
@@ -179,14 +184,21 @@ fn function_coverage_chart(report: &GoValue) -> Option<Chart> {
     };
     bar.y_axis = co.y_axis("Lines of Code");
 
-    let labels: Vec<String> = sorted.iter().map(|f| function_name(f).to_string()).collect();
+    let labels: Vec<String> = sorted
+        .iter()
+        .map(|f| function_name(f).to_string())
+        .collect();
     bar.set_x_axis_labels(&labels);
 
     let bar_data = GoValue::Array(
         sorted
             .iter()
             .map(|f| {
-                let color = if is_documented(f) { "#91cc75" } else { "#ee6666" };
+                let color = if is_documented(f) {
+                    "#91cc75"
+                } else {
+                    "#ee6666"
+                };
                 BarData {
                     value: Some(GoValue::Int(lines_value(f))),
                     item_style: Some(ItemStyle {
@@ -344,7 +356,9 @@ mod tests {
 
     #[test]
     fn bar_sorted_by_lines_desc_with_status_colors() {
-        let json = function_coverage_chart(&raw_report()).expect("bar").option_json();
+        let json = function_coverage_chart(&raw_report())
+            .expect("bar")
+            .option_json();
         assert!(json.contains("\"data\":[\"b\",\"a\"]"));
         assert!(json.contains(
             "{\"name\":\"Lines\",\"type\":\"bar\",\"data\":[{\"value\":30,\"itemStyle\":{\"color\":\"#ee6666\"}},{\"value\":10,\"itemStyle\":{\"color\":\"#91cc75\"}}]}"

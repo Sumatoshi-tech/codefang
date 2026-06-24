@@ -12,9 +12,7 @@ use cf_uast_node::Node;
 
 use crate::report::{classify_clone_type, ClonePair, CloneTypeCounts};
 use crate::shingler::Shingler;
-use crate::uast::{
-    ROLE_DECLARATION, ROLE_FUNCTION, ROLE_PARAMETER, UAST_FUNCTION, UAST_METHOD,
-};
+use crate::uast::{ROLE_DECLARATION, ROLE_FUNCTION, ROLE_PARAMETER, UAST_FUNCTION, UAST_METHOD};
 use crate::{MIN_FUNCTION_NODES, NUM_HASHES};
 
 /// A function's name plus its `MinHash` signature.
@@ -152,7 +150,9 @@ pub fn extract_receiver_type(fn_node: &Node) -> String {
             continue;
         }
 
-        let type_name = parts[parts.len() - 1].strip_prefix('*').unwrap_or(parts[parts.len() - 1]);
+        let type_name = parts[parts.len() - 1]
+            .strip_prefix('*')
+            .unwrap_or(parts[parts.len() - 1]);
         if !type_name.is_empty() {
             return type_name.to_string();
         }
@@ -165,7 +165,11 @@ pub fn extract_receiver_type(fn_node: &Node) -> String {
 /// function is too small or produces no shingles.
 #[must_use]
 #[allow(clippy::similar_names)] // `shingler` / `shingles` is the clearest naming
-pub fn build_signature(fn_node: &Node, shingler: &Shingler, num_hashes: usize) -> Option<FuncEntry> {
+pub fn build_signature(
+    fn_node: &Node,
+    shingler: &Shingler,
+    num_hashes: usize,
+) -> Option<FuncEntry> {
     if count_nodes(fn_node) < MIN_FUNCTION_NODES {
         return None;
     }
@@ -190,7 +194,11 @@ pub fn build_signature(fn_node: &Node, shingler: &Shingler, num_hashes: usize) -
 ///
 /// Convenience wrapper over [`build_signature`].
 #[must_use]
-pub fn build_signatures(functions: &[&Node], shingler: &Shingler, num_hashes: usize) -> Vec<FuncEntry> {
+pub fn build_signatures(
+    functions: &[&Node],
+    shingler: &Shingler,
+    num_hashes: usize,
+) -> Vec<FuncEntry> {
     let mut entries = Vec::with_capacity(functions.len());
     for fn_node in functions {
         if let Some(entry) = build_signature(fn_node, shingler, num_hashes) {
@@ -351,7 +359,10 @@ mod tests {
     use cf_uast_node::Node;
 
     fn method_with_receiver(token: &str) -> Node {
-        let recv = NodeBuilder::new("Parameter").role("Parameter").token(token).build();
+        let recv = NodeBuilder::new("Parameter")
+            .role("Parameter")
+            .token(token)
+            .build();
         NodeBuilder::new("Method").child(recv).build()
     }
 
@@ -359,7 +370,11 @@ mod tests {
     fn count_nodes_counts_subtree() {
         let tree = NodeBuilder::new("A")
             .child(NodeBuilder::new("B").build())
-            .child(NodeBuilder::new("C").child(NodeBuilder::new("D").build()).build())
+            .child(
+                NodeBuilder::new("C")
+                    .child(NodeBuilder::new("D").build())
+                    .build(),
+            )
             .build();
         assert_eq!(count_nodes(&tree), 4);
     }
@@ -368,7 +383,10 @@ mod tests {
     fn is_function_node_by_type_or_roles() {
         assert!(is_function_node(&NodeBuilder::new("Function").build()));
         assert!(is_function_node(&NodeBuilder::new("Method").build()));
-        let decl = NodeBuilder::new("Decl").role("Function").role("Declaration").build();
+        let decl = NodeBuilder::new("Decl")
+            .role("Function")
+            .role("Declaration")
+            .build();
         assert!(is_function_node(&decl));
         assert!(!is_function_node(&NodeBuilder::new("Block").build()));
     }
@@ -398,8 +416,14 @@ mod tests {
         // receiver type is discovered separately by `extract_receiver_type`
         // (which scans all children for the Parameter role), yielding
         // "Foo.DoWork".
-        let name = NodeBuilder::new("Identifier").role("Name").token("DoWork").build();
-        let recv = NodeBuilder::new("Parameter").role("Parameter").token("(f *Foo)").build();
+        let name = NodeBuilder::new("Identifier")
+            .role("Name")
+            .token("DoWork")
+            .build();
+        let recv = NodeBuilder::new("Parameter")
+            .role("Parameter")
+            .token("(f *Foo)")
+            .build();
         let m = NodeBuilder::new("Method").child(name).child(recv).build();
         assert_eq!(extract_func_name(&m), "Foo.DoWork");
     }
@@ -409,8 +433,14 @@ mod tests {
         // The node's OWN token is checked before any child. A C `Function`
         // node whose token is the full function text keeps that text as its
         // name, so distinct functions stay distinct in the LSH index.
-        let child = NodeBuilder::new("Identifier").role("Name").token("U16").build();
-        let f = NodeBuilder::new("Function").token("static U16 LZ4_read16(...)").child(child).build();
+        let child = NodeBuilder::new("Identifier")
+            .role("Name")
+            .token("U16")
+            .build();
+        let f = NodeBuilder::new("Function")
+            .token("static U16 LZ4_read16(...)")
+            .child(child)
+            .build();
         assert_eq!(extract_func_name(&f), "static U16 LZ4_read16(...)");
     }
 

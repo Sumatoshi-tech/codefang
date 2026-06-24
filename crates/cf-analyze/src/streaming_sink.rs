@@ -261,7 +261,10 @@ mod tests {
         struct ErrWriter;
         impl Write for ErrWriter {
             fn write(&mut self, _b: &[u8]) -> std::io::Result<usize> {
-                Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "broken pipe"))
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::BrokenPipe,
+                    "broken pipe",
+                ))
             }
             fn flush(&mut self) -> std::io::Result<()> {
                 Ok(())

@@ -457,6 +457,9 @@ mod tests {
         OperatorOperandDetector::new().collect(&function, &mut operators, &mut operands);
 
         // The name identifier under the Function (a declaration type) is skipped.
-        assert!(operands.is_empty(), "declaration name must not be an operand");
+        assert!(
+            operands.is_empty(),
+            "declaration name must not be an operand"
+        );
     }
 }

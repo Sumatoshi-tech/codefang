@@ -571,13 +571,13 @@ mod tests {
         let empty: Vec<f64> = Vec::new();
         let seq = make_sequence(100);
         let cases: &[(&[f64], f64, f64)] = &[
-            (&empty, PERCENTILE_MEDIAN, 0.0),         // empty_returns_zero
-            (&[7.0], PERCENTILE_MEDIAN, 7.0),         // single_element
+            (&empty, PERCENTILE_MEDIAN, 0.0),           // empty_returns_zero
+            (&[7.0], PERCENTILE_MEDIAN, 7.0),           // single_element
             (&[3.0, 1.0, 2.0], PERCENTILE_MEDIAN, 2.0), // median_odd
             (&[1.0, 2.0, 3.0, 4.0], PERCENTILE_MEDIAN, 2.5), // median_even
-            (&seq, PERCENTILE_P95, 95.05),            // p95_of_100
-            (&[5.0, 1.0, 9.0], 0.0, 1.0),             // p0_is_min
-            (&[5.0, 1.0, 9.0], 1.0, 9.0),             // p100_is_max
+            (&seq, PERCENTILE_P95, 95.05),              // p95_of_100
+            (&[5.0, 1.0, 9.0], 0.0, 1.0),               // p0_is_min
+            (&[5.0, 1.0, 9.0], 1.0, 9.0),               // p100_is_max
             (&[9.0, 1.0, 5.0, 3.0, 7.0], PERCENTILE_MEDIAN, 5.0), // unsorted_input
         ];
         for (input, p, expected) in cases {
@@ -595,9 +595,9 @@ mod tests {
         // (input, want_mean, want_stddev)
         let empty: Vec<f64> = Vec::new();
         let cases: &[(&[f64], f64, f64)] = &[
-            (&empty, 0.0, 0.0),                 // empty_returns_zeros
-            (&[5.0], 5.0, 0.0),                 // single_element_zero_stddev
-            (&[3.0, 3.0, 3.0], 3.0, 0.0),       // uniform_values_zero_stddev
+            (&empty, 0.0, 0.0),                                    // empty_returns_zeros
+            (&[5.0], 5.0, 0.0),                                    // single_element_zero_stddev
+            (&[3.0, 3.0, 3.0], 3.0, 0.0),                          // uniform_values_zero_stddev
             (&[2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0], 5.0, 2.0), // known_population_stddev
         ];
         for (input, want_mean, want_stddev) in cases {
@@ -610,11 +610,11 @@ mod tests {
     #[test]
     fn test_to_percent() {
         let cases = [
-            (0.75, 75.0),               // positive_ratio
-            (0.0, 0.0),                 // zero
-            (-0.25, -25.0),             // negative_ratio
-            (1.0, PERCENT_MULTIPLIER),  // full_ratio
-            (1.5, 150.0),               // above_one
+            (0.75, 75.0),              // positive_ratio
+            (0.0, 0.0),                // zero
+            (-0.25, -25.0),            // negative_ratio
+            (1.0, PERCENT_MULTIPLIER), // full_ratio
+            (1.5, 150.0),              // above_one
         ];
         for (ratio, expected) in cases {
             assert_in_delta(expected, to_percent(ratio), EPS);
@@ -630,11 +630,11 @@ mod tests {
     fn test_mean() {
         let empty: Vec<f64> = Vec::new();
         let cases: &[(&[f64], f64)] = &[
-            (&empty, 0.0),                  // empty_returns_zero
-            (&[5.0], 5.0),                  // single_element
-            (&[2.0, 4.0], 3.0),             // two_elements
+            (&empty, 0.0),                     // empty_returns_zero
+            (&[5.0], 5.0),                     // single_element
+            (&[2.0, 4.0], 3.0),                // two_elements
             (&[1.0, 2.0, 3.0, 4.0, 5.0], 3.0), // known_mean
-            (&[-2.0, -4.0], -3.0),          // negative_values
+            (&[-2.0, -4.0], -3.0),             // negative_values
         ];
         for (input, expected) in cases {
             assert_in_delta(*expected, mean(input), EPS);
@@ -645,17 +645,17 @@ mod tests {
     fn test_exceeds_threshold() {
         // (observed, predicted, threshold, want)
         let cases = [
-            (105.0, 100.0, 0.1, false),  // below_threshold
-            (115.0, 100.0, 0.1, true),   // above_threshold
-            (110.0, 100.0, 0.1, false),  // exact_threshold_not_exceeded
-            (85.0, 100.0, 0.1, true),    // negative_divergence_above
-            (95.0, 100.0, 0.1, false),   // negative_divergence_below
-            (50.0, 0.0, 0.1, false),     // zero_predicted
-            (50.0, -10.0, 0.1, false),   // negative_predicted
-            (-120.0, 100.0, 0.5, true),  // negative_observed
-            (100.0, 100.0, 0.1, false),  // both_equal
-            (100.0, 100.0, 0.0, false),  // zero_threshold_equal
-            (100.1, 100.0, 0.0, true),   // zero_threshold_any_diff
+            (105.0, 100.0, 0.1, false), // below_threshold
+            (115.0, 100.0, 0.1, true),  // above_threshold
+            (110.0, 100.0, 0.1, false), // exact_threshold_not_exceeded
+            (85.0, 100.0, 0.1, true),   // negative_divergence_above
+            (95.0, 100.0, 0.1, false),  // negative_divergence_below
+            (50.0, 0.0, 0.1, false),    // zero_predicted
+            (50.0, -10.0, 0.1, false),  // negative_predicted
+            (-120.0, 100.0, 0.5, true), // negative_observed
+            (100.0, 100.0, 0.1, false), // both_equal
+            (100.0, 100.0, 0.0, false), // zero_threshold_equal
+            (100.1, 100.0, 0.0, true),  // zero_threshold_any_diff
         ];
         for (observed, predicted, threshold, want) in cases {
             assert_eq!(
@@ -751,7 +751,7 @@ mod tests {
     fn test_ema_subsequent_updates_smooth() {
         let mut ema = Ema::new(0.3);
         ema.update(10.0); // Initialize to 10.
-        // Second update: 0.3 * 20 + 0.7 * 10 = 6 + 7 = 13.
+                          // Second update: 0.3 * 20 + 0.7 * 10 = 6 + 7 = 13.
         let got = ema.update(20.0);
         assert_in_delta(13.0, got, EPS);
     }

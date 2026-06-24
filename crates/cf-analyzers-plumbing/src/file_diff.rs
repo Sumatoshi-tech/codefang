@@ -258,8 +258,14 @@ mod tests {
                 old_lines_of_code: old_loc,
                 new_lines_of_code: new_loc,
                 diffs: vec![
-                    Diff { op: DiffOp::Delete, text: old.to_string() },
-                    Diff { op: DiffOp::Insert, text: new.to_string() },
+                    Diff {
+                        op: DiffOp::Delete,
+                        text: old.to_string(),
+                    },
+                    Diff {
+                        op: DiffOp::Insert,
+                        text: new.to_string(),
+                    },
                 ],
             }
         }
@@ -281,8 +287,14 @@ mod tests {
 
     fn modify(from_h: Hash, to_h: Hash, name: &str) -> Change {
         Change {
-            from: ChangeEntry { name: name.into(), hash: from_h },
-            to: ChangeEntry { name: name.into(), hash: to_h },
+            from: ChangeEntry {
+                name: name.into(),
+                hash: from_h,
+            },
+            to: ChangeEntry {
+                name: name.into(),
+                hash: to_h,
+            },
         }
     }
 
@@ -301,8 +313,20 @@ mod tests {
         let mut cache = HashMap::new();
         cache.insert(h(1), CachedBlob::new(b"x\n".to_vec()));
         let changes = vec![
-            Change { from: ChangeEntry::default(), to: ChangeEntry { name: "a".into(), hash: h(1) } },
-            Change { from: ChangeEntry { name: "b".into(), hash: h(1) }, to: ChangeEntry::default() },
+            Change {
+                from: ChangeEntry::default(),
+                to: ChangeEntry {
+                    name: "a".into(),
+                    hash: h(1),
+                },
+            },
+            Change {
+                from: ChangeEntry {
+                    name: "b".into(),
+                    hash: h(1),
+                },
+                to: ChangeEntry::default(),
+            },
         ];
         assert!(f.build(&changes, &cache).is_empty());
     }

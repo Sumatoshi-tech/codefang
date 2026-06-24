@@ -274,10 +274,7 @@ where
         }
 
         // Size-based eviction.
-        while self.max_size > 0
-            && inner.cur_size + val_size > self.max_size
-            && inner.tail != NIL
-        {
+        while self.max_size > 0 && inner.cur_size + val_size > self.max_size && inner.tail != NIL {
             self.evict_one(inner);
         }
     }

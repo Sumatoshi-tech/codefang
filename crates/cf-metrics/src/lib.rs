@@ -645,7 +645,11 @@ mod tests {
         // Table-driven: level, want_pri, want_less (must sort before).
         // None want_less means "no next level".
         let cases: &[(RiskLevel, i64, Option<RiskLevel>)] = &[
-            (RiskLevel::critical(), PRIORITY_CRITICAL, Some(RiskLevel::high())),
+            (
+                RiskLevel::critical(),
+                PRIORITY_CRITICAL,
+                Some(RiskLevel::high()),
+            ),
             (RiskLevel::high(), PRIORITY_HIGH, Some(RiskLevel::medium())),
             (RiskLevel::medium(), PRIORITY_MEDIUM, Some(RiskLevel::low())),
             (RiskLevel::low(), PRIORITY_DEFAULT, None),

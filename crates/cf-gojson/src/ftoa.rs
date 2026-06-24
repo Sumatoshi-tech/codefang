@@ -57,7 +57,7 @@ fn shortest_decimal(f: f64) -> Shortest {
     // Rust's `{:e}` gives shortest mantissa + exponent: e.g. "1.234e2",
     // "5e-1", "1e21". The mantissa digits are the shortest round-trip set.
     let s = format!("{abs:e}"); // always sign-less mantissa, lowercase 'e'
-    // Split "<mantissa>e<exp>".
+                                // Split "<mantissa>e<exp>".
     let (mantissa, exp_str) = s.split_once('e').expect("{:e} always has an 'e'");
     let exp: i32 = exp_str.parse().expect("valid exponent");
 

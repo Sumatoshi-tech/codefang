@@ -374,7 +374,10 @@ pub fn compute_hotspots_with_options(input: &ReportData, opts: MetricOptions) ->
 #[must_use]
 pub fn compute_aggregate_with_options(input: &ReportData, opts: MetricOptions) -> AggregateData {
     let total_files = input.files.len() as i64;
-    let mut agg = AggregateData { total_files, ..Default::default() };
+    let mut agg = AggregateData {
+        total_files,
+        ..Default::default()
+    };
 
     if total_files == 0 {
         return agg;
@@ -434,7 +437,11 @@ pub fn compute_composition(
             }
         }
 
-        let mut entry = CompositionTimeSeriesEntry { tick: t, breakdown, ..Default::default() };
+        let mut entry = CompositionTimeSeriesEntry {
+            tick: t,
+            breakdown,
+            ..Default::default()
+        };
         if let Some(bounds) = tick_bounds.and_then(|tb| tb.get(&t)) {
             entry.start_time.clone_from(&bounds.0);
             entry.end_time.clone_from(&bounds.1);
@@ -449,8 +456,10 @@ pub fn compute_composition(
             comp.breakdown.insert(cat.as_str().to_string(), v);
         }
         if grand_total > 0 {
-            comp.percentages
-                .insert(cat.as_str().to_string(), v as f64 / grand_total as f64 * PERCENT_MULTIPLIER);
+            comp.percentages.insert(
+                cat.as_str().to_string(),
+                v as f64 / grand_total as f64 * PERCENT_MULTIPLIER,
+            );
         }
     }
 
@@ -504,7 +513,10 @@ mod tests {
 
     fn report(files: &[(&str, FileHistory)]) -> ReportData {
         ReportData {
-            files: files.iter().map(|(k, v)| ((*k).to_string(), v.clone())).collect(),
+            files: files
+                .iter()
+                .map(|(k, v)| ((*k).to_string(), v.clone()))
+                .collect(),
         }
     }
 
@@ -526,8 +538,22 @@ mod tests {
             FILE1,
             FileHistory {
                 people: people(&[
-                    (DEV1, LineStats { added: 100, removed: 20, changed: 30 }),
-                    (DEV2, LineStats { added: 50, removed: 10, changed: 15 }),
+                    (
+                        DEV1,
+                        LineStats {
+                            added: 100,
+                            removed: 20,
+                            changed: 30,
+                        },
+                    ),
+                    (
+                        DEV2,
+                        LineStats {
+                            added: 50,
+                            removed: 10,
+                            changed: 15,
+                        },
+                    ),
                 ]),
                 hashes: hashes(10),
             },
@@ -546,9 +572,45 @@ mod tests {
     #[test]
     fn file_churn_sorted_by_score() {
         let input = report(&[
-            (FILE1, FileHistory { people: people(&[(DEV1, LineStats { added: 10, ..Default::default() })]), hashes: hashes(5) }),
-            (FILE2, FileHistory { people: people(&[(DEV1, LineStats { added: 1000, ..Default::default() })]), hashes: hashes(20) }),
-            (FILE3, FileHistory { people: people(&[(DEV1, LineStats { added: 100, ..Default::default() })]), hashes: hashes(10) }),
+            (
+                FILE1,
+                FileHistory {
+                    people: people(&[(
+                        DEV1,
+                        LineStats {
+                            added: 10,
+                            ..Default::default()
+                        },
+                    )]),
+                    hashes: hashes(5),
+                },
+            ),
+            (
+                FILE2,
+                FileHistory {
+                    people: people(&[(
+                        DEV1,
+                        LineStats {
+                            added: 1000,
+                            ..Default::default()
+                        },
+                    )]),
+                    hashes: hashes(20),
+                },
+            ),
+            (
+                FILE3,
+                FileHistory {
+                    people: people(&[(
+                        DEV1,
+                        LineStats {
+                            added: 100,
+                            ..Default::default()
+                        },
+                    )]),
+                    hashes: hashes(10),
+                },
+            ),
         ]);
         let result = compute_file_churn(&input);
         assert_eq!(result.len(), 3);
@@ -563,8 +625,22 @@ mod tests {
             FILE1,
             FileHistory {
                 people: people(&[
-                    (DEV1, LineStats { added: 50, changed: 20, ..Default::default() }),
-                    (DEV2, LineStats { added: 100, changed: 30, ..Default::default() }),
+                    (
+                        DEV1,
+                        LineStats {
+                            added: 50,
+                            changed: 20,
+                            ..Default::default()
+                        },
+                    ),
+                    (
+                        DEV2,
+                        LineStats {
+                            added: 100,
+                            changed: 30,
+                            ..Default::default()
+                        },
+                    ),
                 ]),
                 hashes: hashes(5),
             },
@@ -578,7 +654,13 @@ mod tests {
 
     #[test]
     fn contributors_none() {
-        let input = report(&[(FILE1, FileHistory { people: BTreeMap::new(), hashes: hashes(5) })]);
+        let input = report(&[(
+            FILE1,
+            FileHistory {
+                people: BTreeMap::new(),
+                hashes: hashes(5),
+            },
+        )]);
         let result = compute_file_contributors(&input);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].top_contributor_id, 0);
@@ -593,7 +675,13 @@ mod tests {
 
     #[test]
     fn hotspots_below_threshold() {
-        let input = report(&[(FILE1, FileHistory { people: people(&[(DEV1, LineStats::default())]), hashes: hashes(10) })]);
+        let input = report(&[(
+            FILE1,
+            FileHistory {
+                people: people(&[(DEV1, LineStats::default())]),
+                hashes: hashes(10),
+            },
+        )]);
         assert!(compute_hotspots_with_options(&input, MetricOptions::default()).is_empty());
     }
 
@@ -608,7 +696,13 @@ mod tests {
             (15, "MEDIUM"),
         ];
         for (count, expected) in cases {
-            let input = report(&[(FILE1, FileHistory { people: people(&[(DEV1, LineStats::default())]), hashes: hashes(count) })]);
+            let input = report(&[(
+                FILE1,
+                FileHistory {
+                    people: people(&[(DEV1, LineStats::default())]),
+                    hashes: hashes(count),
+                },
+            )]);
             let result = compute_hotspots_with_options(&input, MetricOptions::default());
             assert_eq!(result.len(), 1, "count={count}");
             assert_eq!(result[0].risk_level, expected, "count={count}");
@@ -619,9 +713,27 @@ mod tests {
     #[test]
     fn hotspots_sorted_by_risk_then_count() {
         let input = report(&[
-            (FILE1, FileHistory { people: people(&[(DEV1, LineStats::default())]), hashes: hashes(20) }),
-            (FILE2, FileHistory { people: people(&[(DEV1, LineStats::default())]), hashes: hashes(55) }),
-            (FILE3, FileHistory { people: people(&[(DEV1, LineStats::default())]), hashes: hashes(35) }),
+            (
+                FILE1,
+                FileHistory {
+                    people: people(&[(DEV1, LineStats::default())]),
+                    hashes: hashes(20),
+                },
+            ),
+            (
+                FILE2,
+                FileHistory {
+                    people: people(&[(DEV1, LineStats::default())]),
+                    hashes: hashes(55),
+                },
+            ),
+            (
+                FILE3,
+                FileHistory {
+                    people: people(&[(DEV1, LineStats::default())]),
+                    hashes: hashes(35),
+                },
+            ),
         ]);
         let result = compute_hotspots_with_options(&input, MetricOptions::default());
         assert_eq!(result.len(), 3);
@@ -640,8 +752,20 @@ mod tests {
     #[test]
     fn aggregate_with_data() {
         let input = report(&[
-            (FILE1, FileHistory { people: people(&[(DEV1, LineStats::default()), (DEV2, LineStats::default())]), hashes: hashes(20) }),
-            (FILE2, FileHistory { people: people(&[(DEV1, LineStats::default()), (DEV3, LineStats::default())]), hashes: hashes(10) }),
+            (
+                FILE1,
+                FileHistory {
+                    people: people(&[(DEV1, LineStats::default()), (DEV2, LineStats::default())]),
+                    hashes: hashes(20),
+                },
+            ),
+            (
+                FILE2,
+                FileHistory {
+                    people: people(&[(DEV1, LineStats::default()), (DEV3, LineStats::default())]),
+                    hashes: hashes(10),
+                },
+            ),
         ]);
         let r = compute_aggregate_with_options(&input, MetricOptions::default());
         assert_eq!(r.total_files, 2);
@@ -670,14 +794,43 @@ mod tests {
     #[test]
     fn compute_all_full() {
         let input = report(&[
-            (FILE1, FileHistory {
-                people: people(&[
-                    (DEV1, LineStats { added: 100, removed: 10, changed: 20 }),
-                    (DEV2, LineStats { added: 50, removed: 5, changed: 10 }),
-                ]),
-                hashes: hashes(35),
-            }),
-            (FILE2, FileHistory { people: people(&[(DEV1, LineStats { added: 20, ..Default::default() })]), hashes: hashes(5) }),
+            (
+                FILE1,
+                FileHistory {
+                    people: people(&[
+                        (
+                            DEV1,
+                            LineStats {
+                                added: 100,
+                                removed: 10,
+                                changed: 20,
+                            },
+                        ),
+                        (
+                            DEV2,
+                            LineStats {
+                                added: 50,
+                                removed: 5,
+                                changed: 10,
+                            },
+                        ),
+                    ]),
+                    hashes: hashes(35),
+                },
+            ),
+            (
+                FILE2,
+                FileHistory {
+                    people: people(&[(
+                        DEV1,
+                        LineStats {
+                            added: 20,
+                            ..Default::default()
+                        },
+                    )]),
+                    hashes: hashes(5),
+                },
+            ),
         ]);
         let r = compute_all_metrics(&input);
         assert_eq!(r.file_churn.len(), 2);
@@ -693,7 +846,14 @@ mod tests {
     #[test]
     fn composition_basic() {
         let mut tick_comp = BTreeMap::new();
-        tick_comp.insert(0, CategoryCounts { source: 3, vendor: 1, ..Default::default() });
+        tick_comp.insert(
+            0,
+            CategoryCounts {
+                source: 3,
+                vendor: 1,
+                ..Default::default()
+            },
+        );
         let (comp, ts) = compute_composition(&tick_comp, None);
         assert_eq!(comp.breakdown.get("source"), Some(&3));
         assert_eq!(comp.breakdown.get("vendor"), Some(&1));

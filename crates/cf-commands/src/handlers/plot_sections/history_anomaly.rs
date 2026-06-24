@@ -22,10 +22,7 @@ const MAX_STATS_COLUMNS: usize = 4;
 /// The reference `GenerateStoreSections` → `buildStoreSections`: an empty time series
 /// yields zero sections. `external_summaries` carries the cross-analyzer
 /// enrichment products (empty on a single-analyzer run).
-pub fn sections(
-    metrics: &ComputedMetrics,
-    external_summaries: &[ExternalSummary],
-) -> Vec<Section> {
+pub fn sections(metrics: &ComputedMetrics, external_summaries: &[ExternalSummary]) -> Vec<Section> {
     if metrics.time_series.is_empty() {
         return Vec::new();
     }
@@ -179,9 +176,17 @@ fn build_stats_section(metrics: &ComputedMetrics) -> Section {
     let grid = GridStats::new(MAX_STATS_COLUMNS)
         .stat("Total Ticks", &agg.total_ticks.to_string())
         .stat("Anomalies Detected", &agg.total_anomalies.to_string())
-        .stat_with_trend("Anomaly Rate", &anomaly_rate_str, &anomaly_rate_str, trend_color)
+        .stat_with_trend(
+            "Anomaly Rate",
+            &anomaly_rate_str,
+            &anomaly_rate_str,
+            trend_color,
+        )
         .stat("Highest Z-Score", &highest_z)
-        .stat("Avg Language Diversity", &format_float(agg.lang_diversity_mean, 1))
+        .stat(
+            "Avg Language Diversity",
+            &format_float(agg.lang_diversity_mean, 1),
+        )
         .stat("Avg Author Count", &format_float(agg.author_count_mean, 1))
         .into_grid();
 

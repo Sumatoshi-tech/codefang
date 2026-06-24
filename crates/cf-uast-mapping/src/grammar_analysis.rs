@@ -91,64 +91,296 @@ struct CanonicalTypeRole {
 /// The canonical type/role table. The order is frozen — the first
 /// substring match wins (see [`guess_uast_type_and_roles`]).
 const CANONICAL_TYPE_ROLE_MAP: &[CanonicalTypeRole] = &[
-    CanonicalTypeRole { pattern: "function", r#type: "Function", roles: &["Function", "Declaration"] },
-    CanonicalTypeRole { pattern: "method", r#type: "Method", roles: &["Function", "Declaration", "Member"] },
-    CanonicalTypeRole { pattern: "class", r#type: "Class", roles: &["Class", "Declaration"] },
-    CanonicalTypeRole { pattern: "interface", r#type: "Interface", roles: &["Interface", "Declaration"] },
-    CanonicalTypeRole { pattern: "struct", r#type: "Struct", roles: &["Struct", "Declaration"] },
-    CanonicalTypeRole { pattern: "enum", r#type: "Enum", roles: &["Enum", "Declaration"] },
-    CanonicalTypeRole { pattern: "enum_member", r#type: "EnumMember", roles: &["Member"] },
-    CanonicalTypeRole { pattern: "variable", r#type: "Variable", roles: &["Variable", "Declaration"] },
-    CanonicalTypeRole { pattern: "parameter", r#type: "Parameter", roles: &["Parameter"] },
-    CanonicalTypeRole { pattern: "block", r#type: "Block", roles: &["Body"] },
-    CanonicalTypeRole { pattern: "if", r#type: "If", roles: &[] },
-    CanonicalTypeRole { pattern: "loop", r#type: "Loop", roles: &["Loop"] },
-    CanonicalTypeRole { pattern: "for", r#type: "Loop", roles: &["Loop"] },
-    CanonicalTypeRole { pattern: "while", r#type: "Loop", roles: &["Loop"] },
-    CanonicalTypeRole { pattern: "switch", r#type: "Switch", roles: &[] },
-    CanonicalTypeRole { pattern: "case", r#type: "Case", roles: &["Branch"] },
-    CanonicalTypeRole { pattern: "return", r#type: "Return", roles: &["Return"] },
-    CanonicalTypeRole { pattern: "break", r#type: "Break", roles: &["Break"] },
-    CanonicalTypeRole { pattern: "continue", r#type: "Continue", roles: &["Continue"] },
-    CanonicalTypeRole { pattern: "assignment", r#type: "Assignment", roles: &["Assignment"] },
-    CanonicalTypeRole { pattern: "call", r#type: "Call", roles: &["Call"] },
-    CanonicalTypeRole { pattern: "identifier", r#type: "Identifier", roles: &["Name"] },
-    CanonicalTypeRole { pattern: "literal", r#type: "Literal", roles: &["Literal"] },
-    CanonicalTypeRole { pattern: "binary_op", r#type: "BinaryOp", roles: &["Operator"] },
-    CanonicalTypeRole { pattern: "unary_op", r#type: "UnaryOp", roles: &["Operator"] },
-    CanonicalTypeRole { pattern: "import", r#type: "Import", roles: &["Import"] },
-    CanonicalTypeRole { pattern: "package", r#type: "Package", roles: &["Module"] },
-    CanonicalTypeRole { pattern: "attribute", r#type: "Attribute", roles: &["Attribute"] },
-    CanonicalTypeRole { pattern: "comment", r#type: "Comment", roles: &["Comment"] },
-    CanonicalTypeRole { pattern: "docstring", r#type: "DocString", roles: &["Doc"] },
-    CanonicalTypeRole { pattern: "type_annotation", r#type: "TypeAnnotation", roles: &["Type"] },
-    CanonicalTypeRole { pattern: "field", r#type: "Field", roles: &["Member"] },
-    CanonicalTypeRole { pattern: "property", r#type: "Property", roles: &["Member"] },
-    CanonicalTypeRole { pattern: "getter", r#type: "Getter", roles: &["Getter"] },
-    CanonicalTypeRole { pattern: "setter", r#type: "Setter", roles: &["Setter"] },
-    CanonicalTypeRole { pattern: "lambda", r#type: "Lambda", roles: &["Lambda"] },
-    CanonicalTypeRole { pattern: "try", r#type: "Try", roles: &["Try"] },
-    CanonicalTypeRole { pattern: "catch", r#type: "Catch", roles: &["Catch"] },
-    CanonicalTypeRole { pattern: "finally", r#type: "Finally", roles: &["Finally"] },
-    CanonicalTypeRole { pattern: "throw", r#type: "Throw", roles: &["Throw"] },
-    CanonicalTypeRole { pattern: "module", r#type: "Module", roles: &["Module"] },
-    CanonicalTypeRole { pattern: "namespace", r#type: "Namespace", roles: &["Module"] },
-    CanonicalTypeRole { pattern: "decorator", r#type: "Decorator", roles: &["Attribute"] },
-    CanonicalTypeRole { pattern: "spread", r#type: "Spread", roles: &["Spread"] },
-    CanonicalTypeRole { pattern: "tuple", r#type: "Tuple", roles: &[] },
-    CanonicalTypeRole { pattern: "list", r#type: "List", roles: &[] },
-    CanonicalTypeRole { pattern: "dict", r#type: "Dict", roles: &[] },
-    CanonicalTypeRole { pattern: "set", r#type: "Set", roles: &[] },
-    CanonicalTypeRole { pattern: "key_value", r#type: "KeyValue", roles: &["Key", "Value"] },
-    CanonicalTypeRole { pattern: "index", r#type: "Index", roles: &["Index"] },
-    CanonicalTypeRole { pattern: "slice", r#type: "Slice", roles: &[] },
-    CanonicalTypeRole { pattern: "cast", r#type: "Cast", roles: &[] },
-    CanonicalTypeRole { pattern: "await", r#type: "Await", roles: &["Await"] },
-    CanonicalTypeRole { pattern: "yield", r#type: "Yield", roles: &["Yield"] },
-    CanonicalTypeRole { pattern: "generator", r#type: "Generator", roles: &["Generator"] },
-    CanonicalTypeRole { pattern: "comprehension", r#type: "Comprehension", roles: &[] },
-    CanonicalTypeRole { pattern: "pattern", r#type: "Pattern", roles: &["Pattern"] },
-    CanonicalTypeRole { pattern: "match", r#type: "Match", roles: &["Match"] },
+    CanonicalTypeRole {
+        pattern: "function",
+        r#type: "Function",
+        roles: &["Function", "Declaration"],
+    },
+    CanonicalTypeRole {
+        pattern: "method",
+        r#type: "Method",
+        roles: &["Function", "Declaration", "Member"],
+    },
+    CanonicalTypeRole {
+        pattern: "class",
+        r#type: "Class",
+        roles: &["Class", "Declaration"],
+    },
+    CanonicalTypeRole {
+        pattern: "interface",
+        r#type: "Interface",
+        roles: &["Interface", "Declaration"],
+    },
+    CanonicalTypeRole {
+        pattern: "struct",
+        r#type: "Struct",
+        roles: &["Struct", "Declaration"],
+    },
+    CanonicalTypeRole {
+        pattern: "enum",
+        r#type: "Enum",
+        roles: &["Enum", "Declaration"],
+    },
+    CanonicalTypeRole {
+        pattern: "enum_member",
+        r#type: "EnumMember",
+        roles: &["Member"],
+    },
+    CanonicalTypeRole {
+        pattern: "variable",
+        r#type: "Variable",
+        roles: &["Variable", "Declaration"],
+    },
+    CanonicalTypeRole {
+        pattern: "parameter",
+        r#type: "Parameter",
+        roles: &["Parameter"],
+    },
+    CanonicalTypeRole {
+        pattern: "block",
+        r#type: "Block",
+        roles: &["Body"],
+    },
+    CanonicalTypeRole {
+        pattern: "if",
+        r#type: "If",
+        roles: &[],
+    },
+    CanonicalTypeRole {
+        pattern: "loop",
+        r#type: "Loop",
+        roles: &["Loop"],
+    },
+    CanonicalTypeRole {
+        pattern: "for",
+        r#type: "Loop",
+        roles: &["Loop"],
+    },
+    CanonicalTypeRole {
+        pattern: "while",
+        r#type: "Loop",
+        roles: &["Loop"],
+    },
+    CanonicalTypeRole {
+        pattern: "switch",
+        r#type: "Switch",
+        roles: &[],
+    },
+    CanonicalTypeRole {
+        pattern: "case",
+        r#type: "Case",
+        roles: &["Branch"],
+    },
+    CanonicalTypeRole {
+        pattern: "return",
+        r#type: "Return",
+        roles: &["Return"],
+    },
+    CanonicalTypeRole {
+        pattern: "break",
+        r#type: "Break",
+        roles: &["Break"],
+    },
+    CanonicalTypeRole {
+        pattern: "continue",
+        r#type: "Continue",
+        roles: &["Continue"],
+    },
+    CanonicalTypeRole {
+        pattern: "assignment",
+        r#type: "Assignment",
+        roles: &["Assignment"],
+    },
+    CanonicalTypeRole {
+        pattern: "call",
+        r#type: "Call",
+        roles: &["Call"],
+    },
+    CanonicalTypeRole {
+        pattern: "identifier",
+        r#type: "Identifier",
+        roles: &["Name"],
+    },
+    CanonicalTypeRole {
+        pattern: "literal",
+        r#type: "Literal",
+        roles: &["Literal"],
+    },
+    CanonicalTypeRole {
+        pattern: "binary_op",
+        r#type: "BinaryOp",
+        roles: &["Operator"],
+    },
+    CanonicalTypeRole {
+        pattern: "unary_op",
+        r#type: "UnaryOp",
+        roles: &["Operator"],
+    },
+    CanonicalTypeRole {
+        pattern: "import",
+        r#type: "Import",
+        roles: &["Import"],
+    },
+    CanonicalTypeRole {
+        pattern: "package",
+        r#type: "Package",
+        roles: &["Module"],
+    },
+    CanonicalTypeRole {
+        pattern: "attribute",
+        r#type: "Attribute",
+        roles: &["Attribute"],
+    },
+    CanonicalTypeRole {
+        pattern: "comment",
+        r#type: "Comment",
+        roles: &["Comment"],
+    },
+    CanonicalTypeRole {
+        pattern: "docstring",
+        r#type: "DocString",
+        roles: &["Doc"],
+    },
+    CanonicalTypeRole {
+        pattern: "type_annotation",
+        r#type: "TypeAnnotation",
+        roles: &["Type"],
+    },
+    CanonicalTypeRole {
+        pattern: "field",
+        r#type: "Field",
+        roles: &["Member"],
+    },
+    CanonicalTypeRole {
+        pattern: "property",
+        r#type: "Property",
+        roles: &["Member"],
+    },
+    CanonicalTypeRole {
+        pattern: "getter",
+        r#type: "Getter",
+        roles: &["Getter"],
+    },
+    CanonicalTypeRole {
+        pattern: "setter",
+        r#type: "Setter",
+        roles: &["Setter"],
+    },
+    CanonicalTypeRole {
+        pattern: "lambda",
+        r#type: "Lambda",
+        roles: &["Lambda"],
+    },
+    CanonicalTypeRole {
+        pattern: "try",
+        r#type: "Try",
+        roles: &["Try"],
+    },
+    CanonicalTypeRole {
+        pattern: "catch",
+        r#type: "Catch",
+        roles: &["Catch"],
+    },
+    CanonicalTypeRole {
+        pattern: "finally",
+        r#type: "Finally",
+        roles: &["Finally"],
+    },
+    CanonicalTypeRole {
+        pattern: "throw",
+        r#type: "Throw",
+        roles: &["Throw"],
+    },
+    CanonicalTypeRole {
+        pattern: "module",
+        r#type: "Module",
+        roles: &["Module"],
+    },
+    CanonicalTypeRole {
+        pattern: "namespace",
+        r#type: "Namespace",
+        roles: &["Module"],
+    },
+    CanonicalTypeRole {
+        pattern: "decorator",
+        r#type: "Decorator",
+        roles: &["Attribute"],
+    },
+    CanonicalTypeRole {
+        pattern: "spread",
+        r#type: "Spread",
+        roles: &["Spread"],
+    },
+    CanonicalTypeRole {
+        pattern: "tuple",
+        r#type: "Tuple",
+        roles: &[],
+    },
+    CanonicalTypeRole {
+        pattern: "list",
+        r#type: "List",
+        roles: &[],
+    },
+    CanonicalTypeRole {
+        pattern: "dict",
+        r#type: "Dict",
+        roles: &[],
+    },
+    CanonicalTypeRole {
+        pattern: "set",
+        r#type: "Set",
+        roles: &[],
+    },
+    CanonicalTypeRole {
+        pattern: "key_value",
+        r#type: "KeyValue",
+        roles: &["Key", "Value"],
+    },
+    CanonicalTypeRole {
+        pattern: "index",
+        r#type: "Index",
+        roles: &["Index"],
+    },
+    CanonicalTypeRole {
+        pattern: "slice",
+        r#type: "Slice",
+        roles: &[],
+    },
+    CanonicalTypeRole {
+        pattern: "cast",
+        r#type: "Cast",
+        roles: &[],
+    },
+    CanonicalTypeRole {
+        pattern: "await",
+        r#type: "Await",
+        roles: &["Await"],
+    },
+    CanonicalTypeRole {
+        pattern: "yield",
+        r#type: "Yield",
+        roles: &["Yield"],
+    },
+    CanonicalTypeRole {
+        pattern: "generator",
+        r#type: "Generator",
+        roles: &["Generator"],
+    },
+    CanonicalTypeRole {
+        pattern: "comprehension",
+        r#type: "Comprehension",
+        roles: &[],
+    },
+    CanonicalTypeRole {
+        pattern: "pattern",
+        r#type: "Pattern",
+        roles: &["Pattern"],
+    },
+    CanonicalTypeRole {
+        pattern: "match",
+        r#type: "Match",
+        roles: &["Match"],
+    },
 ];
 
 /// Lowercases the name and returns the first substring-matching canonical
@@ -201,7 +433,10 @@ fn parse_fields(raw: Option<&Value>) -> std::collections::BTreeMap<String, Field
         let Some(fmap) = fval.as_object() else {
             continue;
         };
-        let required = fmap.get("required").and_then(Value::as_bool).unwrap_or(false);
+        let required = fmap
+            .get("required")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
         let types = parse_field_types(fmap.get("types"));
         let multiple = is_field_multiple(fmap);
         fields.insert(
@@ -237,7 +472,9 @@ fn is_field_multiple(fmap: &serde_json::Map<String, Value>) -> bool {
             return true;
         }
     }
-    fmap.get("multiple").and_then(Value::as_bool).unwrap_or(false)
+    fmap.get("multiple")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
 }
 
 /// Parses the `children` list of a node-type entry.
@@ -248,7 +485,11 @@ fn parse_children(raw: Option<&Value>) -> Vec<ChildInfo> {
     arr.iter()
         .filter_map(|e| e.as_object())
         .map(|m| ChildInfo {
-            r#type: m.get("type").and_then(Value::as_str).unwrap_or("").to_string(),
+            r#type: m
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
             named: m.get("named").and_then(Value::as_bool).unwrap_or(false),
         })
         .collect()
@@ -435,7 +676,9 @@ mod tests {
         let out = generate_mapping_dsl(&nodes, "go", &[".go".to_string()]);
         assert!(out.starts_with("[language \"go\", extensions: \".go\"]\n\n"));
         // function_declaration → Function with Function/Declaration roles.
-        assert!(out.contains("function_declaration <- (function_declaration) => uast(\n    type: \"Function\""));
+        assert!(out.contains(
+            "function_declaration <- (function_declaration) => uast(\n    type: \"Function\""
+        ));
         assert!(out.contains("roles: \"Function\", \"Declaration\""));
         // identifier → "If": guess_uast_type_and_roles returns the FIRST
         // canonical-table entry whose pattern is a substring of the lowercased

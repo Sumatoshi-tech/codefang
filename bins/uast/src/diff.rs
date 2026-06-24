@@ -10,9 +10,9 @@
 use std::fs::File;
 use std::io::{self, Write};
 
-use clap::{Arg, ArgAction, ArgMatches, Command};
 use cf_textutil::{GoMap, GoValue};
 use cf_uast::{detect_changes, ChangeType, Parser};
+use clap::{Arg, ArgAction, ArgMatches, Command};
 
 use crate::govalue_bridge::node_to_value;
 use crate::FORMAT_JSON;
@@ -51,22 +51,38 @@ pub fn command() -> Command {
 
 /// Runs `diff` (diff.go `runDiff`).
 pub fn run(m: &ArgMatches) -> Result<(), String> {
-    let file1 = m.get_one::<String>("file1").map(String::as_str).unwrap_or("");
-    let file2 = m.get_one::<String>("file2").map(String::as_str).unwrap_or("");
-    let output = m.get_one::<String>("output").map(String::as_str).unwrap_or("");
-    let format = m.get_one::<String>("format").map(String::as_str).unwrap_or("unified");
+    let file1 = m
+        .get_one::<String>("file1")
+        .map(String::as_str)
+        .unwrap_or("");
+    let file2 = m
+        .get_one::<String>("file2")
+        .map(String::as_str)
+        .unwrap_or("");
+    let output = m
+        .get_one::<String>("output")
+        .map(String::as_str)
+        .unwrap_or("");
+    let format = m
+        .get_one::<String>("format")
+        .map(String::as_str)
+        .unwrap_or("unified");
 
     let parser = Parser::new();
 
     if !parser.is_supported(file1) {
         return Err(format!("unsupported file type: {file1}"));
     }
-    let node1 = parser.parse_file(file1, "").map_err(|e| format!("failed to parse {file1}: {e}"))?;
+    let node1 = parser
+        .parse_file(file1, "")
+        .map_err(|e| format!("failed to parse {file1}: {e}"))?;
 
     if !parser.is_supported(file2) {
         return Err(format!("unsupported file type: {file2}"));
     }
-    let node2 = parser.parse_file(file2, "").map_err(|e| format!("failed to parse {file2}: {e}"))?;
+    let node2 = parser
+        .parse_file(file2, "")
+        .map_err(|e| format!("failed to parse {file2}: {e}"))?;
 
     let changes = detect(&node1, &node2, file1);
     output_changes(&changes, output, format)
@@ -198,7 +214,10 @@ mod tests {
         let v = changes_to_value(&changes);
         let s = String::from_utf8(cf_textutil::marshal_json(&v, false).unwrap()).unwrap();
         // Declaration order: type, before, (after omitted), file.
-        assert_eq!(s, "[{\"type\":\"modified\",\"before\":\"b\",\"file\":\"f.go\"}]\n");
+        assert_eq!(
+            s,
+            "[{\"type\":\"modified\",\"before\":\"b\",\"file\":\"f.go\"}]\n"
+        );
     }
 
     #[test]

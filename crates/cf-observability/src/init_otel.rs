@@ -68,9 +68,7 @@ impl SamplerKind {
             SAMPLER_TRACE_ID_RATIO => Self::TraceIdRatio(parse_ratio(arg)),
             SAMPLER_PARENT_BASED_ALWAYS_ON => Self::ParentBasedAlwaysOn,
             SAMPLER_PARENT_BASED_ALWAYS_OFF => Self::ParentBasedAlwaysOff,
-            SAMPLER_PARENT_BASED_TRACE_ID_RATIO => {
-                Self::ParentBasedTraceIdRatio(parse_ratio(arg))
-            }
+            SAMPLER_PARENT_BASED_TRACE_ID_RATIO => Self::ParentBasedTraceIdRatio(parse_ratio(arg)),
             _ => Self::ParentBasedAlwaysOn,
         }
     }
@@ -130,7 +128,10 @@ impl ResourceAttrs {
     /// Returns the value for `key`, if present.
     #[must_use]
     pub fn get(&self, key: &str) -> Option<&str> {
-        self.attrs.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+        self.attrs
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
     }
 }
 

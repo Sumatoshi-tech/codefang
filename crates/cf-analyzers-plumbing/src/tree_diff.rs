@@ -109,8 +109,8 @@ impl<'r> GitTreeSource<'r> {
     }
 
     fn tree_of(&self, commit_hash: Hash) -> Result<git2::Tree<'r>, AnalyzerError> {
-        let oid = git2::Oid::from_bytes(&commit_hash.0)
-            .map_err(|e| AnalyzerError::Git(e.to_string()))?;
+        let oid =
+            git2::Oid::from_bytes(&commit_hash.0).map_err(|e| AnalyzerError::Git(e.to_string()))?;
         let commit = self.repo.find_commit(oid)?;
         Ok(commit.tree()?)
     }
@@ -128,9 +128,7 @@ impl TreeSource for GitTreeSource<'_> {
             git2::Oid::from_bytes(&new_tree.0).map_err(|e| AnalyzerError::Git(e.to_string()))?;
         let old = self.repo.find_tree(old_oid)?;
         let new = self.repo.find_tree(new_oid)?;
-        let diff = self
-            .repo
-            .diff_tree_to_tree(Some(&old), Some(&new), None)?;
+        let diff = self.repo.diff_tree_to_tree(Some(&old), Some(&new), None)?;
 
         let mut changes: Changes = Vec::new();
         for delta in diff.deltas() {
@@ -227,11 +225,20 @@ mod tests {
     fn first_commit_uses_inserts_then_diffs() {
         let inserts: Changes = vec![Change {
             from: ChangeEntry::default(),
-            to: ChangeEntry { name: "a".into(), hash: h(1) },
+            to: ChangeEntry {
+                name: "a".into(),
+                hash: h(1),
+            },
         }];
         let later: Changes = vec![Change {
-            from: ChangeEntry { name: "a".into(), hash: h(1) },
-            to: ChangeEntry { name: "a".into(), hash: h(2) },
+            from: ChangeEntry {
+                name: "a".into(),
+                hash: h(1),
+            },
+            to: ChangeEntry {
+                name: "a".into(),
+                hash: h(2),
+            },
         }];
         let src = FakeSource {
             diffs: RefCell::new(vec![later.clone()]),

@@ -12,9 +12,9 @@
 use std::fs::File;
 use std::io::{self, Write};
 
-use clap::{Arg, ArgAction, ArgMatches, Command};
 use cf_textutil::{GoMap, GoValue};
 use cf_uast::{Node, Parser};
+use clap::{Arg, ArgAction, ArgMatches, Command};
 
 use crate::{COVERAGE_PERCENT, FORMAT_JSON};
 
@@ -67,10 +67,18 @@ pub fn command() -> Command {
 
 /// Runs `analyze` (analyze.go `runAnalyze`).
 pub fn run(m: &ArgMatches) -> Result<(), String> {
-    let files: Vec<String> =
-        m.get_many::<String>("files").map(|v| v.cloned().collect()).unwrap_or_default();
-    let output = m.get_one::<String>("output").map(String::as_str).unwrap_or("");
-    let format = m.get_one::<String>("format").map(String::as_str).unwrap_or("text");
+    let files: Vec<String> = m
+        .get_many::<String>("files")
+        .map(|v| v.cloned().collect())
+        .unwrap_or_default();
+    let output = m
+        .get_one::<String>("output")
+        .map(String::as_str)
+        .unwrap_or("");
+    let format = m
+        .get_one::<String>("format")
+        .map(String::as_str)
+        .unwrap_or("text");
 
     run_analyze(files, output, format)
 }
@@ -263,10 +271,16 @@ fn results_to_value(results: &[AnalysisResult]) -> GoValue {
 /// Builds one struct-origin `analysisResult` object (declaration order).
 fn result_to_value(r: &AnalysisResult) -> GoValue {
     let types = GoValue::object(GoMap::from_map(
-        r.types.iter().map(|(k, v)| (k.clone(), GoValue::Int(*v))).collect::<Vec<_>>(),
+        r.types
+            .iter()
+            .map(|(k, v)| (k.clone(), GoValue::Int(*v)))
+            .collect::<Vec<_>>(),
     ));
     let roles = GoValue::object(GoMap::from_map(
-        r.roles.iter().map(|(k, v)| (k.clone(), GoValue::Int(*v))).collect::<Vec<_>>(),
+        r.roles
+            .iter()
+            .map(|(k, v)| (k.clone(), GoValue::Int(*v)))
+            .collect::<Vec<_>>(),
     ));
     let mut m = GoMap::new_struct();
     m.push("file", GoValue::Str(r.file.clone()));
@@ -303,8 +317,16 @@ fn output_text(results: &[AnalysisResult], writer: &mut dyn Write) {
         let _ = writeln!(writer, "    Max children:   {}", r.max_children);
         let _ = writeln!(writer, "    Avg branching:  {:.1}", r.avg_branching);
         let _ = writeln!(writer, "  Coverage:");
-        let _ = writeln!(writer, "    Role coverage:  {:.0}%", r.role_coverage * COVERAGE_PERCENT);
-        let _ = writeln!(writer, "    Pos coverage:   {:.0}%", r.pos_coverage * COVERAGE_PERCENT);
+        let _ = writeln!(
+            writer,
+            "    Role coverage:  {:.0}%",
+            r.role_coverage * COVERAGE_PERCENT
+        );
+        let _ = writeln!(
+            writer,
+            "    Pos coverage:   {:.0}%",
+            r.pos_coverage * COVERAGE_PERCENT
+        );
         let _ = writeln!(writer, "    Synthetic:      {}", r.synthetic_nodes);
         let _ = writeln!(writer, "    Type diversity: {}", r.type_diversity);
         if !r.types.is_empty() {
@@ -332,8 +354,14 @@ fn print_sorted_by_value(writer: &mut dyn Write, m: &[(String, i64)]) {
 /// HTML rendering (analyze.go `generateHTMLReport`). Non-binding (DESIGN §2.7);
 /// emits the same table skeleton best-effort.
 fn output_html(results: &[AnalysisResult], writer: &mut dyn Write) {
-    let _ = writeln!(writer, "<!DOCTYPE html>\n<html>\n<head>\n<title>UAST Structure Report</title>");
-    let _ = writeln!(writer, "</head>\n<body>\n<h1>UAST Structure Report</h1>\n<table>");
+    let _ = writeln!(
+        writer,
+        "<!DOCTYPE html>\n<html>\n<head>\n<title>UAST Structure Report</title>"
+    );
+    let _ = writeln!(
+        writer,
+        "</head>\n<body>\n<h1>UAST Structure Report</h1>\n<table>"
+    );
     let _ = writeln!(
         writer,
         "<tr><th>File</th><th>Nodes</th><th>Depth</th><th>Branching</th><th>Types</th><th>Role%</th><th>Pos%</th></tr>"
@@ -402,10 +430,18 @@ mod tests {
     }
 
     fn types_get(r: &AnalysisResult, k: &str) -> i64 {
-        r.types.iter().find(|(t, _)| t == k).map(|(_, v)| *v).unwrap_or(0)
+        r.types
+            .iter()
+            .find(|(t, _)| t == k)
+            .map(|(_, v)| *v)
+            .unwrap_or(0)
     }
     fn roles_get(r: &AnalysisResult, k: &str) -> i64 {
-        r.roles.iter().find(|(t, _)| t == k).map(|(_, v)| *v).unwrap_or(0)
+        r.roles
+            .iter()
+            .find(|(t, _)| t == k)
+            .map(|(_, v)| *v)
+            .unwrap_or(0)
     }
 
     // Ported from analyze_test.go TestAnalyzeNode_EmptyTree.
@@ -438,7 +474,10 @@ mod tests {
         let v = results_to_value(&[r]);
         let s = String::from_utf8(cf_textutil::marshal_json(&v, false).unwrap()).unwrap();
         // First keys must be in declaration order (struct-origin), not sorted.
-        assert!(s.starts_with("[{\"file\":\"a.go\",\"total_nodes\":1,\"leaf_nodes\":1,"), "got {s}");
+        assert!(
+            s.starts_with("[{\"file\":\"a.go\",\"total_nodes\":1,\"leaf_nodes\":1,"),
+            "got {s}"
+        );
         // A single File leaf: ratios are integer-valued floats -> "1"/"0".
         assert!(s.contains("\"leaf_ratio\":1,"), "got {s}");
         assert!(s.contains("\"avg_depth\":0,"), "got {s}");

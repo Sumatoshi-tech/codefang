@@ -121,10 +121,14 @@ pub fn sections(report: &GoValue) -> Option<Vec<Section>> {
             Hint {
                 title: "How to interpret:".to_string(),
                 items: vec![
-                    "<strong>Green (1-5)</strong> = Simple, easy to understand and test".to_string(),
-                    "<strong>Yellow (6-10)</strong> = Moderate complexity, consider simplifying".to_string(),
-                    "<strong>Red (>10)</strong> = High complexity, should be refactored".to_string(),
-                    "<strong>Action:</strong> Break down complex functions into smaller units".to_string(),
+                    "<strong>Green (1-5)</strong> = Simple, easy to understand and test"
+                        .to_string(),
+                    "<strong>Yellow (6-10)</strong> = Moderate complexity, consider simplifying"
+                        .to_string(),
+                    "<strong>Red (>10)</strong> = High complexity, should be refactored"
+                        .to_string(),
+                    "<strong>Action:</strong> Break down complex functions into smaller units"
+                        .to_string(),
                 ],
             },
         ),
@@ -137,8 +141,10 @@ pub fn sections(report: &GoValue) -> Option<Vec<Section>> {
                 items: vec![
                     "<strong>Bottom-left</strong> = Simple functions (ideal)".to_string(),
                     "<strong>Top-right</strong> = Complex functions (need attention)".to_string(),
-                    "<strong>High cyclomatic, low cognitive</strong> = Many simple branches".to_string(),
-                    "<strong>Low cyclomatic, high cognitive</strong> = Deep nesting or recursion".to_string(),
+                    "<strong>High cyclomatic, low cognitive</strong> = Many simple branches"
+                        .to_string(),
+                    "<strong>Low cyclomatic, high cognitive</strong> = Deep nesting or recursion"
+                        .to_string(),
                     "<strong>Bubble size</strong> = Nesting depth".to_string(),
                 ],
             },
@@ -150,10 +156,14 @@ pub fn sections(report: &GoValue) -> Option<Vec<Section>> {
             Hint {
                 title: "How to interpret:".to_string(),
                 items: vec![
-                    "<strong>Simple (1-5)</strong> = Functions that are easy to maintain".to_string(),
-                    "<strong>Moderate (6-10)</strong> = Functions that need careful review".to_string(),
-                    "<strong>Complex (>10)</strong> = Functions that should be refactored".to_string(),
-                    "<strong>Goal:</strong> Maximize Simple functions, minimize Complex ones".to_string(),
+                    "<strong>Simple (1-5)</strong> = Functions that are easy to maintain"
+                        .to_string(),
+                    "<strong>Moderate (6-10)</strong> = Functions that need careful review"
+                        .to_string(),
+                    "<strong>Complex (>10)</strong> = Functions that should be refactored"
+                        .to_string(),
+                    "<strong>Goal:</strong> Maximize Simple functions, minimize Complex ones"
+                        .to_string(),
                 ],
             },
         ),
@@ -484,7 +494,9 @@ mod tests {
         ));
         // basename:func labels in xAxis data.
         assert!(json.contains("\"data\":[\"x.go:a\",\"y.go:b\"]"));
-        assert!(json.contains("\"dataZoom\":[{\"type\":\"slider\",\"end\":100},{\"type\":\"inside\"}]"));
+        assert!(
+            json.contains("\"dataZoom\":[{\"type\":\"slider\",\"end\":100},{\"type\":\"inside\"}]")
+        );
     }
 
     #[test]
@@ -514,7 +526,9 @@ mod tests {
         assert!(json.contains(
             "\"series\":[{\"name\":\"Complexity\",\"type\":\"pie\",\"radius\":\"60%\",\"data\":[{\"name\":\"Simple (1-5)\",\"value\":1,\"itemStyle\":{\"color\":\"#22c55e\"}},{\"name\":\"Moderate (6-10)\",\"value\":0,\"itemStyle\":{\"color\":\"#eab308\"}},{\"name\":\"Complex (>10)\",\"value\":1,\"itemStyle\":{\"color\":\"#ef4444\"}}],\"label\":{\"show\":true,\"color\":\"#a8a29e\",\"formatter\":\"{b}: {c} ({d}%)\"}}]"
         ));
-        assert!(json.contains("\"legend\":{\"show\":true,\"top\":\"bottom\",\"textStyle\":{\"color\":\"#a8a29e\"}}"));
+        assert!(json.contains(
+            "\"legend\":{\"show\":true,\"top\":\"bottom\",\"textStyle\":{\"color\":\"#a8a29e\"}}"
+        ));
     }
 
     #[test]

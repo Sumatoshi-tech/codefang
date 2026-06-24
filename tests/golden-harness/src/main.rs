@@ -66,7 +66,11 @@ fn target_dir() -> PathBuf {
 
 /// Locate a built binary, preferring `release`, then `debug`.
 fn binary_path(name: &str) -> Option<PathBuf> {
-    let exe = if cfg!(windows) { format!("{name}.exe") } else { name.to_string() };
+    let exe = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    };
     let t = target_dir();
     for profile in ["release", "debug"] {
         let cand = t.join(profile).join(&exe);
@@ -93,13 +97,19 @@ fn ensure_binaries_built() {
 /// Which Rust binary handles this capture, from the manifest argv[0] basename.
 fn binary_for(cap: &Capture) -> &'static str {
     let arg0 = cap.argv.first().map(String::as_str).unwrap_or("");
-    if arg0.ends_with("uast") { "uast" } else { "codefang" }
+    if arg0.ends_with("uast") {
+        "uast"
+    } else {
+        "codefang"
+    }
 }
 
 /// First differing byte offset, or `None` when identical.
 fn first_diff(a: &[u8], b: &[u8]) -> Option<usize> {
     let n = a.len().min(b.len());
-    (0..n).find(|&i| a[i] != b[i]).or(if a.len() == b.len() { None } else { Some(n) })
+    (0..n)
+        .find(|&i| a[i] != b[i])
+        .or(if a.len() == b.len() { None } else { Some(n) })
 }
 
 fn main() {

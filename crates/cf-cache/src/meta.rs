@@ -84,7 +84,10 @@ impl IncrementalMeta {
         m.push(
             "analyzer_ids",
             GoValue::Array(
-                self.analyzer_ids.iter().map(|s| GoValue::Str(s.clone())).collect(),
+                self.analyzer_ids
+                    .iter()
+                    .map(|s| GoValue::Str(s.clone()))
+                    .collect(),
             ),
         );
         m.push("timestamp", GoValue::Str(self.timestamp.clone()));
@@ -162,8 +165,7 @@ pub fn write_meta(dir: &Path, meta: &IncrementalMeta) -> Result<(), WriteMetaErr
     let value = meta.to_govalue();
 
     cf_storage::write_atomic(&meta_path, META_FILE_PERM, |w| {
-        cf_textutil::write_json(w, &value, true)
-            .map_err(|e| std::io::Error::other(e.to_string()))
+        cf_textutil::write_json(w, &value, true).map_err(|e| std::io::Error::other(e.to_string()))
     })
     .map_err(|e| WriteMetaError::Io(e.to_string()))
 }
@@ -180,9 +182,7 @@ pub fn read_meta(dir: &Path) -> Result<IncrementalMeta, ReadMetaError> {
 
     let data = match fs::read(&meta_path) {
         Ok(d) => d,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Err(ReadMetaError::NotFound)
-        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(ReadMetaError::NotFound),
         Err(e) => return Err(ReadMetaError::Io(e)),
     };
 
@@ -235,11 +235,7 @@ mod tests {
         // Independently computed from "root789:main".
         let mut h = Sha256::new();
         h.update(b"root789:main");
-        let expected: String = h
-            .finalize()
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect();
+        let expected: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
         assert_eq!(key("root789", "main"), expected);
     }
 

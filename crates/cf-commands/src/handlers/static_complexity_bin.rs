@@ -59,7 +59,9 @@ pub fn complexity_report_bin(root_path: &str) -> Option<Vec<u8>> {
     let mut max_complexity = 0i64;
 
     for path in &files {
-        let Ok(content) = fs::read(path) else { continue };
+        let Ok(content) = fs::read(path) else {
+            continue;
+        };
         let path_str = path.to_string_lossy();
         let Ok(tree) = parser.parse(&path_str, &content) else {
             continue;
@@ -158,15 +160,17 @@ fn walk(dir: &Path, parser: &Parser, opts: &PathPolicyOptions, out: &mut Vec<std
 fn relative_parts(path: &Path, root: &Path) -> (String, String) {
     let rel = path.strip_prefix(root).unwrap_or(path);
     let source_file = rel.to_string_lossy().to_string();
-    let directory = rel
-        .parent().map_or_else(|| ".".to_string(), |p| {
+    let directory = rel.parent().map_or_else(
+        || ".".to_string(),
+        |p| {
             let s = p.to_string_lossy();
             if s.is_empty() {
                 ".".to_string()
             } else {
                 s.to_string()
             }
-        });
+        },
+    );
     (source_file, directory)
 }
 

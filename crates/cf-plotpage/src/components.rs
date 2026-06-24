@@ -226,7 +226,9 @@ impl Badge {
 
 impl Renderable for Badge {
     fn render(&self, out: &mut String, _ids: &mut ChartIdGen) {
-        out.push_str("<span class=\"inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-sm ");
+        out.push_str(
+            "<span class=\"inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-sm ",
+        );
         out.push_str(self.classes());
         out.push_str("\">");
         out.push_str(&html_escape(&self.text));
@@ -471,7 +473,9 @@ impl Renderable for Stat {
         };
         out.push_str("<div class=\"text-center\">\n    <p class=\"text-sm text-stone-500 dark:text-stone-400\">");
         out.push_str(&html_escape(&self.label));
-        out.push_str("</p>\n    <p class=\"text-2xl font-semibold text-stone-900 dark:text-stone-50\">");
+        out.push_str(
+            "</p>\n    <p class=\"text-2xl font-semibold text-stone-900 dark:text-stone-50\">",
+        );
         out.push_str(&html_escape(&self.value));
         out.push_str("</p>\n");
         if !self.trend.is_empty() {
@@ -608,14 +612,18 @@ impl Renderable for Table {
         }
         out.push_str("\n            </tr>\n        </thead>\n        <tbody>\n");
         for (i, row) in self.rows.iter().enumerate() {
-            out.push_str("\n            <tr class=\"border-b border-stone-100 dark:border-stone-800 ");
+            out.push_str(
+                "\n            <tr class=\"border-b border-stone-100 dark:border-stone-800 ",
+            );
             // Template condition: {{if and $.Striped (odd $i)}} (funcMap "odd": i%2==1).
             if self.striped && i % 2 == 1 {
                 out.push_str("bg-stone-50 dark:bg-stone-800/50");
             }
             out.push_str("\">\n");
             for cell in row {
-                out.push_str("\n                <td class=\"px-4 py-3 text-stone-700 dark:text-stone-300\">");
+                out.push_str(
+                    "\n                <td class=\"px-4 py-3 text-stone-700 dark:text-stone-300\">",
+                );
                 out.push_str(cell);
                 out.push_str("</td>\n");
             }

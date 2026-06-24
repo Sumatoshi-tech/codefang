@@ -398,7 +398,11 @@ fn adaptive_ema_smoothing_no_false_replan() {
     }
 
     assert_eq!(ap.stats().replan_count, 0);
-    in_delta(750.0 * KIB as f64, ap.stats().final_growth_rate, 100.0 * KIB as f64);
+    in_delta(
+        750.0 * KIB as f64,
+        ap.stats().final_growth_rate,
+        100.0 * KIB as f64,
+    );
 }
 
 // --- Memory pressure ---

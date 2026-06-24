@@ -112,14 +112,25 @@ pub fn build_signature_report_with_source(
     for e in entries {
         let mut m = GoMap::new_struct();
         m.push("name", GoValue::Str(e.name.clone()));
-        let bytes = e.sig.bytes().into_iter().map(|b| GoValue::Uint(u64::from(b))).collect();
+        let bytes = e
+            .sig
+            .bytes()
+            .into_iter()
+            .map(|b| GoValue::Uint(u64::from(b)))
+            .collect();
         m.push("sig", GoValue::Array(bytes));
-        m.push(cf_analyze::SOURCE_FILE_KEY, GoValue::Str(source_file.to_string()));
+        m.push(
+            cf_analyze::SOURCE_FILE_KEY,
+            GoValue::Str(source_file.to_string()),
+        );
         sig_entries.push(GoValue::Object(m));
     }
 
     let mut report = GoMap::new(MapOrigin::Map);
-    report.push(KEY_ANALYZER_NAME, GoValue::Str(crate::ANALYZER_NAME.to_string()));
+    report.push(
+        KEY_ANALYZER_NAME,
+        GoValue::Str(crate::ANALYZER_NAME.to_string()),
+    );
     report.push(KEY_TOTAL_FUNCTIONS, GoValue::Int(total_functions as i64));
     report.push(KEY_TOTAL_CLONE_PAIRS, GoValue::Int(0));
     report.push(KEY_CLONE_RATIO, GoValue::Float(0.0));
@@ -143,13 +154,21 @@ pub fn build_signature_report(total_functions: usize, entries: &[FuncEntry]) -> 
         // Signature carried as its big-endian byte form (decoded by the
         // aggregator via Signature::from_bytes) — the portable equivalent of
         // passing the signature by reference.
-        let bytes = e.sig.bytes().into_iter().map(|b| GoValue::Uint(u64::from(b))).collect();
+        let bytes = e
+            .sig
+            .bytes()
+            .into_iter()
+            .map(|b| GoValue::Uint(u64::from(b)))
+            .collect();
         m.push("sig", GoValue::Array(bytes));
         sig_entries.push(GoValue::Object(m));
     }
 
     let mut report = GoMap::new(MapOrigin::Map);
-    report.push(KEY_ANALYZER_NAME, GoValue::Str(crate::ANALYZER_NAME.to_string()));
+    report.push(
+        KEY_ANALYZER_NAME,
+        GoValue::Str(crate::ANALYZER_NAME.to_string()),
+    );
     report.push(KEY_TOTAL_FUNCTIONS, GoValue::Int(total_functions as i64));
     report.push(KEY_TOTAL_CLONE_PAIRS, GoValue::Int(0));
     report.push(KEY_CLONE_RATIO, GoValue::Float(0.0));
@@ -166,8 +185,14 @@ mod tests {
     use cf_uast_node::Node;
 
     fn function(name: &str) -> Node {
-        let name_node = NodeBuilder::new("Identifier").role("Name").token(name).build();
-        let mut f = NodeBuilder::new("Function").role("Function").child(name_node).build();
+        let name_node = NodeBuilder::new("Identifier")
+            .role("Name")
+            .token(name)
+            .build();
+        let mut f = NodeBuilder::new("Function")
+            .role("Function")
+            .child(name_node)
+            .build();
         let mut block = NodeBuilder::new("Block").build();
         for i in 0..24 {
             let kind = ["Identifier", "Call", "Literal", "Operator"][i % 4];

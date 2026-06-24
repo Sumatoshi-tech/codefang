@@ -280,8 +280,7 @@ fn box_plot_chart(report: &GoValue) -> Chart {
     // first-seen order (ties between equal medians are nondeterministic in the reference binary and
     // measured by the harness).
     let mut order: Vec<String> = Vec::new();
-    let mut grouped: std::collections::HashMap<String, Vec<f64>> =
-        std::collections::HashMap::new();
+    let mut grouped: std::collections::HashMap<String, Vec<f64>> = std::collections::HashMap::new();
     for f in &functions {
         let file_path = match f.get("_source_file") {
             Some(GoValue::Str(s)) if !s.is_empty() => s.as_str(),
@@ -363,7 +362,9 @@ fn box_plot_chart(report: &GoValue) -> Chart {
                 let bs = box_stats(&g.scores);
                 BoxPlotData {
                     name: g.label.clone(),
-                    value: Some(GoValue::Array(bs.iter().map(|v| GoValue::Float(*v)).collect())),
+                    value: Some(GoValue::Array(
+                        bs.iter().map(|v| GoValue::Float(*v)).collect(),
+                    )),
                 }
                 .value()
             })
@@ -496,7 +497,9 @@ mod tests {
 
     #[test]
     fn histogram_bins_and_colors_match_go() {
-        let json = histogram_chart(&raw_report()).expect("histogram").option_json();
+        let json = histogram_chart(&raw_report())
+            .expect("histogram")
+            .option_json();
         // En-dash labels in xAxis data.
         assert!(json.contains("\"data\":[\"0.0–0.1\",\"0.1–0.2\",\"0.2–0.3\",\"0.3–0.4\",\"0.4–0.5\",\"0.5–0.6\",\"0.6–0.7\",\"0.7–0.8\",\"0.8–0.9\",\"0.9–1.0\"]"));
         // Bin colors keyed by midpoint: 0.2-0.3 mid 0.25 → poor red; 0.3-0.4 mid

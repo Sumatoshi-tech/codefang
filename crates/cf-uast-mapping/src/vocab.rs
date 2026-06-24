@@ -604,7 +604,9 @@ impl<'a> TokenSource<'a> {
             Some(TokenSource::SelfText)
         } else if let Some(rest) = s.strip_prefix("child:") {
             Some(TokenSource::Child(rest))
-        } else { s.strip_prefix('@').map(TokenSource::Capture) }
+        } else {
+            s.strip_prefix('@').map(TokenSource::Capture)
+        }
     }
 }
 
@@ -616,11 +618,18 @@ mod tests {
     fn as_str_parse_round_trip() {
         // Spot-check both vocabularies; the corpus-coverage test below is the
         // exhaustive proof.
-        for (t, s) in [(UastType::Assignment, "Assignment"), (UastType::BinaryOp, "BinaryOp"), (UastType::Synthetic, "Synthetic")] {
+        for (t, s) in [
+            (UastType::Assignment, "Assignment"),
+            (UastType::BinaryOp, "BinaryOp"),
+            (UastType::Synthetic, "Synthetic"),
+        ] {
             assert_eq!(t.as_str(), s);
             assert_eq!(UastType::parse(s), Some(t));
         }
-        for (r, s) in [(Role::Operator, "Operator"), (Role::EnumMember, "EnumMember")] {
+        for (r, s) in [
+            (Role::Operator, "Operator"),
+            (Role::EnumMember, "EnumMember"),
+        ] {
             assert_eq!(r.as_str(), s);
             assert_eq!(Role::parse(s), Some(r));
         }
@@ -635,7 +644,10 @@ mod tests {
             assert_eq!(t.token_string(), s);
         }
         assert_eq!(TokenSource::parse("self"), Some(TokenSource::SelfText));
-        assert_eq!(TokenSource::parse("child:identifier"), Some(TokenSource::Child("identifier")));
+        assert_eq!(
+            TokenSource::parse("child:identifier"),
+            Some(TokenSource::Child("identifier"))
+        );
         assert_eq!(TokenSource::parse("@x"), Some(TokenSource::Capture("x")));
         assert_eq!(TokenSource::parse("raw-literal"), None);
     }

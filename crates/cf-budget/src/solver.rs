@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use crate::framework::CoordinatorConfig;
 use crate::model::{
-    AVG_COMMIT_DATA_SIZE, AVG_DIFF_SIZE, BASE_OVERHEAD, MAX_BLOB_CACHE_SIZE, MAX_DIFF_CACHE_ENTRIES,
-    REPO_HANDLE_SIZE, WORKER_NATIVE_OVERHEAD,
+    AVG_COMMIT_DATA_SIZE, AVG_DIFF_SIZE, BASE_OVERHEAD, MAX_BLOB_CACHE_SIZE,
+    MAX_DIFF_CACHE_ENTRIES, REPO_HANDLE_SIZE, WORKER_NATIVE_OVERHEAD,
 };
 use crate::units::MIB;
 use crate::{num_cpu, PERCENT_DIVISOR};
@@ -277,7 +277,10 @@ mod tests {
     fn solve_for_budget_small_budget() {
         let cfg = solve_for_budget(MINIMUM_BUDGET).expect("minimum should solve");
         assert!(cfg.workers >= MIN_WORKERS, "should have minimum workers");
-        assert!(cfg.buffer_size >= MIN_BUFFER_SIZE, "should have minimum buffer");
+        assert!(
+            cfg.buffer_size >= MIN_BUFFER_SIZE,
+            "should have minimum buffer"
+        );
     }
 
     #[test]
@@ -307,7 +310,8 @@ mod tests {
     fn solve_for_budget_never_exceeds_budget() {
         let budgets = [MINIMUM_BUDGET, GIB, 2 * GIB, 4 * GIB];
         for budget in budgets {
-            let cfg = solve_for_budget(budget).unwrap_or_else(|_| panic!("budget {budget} should succeed"));
+            let cfg = solve_for_budget(budget)
+                .unwrap_or_else(|_| panic!("budget {budget} should succeed"));
             let estimate = estimate_memory_usage(&cfg);
             assert!(
                 estimate <= budget,
@@ -323,7 +327,8 @@ mod tests {
         const SLACK: i64 = 5;
         let mut budget = MINIMUM_BUDGET;
         while budget <= 8 * GIB {
-            let cfg = solve_for_budget(budget).unwrap_or_else(|_| panic!("budget {budget} should succeed"));
+            let cfg = solve_for_budget(budget)
+                .unwrap_or_else(|_| panic!("budget {budget} should succeed"));
             let estimate = estimate_memory_usage(&cfg);
             let max_allowed = budget * (PERCENT_DIVISOR - SLACK) / PERCENT_DIVISOR;
             assert!(
@@ -374,7 +379,10 @@ mod tests {
     fn solve_for_budget_minimum_values_enforced() {
         let cfg = solve_for_budget(MINIMUM_BUDGET).unwrap();
         assert!(cfg.workers >= MIN_WORKERS, "should enforce min workers");
-        assert!(cfg.buffer_size >= MIN_BUFFER_SIZE, "should enforce min buffer");
+        assert!(
+            cfg.buffer_size >= MIN_BUFFER_SIZE,
+            "should enforce min buffer"
+        );
         assert!(
             cfg.diff_cache_size >= MIN_DIFF_CACHE_SIZE,
             "should enforce min diff cache"
@@ -390,8 +398,14 @@ mod tests {
         let cfg = derive_knobs(0, 0, 0);
         assert_eq!(cfg.workers, MIN_WORKERS, "should use min workers");
         assert_eq!(cfg.buffer_size, MIN_BUFFER_SIZE, "should use min buffer");
-        assert_eq!(cfg.diff_cache_size, MIN_DIFF_CACHE_SIZE, "should use min diff cache");
-        assert_eq!(cfg.blob_cache_size, MIN_BLOB_CACHE_SIZE, "should use min blob cache");
+        assert_eq!(
+            cfg.diff_cache_size, MIN_DIFF_CACHE_SIZE,
+            "should use min diff cache"
+        );
+        assert_eq!(
+            cfg.blob_cache_size, MIN_BLOB_CACHE_SIZE,
+            "should use min blob cache"
+        );
     }
 
     #[test]
@@ -406,10 +420,7 @@ mod tests {
     #[test]
     fn derive_knobs_huge_worker_allocation() {
         let cfg = derive_knobs(100 * MIB, 100 * GIB, 10 * MIB);
-        assert!(
-            cfg.workers <= num_cpu(),
-            "workers capped at CPU count"
-        );
+        assert!(cfg.workers <= num_cpu(), "workers capped at CPU count");
     }
 
     #[test]

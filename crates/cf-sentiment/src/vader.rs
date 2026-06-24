@@ -110,8 +110,10 @@ impl SentiText {
             .split(' ')
             .map(PythonesqueRegex::strip_punctuation_if_word)
             .collect();
-        let words_and_emoticons_lower: Vec<String> =
-            words_and_emoticons.iter().map(|w| w.to_lowercase()).collect();
+        let words_and_emoticons_lower: Vec<String> = words_and_emoticons
+            .iter()
+            .map(|w| w.to_lowercase())
+            .collect();
         let is_cap_diff = PythonesqueRegex::allcap_differential(&words_and_emoticons);
         Self {
             words_and_emoticons,
@@ -125,31 +127,154 @@ impl SentiText {
 
 /// Words that negate the valence of what follows them.
 const NEGATE_LIST: &[&str] = &[
-    "aint", "arent", "cannot", "cant", "couldnt", "darent", "didnt", "doesnt", "ain't",
-    "aren't", "can't", "couldn't", "daren't", "didn't", "doesn't", "dont", "hadnt", "hasnt",
-    "havent", "isnt", "mightnt", "mustnt", "neither", "don't", "hadn't", "hasn't", "haven't",
-    "isn't", "mightn't", "mustn't", "neednt", "needn't", "never", "none", "nope", "nor", "not",
-    "nothing", "nowhere", "oughtnt", "shant", "shouldnt", "uhuh", "wasnt", "werent", "oughtn't",
-    "shan't", "shouldn't", "uh-uh", "wasn't", "weren't", "without", "wont", "wouldnt", "won't",
-    "wouldn't", "rarely", "seldom", "despite",
+    "aint",
+    "arent",
+    "cannot",
+    "cant",
+    "couldnt",
+    "darent",
+    "didnt",
+    "doesnt",
+    "ain't",
+    "aren't",
+    "can't",
+    "couldn't",
+    "daren't",
+    "didn't",
+    "doesn't",
+    "dont",
+    "hadnt",
+    "hasnt",
+    "havent",
+    "isnt",
+    "mightnt",
+    "mustnt",
+    "neither",
+    "don't",
+    "hadn't",
+    "hasn't",
+    "haven't",
+    "isn't",
+    "mightn't",
+    "mustn't",
+    "neednt",
+    "needn't",
+    "never",
+    "none",
+    "nope",
+    "nor",
+    "not",
+    "nothing",
+    "nowhere",
+    "oughtnt",
+    "shant",
+    "shouldnt",
+    "uhuh",
+    "wasnt",
+    "werent",
+    "oughtn't",
+    "shan't",
+    "shouldn't",
+    "uh-uh",
+    "wasn't",
+    "weren't",
+    "without",
+    "wont",
+    "wouldnt",
+    "won't",
+    "wouldn't",
+    "rarely",
+    "seldom",
+    "despite",
 ];
 
 fn booster_dict() -> HashMap<String, f64> {
     let inc: &[&str] = &[
-        "absolutely", "amazingly", "awfully", "completely", "considerable", "considerably",
-        "decidedly", "deeply", "effing", "enormous", "enormously", "entirely", "especially",
-        "exceptional", "exceptionally", "extreme", "extremely", "fabulously", "flipping", "flippin",
-        "frackin", "fracking", "fricking", "frickin", "frigging", "friggin", "fully", "fuckin",
-        "fucking", "fuggin", "fugging", "greatly", "hella", "highly", "hugely", "incredible",
-        "incredibly", "intensely", "major", "majorly", "more", "most", "particularly", "purely",
-        "quite", "really", "remarkably", "so", "substantially", "thoroughly", "total", "totally",
-        "tremendous", "tremendously", "uber", "unbelievably", "unusually", "utter", "utterly",
+        "absolutely",
+        "amazingly",
+        "awfully",
+        "completely",
+        "considerable",
+        "considerably",
+        "decidedly",
+        "deeply",
+        "effing",
+        "enormous",
+        "enormously",
+        "entirely",
+        "especially",
+        "exceptional",
+        "exceptionally",
+        "extreme",
+        "extremely",
+        "fabulously",
+        "flipping",
+        "flippin",
+        "frackin",
+        "fracking",
+        "fricking",
+        "frickin",
+        "frigging",
+        "friggin",
+        "fully",
+        "fuckin",
+        "fucking",
+        "fuggin",
+        "fugging",
+        "greatly",
+        "hella",
+        "highly",
+        "hugely",
+        "incredible",
+        "incredibly",
+        "intensely",
+        "major",
+        "majorly",
+        "more",
+        "most",
+        "particularly",
+        "purely",
+        "quite",
+        "really",
+        "remarkably",
+        "so",
+        "substantially",
+        "thoroughly",
+        "total",
+        "totally",
+        "tremendous",
+        "tremendously",
+        "uber",
+        "unbelievably",
+        "unusually",
+        "utter",
+        "utterly",
         "very",
     ];
     let dec: &[&str] = &[
-        "almost", "barely", "hardly", "just enough", "kind of", "kinda", "kindof", "kind-of",
-        "less", "little", "marginal", "marginally", "occasional", "occasionally", "partly",
-        "scarce", "scarcely", "slight", "slightly", "somewhat", "sort of", "sorta", "sortof",
+        "almost",
+        "barely",
+        "hardly",
+        "just enough",
+        "kind of",
+        "kinda",
+        "kindof",
+        "kind-of",
+        "less",
+        "little",
+        "marginal",
+        "marginally",
+        "occasional",
+        "occasionally",
+        "partly",
+        "scarce",
+        "scarcely",
+        "slight",
+        "slightly",
+        "somewhat",
+        "sort of",
+        "sorta",
+        "sortof",
         "sort-of",
     ];
     let mut m = HashMap::new();
@@ -491,9 +616,7 @@ impl SentimentIntensityAnalyzer {
             }
             if (i > 0 && well[i - 1] == "no")
                 || (i > 1 && well[i - 2] == "no")
-                || (i > 2
-                    && well[i - 3] == "no"
-                    && (well[i - 1] == "or" || well[i - 1] == "nor"))
+                || (i > 2 && well[i - 3] == "no" && (well[i - 1] == "or" || well[i - 1] == "nor"))
             {
                 new_valence = lex * N_SCALAR;
             }
@@ -600,7 +723,11 @@ mod tests {
     fn lexicon_loads() {
         let sia = SentimentIntensityAnalyzer::new();
         // Base VADER lexicon has ~7500 entries.
-        assert!(sia.lexicon.len() > 7000, "lexicon size = {}", sia.lexicon.len());
+        assert!(
+            sia.lexicon.len() > 7000,
+            "lexicon size = {}",
+            sia.lexicon.len()
+        );
     }
 
     #[test]

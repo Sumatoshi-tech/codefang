@@ -77,7 +77,12 @@ mod tests {
         let mut r = ReportValue::map();
         r.insert(
             "imports",
-            ReportValue::List(imports.iter().map(|s| ReportValue::Str(s.to_string())).collect()),
+            ReportValue::List(
+                imports
+                    .iter()
+                    .map(|s| ReportValue::Str(s.to_string()))
+                    .collect(),
+            ),
         );
         r
     }

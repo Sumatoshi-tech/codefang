@@ -257,7 +257,10 @@ fn read_header(path: &Path) -> Vec<u8> {
 fn build_json_report(counts: &Counts) -> GoValue {
     // Single info-only section → overall score is ScoreInfoOnly (-1), label Info.
     let mut report = GoMap::new(MapOrigin::Struct);
-    report.push("overall_score_label", GoValue::Str(SCORE_LABEL_INFO.to_string()));
+    report.push(
+        "overall_score_label",
+        GoValue::Str(SCORE_LABEL_INFO.to_string()),
+    );
     report.push("sections", GoValue::Array(vec![build_section(counts)]));
     report.push("overall_score", GoValue::Float(SCORE_INFO_ONLY));
     GoValue::Map(report)
@@ -308,13 +311,20 @@ fn build_section(counts: &Counts) -> GoValue {
             let mut iss = GoMap::new(MapOrigin::Struct);
             iss.push("name", GoValue::Str(cat.as_str().to_string()));
             iss.push("location", GoValue::Str(String::new()));
-            iss.push("value", GoValue::Str(format!("{count} files ({percent:.1}%)")));
+            iss.push(
+                "value",
+                GoValue::Str(format!("{count} files ({percent:.1}%)")),
+            );
             iss.push("severity", GoValue::Str(severity_for(cat).to_string()));
             issue_items.push(GoValue::Map(iss));
         }
     }
 
-    let status = if total == 0 { STATUS_EMPTY } else { STATUS_DEFAULT };
+    let status = if total == 0 {
+        STATUS_EMPTY
+    } else {
+        STATUS_DEFAULT
+    };
 
     // ---- section ----
     let mut section = GoMap::new(MapOrigin::Struct);

@@ -308,7 +308,8 @@ impl AdaptivePlanner {
 
         // Use work growth EMA for chunk resizing (TC and agg are informational).
         let new_raw_growth = ((work_val * PERCENT_DIVISOR as f64
-            / (PERCENT_DIVISOR + SAFETY_MARGIN_PERCENT) as f64) as i64)
+            / (PERCENT_DIVISOR + SAFETY_MARGIN_PERCENT) as f64)
+            as i64)
             .max(MIN_OBSERVED_GROWTH);
 
         self.current_growth = new_raw_growth;

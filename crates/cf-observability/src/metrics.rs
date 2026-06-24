@@ -28,8 +28,9 @@ const STATUS_ERROR: &str = "error";
 ///
 /// Long-running history pipelines can span minutes, hence the buckets out to
 /// 600s. Part of the telemetry contract.
-pub const DURATION_BUCKET_BOUNDARIES: [f64; 14] =
-    [0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0];
+pub const DURATION_BUCKET_BOUNDARIES: [f64; 14] = [
+    0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0,
+];
 
 /// OTel instruments for Rate, Error, Duration metrics.
 pub struct RedMetrics {

@@ -71,7 +71,7 @@ pub fn normalize_format(format: &str) -> String {
 
 /// Returns the canonical formats supported by all analyzers.
 /// `UniversalFormats` (order preserved for parity).
-#[must_use] 
+#[must_use]
 pub const fn universal_formats() -> [&'static str; 7] {
     [
         FORMAT_JSON,
@@ -85,7 +85,7 @@ pub const fn universal_formats() -> [&'static str; 7] {
 }
 
 /// Returns the formats supported by static analyzers.
-#[must_use] 
+#[must_use]
 pub const fn static_output_formats() -> [&'static str; 6] {
     [
         FORMAT_TEXT,
@@ -160,8 +160,19 @@ mod tests {
     // Mirrors reference test TestValidateUniversalFormat.
     #[test]
     fn validate_universal() {
-        for f in ["json", "yaml", "plot", "binary", "timeseries", "ndjson", "text"] {
-            assert!(validate_universal_format(f).is_ok(), "format {f} should be valid");
+        for f in [
+            "json",
+            "yaml",
+            "plot",
+            "binary",
+            "timeseries",
+            "ndjson",
+            "text",
+        ] {
+            assert!(
+                validate_universal_format(f).is_ok(),
+                "format {f} should be valid"
+            );
         }
         assert!(validate_universal_format("invalid").is_err());
     }

@@ -124,7 +124,11 @@ pub fn sentiment_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let cfg = Config::new();
     let mut s = String::new();
 
-    s.push_str(&draw_header("SENTIMENT ANALYSIS", "💬", SENTIMENT_TERM_WIDTH));
+    s.push_str(&draw_header(
+        "SENTIMENT ANALYSIS",
+        "💬",
+        SENTIMENT_TERM_WIDTH,
+    ));
     s.push_str("\n\n");
 
     // renderSummarySection. The Blue colorize wraps the
@@ -136,12 +140,23 @@ pub fn sentiment_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let _ = writeln!(
         s,
         "  Average Sentiment: {} {}",
-        cfg.colorize(&format_score_bar(avg, SENTIMENT_BAR_WIDTH), sentiment_color(avg)),
+        cfg.colorize(
+            &format_score_bar(avg, SENTIMENT_BAR_WIDTH),
+            sentiment_color(avg)
+        ),
         sentiment_label(avg)
     );
     let _ = writeln!(s, "  Total Ticks:       {}", metrics.aggregate.total_ticks);
-    let _ = writeln!(s, "  Total Comments:    {}", metrics.aggregate.total_comments);
-    let _ = writeln!(s, "  Total Commits:     {}", metrics.aggregate.total_commits);
+    let _ = writeln!(
+        s,
+        "  Total Comments:    {}",
+        metrics.aggregate.total_comments
+    );
+    let _ = writeln!(
+        s,
+        "  Total Commits:     {}",
+        metrics.aggregate.total_commits
+    );
     s.push('\n');
 
     // renderDistributionSection.
@@ -151,9 +166,24 @@ pub fn sentiment_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         s.push('\n');
         let total = metrics.aggregate.total_ticks as f64;
         let items: [(&str, i64, Color, &str); 3] = [
-            ("Positive (≥0.6)", metrics.aggregate.positive_ticks, Color::Green, "😊"),
-            ("Neutral", metrics.aggregate.neutral_ticks, Color::Yellow, "😐"),
-            ("Negative (≤0.4)", metrics.aggregate.negative_ticks, Color::Red, "😟"),
+            (
+                "Positive (≥0.6)",
+                metrics.aggregate.positive_ticks,
+                Color::Green,
+                "😊",
+            ),
+            (
+                "Neutral",
+                metrics.aggregate.neutral_ticks,
+                Color::Yellow,
+                "😐",
+            ),
+            (
+                "Negative (≤0.4)",
+                metrics.aggregate.negative_ticks,
+                Color::Red,
+                "😟",
+            ),
         ];
         for (label, count, color, emoji) in items {
             let pct = count as f64 / total;
@@ -194,7 +224,11 @@ pub fn sentiment_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
             metrics.trend.end_tick,
             f64::from(metrics.trend.end_sentiment)
         );
-        let sign = if metrics.trend.change_percent < 0.0 { "" } else { "+" };
+        let sign = if metrics.trend.change_percent < 0.0 {
+            ""
+        } else {
+            "+"
+        };
         let _ = writeln!(s, "  Change: {}{:.1}%", sign, metrics.trend.change_percent);
         s.push('\n');
     }
@@ -210,9 +244,8 @@ pub fn sentiment_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
             let score = f64::from(ts.sentiment);
             let levels = SPARKLINE_CHARS.len() as f64;
             let idx = (((score * levels).min(levels - 1.0)) as i64).max(0) as usize;
-            sparkline.push_str(
-                &cfg.colorize(&SPARKLINE_CHARS[idx].to_string(), sentiment_color(score)),
-            );
+            sparkline
+                .push_str(&cfg.colorize(&SPARKLINE_CHARS[idx].to_string(), sentiment_color(score)));
         }
         let _ = writeln!(s, "  {sparkline}");
         let _ = writeln!(
@@ -295,28 +328,51 @@ pub fn shotness_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let mut s = String::new();
 
     let agg = &metrics.aggregate;
-    s.push_str(&draw_header("Shotness Analysis", &format!("{} nodes", agg.total_nodes), w));
+    s.push_str(&draw_header(
+        "Shotness Analysis",
+        &format!("{} nodes", agg.total_nodes),
+        w,
+    ));
     s.push_str("\n\n");
 
     // writeSummarySection.
     let _ = writeln!(s, "  {}", cfg.colorize("Summary", Color::Blue));
     let _ = writeln!(s, "  {}", draw_separator(w - 4));
-    let _ = writeln!(s, "  {:<SUMMARY_LABEL_WIDTH$} {}", "Total Nodes", agg.total_nodes);
-    let _ = writeln!(s, "  {:<SUMMARY_LABEL_WIDTH$} {}", "Total Changes", agg.total_changes);
+    let _ = writeln!(
+        s,
+        "  {:<SUMMARY_LABEL_WIDTH$} {}",
+        "Total Nodes", agg.total_nodes
+    );
+    let _ = writeln!(
+        s,
+        "  {:<SUMMARY_LABEL_WIDTH$} {}",
+        "Total Changes", agg.total_changes
+    );
     let _ = writeln!(
         s,
         "  {:<SUMMARY_LABEL_WIDTH$} {:.1}",
         "Avg Changes/Node", agg.avg_changes_per_node
     );
-    let _ = writeln!(s, "  {:<SUMMARY_LABEL_WIDTH$} {}", "Total Couplings", agg.total_couplings);
+    let _ = writeln!(
+        s,
+        "  {:<SUMMARY_LABEL_WIDTH$} {}",
+        "Total Couplings", agg.total_couplings
+    );
     let strength_color = color_for_score(1.0 - agg.avg_coupling_strength);
     let _ = writeln!(
         s,
         "  {:<SUMMARY_LABEL_WIDTH$} {}",
         "Avg Coupling Strength",
-        cfg.colorize(&format!("{:.0}%", agg.avg_coupling_strength * 100.0), strength_color)
+        cfg.colorize(
+            &format!("{:.0}%", agg.avg_coupling_strength * 100.0),
+            strength_color
+        )
     );
-    let hot_color = if agg.hot_nodes > 0 { Color::Red } else { Color::None };
+    let hot_color = if agg.hot_nodes > 0 {
+        Color::Red
+    } else {
+        Color::None
+    };
     let _ = writeln!(
         s,
         "  {:<SUMMARY_LABEL_WIDTH$} {}",
@@ -331,8 +387,7 @@ pub fn shotness_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         let _ = writeln!(s, "  {}", draw_separator(w - 4));
         let shown = metrics.node_hotness.len().min(MAX_ROWS);
         for n in &metrics.node_hotness[..shown] {
-            let label =
-                truncate_with_ellipsis(&shotness_node_label(&n.name, &n.file), LABEL_WIDTH);
+            let label = truncate_with_ellipsis(&shotness_node_label(&n.name, &n.file), LABEL_WIDTH);
             let bar = draw_progress_bar(n.hotness_score, BAR_WIDTH);
             // hotnessColor: inverted score.
             let score_color = color_for_score(1.0 - n.hotness_score);
@@ -365,13 +420,15 @@ pub fn shotness_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         let _ = writeln!(s, "  {}", draw_separator(w - 4));
         let shown = metrics.hotspot_nodes.len().min(MAX_ROWS);
         for n in &metrics.hotspot_nodes[..shown] {
-            let label =
-                truncate_with_ellipsis(&shotness_node_label(&n.name, &n.file), LABEL_WIDTH);
+            let label = truncate_with_ellipsis(&shotness_node_label(&n.name, &n.file), LABEL_WIDTH);
             let _ = writeln!(
                 s,
                 "  {:<width$} {}  ({} changes)",
                 label,
-                cfg.colorize(&format!("{:<6}", n.risk_level), shotness_risk_color(&n.risk_level)),
+                cfg.colorize(
+                    &format!("{:<6}", n.risk_level),
+                    shotness_risk_color(&n.risk_level)
+                ),
                 n.change_count,
                 width = LABEL_WIDTH as usize
             );
@@ -510,7 +567,12 @@ pub fn burndown_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         "Current Lines",
         format_int_thousands(agg.total_current_lines)
     );
-    let _ = writeln!(s, "  {:<18} {}", "Peak Lines", format_int_thousands(agg.total_peak_lines));
+    let _ = writeln!(
+        s,
+        "  {:<18} {}",
+        "Peak Lines",
+        format_int_thousands(agg.total_peak_lines)
+    );
     let _ = writeln!(
         s,
         "  {:<18} [{}] {}",
@@ -523,7 +585,11 @@ pub fn burndown_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     // empty-sample early return.
     if !metrics.global_survival.is_empty() {
         s.push('\n');
-        let _ = writeln!(s, "  {}", cfg.colorize("Code Age Distribution", Color::Blue));
+        let _ = writeln!(
+            s,
+            "  {}",
+            cfg.colorize("Code Age Distribution", Color::Blue)
+        );
         let _ = writeln!(s, "  {}", draw_separator(w - 4));
         let last_sample = &metrics.global_survival[metrics.global_survival.len() - 1];
         if last_sample.total_lines != 0 {
@@ -552,7 +618,11 @@ pub fn burndown_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
                 cf_gojson::GoValue::Map(m) => m,
                 _ => return None,
             };
-            let get = |k: &str| m.iter().find(|(key, _)| key.as_str() == k).map(|(_, val)| val);
+            let get = |k: &str| {
+                m.iter()
+                    .find(|(key, _)| key.as_str() == k)
+                    .map(|(_, val)| val)
+            };
             let id = match get("id") {
                 Some(cf_gojson::GoValue::Int(i)) => *i,
                 _ => 0,
@@ -575,7 +645,11 @@ pub fn burndown_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         .collect();
     if !dev_rows.is_empty() {
         s.push('\n');
-        let _ = writeln!(s, "  {}", cfg.colorize("Top Developers (by surviving lines)", Color::Blue));
+        let _ = writeln!(
+            s,
+            "  {}",
+            cfg.colorize("Top Developers (by surviving lines)", Color::Blue)
+        );
         let _ = writeln!(s, "  {}", draw_separator(w - 4));
         // The reference implementation sorts a copy with sort.Slice (unstable pdqsort) by CurrentLines
         // descending; replicate the exact permutation for ties.
@@ -583,7 +657,11 @@ pub fn burndown_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         super::go_sort::slice(&mut devs, |a, b| a.2 > b.2);
         let shown = devs.len().min(MAX_DEVS);
         for (id, name, current_lines, survival_rate) in &devs[..shown] {
-            let name = if name.is_empty() { format!("dev#{id}") } else { name.clone() };
+            let name = if name.is_empty() {
+                format!("dev#{id}")
+            } else {
+                name.clone()
+            };
             let name = truncate_with_ellipsis(&name, DEV_NAME_WIDTH);
             let survival_color = color_for_score(*survival_rate);
             let bar = draw_progress_bar(*survival_rate, BAR_WIDTH);
@@ -600,7 +678,10 @@ pub fn burndown_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
             let _ = writeln!(
                 s,
                 "  {}",
-                cfg.colorize(&format!("  and {} more...", devs.len() - MAX_DEVS), Color::Gray)
+                cfg.colorize(
+                    &format!("  and {} more...", devs.len() - MAX_DEVS),
+                    Color::Gray
+                )
             );
         }
     }
@@ -653,14 +734,20 @@ fn couples_write_rows(
             cfg.colorize("↔", Color::Gray),
             right,
             count,
-            cfg.colorize(&couples_format_pct(*strength), couples_strength_color(*strength))
+            cfg.colorize(
+                &couples_format_pct(*strength),
+                couples_strength_color(*strength)
+            )
         );
     }
     if rows.len() > max_rows {
         let _ = writeln!(
             s,
             "  {}",
-            cfg.colorize(&format!("  and {} more...", rows.len() - max_rows), Color::Gray)
+            cfg.colorize(
+                &format!("  and {} more...", rows.len() - max_rows),
+                Color::Gray
+            )
         );
     }
 }
@@ -677,7 +764,11 @@ pub fn couples_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let mut s = String::new();
 
     let agg = &metrics.aggregate;
-    s.push_str(&draw_header("Couples", &format!("{} files", agg.total_files), w));
+    s.push_str(&draw_header(
+        "Couples",
+        &format!("{} files", agg.total_files),
+        w,
+    ));
     s.push_str("\n\n");
 
     // writeCouplesSummary.
@@ -717,7 +808,14 @@ pub fn couples_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         let rows: Vec<(String, String, i64, f64)> = metrics
             .developer_coupling
             .iter()
-            .map(|c| (c.developer1.clone(), c.developer2.clone(), c.shared_files, c.strength))
+            .map(|c| {
+                (
+                    c.developer1.clone(),
+                    c.developer2.clone(),
+                    c.shared_files,
+                    c.strength,
+                )
+            })
             .collect();
         couples_write_rows(&mut s, cfg, "Top Developer Couples", &rows, MAX_ROWS);
     }
@@ -750,7 +848,10 @@ pub fn couples_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
             let _ = writeln!(
                 s,
                 "  {}",
-                cfg.colorize(&format!("  and {} more...", sorted.len() - MAX_ROWS), Color::Gray)
+                cfg.colorize(
+                    &format!("  and {} more...", sorted.len() - MAX_ROWS),
+                    Color::Gray
+                )
             );
         }
     }
@@ -771,7 +872,11 @@ fn devs_primary_language(dev: &cf_devs::DeveloperData) -> &str {
     for entry in &dev.languages {
         if entry.added > max_lines {
             max_lines = entry.added;
-            primary = if entry.language.is_empty() { "Other" } else { &entry.language };
+            primary = if entry.language.is_empty() {
+                "Other"
+            } else {
+                &entry.language
+            };
         }
     }
     primary
@@ -810,8 +915,18 @@ pub fn devs_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     // writeSummarySection.
     let _ = writeln!(s, "  {}", cfg.colorize("Summary", Color::Blue));
     let _ = writeln!(s, "  {}", draw_separator(w - 4));
-    let _ = writeln!(s, "  {:<22} {}", "Total Commits", format_int_thousands(agg.total_commits));
-    let _ = writeln!(s, "  {:<22} {}", "Developers", format_int_thousands(agg.total_developers));
+    let _ = writeln!(
+        s,
+        "  {:<22} {}",
+        "Total Commits",
+        format_int_thousands(agg.total_commits)
+    );
+    let _ = writeln!(
+        s,
+        "  {:<22} {}",
+        "Developers",
+        format_int_thousands(agg.total_developers)
+    );
     let _ = writeln!(
         s,
         "  {:<22} {}",
@@ -824,7 +939,12 @@ pub fn devs_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         "Project Bus Factor",
         format_int_thousands(agg.project_bus_factor)
     );
-    let _ = writeln!(s, "  {:<22} {}", "Languages", format_int_thousands(agg.total_languages));
+    let _ = writeln!(
+        s,
+        "  {:<22} {}",
+        "Languages",
+        format_int_thousands(agg.total_languages)
+    );
 
     // writeContributors. The empty Colorize calls still emit the
     // color-code + reset pairs around the +/- counters.
@@ -834,7 +954,11 @@ pub fn devs_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         let _ = writeln!(s, "  {}", draw_separator(w - 4));
         let shown = metrics.developers.len().min(MAX_CONTRIBUTORS);
         for dev in &metrics.developers[..shown] {
-            let name = if dev.name.is_empty() { format!("dev#{}", dev.id) } else { dev.name.clone() };
+            let name = if dev.name.is_empty() {
+                format!("dev#{}", dev.id)
+            } else {
+                dev.name.clone()
+            };
             let name = truncate_with_ellipsis(&name, DEV_NAME_WIDTH);
             let primary_lang = devs_primary_language(dev);
             let _ = writeln!(
@@ -857,7 +981,10 @@ pub fn devs_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
                 s,
                 "  {}",
                 cfg.colorize(
-                    &format!("  and {} more...", metrics.developers.len() - MAX_CONTRIBUTORS),
+                    &format!(
+                        "  and {} more...",
+                        metrics.developers.len() - MAX_CONTRIBUTORS
+                    ),
                     Color::Gray
                 )
             );
@@ -876,7 +1003,10 @@ pub fn devs_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
                 s,
                 "  {:<18} {}  owner {:5.1}%  bf={}/{}",
                 lang,
-                cfg.colorize(&format!("{:<8}", bf.risk_level), devs_risk_color(&bf.risk_level)),
+                cfg.colorize(
+                    &format!("{:<8}", bf.risk_level),
+                    devs_risk_color(&bf.risk_level)
+                ),
                 bf.primary_pct,
                 bf.bus_factor,
                 bf.total_contributors
@@ -887,7 +1017,10 @@ pub fn devs_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
                 s,
                 "  {}",
                 cfg.colorize(
-                    &format!("  and {} more...", metrics.busfactor.len() - MAX_BUS_FACTORS),
+                    &format!(
+                        "  and {} more...",
+                        metrics.busfactor.len() - MAX_BUS_FACTORS
+                    ),
                     Color::Gray
                 )
             );
@@ -906,8 +1039,18 @@ pub fn devs_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
             total_removed += c.removed;
         }
         let net = total_added - total_removed;
-        let _ = writeln!(s, "  {:<22} {}", "Lines Added", format_int_thousands(total_added));
-        let _ = writeln!(s, "  {:<22} {}", "Lines Removed", format_int_thousands(total_removed));
+        let _ = writeln!(
+            s,
+            "  {:<22} {}",
+            "Lines Added",
+            format_int_thousands(total_added)
+        );
+        let _ = writeln!(
+            s,
+            "  {:<22} {}",
+            "Lines Removed",
+            format_int_thousands(total_removed)
+        );
         let _ = writeln!(s, "  {:<22} {}", "Net Change", format_int_thousands(net));
     }
 
@@ -940,7 +1083,11 @@ pub fn file_history_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let mut s = String::new();
 
     let agg = &metrics.aggregate;
-    s.push_str(&draw_header("File History", &format!("{} files", agg.total_files), w));
+    s.push_str(&draw_header(
+        "File History",
+        &format!("{} files", agg.total_files),
+        w,
+    ));
     s.push_str("\n\n");
 
     // writeFileSummary.
@@ -948,8 +1095,16 @@ pub fn file_history_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let _ = writeln!(s, "  {}", draw_separator(w - 4));
     let _ = writeln!(s, "  {:<26} {}", "Total Files", agg.total_files);
     let _ = writeln!(s, "  {:<26} {}", "Total Commits", agg.total_commits);
-    let _ = writeln!(s, "  {:<26} {}", "Total Contributors", agg.total_contributors);
-    let _ = writeln!(s, "  {:<26} {:.1}", "Avg Commits/File", agg.avg_commits_per_file);
+    let _ = writeln!(
+        s,
+        "  {:<26} {}",
+        "Total Contributors", agg.total_contributors
+    );
+    let _ = writeln!(
+        s,
+        "  {:<26} {:.1}",
+        "Avg Commits/File", agg.avg_commits_per_file
+    );
     let _ = writeln!(s, "  {:<26} {}", "High Churn Files", agg.high_churn_files);
 
     // writeComposition, iterating AllCategories in canonical order.
@@ -958,8 +1113,18 @@ pub fn file_history_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         let _ = writeln!(s, "  {}", cfg.colorize("File Composition", Color::Blue));
         let _ = writeln!(s, "  {}", draw_separator(w - 4));
         for cat in cf_file_history::ALL_CATEGORIES {
-            let count = metrics.composition.breakdown.get(cat.as_str()).copied().unwrap_or(0);
-            let pct = metrics.composition.percentages.get(cat.as_str()).copied().unwrap_or(0.0);
+            let count = metrics
+                .composition
+                .breakdown
+                .get(cat.as_str())
+                .copied()
+                .unwrap_or(0);
+            let pct = metrics
+                .composition
+                .percentages
+                .get(cat.as_str())
+                .copied()
+                .unwrap_or(0.0);
             if count == 0 {
                 continue;
             }
@@ -985,7 +1150,11 @@ pub fn file_history_text(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
             let _ = writeln!(s, "  {:4} commits  {}", f.commit_count, f.path);
         }
         if metrics.file_churn.len() > limit {
-            let _ = writeln!(s, "  ... and {} more files", metrics.file_churn.len() - limit);
+            let _ = writeln!(
+                s,
+                "  ... and {} more files",
+                metrics.file_churn.len() - limit
+            );
         }
     }
 

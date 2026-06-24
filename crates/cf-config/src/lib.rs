@@ -38,12 +38,12 @@ pub use facts::{FactValue, Facts};
 pub use loader::{
     apply_env_overrides, config_file_path, load_config, load_from_yaml_and_env, LoadError,
 };
+pub use types::CheckpointConfig;
 pub use types::{
     AnomalyConfig, BurndownConfig, ClonesConfig, Config, ConfigError, CouplesConfig, DevsConfig,
     FileHistoryConfig, HistoryConfig, ImportsConfig, PipelineConfig, SentimentConfig,
     ShotnessConfig, TyposConfig,
 };
-pub use types::CheckpointConfig;
 
 impl Config {
     /// Returns the all-zero config (all numeric/string/bool fields zeroed).
@@ -198,10 +198,22 @@ mod tests {
         assert!(cfg.analyzers.is_empty());
         assert_eq!(cfg.pipeline.workers, defaults::DEFAULT_PIPELINE_WORKERS);
         assert_eq!(cfg.pipeline.gogc, defaults::DEFAULT_PIPELINE_GOGC);
-        assert_eq!(cfg.pipeline.ballast_size, defaults::DEFAULT_PIPELINE_BALLAST_SIZE);
-        assert_eq!(cfg.history.burndown.granularity, defaults::DEFAULT_BURNDOWN_GRANULARITY);
-        assert_eq!(cfg.history.burndown.sampling, defaults::DEFAULT_BURNDOWN_SAMPLING);
-        assert_eq!(cfg.history.burndown.track_files, defaults::DEFAULT_BURNDOWN_TRACK_FILES);
+        assert_eq!(
+            cfg.pipeline.ballast_size,
+            defaults::DEFAULT_PIPELINE_BALLAST_SIZE
+        );
+        assert_eq!(
+            cfg.history.burndown.granularity,
+            defaults::DEFAULT_BURNDOWN_GRANULARITY
+        );
+        assert_eq!(
+            cfg.history.burndown.sampling,
+            defaults::DEFAULT_BURNDOWN_SAMPLING
+        );
+        assert_eq!(
+            cfg.history.burndown.track_files,
+            defaults::DEFAULT_BURNDOWN_TRACK_FILES
+        );
         assert_eq!(
             cfg.history.burndown.hibernation_threshold,
             defaults::DEFAULT_BURNDOWN_HIBERNATION_THRESHOLD
@@ -211,16 +223,31 @@ mod tests {
             defaults::DEFAULT_DEVS_CONSIDER_EMPTY_COMMITS
         );
         assert_eq!(cfg.history.devs.anonymize, defaults::DEFAULT_DEVS_ANONYMIZE);
-        assert_eq!(cfg.history.imports.goroutines, defaults::DEFAULT_IMPORTS_GOROUTINES);
-        assert_eq!(cfg.history.imports.max_file_size, defaults::DEFAULT_IMPORTS_MAX_FILE_SIZE);
+        assert_eq!(
+            cfg.history.imports.goroutines,
+            defaults::DEFAULT_IMPORTS_GOROUTINES
+        );
+        assert_eq!(
+            cfg.history.imports.max_file_size,
+            defaults::DEFAULT_IMPORTS_MAX_FILE_SIZE
+        );
         assert_eq!(
             cfg.history.sentiment.min_comment_length,
             defaults::DEFAULT_SENTIMENT_MIN_COMMENT_LENGTH
         );
         assert!((cfg.history.sentiment.gap - defaults::DEFAULT_SENTIMENT_GAP).abs() < 0.001);
-        assert_eq!(cfg.history.shotness.dsl_struct, defaults::DEFAULT_SHOTNESS_DSL_STRUCT);
-        assert_eq!(cfg.history.shotness.dsl_name, defaults::DEFAULT_SHOTNESS_DSL_NAME);
-        assert_eq!(cfg.history.typos.max_distance, defaults::DEFAULT_TYPOS_MAX_DISTANCE);
+        assert_eq!(
+            cfg.history.shotness.dsl_struct,
+            defaults::DEFAULT_SHOTNESS_DSL_STRUCT
+        );
+        assert_eq!(
+            cfg.history.shotness.dsl_name,
+            defaults::DEFAULT_SHOTNESS_DSL_NAME
+        );
+        assert_eq!(
+            cfg.history.typos.max_distance,
+            defaults::DEFAULT_TYPOS_MAX_DISTANCE
+        );
         assert_eq!(cfg.checkpoint.enabled, defaults::DEFAULT_CHECKPOINT_ENABLED);
         assert_eq!(cfg.checkpoint.resume, defaults::DEFAULT_CHECKPOINT_RESUME);
     }
@@ -268,7 +295,10 @@ checkpoint:
 "#;
         let cfg = load_from_yaml_and_env(content, &no_env).unwrap();
 
-        assert_eq!(cfg.analyzers, vec!["burndown".to_owned(), "complexity".to_owned()]);
+        assert_eq!(
+            cfg.analyzers,
+            vec!["burndown".to_owned(), "complexity".to_owned()]
+        );
         assert_eq!(cfg.pipeline.workers, 8);
         assert_eq!(cfg.pipeline.memory_budget, "4GB");
         assert_eq!(cfg.pipeline.blob_cache_size, "512MB");
@@ -292,7 +322,10 @@ checkpoint:
         assert_eq!(cfg.history.sentiment.min_comment_length, 30);
         assert!((cfg.history.sentiment.gap - 0.7).abs() < 0.001);
 
-        assert_eq!(cfg.history.shotness.dsl_struct, r#"filter(.roles has "Class")"#);
+        assert_eq!(
+            cfg.history.shotness.dsl_struct,
+            r#"filter(.roles has "Class")"#
+        );
         assert_eq!(cfg.history.shotness.dsl_name, ".props.identifier");
 
         assert_eq!(cfg.history.typos.max_distance, 3);
@@ -348,9 +381,15 @@ checkpoint:
         let cfg = load_from_yaml_and_env(content, &no_env).unwrap();
 
         assert_eq!(cfg.history.burndown.granularity, 60);
-        assert_eq!(cfg.history.burndown.sampling, defaults::DEFAULT_BURNDOWN_SAMPLING);
+        assert_eq!(
+            cfg.history.burndown.sampling,
+            defaults::DEFAULT_BURNDOWN_SAMPLING
+        );
         assert_eq!(cfg.pipeline.workers, defaults::DEFAULT_PIPELINE_WORKERS);
-        assert_eq!(cfg.history.typos.max_distance, defaults::DEFAULT_TYPOS_MAX_DISTANCE);
+        assert_eq!(
+            cfg.history.typos.max_distance,
+            defaults::DEFAULT_TYPOS_MAX_DISTANCE
+        );
     }
 
     #[test]
@@ -510,7 +549,10 @@ checkpoint:
     #[test]
     fn config_error_messages_are_frozen() {
         // Guards the byte-identical sentinel wording used by `validate config: ...`.
-        assert_eq!(ConfigError::InvalidWorkers.message(), "pipeline.workers must be non-negative");
+        assert_eq!(
+            ConfigError::InvalidWorkers.message(),
+            "pipeline.workers must be non-negative"
+        );
         assert_eq!(
             ConfigError::InvalidAnomalyWindowSize.message(),
             "history.anomaly.window_size must be at least 2"
@@ -570,9 +612,18 @@ checkpoint:
         assert_eq!(facts[FACT_BURNDOWN_SAMPLING].as_int(), Some(60));
         assert_eq!(facts[FACT_BURNDOWN_TRACK_FILES].as_bool(), Some(true));
         assert_eq!(facts[FACT_BURNDOWN_TRACK_PEOPLE].as_bool(), Some(true));
-        assert_eq!(facts[FACT_BURNDOWN_HIBERNATION_THRESHOLD].as_int(), Some(2000));
-        assert_eq!(facts[FACT_BURNDOWN_HIBERNATION_ON_DISK].as_bool(), Some(true));
-        assert_eq!(facts[FACT_BURNDOWN_HIBERNATION_DIRECTORY].as_str(), Some("/tmp/hib"));
+        assert_eq!(
+            facts[FACT_BURNDOWN_HIBERNATION_THRESHOLD].as_int(),
+            Some(2000)
+        );
+        assert_eq!(
+            facts[FACT_BURNDOWN_HIBERNATION_ON_DISK].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            facts[FACT_BURNDOWN_HIBERNATION_DIRECTORY].as_str(),
+            Some("/tmp/hib")
+        );
         assert_eq!(facts[FACT_BURNDOWN_DEBUG].as_bool(), Some(true));
         assert_eq!(facts[FACT_BURNDOWN_GOROUTINES].as_int(), Some(16));
     }
@@ -625,8 +676,14 @@ checkpoint:
         let mut facts = Facts::new();
         cfg.apply_to_facts(&mut facts);
 
-        assert_eq!(facts[FACT_SHOTNESS_DSL_STRUCT].as_str(), Some(r#"filter(.roles has "Class")"#));
-        assert_eq!(facts[FACT_SHOTNESS_DSL_NAME].as_str(), Some(".props.identifier"));
+        assert_eq!(
+            facts[FACT_SHOTNESS_DSL_STRUCT].as_str(),
+            Some(r#"filter(.roles has "Class")"#)
+        );
+        assert_eq!(
+            facts[FACT_SHOTNESS_DSL_NAME].as_str(),
+            Some(".props.identifier")
+        );
     }
 
     #[test]

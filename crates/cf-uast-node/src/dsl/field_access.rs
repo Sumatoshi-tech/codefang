@@ -65,7 +65,9 @@ impl FieldAccessExecutor {
     /// Creates a new executor backed by a default registry.
     #[must_use]
     pub fn new() -> Self {
-        Self { registry: FieldAccessStrategyRegistry::new() }
+        Self {
+            registry: FieldAccessStrategyRegistry::new(),
+        }
     }
 
     /// Performs field access for `field_name` on `node`.
@@ -93,12 +95,17 @@ fn token_strategy(node: &Node) -> Vec<Node> {
 /// token (this path is query-only, never serialized, and IDs are usually empty
 /// in query contexts).
 fn id_strategy(node: &Node) -> Vec<Node> {
-    vec![Node::literal(String::from_utf8_lossy(&node.id).into_owned())]
+    vec![Node::literal(
+        String::from_utf8_lossy(&node.id).into_owned(),
+    )]
 }
 
 /// `roles` → one literal node per role.
 fn roles_strategy(node: &Node) -> Vec<Node> {
-    node.roles.iter().map(|r| Node::literal(r.clone())).collect()
+    node.roles
+        .iter()
+        .map(|r| Node::literal(r.clone()))
+        .collect()
 }
 
 /// `type` → a literal node holding the type, or empty if the type is empty.

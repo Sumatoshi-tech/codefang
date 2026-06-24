@@ -43,7 +43,11 @@ fn resolve_map_is_non_str(s: &str) -> Option<bool> {
 
 /// Whether `s` resolves to the string tag (i.e. the value stays a string).
 fn resolves_to_str(s: &str) -> bool {
-    let h = if s.is_empty() { b'N' } else { hint(s.as_bytes()[0]) };
+    let h = if s.is_empty() {
+        b'N'
+    } else {
+        hint(s.as_bytes()[0])
+    };
     if h == 0 {
         return true;
     }
@@ -137,17 +141,18 @@ fn parse_uint_base0(s: &str) -> Option<u128> {
     if s.is_empty() {
         return None;
     }
-    let (radix, digits): (u32, &str) = if let Some(r) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
-        (16, r)
-    } else if let Some(r) = s.strip_prefix("0o").or_else(|| s.strip_prefix("0O")) {
-        (8, r)
-    } else if let Some(r) = s.strip_prefix("0b").or_else(|| s.strip_prefix("0B")) {
-        (2, r)
-    } else if s.len() > 1 && s.starts_with('0') {
-        (8, &s[1..])
-    } else {
-        (10, s)
-    };
+    let (radix, digits): (u32, &str) =
+        if let Some(r) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+            (16, r)
+        } else if let Some(r) = s.strip_prefix("0o").or_else(|| s.strip_prefix("0O")) {
+            (8, r)
+        } else if let Some(r) = s.strip_prefix("0b").or_else(|| s.strip_prefix("0B")) {
+            (2, r)
+        } else if s.len() > 1 && s.starts_with('0') {
+            (8, &s[1..])
+        } else {
+            (10, s)
+        };
     if digits.is_empty() {
         return None;
     }
@@ -288,8 +293,21 @@ fn is_base60_float(s: &str) -> bool {
 fn is_old_bool(s: &str) -> bool {
     matches!(
         s,
-        "y" | "Y" | "yes" | "Yes" | "YES" | "on" | "On" | "ON" | "n" | "N" | "no" | "No" | "NO"
-            | "off" | "Off" | "OFF"
+        "y" | "Y"
+            | "yes"
+            | "Yes"
+            | "YES"
+            | "on"
+            | "On"
+            | "ON"
+            | "n"
+            | "N"
+            | "no"
+            | "No"
+            | "NO"
+            | "off"
+            | "Off"
+            | "OFF"
     )
 }
 
@@ -432,21 +450,43 @@ mod tests {
 
     #[test]
     fn numbers_bools_null_quoted() {
-        for s in ["true", "false", "123", "0", "+5", "-3", "1.5", "null", "~", "", "yes", "no", "on", "off", "1e3", ".5", "0x1f", "0o17", "0b101"] {
+        for s in [
+            "true", "false", "123", "0", "+5", "-3", "1.5", "null", "~", "", "yes", "no", "on",
+            "off", "1e3", ".5", "0x1f", "0o17", "0b101",
+        ] {
             assert!(!plain(s), "{s:?} should NOT be plain");
         }
     }
 
     #[test]
     fn timestamps_quoted() {
-        for s in ["2026-01-26T21:53:53Z", "2026-1-2", "2026-01-26 21:53:53", "2026-01-26t21:53:53Z"] {
+        for s in [
+            "2026-01-26T21:53:53Z",
+            "2026-1-2",
+            "2026-01-26 21:53:53",
+            "2026-01-26t21:53:53Z",
+        ] {
             assert!(!plain(s), "{s:?} should NOT be plain (timestamp)");
         }
     }
 
     #[test]
     fn strings_plain() {
-        for s in ["hello", "<unknown>", "CRITICAL", "a:b", "k8s.io/x", "123abc", ".", "go", "external", "say \"hi\"", "it's", "@foo", "!x"] {
+        for s in [
+            "hello",
+            "<unknown>",
+            "CRITICAL",
+            "a:b",
+            "k8s.io/x",
+            "123abc",
+            ".",
+            "go",
+            "external",
+            "say \"hi\"",
+            "it's",
+            "@foo",
+            "!x",
+        ] {
             assert!(plain(s), "{s:?} should be plain (resolve to str)");
         }
     }

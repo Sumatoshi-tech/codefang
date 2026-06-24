@@ -30,7 +30,10 @@ struct Ctx {
 ///
 /// Cohesion of each returned [`Function`] is left at `0.0`; the caller fills it
 /// via [`Analyzer::compute_per_function_cohesion`].
-pub(crate) fn collect_functions_via_visitor<N: Node>(analyzer: &Analyzer, root: &N) -> Vec<Function> {
+pub(crate) fn collect_functions_via_visitor<N: Node>(
+    analyzer: &Analyzer,
+    root: &N,
+) -> Vec<Function> {
     let mut stack: Vec<Ctx> = Vec::new();
     let mut functions: Vec<Function> = Vec::new();
     walk(analyzer, root, &mut stack, &mut functions);

@@ -28,7 +28,11 @@ struct Case {
 }
 
 fn c(name: &'static str, value: GoValue, go_expr: impl Into<String>) -> Case {
-    Case { name, value, go_expr: go_expr.into() }
+    Case {
+        name,
+        value,
+        go_expr: go_expr.into(),
+    }
 }
 
 /// Build the shared battery of cases. Each Go expression is wrapped as
@@ -42,13 +46,25 @@ fn cases() -> Vec<Case> {
     v.push(c("int_zero", GoValue::Int(0), "int(0)"));
     v.push(c("int_pos", GoValue::Int(42), "int(42)"));
     v.push(c("int_neg", GoValue::Int(-17), "int(-17)"));
-    v.push(c("int_big", GoValue::Int(9_223_372_036_854_775_807), "int64(9223372036854775807)"));
-    v.push(c("uint_big", GoValue::Uint(18_446_744_073_709_551_615), "uint64(18446744073709551615)"));
+    v.push(c(
+        "int_big",
+        GoValue::Int(9_223_372_036_854_775_807),
+        "int64(9223372036854775807)",
+    ));
+    v.push(c(
+        "uint_big",
+        GoValue::Uint(18_446_744_073_709_551_615),
+        "uint64(18446744073709551615)",
+    ));
 
     // --- floats (g-format, integer-valued, exponents, zero) ---------------
     v.push(c("float_int_valued", GoValue::Float(1.0), "float64(1)"));
     v.push(c("float_zero", GoValue::Float(0.0), "float64(0)"));
-    v.push(c("float_frac", GoValue::Float(0.7142857142857143), "float64(0.7142857142857143)"));
+    v.push(c(
+        "float_frac",
+        GoValue::Float(0.7142857142857143),
+        "float64(0.7142857142857143)",
+    ));
     v.push(c("float_big_exp", GoValue::Float(1e20), "float64(1e20)"));
     v.push(c("float_small_exp", GoValue::Float(1e-7), "float64(1e-7)"));
     v.push(c(
@@ -68,11 +84,7 @@ fn cases() -> Vec<Case> {
     for w in [
         "true", "false", "null", "yes", "no", "on", "off", "~", "True", "NULL",
     ] {
-        v.push(c(
-            "quote_resolveword",
-            GoValue::Str(w.into()),
-            go_string(w),
-        ));
+        v.push(c("quote_resolveword", GoValue::Str(w.into()), go_string(w)));
     }
     // numeric-looking strings -> double quoted
     for w in ["123", "1.5", "+5", "-3", "0", "0x1F", "1e3", "0o17"] {
@@ -87,15 +99,26 @@ fn cases() -> Vec<Case> {
 
     // --- scalar quoting: structural indicators -> single quoted -----------
     for w in [
-        "a: b", "a #b", "@foo", "!x", "[x]", "{x}", "&x", "*x", "%x", " x", "x ",
-        "`x", "|x", ">x", "\"x", "'x", ",x", // leading flow/indicator chars
+        "a: b", "a #b", "@foo", "!x", "[x]", "{x}", "&x", "*x", "%x", " x", "x ", "`x", "|x", ">x",
+        "\"x", "'x", ",x", // leading flow/indicator chars
     ] {
         v.push(c("quote_indicator", GoValue::Str(w.into()), go_string(w)));
     }
     // --- scalar quoting: plain (no quoting) -------------------------------
     for w in [
-        "hello", "a:b", "-x", "?x", "a,b", "CRITICAL", ".", "x: y is fine here too",
-        "it's", "say \"hi\"", "<unknown>", "a/b/c", "v1.2.3",
+        "hello",
+        "a:b",
+        "-x",
+        "?x",
+        "a,b",
+        "CRITICAL",
+        ".",
+        "x: y is fine here too",
+        "it's",
+        "say \"hi\"",
+        "<unknown>",
+        "a/b/c",
+        "v1.2.3",
     ] {
         v.push(c("quote_plain", GoValue::Str(w.into()), go_string(w)));
     }
@@ -103,11 +126,23 @@ fn cases() -> Vec<Case> {
     v.push(c("quote_empty", GoValue::Str(String::new()), go_string("")));
 
     // --- control chars -> double quoted with escapes ----------------------
-    v.push(c("ctrl_x01", GoValue::Str("a\u{01}b".into()), go_string("a\u{01}b")));
-    v.push(c("ctrl_tab", GoValue::Str("a\tb".into()), go_string("a\tb")));
+    v.push(c(
+        "ctrl_x01",
+        GoValue::Str("a\u{01}b".into()),
+        go_string("a\u{01}b"),
+    ));
+    v.push(c(
+        "ctrl_tab",
+        GoValue::Str("a\tb".into()),
+        go_string("a\tb"),
+    ));
 
     // --- block folding: newline-bearing strings -> literal block |- -------
-    v.push(c("block_literal", GoValue::Str("a\nb".into()), go_string("a\nb")));
+    v.push(c(
+        "block_literal",
+        GoValue::Str("a\nb".into()),
+        go_string("a\nb"),
+    ));
     v.push(c(
         "block_literal_multi",
         GoValue::Str("line one\nline two\nline three".into()),
@@ -115,7 +150,11 @@ fn cases() -> Vec<Case> {
     ));
     // a long single-line string stays UNfolded (Marshal best_width is unlimited)
     let long = "x".repeat(120);
-    v.push(c("long_unfolded", GoValue::Str(long.clone()), go_string(&long)));
+    v.push(c(
+        "long_unfolded",
+        GoValue::Str(long.clone()),
+        go_string(&long),
+    ));
 
     // --- key ordering: map-origin keys byte-sort (yaml.v3 sorts map keys) --
     {
@@ -192,11 +231,7 @@ fn cases() -> Vec<Case> {
         GoValue::Array(vec![GoValue::Int(1), GoValue::Int(2), GoValue::Int(3)]),
         "[]interface{}{int(1), int(2), int(3)}",
     ));
-    v.push(c(
-        "empty_seq",
-        GoValue::Array(vec![]),
-        "[]interface{}{}",
-    ));
+    v.push(c("empty_seq", GoValue::Array(vec![]), "[]interface{}{}"));
     {
         let m = GoMap::from_map(vec![(
             "nums".into(),
@@ -320,15 +355,21 @@ fn yaml_v3_byte_parity_via_go_run() {
         // No network / module download? Treat as a skip rather than a failure
         // so offline CI is never blocked, but surface the reason.
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("cannot find") || stderr.contains("no required module")
-            || stderr.contains("dial tcp") || stderr.contains("connection refused")
-            || stderr.contains("verifying") || stderr.contains("download")
+        if stderr.contains("cannot find")
+            || stderr.contains("no required module")
+            || stderr.contains("dial tcp")
+            || stderr.contains("connection refused")
+            || stderr.contains("verifying")
+            || stderr.contains("download")
         {
             eprintln!("go run could not resolve yaml.v3 (offline?); skipping:\n{stderr}");
             return;
         }
-        panic!("go oracle failed:\nstdout={}\nstderr={}",
-            String::from_utf8_lossy(&output.stdout), stderr);
+        panic!(
+            "go oracle failed:\nstdout={}\nstderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            stderr
+        );
     }
 
     let truth = output.stdout;
@@ -355,7 +396,12 @@ fn yaml_v3_byte_parity_via_go_run() {
             );
         }
     }
-    assert_eq!(failures, 0, "{failures}/{} yaml.v3 parity mismatches", cases.len());
+    assert_eq!(
+        failures,
+        0,
+        "{failures}/{} yaml.v3 parity mismatches",
+        cases.len()
+    );
     eprintln!("yaml.v3 oracle: {} cases, all byte-identical", cases.len());
 }
 

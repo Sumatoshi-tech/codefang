@@ -99,8 +99,8 @@ impl Node {
 
 #[cfg(test)]
 mod tests {
-    use crate::node::Node;
     use crate::dsl::DslError;
+    use crate::node::Node;
 
     fn sample_tree() -> Node {
         let mut root = Node::with_token("File", "");

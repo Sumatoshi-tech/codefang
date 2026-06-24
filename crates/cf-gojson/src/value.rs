@@ -248,10 +248,7 @@ impl GoMap {
     /// Returns a reference to the value for `key`, if present.
     #[must_use]
     pub fn get(&self, key: &str) -> Option<&GoValue> {
-        self.entries
-            .iter()
-            .find(|(k, _)| k == key)
-            .map(|(_, v)| v)
+        self.entries.iter().find(|(k, _)| k == key).map(|(_, v)| v)
     }
 
     /// Returns `true` if `key` is present.

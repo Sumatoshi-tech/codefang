@@ -17,7 +17,7 @@ pub enum AnalyzerMode {
 
 impl AnalyzerMode {
     /// Returns the wire string value (`static` / `history`).
-    #[must_use] 
+    #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Static => "static",
@@ -26,7 +26,7 @@ impl AnalyzerMode {
     }
 
     /// Parses a mode string (`static` / `history`).
-    #[must_use] 
+    #[must_use]
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "static" => Some(Self::Static),

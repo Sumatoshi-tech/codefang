@@ -9,8 +9,8 @@
 
 use cf_couples::{bucket_ownership, FileCouplingData, FileOwnershipData};
 use cf_gojson::GoValue;
-use cf_plotpage::echarts::{AxisLabel, BarData, Chart, ChartKind, ItemStyle, Label, XAxis, YAxis};
 use cf_plotpage::echarts::PieData;
+use cf_plotpage::echarts::{AxisLabel, BarData, Chart, ChartKind, ItemStyle, Label, XAxis, YAxis};
 use cf_plotpage::{build_pie_chart, get_chart_palette, ChartOpts, Hint, Section, Theme};
 
 /// Reference couples plot-section constants.
@@ -94,8 +94,11 @@ fn build_file_coupling_bar_chart(couples: &[FileCouplingData]) -> Option<Chart> 
     let mut labels: Vec<String> = vec![String::new(); shown];
     let mut values: Vec<GoValue> = vec![GoValue::Null; shown];
     for (i, cp) in couples[..shown].iter().enumerate() {
-        labels[shown - 1 - i] =
-            format!("{} \u{2194} {}", truncate_path(&cp.file1), truncate_path(&cp.file2));
+        labels[shown - 1 - i] = format!(
+            "{} \u{2194} {}",
+            truncate_path(&cp.file1),
+            truncate_path(&cp.file2)
+        );
         values[shown - 1 - i] = BarData {
             value: Some(GoValue::Int(cp.co_changes)),
             ..BarData::default()

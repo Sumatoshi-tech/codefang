@@ -78,7 +78,10 @@ impl AnalysisMetadata {
         m.insert("repo_path", GoValue::Str(self.repo_path.clone()));
         m.insert("repo_name", GoValue::Str(self.repo_name.clone()));
         m.insert("analyzed_at", GoValue::Str(self.analyzed_at.clone()));
-        m.insert("codefang_version", GoValue::Str(self.codefang_version.clone()));
+        m.insert(
+            "codefang_version",
+            GoValue::Str(self.codefang_version.clone()),
+        );
         GoValue::Map(m)
     }
 }
@@ -88,7 +91,7 @@ impl AnalysisMetadata {
 /// `repo_name` is the final path component (`filepath.Base`), `analyzed_at` is
 /// the current clock time in contract RFC3339 UTC, and `codefang_version`
 /// is [`cf_version::VERSION`].
-#[must_use] 
+#[must_use]
 pub fn new_analysis_metadata(repo_path: &str) -> AnalysisMetadata {
     AnalysisMetadata {
         repo_path: repo_path.to_string(),
@@ -204,7 +207,7 @@ const fn civil_from_days(z: i64) -> (i64, i64, i64) {
 /// RFC3339 contract format: zero-padded fields, `T`
 /// separator, and a literal `Z` zone for UTC (never `+00:00`). No
 /// fractional seconds are emitted (RFC3339, second precision).
-#[must_use] 
+#[must_use]
 pub fn format_rfc3339_utc(unix_secs: i64) -> String {
     let days = unix_secs.div_euclid(86400);
     let secs_of_day = unix_secs.rem_euclid(86400);
@@ -212,10 +215,7 @@ pub fn format_rfc3339_utc(unix_secs: i64) -> String {
     let hh = secs_of_day / 3600;
     let mm = (secs_of_day % 3600) / 60;
     let ss = secs_of_day % 60;
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        y, m, d, hh, mm, ss
-    )
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, m, d, hh, mm, ss)
 }
 
 /// Parses `YYYY-MM-DDTHH:MM:SSZ` (UTC, second precision) into Unix seconds.

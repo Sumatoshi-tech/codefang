@@ -158,7 +158,9 @@ mod tests {
     use super::*;
 
     fn touched(keys: &[(&str, NodeSummary)]) -> BTreeMap<String, NodeSummary> {
-        keys.iter().map(|(k, s)| ((*k).to_string(), s.clone())).collect()
+        keys.iter()
+            .map(|(k, s)| ((*k).to_string(), s.clone()))
+            .collect()
     }
 
     #[test]

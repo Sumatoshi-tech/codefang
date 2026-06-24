@@ -462,7 +462,8 @@ mod tests {
         }
 
         idx.insert("similar".to_string(), &sig_similar).expect("ok");
-        idx.insert("different".to_string(), &sig_different).expect("ok");
+        idx.insert("different".to_string(), &sig_different)
+            .expect("ok");
 
         let results = idx
             .query_threshold(&sig_query, TEST_HIGH_THRESHOLD)
@@ -633,7 +634,9 @@ mod tests {
         use std::sync::{Arc, Mutex};
         use std::thread;
 
-        let idx = Arc::new(Mutex::new(Index::new(TEST_BANDS, TEST_ROWS).expect("valid")));
+        let idx = Arc::new(Mutex::new(
+            Index::new(TEST_BANDS, TEST_ROWS).expect("valid"),
+        ));
 
         let handles: Vec<_> = (0..TEST_CONCURRENT_THREADS)
             .map(|g| {

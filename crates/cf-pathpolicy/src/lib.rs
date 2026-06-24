@@ -260,7 +260,10 @@ mod tests {
     fn generated_path_excluded_by_default() {
         let cases = [
             ("go protobuf", "pkg/api/foo.pb.go"),
-            ("k8s zz_generated", "pkg/apis/core/v1/zz_generated_deepcopy.go"),
+            (
+                "k8s zz_generated",
+                "pkg/apis/core/v1/zz_generated_deepcopy.go",
+            ),
             ("python protobuf", "pkg/api/foo_pb2.py"),
             ("mockgen", "mocks/mock_service.go"),
         ];

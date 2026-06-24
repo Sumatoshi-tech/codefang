@@ -216,10 +216,7 @@ mod tests {
         // HTML escaping is ON in the report contract: `<`, `>`, `&` are
         // emitted as their \u00xx escape sequences.
         let v = ReportValue::Str("a<b>&c".to_string());
-        assert_eq!(
-            v.to_go_json_compact(),
-            "\"a\\u003cb\\u003e\\u0026c\""
-        );
+        assert_eq!(v.to_go_json_compact(), "\"a\\u003cb\\u003e\\u0026c\"");
     }
 
     #[test]

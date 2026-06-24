@@ -217,8 +217,7 @@ impl Default for CoordinatorConfig {
     fn default() -> Self {
         let num_cpu = num_cpus() as i64;
         let workers = (num_cpu * OPTIMAL_WORKER_RATIO / (PERCENT_DIVISOR as i64)).max(1);
-        let uast_workers =
-            (num_cpu * UAST_PIPELINE_WORKER_RATIO / (PERCENT_DIVISOR as i64)).max(1);
+        let uast_workers = (num_cpu * UAST_PIPELINE_WORKER_RATIO / (PERCENT_DIVISOR as i64)).max(1);
         let leaf_workers = (num_cpu / LEAF_WORKER_DIVISOR).max(MIN_LEAF_WORKERS);
 
         Self {

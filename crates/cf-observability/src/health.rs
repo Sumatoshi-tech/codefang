@@ -31,9 +31,8 @@ pub const CONTENT_TYPE_JSON: &str = "application/json";
 /// `Err(message)` describing the failure.
 ///
 /// Boxed async closure so multiple heterogeneous checks can be stored together.
-pub type ReadyCheck = Box<
-    dyn Fn() -> Pin<Box<dyn Future<Output = Result<(), String>> + Send>> + Send + Sync,
->;
+pub type ReadyCheck =
+    Box<dyn Fn() -> Pin<Box<dyn Future<Output = Result<(), String>> + Send>> + Send + Sync>;
 
 /// An HTTP response: status code, content type, and JSON body bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -13,7 +13,9 @@ use std::collections::BTreeMap;
 
 use cf_alg_stats::to_percent;
 
-use crate::model::{AggregateData, ComputedMetrics, LowSentimentPeriodData, TimeSeriesData, TrendData};
+use crate::model::{
+    AggregateData, ComputedMetrics, LowSentimentPeriodData, TimeSeriesData, TrendData,
+};
 use crate::scorer::compute_sentiment;
 
 /// Time-series dimension name.
@@ -129,7 +131,9 @@ pub fn aggregate_commits_to_ticks(
     for (&tick, hashes) in commits_by_tick {
         for hash in hashes {
             if let Some(comments) = comments_by_commit.get(hash) {
-                cbt.entry(tick).or_default().extend(comments.iter().cloned());
+                cbt.entry(tick)
+                    .or_default()
+                    .extend(comments.iter().cloned());
             }
         }
         let tick_comments = cbt.get(&tick).cloned().unwrap_or_default();
@@ -147,7 +151,10 @@ pub fn compute_all_metrics(input: &ReportData) -> ComputedMetrics {
 
 /// Runs all metrics with configurable thresholds.
 #[must_use]
-pub fn compute_all_metrics_with_options(input: &ReportData, opts: MetricOptions) -> ComputedMetrics {
+pub fn compute_all_metrics_with_options(
+    input: &ReportData,
+    opts: MetricOptions,
+) -> ComputedMetrics {
     ComputedMetrics {
         time_series: compute_time_series(input, opts),
         trend: compute_trend(input, opts),
@@ -311,7 +318,11 @@ pub fn compute_low_sentiment_periods(
             "MEDIUM"
         };
 
-        let comments = input.comments_by_tick.get(&tick).cloned().unwrap_or_default();
+        let comments = input
+            .comments_by_tick
+            .get(&tick)
+            .cloned()
+            .unwrap_or_default();
 
         result.push(LowSentimentPeriodData {
             tick,
@@ -324,7 +335,11 @@ pub fn compute_low_sentiment_periods(
     // Sort by sentiment ascending (worst first). The iteration order above is
     // tick-ascending (BTreeMap), giving a deterministic order for
     // equal-sentiment ties.
-    result.sort_by(|a, b| a.sentiment.partial_cmp(&b.sentiment).unwrap_or(std::cmp::Ordering::Equal));
+    result.sort_by(|a, b| {
+        a.sentiment
+            .partial_cmp(&b.sentiment)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     result
 }
@@ -401,7 +416,9 @@ mod tests {
         let input = ReportData {
             emotions_by_tick: m_f32(&[(0, 0.8)]),
             comments_by_tick: [(0, vec!["a".into(), "b".into()])].into_iter().collect(),
-            commits_by_tick: [(0, vec!["abc".into(), "def".into()])].into_iter().collect(),
+            commits_by_tick: [(0, vec!["abc".into(), "def".into()])]
+                .into_iter()
+                .collect(),
             ..Default::default()
         };
         let r = compute_time_series(&input, MetricOptions::default());
@@ -547,7 +564,12 @@ mod tests {
 
     #[test]
     fn low_sentiment_risk_levels() {
-        for (sentiment, risk) in [(0.1_f32, "HIGH"), (0.2, "HIGH"), (0.3, "MEDIUM"), (0.4, "MEDIUM")] {
+        for (sentiment, risk) in [
+            (0.1_f32, "HIGH"),
+            (0.2, "HIGH"),
+            (0.3, "MEDIUM"),
+            (0.4, "MEDIUM"),
+        ] {
             let input = ReportData {
                 emotions_by_tick: m_f32(&[(0, sentiment)]),
                 comments_by_tick: [(0, vec!["c".into()])].into_iter().collect(),
@@ -589,9 +611,12 @@ mod tests {
             comments_by_tick: [(0, vec!["a".into(), "b".into()]), (1, vec!["c".into()])]
                 .into_iter()
                 .collect(),
-            commits_by_tick: [(0, vec!["abc".into()]), (2, vec!["def".into(), "ghi".into()])]
-                .into_iter()
-                .collect(),
+            commits_by_tick: [
+                (0, vec!["abc".into()]),
+                (2, vec!["def".into(), "ghi".into()]),
+            ]
+            .into_iter()
+            .collect(),
             ..Default::default()
         };
         let r = compute_aggregate(&input, MetricOptions::default());
@@ -615,13 +640,17 @@ mod tests {
     #[test]
     fn aggregate_commits_single() {
         let cbc: BTreeMap<String, Vec<String>> = [
-            ("a".to_string(), vec!["comment 1".into(), "comment 2".into()]),
+            (
+                "a".to_string(),
+                vec!["comment 1".into(), "comment 2".into()],
+            ),
             ("b".to_string(), vec!["comment 3".into()]),
         ]
         .into_iter()
         .collect();
-        let cbt_in: BTreeMap<i64, Vec<String>> =
-            [(0, vec!["a".into()]), (1, vec!["b".into()])].into_iter().collect();
+        let cbt_in: BTreeMap<i64, Vec<String>> = [(0, vec!["a".into()]), (1, vec!["b".into()])]
+            .into_iter()
+            .collect();
         let (cbt, ebt) = aggregate_commits_to_ticks(&cbc, &cbt_in);
         assert_eq!(cbt.len(), 2);
         assert_eq!(cbt[&0].len(), 2);
@@ -641,13 +670,17 @@ mod tests {
     #[test]
     fn compute_all_from_commit_data() {
         let cbc: BTreeMap<String, Vec<String>> = [
-            ("a".to_string(), vec!["good work on this".into(), "nice refactor here".into()]),
+            (
+                "a".to_string(),
+                vec!["good work on this".into(), "nice refactor here".into()],
+            ),
             ("b".to_string(), vec!["this code is broken".into()]),
         ]
         .into_iter()
         .collect();
-        let cbt: BTreeMap<i64, Vec<String>> =
-            [(0, vec!["a".into()]), (1, vec!["b".into()])].into_iter().collect();
+        let cbt: BTreeMap<i64, Vec<String>> = [(0, vec!["a".into()]), (1, vec!["b".into()])]
+            .into_iter()
+            .collect();
         let input = ReportData::from_commit_data(&cbc, cbt, BTreeMap::new());
         let r = compute_all_metrics(&input);
         assert_eq!(r.time_series.len(), 2);

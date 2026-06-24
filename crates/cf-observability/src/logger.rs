@@ -156,7 +156,10 @@ impl TracingHandler {
         // Collect by group path into a tree.
         let mut grouped: BTreeMap<Vec<String>, Vec<(String, Value)>> = BTreeMap::new();
         for (path, k, v) in &self.grouped_attrs {
-            grouped.entry(path.clone()).or_default().push((k.clone(), v.clone()));
+            grouped
+                .entry(path.clone())
+                .or_default()
+                .push((k.clone(), v.clone()));
         }
         if self.groups.is_empty() {
             for (k, v) in attrs {

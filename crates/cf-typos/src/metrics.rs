@@ -295,7 +295,10 @@ pub fn compute_all_metrics(input: &ReportData) -> Vec<MetricResult> {
         MetricResult {
             name: METRIC_NAME_TYPO_LIST.to_string(),
             value: GoValue::Array(
-                compute_typo_list(input).iter().map(TypoData::to_govalue).collect(),
+                compute_typo_list(input)
+                    .iter()
+                    .map(TypoData::to_govalue)
+                    .collect(),
             ),
         },
         MetricResult {
@@ -440,14 +443,20 @@ mod tests {
 
     #[test]
     fn aggregate_empty() {
-        assert_eq!(compute_aggregate(&ReportData::default()), AggregateData::default());
+        assert_eq!(
+            compute_aggregate(&ReportData::default()),
+            AggregateData::default()
+        );
     }
 
     #[test]
     fn all_metrics_order() {
         let metrics = compute_all_metrics(&data());
         let names: Vec<&str> = metrics.iter().map(|m| m.name.as_str()).collect();
-        assert_eq!(names, vec!["typo_list", "patterns", "file_typos", "aggregate"]);
+        assert_eq!(
+            names,
+            vec!["typo_list", "patterns", "file_typos", "aggregate"]
+        );
     }
 
     #[test]
@@ -461,7 +470,9 @@ mod tests {
         };
         let json = metrics_report_value(&input).to_json();
         assert!(json.starts_with("{\"aggregate\":{\"total_typos\":1,"));
-        assert!(json.contains("\"file_typos\":[{\"file\":\"main.go\",\"typo_count\":1,\"fixed_typos\":1}]"));
+        assert!(json.contains(
+            "\"file_typos\":[{\"file\":\"main.go\",\"typo_count\":1,\"fixed_typos\":1}]"
+        ));
         // A single occurrence is filtered (frequency > 1), leaving the nil
         // slice -> JSON null, not [].
         assert!(json.contains("\"patterns\":null"));

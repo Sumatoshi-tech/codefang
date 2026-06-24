@@ -344,8 +344,10 @@ mod tests {
             last
         };
         let sample_lines = [0, 25, 50, 55, 60, 70, 100, 500];
-        let before_values: Vec<i64> =
-            sample_lines.iter().map(|&ln| value_at_line(&file, ln)).collect();
+        let before_values: Vec<i64> = sample_lines
+            .iter()
+            .map(|&ln| value_at_line(&file, ln))
+            .collect();
 
         file.merge_adjacent_same_value();
 
@@ -409,7 +411,8 @@ mod tests {
     fn new_file_invokes_updater_on_initial_length() {
         let calls = Rc::new(RefCell::new(Vec::new()));
         let c = calls.clone();
-        let updater: Updater = Box::new(move |cur, prev, delta| c.borrow_mut().push((cur, prev, delta)));
+        let updater: Updater =
+            Box::new(move |cur, prev, delta| c.borrow_mut().push((cur, prev, delta)));
         let _file = File::new(3, 10, vec![updater]);
         assert_eq!(*calls.borrow(), vec![(3, 3, 10)]);
     }
@@ -420,7 +423,8 @@ mod tests {
     fn update_deletion_reports_negative_delta() {
         let calls = Rc::new(RefCell::new(Vec::new()));
         let c = calls.clone();
-        let updater: Updater = Box::new(move |cur, prev, delta| c.borrow_mut().push((cur, prev, delta)));
+        let updater: Updater =
+            Box::new(move |cur, prev, delta| c.borrow_mut().push((cur, prev, delta)));
         let mut file = File::new(5, 100, vec![updater]);
         calls.borrow_mut().clear(); // drop the construction call
         file.update(9, 0, 0, 10);

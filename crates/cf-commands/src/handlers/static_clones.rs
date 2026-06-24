@@ -40,10 +40,10 @@
 use std::fs;
 use std::path::Path;
 
+use cf_analyze::Report;
 use cf_clones::aggregator::Aggregator;
 use cf_clones::report_section::report_section_json_value;
 use cf_clones::Visitor;
-use cf_analyze::Report;
 use cf_gojson::Encoder;
 use cf_pathpolicy::{exclude, Options};
 use cf_uast::Parser;
@@ -57,7 +57,9 @@ pub fn clones_report_json(root_path: &str) -> Option<Vec<u8>> {
     let value = clones_report_value(root_path)?;
     // Reference: json.NewEncoder(w).SetIndent("", "  ").Encode(report) -> two-space
     // indent + one trailing newline.
-    let bytes = Encoder::indented("  ").with_trailing_newline(true).encode_to_vec(&value);
+    let bytes = Encoder::indented("  ")
+        .with_trailing_newline(true)
+        .encode_to_vec(&value);
     Some(bytes)
 }
 

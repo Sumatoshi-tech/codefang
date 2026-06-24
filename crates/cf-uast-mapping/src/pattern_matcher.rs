@@ -80,9 +80,7 @@ impl PatternMatcher {
             }
         }
 
-        let compiled = Arc::new(
-            Query::new(&self.lang, pattern).map_err(MatchError::Compilation)?,
-        );
+        let compiled = Arc::new(Query::new(&self.lang, pattern).map_err(MatchError::Compilation)?);
 
         let mut inner = self.inner.lock().expect("pattern matcher cache poisoned");
         // Another thread may have compiled it meanwhile; keep the first stored
@@ -151,10 +149,7 @@ fn match_tree_sitter_query(
 
     let mut captures = BTreeMap::new();
     for cap in first.captures {
-        let name = capture_names
-            .get(cap.index as usize)
-            .copied()
-            .unwrap_or("");
+        let name = capture_names.get(cap.index as usize).copied().unwrap_or("");
         // tree-sitter 0.22 query-match capture nodes are always present, so
         // capture handling reduces to extracting the captured text.
         // `utf8_text` errors only on invalid UTF-8, which this path never

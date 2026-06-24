@@ -364,8 +364,14 @@ mod tests {
         cache.insert(h(1), CachedBlob::new(b"package main\n".to_vec()));
         cache.insert(h(2), CachedBlob::new(b"package main\n".to_vec()));
         let changes = vec![Change {
-            from: ChangeEntry { name: "a.go".into(), hash: h(1) },
-            to: ChangeEntry { name: "a.go".into(), hash: h(2) },
+            from: ChangeEntry {
+                name: "a.go".into(),
+                hash: h(1),
+            },
+            to: ChangeEntry {
+                name: "a.go".into(),
+                hash: h(2),
+            },
         }];
         let out = ld.build(&changes, &cache);
         assert_eq!(out.get(&h(1)).map(String::as_str), Some("Go"));

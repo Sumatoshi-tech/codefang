@@ -44,16 +44,14 @@
 mod changes;
 mod loader;
 mod lowering;
-mod parser;
 mod parsefile;
+mod parser;
 mod types;
 
 pub mod languages;
 
 pub use changes::detect_changes;
-pub use loader::{
-    embedded_mappings_available, Loader, PrecompiledMapping,
-};
+pub use loader::{embedded_mappings_available, Loader, PrecompiledMapping};
 pub use parser::Parser;
 pub use types::{
     get_file_extension, ChangeType, LanguageParser, Map, NodeChange, ParseError,

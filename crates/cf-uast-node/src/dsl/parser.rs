@@ -18,7 +18,10 @@ pub struct ParseError(pub String);
 /// Returns a [`ParseError`] describing the first grammar violation (unexpected
 /// trailing input, unterminated literal, missing delimiter, ...).
 pub fn parse(input: &str) -> Result<DslNode, ParseError> {
-    let mut p = Parser { src: input.as_bytes(), pos: 0 };
+    let mut p = Parser {
+        src: input.as_bytes(),
+        pos: 0,
+    };
     p.spacing();
     let node = p.pipeline()?;
     p.spacing();
@@ -162,7 +165,10 @@ impl Parser<'_> {
                 return Err(ParseError("expected ')' to close reduce(".into()));
             }
             self.spacing();
-            return Ok(Some(DslNode::Call { name, args: Vec::new() }));
+            return Ok(Some(DslNode::Call {
+                name,
+                args: Vec::new(),
+            }));
         }
         // Paren-less form: `reduce <ReducerName>`.
         let Some(name) = self.identifier() else {
@@ -170,7 +176,10 @@ impl Parser<'_> {
             return Ok(None);
         };
         self.spacing();
-        Ok(Some(DslNode::Call { name, args: Vec::new() }))
+        Ok(Some(DslNode::Call {
+            name,
+            args: Vec::new(),
+        }))
     }
 
     /// `FunctionCall <- Identifier LPAR ArgList? RPAR`
@@ -353,7 +362,9 @@ impl Parser<'_> {
                         self.pos = save; // a lone '.' is not part of the number
                     }
                 }
-                let num = std::str::from_utf8(&self.src[start..self.pos]).unwrap().to_string();
+                let num = std::str::from_utf8(&self.src[start..self.pos])
+                    .unwrap()
+                    .to_string();
                 self.spacing();
                 Ok(DslNode::Literal(DslLiteral::Number(num)))
             }
@@ -385,7 +396,11 @@ impl Parser<'_> {
                 break;
             }
         }
-        Some(std::str::from_utf8(&self.src[start..self.pos]).unwrap().to_string())
+        Some(
+            std::str::from_utf8(&self.src[start..self.pos])
+                .unwrap()
+                .to_string(),
+        )
     }
 }
 
@@ -395,7 +410,10 @@ mod tests {
 
     #[test]
     fn parses_field_access() {
-        assert_eq!(parse(".children").unwrap(), DslNode::Field(vec!["children".into()]));
+        assert_eq!(
+            parse(".children").unwrap(),
+            DslNode::Field(vec!["children".into()])
+        );
         assert_eq!(
             parse(".a.b.c").unwrap(),
             DslNode::Field(vec!["a".into(), "b".into(), "c".into()])

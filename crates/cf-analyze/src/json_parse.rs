@@ -52,7 +52,10 @@ struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     fn err(&self, msg: &str) -> ParseError {
-        ParseError { message: msg.to_string(), offset: self.i }
+        ParseError {
+            message: msg.to_string(),
+            offset: self.i,
+        }
     }
 
     fn skip_ws(&mut self) {
@@ -290,8 +293,8 @@ impl<'a> Parser<'a> {
                 _ => break,
             }
         }
-        let text = std::str::from_utf8(&self.b[start..self.i])
-            .map_err(|_| self.err("invalid number"))?;
+        let text =
+            std::str::from_utf8(&self.b[start..self.i]).map_err(|_| self.err("invalid number"))?;
         if !is_float {
             if let Ok(i) = text.parse::<i64>() {
                 return Ok(GoValue::Int(i));

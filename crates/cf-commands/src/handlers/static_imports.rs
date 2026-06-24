@@ -46,7 +46,8 @@ use cf_uast::{Node as UastNode, Parser};
 /// blocked-dependency sentinel).
 pub fn imports_report_yaml(root_path: &str) -> Option<Vec<u8>> {
     let report = aggregate_report_value(root_path)?;
-    let metrics = cf_imports::compute_all_metrics(&report).expect("compute_all_metrics is infallible");
+    let metrics =
+        cf_imports::compute_all_metrics(&report).expect("compute_all_metrics is infallible");
     Some(cf_goyaml::marshal(&metrics.to_go_value_yaml()))
 }
 
@@ -56,7 +57,8 @@ pub fn imports_report_yaml(root_path: &str) -> Option<Vec<u8>> {
 /// sibling, but wrapped in a CFB1 envelope (`reportutil.EncodeBinaryEnvelope`).
 pub fn imports_report_bin(root_path: &str) -> Option<Vec<u8>> {
     let report = aggregate_report_value(root_path)?;
-    let metrics = cf_imports::compute_all_metrics(&report).expect("compute_all_metrics is infallible");
+    let metrics =
+        cf_imports::compute_all_metrics(&report).expect("compute_all_metrics is infallible");
     Some(
         cf_reportutil::encode_binary_envelope(&metrics.to_go_value())
             .expect("imports metrics never exceed the CFB1 length cap"),
@@ -78,7 +80,10 @@ fn aggregate_report_value(root_path: &str) -> Option<cf_imports::ReportValue> {
     let mut report = cf_imports::ReportValue::map();
     report.insert("imports", cf_imports::ReportValue::List(imports));
     report.insert("import_counts", import_counts);
-    report.insert("count", cf_imports::ReportValue::Int(all_imports.len() as i64));
+    report.insert(
+        "count",
+        cf_imports::ReportValue::Int(all_imports.len() as i64),
+    );
     report.insert("total_files", cf_imports::ReportValue::Int(total_files));
     Some(report)
 }
@@ -235,15 +240,20 @@ fn walk_and_count_opts(
 
     // The reference aggregator increments total_files for every analyzed file and sums
     // per-import occurrence counts across files.
-    let mut all_imports: std::collections::BTreeMap<String, i64> = std::collections::BTreeMap::new();
+    let mut all_imports: std::collections::BTreeMap<String, i64> =
+        std::collections::BTreeMap::new();
     let mut total_files: i64 = 0;
 
     for path in &files {
-        let Ok(content) = std::fs::read(path) else { continue };
+        let Ok(content) = std::fs::read(path) else {
+            continue;
+        };
         total_files += 1;
         // Parse failures on supported files (markdown without a wired grammar)
         // fold as an empty report: +1 file, no imports (see module docs).
-        let Ok(node) = parser.parse(path, &content) else { continue };
+        let Ok(node) = parser.parse(path, &content) else {
+            continue;
+        };
 
         // extract_imports_from_uast deduplicates within the file in first-seen
         // order; the cross-file aggregator then counts file occurrences.
@@ -262,7 +272,9 @@ fn walk_and_count_opts(
 /// (lexical order; `.git` skipped). Mirrors `streamFiles` /
 /// `ShouldSkipFolderNode`.
 fn collect_files(dir: &Path, parser: &Parser, opts: &Options, out: &mut Vec<String>) {
-    let Ok(read) = std::fs::read_dir(dir) else { return };
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return;
+    };
     let mut entries: Vec<_> = read.filter_map(Result::ok).collect();
     entries.sort_by_key(std::fs::DirEntry::file_name);
 

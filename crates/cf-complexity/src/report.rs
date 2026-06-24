@@ -198,8 +198,14 @@ fn build_function_complexity(functions: &[FunctionInput]) -> Vec<GoValue> {
             insert_omitempty_str(&mut o, "source_file", &row.f.source_file);
             insert_omitempty_str(&mut o, "language", &row.f.language);
             insert_omitempty_str(&mut o, "directory", &row.f.directory);
-            o.insert("cyclomatic_complexity", GoValue::Int(row.f.cyclomatic_complexity));
-            o.insert("cognitive_complexity", GoValue::Int(row.f.cognitive_complexity));
+            o.insert(
+                "cyclomatic_complexity",
+                GoValue::Int(row.f.cyclomatic_complexity),
+            );
+            o.insert(
+                "cognitive_complexity",
+                GoValue::Int(row.f.cognitive_complexity),
+            );
             o.insert("nesting_depth", GoValue::Int(row.f.nesting_depth));
             o.insert("lines_of_code", GoValue::Int(row.f.lines_of_code));
             o.insert("complexity_density", GoValue::Float(row.density));
@@ -271,12 +277,23 @@ fn build_high_risk_functions(functions: &[FunctionInput]) -> Vec<GoValue> {
             insert_omitempty_str(&mut o, "source_file", &row.f.source_file);
             insert_omitempty_str(&mut o, "language", &row.f.language);
             insert_omitempty_str(&mut o, "directory", &row.f.directory);
-            o.insert("cyclomatic_complexity", GoValue::Int(row.f.cyclomatic_complexity));
-            o.insert("cognitive_complexity", GoValue::Int(row.f.cognitive_complexity));
+            o.insert(
+                "cyclomatic_complexity",
+                GoValue::Int(row.f.cyclomatic_complexity),
+            );
+            o.insert(
+                "cognitive_complexity",
+                GoValue::Int(row.f.cognitive_complexity),
+            );
             o.insert("risk_level", GoValue::Str(row.risk.to_string()));
             o.insert(
                 "issues",
-                GoValue::Array(row.issues.iter().map(|s| GoValue::Str((*s).to_string())).collect()),
+                GoValue::Array(
+                    row.issues
+                        .iter()
+                        .map(|s| GoValue::Str((*s).to_string()))
+                        .collect(),
+                ),
             );
             GoValue::Map(o)
         })
@@ -287,7 +304,10 @@ fn build_high_risk_functions(functions: &[FunctionInput]) -> Vec<GoValue> {
 fn build_aggregate(scalars: &ReportScalars) -> GoMap {
     let mut agg = GoMap::new(MapOrigin::Struct);
     agg.insert("total_functions", GoValue::Int(scalars.total_functions));
-    agg.insert("average_complexity", GoValue::Float(scalars.average_complexity));
+    agg.insert(
+        "average_complexity",
+        GoValue::Float(scalars.average_complexity),
+    );
     agg.insert("max_complexity", GoValue::Int(scalars.max_complexity));
     agg.insert("total_complexity", GoValue::Int(scalars.total_complexity));
     // The aggregator's float-summed cognitive/nesting are dropped to 0 by the

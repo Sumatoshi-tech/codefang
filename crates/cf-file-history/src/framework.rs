@@ -55,19 +55,52 @@ mod tests {
     #[test]
     fn merge_sums_people_and_appends_hashes() {
         let a = FileHistory {
-            people: BTreeMap::from([(1, LineStats { added: 10, ..Default::default() })]),
+            people: BTreeMap::from([(
+                1,
+                LineStats {
+                    added: 10,
+                    ..Default::default()
+                },
+            )]),
             hashes: vec!["h1".into()],
         };
         let b = FileHistory {
             people: BTreeMap::from([
-                (1, LineStats { added: 5, removed: 2, ..Default::default() }),
-                (2, LineStats { changed: 7, ..Default::default() }),
+                (
+                    1,
+                    LineStats {
+                        added: 5,
+                        removed: 2,
+                        ..Default::default()
+                    },
+                ),
+                (
+                    2,
+                    LineStats {
+                        changed: 7,
+                        ..Default::default()
+                    },
+                ),
             ]),
             hashes: vec!["h2".into()],
         };
         let merged = merge_file_history(a, b);
-        assert_eq!(merged.people[&1], LineStats { added: 15, removed: 2, changed: 0 });
-        assert_eq!(merged.people[&2], LineStats { added: 0, removed: 0, changed: 7 });
+        assert_eq!(
+            merged.people[&1],
+            LineStats {
+                added: 15,
+                removed: 2,
+                changed: 0
+            }
+        );
+        assert_eq!(
+            merged.people[&2],
+            LineStats {
+                added: 0,
+                removed: 0,
+                changed: 7
+            }
+        );
         assert_eq!(merged.hashes, vec!["h1".to_string(), "h2".to_string()]);
     }
 }

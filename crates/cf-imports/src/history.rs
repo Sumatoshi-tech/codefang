@@ -211,8 +211,7 @@ pub const TOP_IMPORTS_LIMIT: usize = 20;
 /// ```
 #[must_use]
 pub fn top_imports(counts: &BTreeMap<String, i64>) -> (Vec<String>, Vec<i64>) {
-    let mut items: Vec<(String, i64)> =
-        counts.iter().map(|(k, v)| (k.clone(), *v)).collect();
+    let mut items: Vec<(String, i64)> = counts.iter().map(|(k, v)| (k.clone(), *v)).collect();
     items.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     if items.len() > TOP_IMPORTS_LIMIT {
         items.truncate(TOP_IMPORTS_LIMIT);

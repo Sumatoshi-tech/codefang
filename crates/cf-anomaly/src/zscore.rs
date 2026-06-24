@@ -124,7 +124,11 @@ mod tests {
         // Trailing window excludes i; a spike after varied history gives a large
         // finite positive z-score.
         let z = compute_z_scores(&[1.0, 2.0, 3.0, 2.0, 50.0], 4);
-        assert!(z[4] > 1.0, "spike z-score should be large positive, got {}", z[4]);
+        assert!(
+            z[4] > 1.0,
+            "spike z-score should be large positive, got {}",
+            z[4]
+        );
     }
 
     #[test]

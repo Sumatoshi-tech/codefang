@@ -25,7 +25,10 @@ fn oracle_byte_parity() {
         }
         let (spec, b64) = line.split_once('\t').expect("tab-separated");
         let expected = b64_decode(b64);
-        let mut p = Parser { b: spec.as_bytes(), i: 0 };
+        let mut p = Parser {
+            b: spec.as_bytes(),
+            i: 0,
+        };
         let value = p.parse_value();
         let got = cf_goyaml::marshal(&value);
         total += 1;

@@ -14,11 +14,11 @@ use cf_uast_node::Node;
 use crate::engine::{
     build_index, build_signatures, count_distinct_funcs, find_clone_pairs, is_function_node,
 };
-use crate::uast::{ROLE_FUNCTION, UAST_FUNCTION, UAST_METHOD};
 use crate::report::{
     categorize_clone_pairs, clone_type_dist_map, ClonePair, ComputedMetrics, SIMILARITY_TYPE3,
 };
 use crate::shingler::Shingler;
+use crate::uast::{ROLE_FUNCTION, UAST_FUNCTION, UAST_METHOD};
 use crate::{
     clone_message, compute_clone_ratio, ANALYZER_DESCRIPTION, ANALYZER_FLAG, ANALYZER_NAME,
     KEY_ANALYZER_NAME, KEY_CLONE_PAIRS, KEY_CLONE_RATIO, KEY_CLONE_TYPE_DISTRIBUTION, KEY_MESSAGE,
@@ -184,7 +184,11 @@ impl Analyzer {
     ///
     /// # Errors
     /// Returns [`AnalyzerError`] if the writer fails.
-    pub fn format_report_json(&self, report: &Report, w: &mut dyn Write) -> Result<(), AnalyzerError> {
+    pub fn format_report_json(
+        &self,
+        report: &Report,
+        w: &mut dyn Write,
+    ) -> Result<(), AnalyzerError> {
         let metrics = compute_metrics_from_report(report);
         let bytes = cf_gojson::marshal_indent(&metrics.to_go_value());
         w.write_all(&bytes)
@@ -289,9 +293,7 @@ fn clone_pair_from_map(m: &GoMap) -> ClonePair {
 
 /// Extracts the `clone_type_distribution` counts, if present.
 fn extract_clone_type_dist(report: &Report) -> Option<crate::report::CloneTypeCounts> {
-    let Some(GoValue::Map(m)) =
-        cf_reportutil::get(report, KEY_CLONE_TYPE_DISTRIBUTION)
-    else {
+    let Some(GoValue::Map(m)) = cf_reportutil::get(report, KEY_CLONE_TYPE_DISTRIBUTION) else {
         return None;
     };
 
@@ -319,8 +321,14 @@ mod tests {
     /// Builds a function subtree with at least `MIN_FUNCTION_NODES` nodes and the
     /// given identifier name, so it survives the size gate and produces shingles.
     fn function(name: &str) -> Node {
-        let name_node = NodeBuilder::new("Identifier").role("Name").token(name).build();
-        let mut f = NodeBuilder::new("Function").role("Function").child(name_node).build();
+        let name_node = NodeBuilder::new("Identifier")
+            .role("Name")
+            .token(name)
+            .build();
+        let mut f = NodeBuilder::new("Function")
+            .role("Function")
+            .child(name_node)
+            .build();
         // Add a deterministic body of ≥20 nodes so countNodes >= 20 and there
         // are enough types (>= k=5) to shingle.
         let mut block = NodeBuilder::new("Block").build();
@@ -344,7 +352,10 @@ mod tests {
     fn nil_root_returns_empty_ast_message() {
         let a = Analyzer::new();
         let report = a.analyze_node(None);
-        assert_eq!(cf_reportutil::get_string(&report, KEY_MESSAGE), MSG_EMPTY_AST);
+        assert_eq!(
+            cf_reportutil::get_string(&report, KEY_MESSAGE),
+            MSG_EMPTY_AST
+        );
         assert_eq!(cf_reportutil::get_int(&report, KEY_TOTAL_FUNCTIONS), 0);
     }
 

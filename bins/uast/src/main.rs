@@ -156,10 +156,7 @@ mod tests {
     #[test]
     fn cli_has_all_nine_subcommands_in_order() {
         let cli = build_cli();
-        let names: Vec<&str> = cli
-            .get_subcommands()
-            .map(clap::Command::get_name)
-            .collect();
+        let names: Vec<&str> = cli.get_subcommands().map(clap::Command::get_name).collect();
         assert_eq!(
             names,
             vec![
@@ -178,21 +175,31 @@ mod tests {
 
     #[test]
     fn root_about_matches_go() {
-        let about = build_cli().get_about().map(|s| s.to_string()).unwrap_or_default();
-        assert_eq!(about, "UAST (Universal Abstract Syntax Tree) parser and analyzer");
+        let about = build_cli()
+            .get_about()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        assert_eq!(
+            about,
+            "UAST (Universal Abstract Syntax Tree) parser and analyzer"
+        );
     }
 
     #[test]
     fn help_renders() {
         // `--help` must succeed (cobra root help). clap returns a DisplayHelp
         // "error" kind for --help; assert it is that kind, not a real failure.
-        let err = build_cli().try_get_matches_from(["uast", "--help"]).unwrap_err();
+        let err = build_cli()
+            .try_get_matches_from(["uast", "--help"])
+            .unwrap_err();
         assert_eq!(err.kind(), clap::error::ErrorKind::DisplayHelp);
     }
 
     #[test]
     fn unknown_subcommand_is_error() {
-        let err = build_cli().try_get_matches_from(["uast", "no-such-cmd"]).unwrap_err();
+        let err = build_cli()
+            .try_get_matches_from(["uast", "no-such-cmd"])
+            .unwrap_err();
         // cobra prints "unknown command"; clap reports an invalid subcommand.
         assert!(matches!(
             err.kind(),

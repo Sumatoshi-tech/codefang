@@ -43,10 +43,10 @@ use std::process::Command;
 
 /// A single extracted command plus any expected-output hint and its source.
 struct DocCommand {
-    source: String,     // "README.md:42"
-    raw: String,        // the command text as written in the doc
-    tokens: Vec<String>,// shell-split tokens
-    expect: Vec<String>,// expected stdout lines shown right after the command (may be empty)
+    source: String,      // "README.md:42"
+    raw: String,         // the command text as written in the doc
+    tokens: Vec<String>, // shell-split tokens
+    expect: Vec<String>, // expected stdout lines shown right after the command (may be empty)
 }
 
 /// Repo root = two levels up from this crate's manifest dir
@@ -64,7 +64,11 @@ fn binary_path(name: &str) -> Option<PathBuf> {
     let test_exe = std::env::current_exe().ok()?;
     let deps_dir = test_exe.parent()?; // target/<profile>/deps
     let profile_dir = deps_dir.parent()?; // target/<profile>
-    let exe = if cfg!(windows) { format!("{name}.exe") } else { name.to_string() };
+    let exe = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    };
     let mut candidates = vec![profile_dir.join(&exe), deps_dir.join(&exe)];
     if let Some(target_dir) = profile_dir.parent() {
         candidates.push(target_dir.join("release").join(&exe));
@@ -81,7 +85,11 @@ fn ensure_built(name: &str) -> Option<PathBuf> {
     if let Some(p) = binary_path(name) {
         return Some(p);
     }
-    let profile = if cfg!(debug_assertions) { "dev" } else { "release" };
+    let profile = if cfg!(debug_assertions) {
+        "dev"
+    } else {
+        "release"
+    };
     let status = Command::new(env!("CARGO"))
         .args(["build", "-p", name, "--profile", profile])
         .current_dir(repo_root().join("rust"))
@@ -114,7 +122,9 @@ fn doc_files(root: &Path) -> Vec<PathBuf> {
         out.push(readme);
     }
     fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
-        let Ok(entries) = fs::read_dir(dir) else { return };
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
         for e in entries.flatten() {
             let p = e.path();
             if p.is_dir() {
@@ -229,7 +239,10 @@ fn parse_block(block: &[(usize, &str)], rel: &str, cmds: &mut Vec<DocCommand>) {
         };
         if let Some(cmd_text) = cmd_text {
             let tokens = shell_split(&cmd_text);
-            if matches!(tokens.first().map(String::as_str), Some("codefang") | Some("uast")) {
+            if matches!(
+                tokens.first().map(String::as_str),
+                Some("codefang") | Some("uast")
+            ) {
                 // Gather expected output: subsequent non-command, non-empty lines
                 // until the next prompt/command or blank gap.
                 let mut expect = Vec::new();
@@ -237,7 +250,8 @@ fn parse_block(block: &[(usize, &str)], rel: &str, cmds: &mut Vec<DocCommand>) {
                 while k < block.len() {
                     let next = block[k].1.trim_end();
                     let nb = next.trim_start();
-                    if nb.is_empty() || nb.starts_with("$ ")
+                    if nb.is_empty()
+                        || nb.starts_with("$ ")
                         || nb.starts_with("codefang ")
                         || nb.starts_with("uast ")
                     {
@@ -262,7 +276,11 @@ fn parse_block(block: &[(usize, &str)], rel: &str, cmds: &mut Vec<DocCommand>) {
 /// argv[0], which is replaced by the binary path) and a "skip reason" if it
 /// should be skipped.
 enum Plan {
-    Run { bin: &'static str, args: Vec<String>, tmp_file: Option<PathBuf> },
+    Run {
+        bin: &'static str,
+        args: Vec<String>,
+        tmp_file: Option<PathBuf>,
+    },
     Skip(String),
 }
 
@@ -276,7 +294,8 @@ fn plan(cmd: &DocCommand, fixture: Option<&Path>) -> Plan {
         || cmd.raw.contains('`')
         || cmd.raw.contains("$(")
         || cmd.raw.contains('\\') // line continuation
-        || cmd.raw.contains('$') // env var reference
+        || cmd.raw.contains('$')
+    // env var reference
     {
         return Plan::Skip("shell pipe/redirect/chain/continuation not emulated".into());
     }
@@ -297,7 +316,11 @@ fn plan(cmd: &DocCommand, fixture: Option<&Path>) -> Plan {
     }
     // Glob-bearing path args (e.g. `**/*.go`, `*.go`) are shell-expanded by a
     // real shell; we do not expand them.
-    if cmd.tokens.iter().any(|t| t.contains('*') && !t.starts_with("-a") && !t.contains('/')) {
+    if cmd
+        .tokens
+        .iter()
+        .any(|t| t.contains('*') && !t.starts_with("-a") && !t.contains('/'))
+    {
         // Allow analyzer globs like `static/*`; only skip bare file globs.
         if cmd.tokens.iter().any(|t| {
             t.contains('*') && !t.contains("static/") && !t.contains("history/") && *t != "*"
@@ -323,9 +346,11 @@ fn plan(cmd: &DocCommand, fixture: Option<&Path>) -> Plan {
     }
 
     match (bin, sub) {
-        ("codefang", "version") | ("uast", "version") => {
-            Plan::Run { bin, args: rest.to_vec(), tmp_file: None }
-        }
+        ("codefang", "version") | ("uast", "version") => Plan::Run {
+            bin,
+            args: rest.to_vec(),
+            tmp_file: None,
+        },
         ("codefang", "run") => plan_run(rest, fixture),
         ("uast", "parse") => plan_parse(&rest[1..]),
         _ => Plan::Skip(format!("unsupported subcommand `{bin} {sub}`")),
@@ -352,7 +377,11 @@ fn plan_run(rest: &[String], fixture: Option<&Path>) -> Plan {
     }
     if is_list {
         // No repo needed.
-        return Plan::Run { bin: "codefang", args, tmp_file: None };
+        return Plan::Run {
+            bin: "codefang",
+            args,
+            tmp_file: None,
+        };
     }
     if !replaced_path {
         // No explicit repo arg — point at the fixture.
@@ -378,7 +407,11 @@ fn plan_run(rest: &[String], fixture: Option<&Path>) -> Plan {
         args.push("--limit".into());
         args.push("30".into());
     }
-    Plan::Run { bin: "codefang", args, tmp_file: None }
+    Plan::Run {
+        bin: "codefang",
+        args,
+        tmp_file: None,
+    }
 }
 
 /// `uast parse <file>`: materialize a temp source file matching the extension.
@@ -387,9 +420,10 @@ fn plan_parse(args_after_parse: &[String]) -> Plan {
     let rest = args_after_parse;
     // stdin (`-`), whole-tree (`--all`), or a forced language (`-l`/--language)
     // are not safely reproducible with a synthetic temp file; skip them.
-    if rest.iter().any(|t| {
-        t == "-" || t == "--all" || t == "-l" || t == "--language" || t == "--lang"
-    }) {
+    if rest
+        .iter()
+        .any(|t| t == "-" || t == "--all" || t == "-l" || t == "--language" || t == "--lang")
+    {
         return Plan::Skip("uast parse stdin/--all/forced-language not emulated".into());
     }
     // Output to a file (`-o`) is fine to skip — it writes nowhere useful here.
@@ -419,7 +453,11 @@ fn plan_parse(args_after_parse: &[String]) -> Plan {
             args.push(t.clone());
         }
     }
-    Plan::Run { bin: "uast", args, tmp_file: Some(tmp) }
+    Plan::Run {
+        bin: "uast",
+        args,
+        tmp_file: Some(tmp),
+    }
 }
 
 fn sample_source(ext: &str) -> (&'static str, &'static str) {
@@ -439,7 +477,8 @@ fn is_path_placeholder(t: &str) -> bool {
 }
 
 fn has_flag(args: &[String], flag: &str) -> bool {
-    args.iter().any(|a| a == flag || a.starts_with(&format!("{flag}=")))
+    args.iter()
+        .any(|a| a == flag || a.starts_with(&format!("{flag}=")))
 }
 
 fn ensure_flag(args: &mut Vec<String>, flag: &str) {
@@ -473,7 +512,11 @@ fn markdown_examples_run() {
     let uast = ensure_built("uast").expect("uast binary should build");
 
     let mut files = doc_files(&root);
-    assert!(!files.is_empty(), "no markdown docs found under {}", root.display());
+    assert!(
+        !files.is_empty(),
+        "no markdown docs found under {}",
+        root.display()
+    );
     files.sort();
 
     let mut all: Vec<DocCommand> = Vec::new();
@@ -495,7 +538,11 @@ fn markdown_examples_run() {
             Plan::Skip(reason) => {
                 *skipped.entry(reason).or_default() += 1;
             }
-            Plan::Run { bin, args, tmp_file } => {
+            Plan::Run {
+                bin,
+                args,
+                tmp_file,
+            } => {
                 let exe = if bin == "uast" { &uast } else { &codefang };
                 let output = Command::new(exe)
                     .args(&args)
@@ -537,14 +584,20 @@ fn markdown_examples_run() {
                         ));
                     }
                     Err(e) => {
-                        failures.push(format!("[{}] spawn failed for `{}`: {e}", cmd.source, cmd.raw));
+                        failures.push(format!(
+                            "[{}] spawn failed for `{}`: {e}",
+                            cmd.source, cmd.raw
+                        ));
                     }
                 }
             }
         }
     }
 
-    eprintln!("doc-examples: extracted {} command(s), ran {ran}", all.len());
+    eprintln!(
+        "doc-examples: extracted {} command(s), ran {ran}",
+        all.len()
+    );
     for (reason, n) in &skipped {
         eprintln!("doc-examples: skipped {n} ({reason})");
     }
@@ -553,5 +606,9 @@ fn markdown_examples_run() {
         ran > 0,
         "no doc commands were actually executed (fixture missing? set CODEFANG_DOC_FIXTURE)"
     );
-    assert!(failures.is_empty(), "doc example(s) failed:\n{}", failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "doc example(s) failed:\n{}",
+        failures.join("\n")
+    );
 }

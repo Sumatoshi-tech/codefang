@@ -28,9 +28,11 @@ pub struct Tc {
 
 impl Tc {
     /// Creates an empty TC.
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
-        Self { data: Report::new_map() }
+        Self {
+            data: Report::new_map(),
+        }
     }
 }
 
@@ -91,11 +93,7 @@ pub trait StaticAnalyzer: FormattableAnalyzer {
 /// Contract for analyzers operating on raw file content.
 pub trait RawFileAnalyzer: FormattableAnalyzer {
     /// Analyzes raw file bytes.
-    fn analyze_file_content(
-        &self,
-        path: &str,
-        content: &[u8],
-    ) -> Result<Report, AnalyzeError>;
+    fn analyze_file_content(&self, path: &str, content: &[u8]) -> Result<Report, AnalyzeError>;
 }
 
 /// Contract for analyzers operating over commit history.

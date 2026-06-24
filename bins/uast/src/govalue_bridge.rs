@@ -66,7 +66,10 @@ pub fn node_to_value(node: &Node) -> GoValue {
             ("end_col".to_string(), GoValue::Uint(pos.end_col)),
             ("end_offset".to_string(), GoValue::Uint(pos.end_offset)),
         ];
-        entries.push(("pos".to_string(), GoValue::object(GoMap::from_map(pos_entries))));
+        entries.push((
+            "pos".to_string(),
+            GoValue::object(GoMap::from_map(pos_entries)),
+        ));
     }
 
     // props — omitempty (nested map-origin object).
@@ -76,7 +79,10 @@ pub fn node_to_value(node: &Node) -> GoValue {
             .iter()
             .map(|(k, v)| (k.clone(), GoValue::Str(v.clone())))
             .collect();
-        entries.push(("props".to_string(), GoValue::object(GoMap::from_map(prop_entries))));
+        entries.push((
+            "props".to_string(),
+            GoValue::object(GoMap::from_map(prop_entries)),
+        ));
     }
 
     // children — omitempty.
@@ -120,7 +126,10 @@ mod tests {
         let v = node_to_value(&n);
         let s = String::from_utf8(cf_textutil::marshal_json(&v, false).unwrap()).unwrap();
         // pos (always) < roles (always, empty) < token < type.
-        assert_eq!(s, format!("{{{ZERO_POS},\"roles\":[],\"token\":\"x\",\"type\":\"Identifier\"}}\n"));
+        assert_eq!(
+            s,
+            format!("{{{ZERO_POS},\"roles\":[],\"token\":\"x\",\"type\":\"Identifier\"}}\n")
+        );
     }
 
     #[test]
@@ -128,7 +137,10 @@ mod tests {
         let n = Node::with_token("File", "");
         let v = node_to_value(&n);
         let s = String::from_utf8(cf_textutil::marshal_json(&v, false).unwrap()).unwrap();
-        assert_eq!(s, format!("{{{ZERO_POS},\"roles\":[],\"type\":\"File\"}}\n"));
+        assert_eq!(
+            s,
+            format!("{{{ZERO_POS},\"roles\":[],\"type\":\"File\"}}\n")
+        );
     }
 
     #[test]

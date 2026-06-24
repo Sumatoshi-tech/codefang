@@ -265,10 +265,7 @@ mod tests {
                 lines_added: 5000,
                 lines_removed: 50,
                 net_churn: 4950,
-                languages: BTreeMap::from([
-                    ("Go".to_string(), 1),
-                    ("Python".to_string(), 1),
-                ]),
+                languages: BTreeMap::from([("Go".to_string(), 1), ("Python".to_string(), 1)]),
                 ..Default::default()
             },
         );
