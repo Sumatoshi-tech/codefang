@@ -1,4 +1,7 @@
-vendor
+# Root-anchored: this was the Go module's top-level vendor/ dir. Anchoring keeps
+# it from swallowing crates/cf-uast/vendor/, whose tree-sitter grammar sources
+# are compiled into the build and must be tracked.
+/vendor
 cmd/codefang/plugin_template_source.go
 coverage.txt
 build/bin/codefang
@@ -42,11 +45,14 @@ _testmain.go
 *.tsv.gz
 *.rawast.json
 
-# Vendored enry data is embedded at compile time via include_str!, so it must
-# be tracked despite the blanket *.tsv rule above.
+# Vendored/fixture data tables live under *.tsv but are consumed by the build
+# (include_str!/build.rs) and tests, so they must be tracked despite the blanket
+# *.tsv rule above.
 !crates/cf-langpath/data/enry-v2.1.0.tsv
 !crates/cf-langpath/data/enry-frequencies-v2.1.0.tsv
 !crates/cf-langpath/data/enry-interpreters-v2.1.0.tsv
+!crates/cf-sentiment-lexicons/data/**
+!crates/cf-gojson/tests/oracle_data/**
 
 **/__pycache__
 debug*
@@ -102,3 +108,9 @@ Cargo.lock.orig
 
 # Compat harness run artifacts (regenerated; not source)
 tests/compat/results/
+
+# Vendored tree-sitter grammars are compiled into cf-uast and must be tracked in
+# full (parser.c/scanner.c, headers, queries, grammar.json). This scoped
+# negation overrides the stale Go-era rules above (e.g. *.[568vq], *.a) that
+# would otherwise drop build-critical files from the vendor tree.
+!crates/cf-uast/vendor/**
