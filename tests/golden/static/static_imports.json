@@ -1,0 +1,66 @@
+{
+  "overall_score_label": "Info",
+  "sections": [
+    {
+      "title": "IMPORTS",
+      "score_label": "Info",
+      "status": "Found 7 unique imports",
+      "metrics": [
+        {
+          "label": "Unique Imports",
+          "value": "7"
+        },
+        {
+          "label": "Total Files",
+          "value": "10"
+        }
+      ],
+      "issues": [
+        {
+          "name": "reflect",
+          "location": "",
+          "value": "2",
+          "severity": "info"
+        },
+        {
+          "name": "testing",
+          "location": "",
+          "value": "2",
+          "severity": "info"
+        },
+        {
+          "name": "cmp",
+          "location": "",
+          "value": "1",
+          "severity": "info"
+        },
+        {
+          "name": "slices",
+          "location": "",
+          "value": "1",
+          "severity": "info"
+        },
+        {
+          "name": "k8s.io/apimachinery/pkg/util/sets",
+          "location": "",
+          "value": "1",
+          "severity": "info"
+        },
+        {
+          "name": "fmt",
+          "location": "",
+          "value": "1",
+          "severity": "info"
+        },
+        {
+          "name": "math/rand",
+          "location": "",
+          "value": "1",
+          "severity": "info"
+        }
+      ],
+      "score": -1
+    }
+  ],
+  "overall_score": -1
+}

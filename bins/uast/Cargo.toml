@@ -1,0 +1,43 @@
+[package]
+name = "uast"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "uast"
+path = "src/main.rs"
+
+[dependencies]
+# CLI surface (builder API) — mirrors cobra verbatim (DESIGN §4.2).
+clap = { workspace = true }
+# Shell-completion generation (`uast completion <shell>`).
+clap_complete = "4"
+
+# UAST parser facade + node tree (the `uast` binary's core).
+cf-uast = { path = "../../crates/cf-uast" }
+cf-uast-node = { path = "../../crates/cf-uast-node" }
+# Mapping DSL / grammar analysis (`uast mapping`).
+cf-uast-mapping = { path = "../../crates/cf-uast-mapping" }
+# Embedded UAST JSON Schema (`uast validate` default schema).
+cf-uast-spec = { path = "../../crates/cf-uast-spec" }
+
+# Report serialization MUST route through the shared go-compat path (DESIGN
+# rule 1): cf-textutil::write_json wraps the cf-gojson encoder. Never serde_json
+# for OUTPUT.
+cf-textutil = { path = "../../crates/cf-textutil" }
+# Build/version metadata (`uast version`).
+cf-version = { path = "../../crates/cf-version" }
+# Safe file reading + terminal sanitization for user-supplied paths/strings.
+cf-iosafety = { path = "../../crates/cf-iosafety" }
+
+# INPUT decoding only (UAST JSON files/stdin, node-types.json, validate input).
+# DESIGN §2 permits serde_json for input, never output.
+serde_json = { workspace = true }
+
+# JSON-Schema validation engine for `uast validate` (replaces Go
+# xeipuuv/gojsonschema). Exit codes 0/1/2 are driven from its results.
+jsonschema = "0.18"

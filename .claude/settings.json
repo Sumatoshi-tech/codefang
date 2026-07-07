@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": ".claude/hooks/no-stub-markers.sh" },
+          { "type": "command", "command": ".claude/hooks/no-estimates.sh" },
+          { "type": "command", "command": ".claude/hooks/evidence-for-checkbox.sh" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": ".claude/hooks/track-gates.sh" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": ".claude/hooks/finish-the-work.sh" }
+        ]
+      }
+    ]
+  }
+}

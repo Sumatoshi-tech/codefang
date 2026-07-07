@@ -1,0 +1,79 @@
+# Codefang Rust rewrite — virtual workspace.
+#
+# Single virtual workspace (no root package). One crate per Go package under
+# crates/cf-*; the two binaries live under bins/. See specs/rust-rewrite/DESIGN.md
+# §1 for the full crate-per-module layout and port order.
+#
+# Tier-0 keystones cf-gojson / cf-goyaml are the ONLY Go-byte-compatible
+# serialization encoders; nothing in report output may use serde_json/serde_yaml.
+[workspace]
+resolver = "2"
+members = [
+    "crates/*",
+    "bins/*",
+    "tests/golden-harness",
+    "tests/doc-examples",
+]
+# crates/analyzers is a nesting directory (it holds sub-crates), not a leaf crate
+# with its own Cargo.toml, so the crates/* glob must not treat it as a member.
+exclude = [
+    "crates/analyzers",
+]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.80"
+license = "Apache-2.0"
+repository = "https://github.com/Sumatoshi-tech/codefang"
+publish = false
+
+# Shared dependency versions pinned once for the whole workspace so every crate
+# resolves to identical builds (important for byte-identity).
+[workspace.dependencies]
+# CLI — clap builder API (NOT derive) so command/flag declaration order, help
+# text, and error strings can be matched to cobra verbatim. See DESIGN §4.
+clap = { version = "4", default-features = false, features = ["std", "help", "usage", "error-context", "suggestions"] }
+
+# git — KEEP libgit2. git2 with vendored-libgit2 pins libgit2 to match git2go's
+# diff/blob/hash semantics (third_party/libgit2 submodule is the pin source).
+# Per-thread !Send/!Sync Repository, RAII Drop replaces Free(). See DESIGN §3.
+git2 = { version = "0.19", default-features = false, features = ["vendored-libgit2"] }
+
+# tree-sitter — node positions/types flow into machine output, so grammars are
+# pinned. Per-language grammar crates are added behind features in cf-uast.
+tree-sitter = "0.22"
+
+# cc — compiles the vendored go-sitter-forest grammar C sources (parser.c) into
+# cf-uast at build time, so the Rust parse tree is byte-identical to the Go
+# build's grammar revision. Build-dependency only; never linked at runtime as a
+# library API.
+cc = "1"
+
+# Harness / build-script only — NEVER used for machine report output.
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+
+# Test-only — temp dirs/files for the cf-iosafety port's dev-dependency tests.
+# Never a runtime dependency of any library.
+tempfile = "3"
+
+# Data-parallelism for pipeline stages (used by cf-framework). Registered here so
+# `rayon = { workspace = true }` members resolve to one pinned version.
+rayon = "1"
+
+# OS signal handling — idiomatic Rust equivalent of Go's os/signal.Notify.
+# Used by cf-sigutil to register SIGINT/SIGTERM handlers.
+signal-hook = "0.3"
+
+# Internal crates referenced via `{ workspace = true }` by dependent crates.
+# Registered here so path/version resolve once for the whole workspace.
+cf-gojson = { path = "crates/cf-gojson" }
+cf-goyaml = { path = "crates/cf-goyaml" }
+cf-gosort = { path = "crates/cf-gosort" }
+cf-safeconv = { path = "crates/cf-safeconv" }
+
+[profile.release]
+overflow-checks = true
+debug = false

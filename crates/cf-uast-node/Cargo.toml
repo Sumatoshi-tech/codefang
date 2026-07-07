@@ -1,0 +1,23 @@
+[package]
+name = "cf-uast-node"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+# The canonical UAST node / tree representation. The keystone export is
+# `Node::to_map`, whose key ordering is part of the report-format contract
+# (DESIGN.md §2.2: Node.ToMap is the canonical map-origin object; pinned by
+# tests/compat). All `to_map` serialization is built on the shared
+# `cf-gojson` crate (the tier-0 report-format JSON encoder). Nothing here uses
+# serde_json for the serialization path.
+
+[dependencies]
+# Report-format JSON value model + encoder (DESIGN.md §2.2 keystone).
+cf-gojson = { path = "../cf-gojson" }
+# Content-based stable IDs (SHA-1 prefix of node content).
+sha1 = "0.10"
+# Ergonomic error derives for the DSL parse/lower/find error types.
+thiserror = "1"

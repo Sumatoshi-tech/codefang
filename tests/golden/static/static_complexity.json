@@ -1,0 +1,908 @@
+{
+  "overall_score_label": "8/10",
+  "sections": [
+    {
+      "title": "COMPLEXITY",
+      "score_label": "8/10",
+      "status": "Good complexity - functions have reasonable complexity",
+      "metrics": [
+        {
+          "label": "Total Functions",
+          "value": "141"
+        },
+        {
+          "label": "Avg Complexity",
+          "value": "2.0"
+        },
+        {
+          "label": "Max Complexity",
+          "value": "17"
+        },
+        {
+          "label": "Total Complexity",
+          "value": "281"
+        },
+        {
+          "label": "Cognitive Total",
+          "value": "19"
+        },
+        {
+          "label": "Decision Points",
+          "value": "140"
+        }
+      ],
+      "distribution": [
+        {
+          "label": "Simple (1-5)",
+          "percent": 0.9290780141843972,
+          "count": 131
+        },
+        {
+          "label": "Moderate (6-10)",
+          "percent": 0.06382978723404255,
+          "count": 9
+        },
+        {
+          "label": "Complex (11-20)",
+          "percent": 0.0070921985815602835,
+          "count": 1
+        },
+        {
+          "label": "Very Complex (\u003e20)",
+          "percent": 0,
+          "count": 0
+        }
+      ],
+      "issues": [
+        {
+          "name": "BenchmarkStringSet",
+          "location": "set_test.go",
+          "value": "CC=17 | Cog=52 | Nest=3",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSet",
+          "location": "set_generic_test.go",
+          "value": "CC=10 | Cog=9 | Nest=1",
+          "severity": "fair"
+        },
+        {
+          "name": "TestSetEquals",
+          "location": "set_generic_test.go",
+          "value": "CC=10 | Cog=9 | Nest=1",
+          "severity": "fair"
+        },
+        {
+          "name": "TestStringSet",
+          "location": "set_test.go",
+          "value": "CC=10 | Cog=9 | Nest=1",
+          "severity": "fair"
+        },
+        {
+          "name": "TestStringSetEquals",
+          "location": "set_test.go",
+          "value": "CC=10 | Cog=9 | Nest=1",
+          "severity": "fair"
+        },
+        {
+          "name": "TestSetDeleteMultiples",
+          "location": "set_generic_test.go",
+          "value": "CC=6 | Cog=5 | Nest=1",
+          "severity": "fair"
+        },
+        {
+          "name": "TestSetDifference",
+          "location": "set_generic_test.go",
+          "value": "CC=6 | Cog=5 | Nest=1",
+          "severity": "fair"
+        },
+        {
+          "name": "TestStringSetDeleteMultiples",
+          "location": "set_test.go",
+          "value": "CC=6 | Cog=5 | Nest=1",
+          "severity": "fair"
+        },
+        {
+          "name": "TestStringSetDifference",
+          "location": "set_test.go",
+          "value": "CC=6 | Cog=5 | Nest=1",
+          "severity": "fair"
+        },
+        {
+          "name": "TestNewEmptySet",
+          "location": "set_generic_test.go",
+          "value": "CC=6 | Cog=4 | Nest=1",
+          "severity": "fair"
+        },
+        {
+          "name": "TestNewSet",
+          "location": "set_generic_test.go",
+          "value": "CC=5 | Cog=3 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "TestNewStringSet",
+          "location": "set_test.go",
+          "value": "CC=5 | Cog=3 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "Intersection",
+          "location": "set.go",
+          "value": "CC=4 | Cog=5 | Nest=2",
+          "severity": "good"
+        },
+        {
+          "name": "TestIntersection",
+          "location": "set_generic_test.go",
+          "value": "CC=4 | Cog=5 | Nest=2",
+          "severity": "good"
+        },
+        {
+          "name": "TestStringIntersection",
+          "location": "set_test.go",
+          "value": "CC=4 | Cog=5 | Nest=2",
+          "severity": "good"
+        },
+        {
+          "name": "TestStringUnion",
+          "location": "set_test.go",
+          "value": "CC=4 | Cog=5 | Nest=2",
+          "severity": "good"
+        },
+        {
+          "name": "TestUnion",
+          "location": "set_generic_test.go",
+          "value": "CC=4 | Cog=5 | Nest=2",
+          "severity": "good"
+        },
+        {
+          "name": "makeString",
+          "location": "set_test.go",
+          "value": "CC=4 | Cog=4 | Nest=2",
+          "severity": "good"
+        },
+        {
+          "name": "TestSetClearInSeparateFunction",
+          "location": "set_generic_test.go",
+          "value": "CC=4 | Cog=3 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "TestSetClearWithSharedReference",
+          "location": "set_generic_test.go",
+          "value": "CC=4 | Cog=3 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "Difference",
+          "location": "set.go",
+          "value": "CC=3 | Cog=3 | Nest=2",
+          "severity": "good"
+        },
+        {
+          "name": "HasAll",
+          "location": "set.go",
+          "value": "CC=3 | Cog=3 | Nest=2",
+          "severity": "good"
+        },
+        {
+          "name": "HasAny",
+          "location": "set.go",
+          "value": "CC=3 | Cog=3 | Nest=2",
+          "severity": "good"
+        },
+        {
+          "name": "IsSuperset",
+          "location": "set.go",
+          "value": "CC=3 | Cog=3 | Nest=2",
+          "severity": "good"
+        },
+        {
+          "name": "BenchmarkListLarge",
+          "location": "set_generic_test.go",
+          "value": "CC=3 | Cog=2 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "TestSetClear",
+          "location": "set_generic_test.go",
+          "value": "CC=3 | Cog=2 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "TestSetHasAny",
+          "location": "set_generic_test.go",
+          "value": "CC=3 | Cog=2 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "TestSetSymmetricDifference",
+          "location": "set_generic_test.go",
+          "value": "CC=3 | Cog=2 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "TestStringSetHasAny",
+          "location": "set_test.go",
+          "value": "CC=3 | Cog=2 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "TestStringSetSymmetricDifference",
+          "location": "set_test.go",
+          "value": "CC=3 | Cog=2 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "BenchmarkListSmall",
+          "location": "set_generic_test.go",
+          "value": "CC=2 | Cog=1 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "Clone",
+          "location": "set.go",
+          "value": "CC=2 | Cog=1 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "Delete",
+          "location": "set.go",
+          "value": "CC=2 | Cog=1 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "Insert",
+          "location": "set.go",
+          "value": "CC=2 | Cog=1 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "KeySet",
+          "location": "set.go",
+          "value": "CC=2 | Cog=1 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "PopAny",
+          "location": "set.go",
+          "value": "CC=2 | Cog=1 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "TestKeySet",
+          "location": "set_generic_test.go",
+          "value": "CC=2 | Cog=1 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "TestSortedList",
+          "location": "set_generic_test.go",
+          "value": "CC=2 | Cog=1 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "TestStringSetList",
+          "location": "set_test.go",
+          "value": "CC=2 | Cog=1 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "Union",
+          "location": "set.go",
+          "value": "CC=2 | Cog=1 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "UnsortedList",
+          "location": "set.go",
+          "value": "CC=2 | Cog=1 | Nest=1",
+          "severity": "good"
+        },
+        {
+          "name": "List",
+          "location": "int32.go",
+          "value": "CC=1 | Cog=1 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "List",
+          "location": "int.go",
+          "value": "CC=1 | Cog=1 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "List",
+          "location": "string.go",
+          "value": "CC=1 | Cog=1 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "List",
+          "location": "int64.go",
+          "value": "CC=1 | Cog=1 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "List",
+          "location": "byte.go",
+          "value": "CC=1 | Cog=1 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "ByteKeySet",
+          "location": "byte.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Clear",
+          "location": "set.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Clone",
+          "location": "int32.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Clone",
+          "location": "string.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Clone",
+          "location": "byte.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Clone",
+          "location": "int64.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Clone",
+          "location": "int.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Delete",
+          "location": "byte.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Delete",
+          "location": "int32.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Delete",
+          "location": "string.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Delete",
+          "location": "int.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Delete",
+          "location": "int64.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Difference",
+          "location": "byte.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Difference",
+          "location": "string.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Difference",
+          "location": "int64.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Difference",
+          "location": "int32.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Difference",
+          "location": "int.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Equal",
+          "location": "int64.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Equal",
+          "location": "byte.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Equal",
+          "location": "set.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Equal",
+          "location": "int.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Equal",
+          "location": "string.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Equal",
+          "location": "int32.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Has",
+          "location": "set.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Has",
+          "location": "int.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Has",
+          "location": "int32.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Has",
+          "location": "byte.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Has",
+          "location": "int64.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Has",
+          "location": "string.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAll",
+          "location": "int64.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAll",
+          "location": "int.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAll",
+          "location": "string.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAll",
+          "location": "byte.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAll",
+          "location": "int32.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAny",
+          "location": "int32.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAny",
+          "location": "byte.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAny",
+          "location": "string.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAny",
+          "location": "int64.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAny",
+          "location": "int.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Insert",
+          "location": "set.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Insert",
+          "location": "int64.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Insert",
+          "location": "int.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Insert",
+          "location": "byte.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Insert",
+          "location": "int32.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Insert",
+          "location": "string.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Int32KeySet",
+          "location": "int32.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Int64KeySet",
+          "location": "int64.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "IntKeySet",
+          "location": "int.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Intersection",
+          "location": "int64.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Intersection",
+          "location": "byte.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Intersection",
+          "location": "int.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Intersection",
+          "location": "string.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Intersection",
+          "location": "int32.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "IsSuperset",
+          "location": "int32.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "IsSuperset",
+          "location": "byte.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "IsSuperset",
+          "location": "string.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "IsSuperset",
+          "location": "int.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "IsSuperset",
+          "location": "int64.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Len",
+          "location": "int32.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Len",
+          "location": "int.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Len",
+          "location": "string.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Len",
+          "location": "int64.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Len",
+          "location": "set.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Len",
+          "location": "byte.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "List",
+          "location": "set.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "New",
+          "location": "set.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "NewByte",
+          "location": "byte.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "NewInt",
+          "location": "int.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "NewInt32",
+          "location": "int32.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "NewInt64",
+          "location": "int64.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "NewString",
+          "location": "string.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "PopAny",
+          "location": "int32.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "PopAny",
+          "location": "int64.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "PopAny",
+          "location": "int.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "PopAny",
+          "location": "string.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "PopAny",
+          "location": "byte.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "StringKeySet",
+          "location": "string.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "SymmetricDifference",
+          "location": "set.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "SymmetricDifference",
+          "location": "byte.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "SymmetricDifference",
+          "location": "string.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "SymmetricDifference",
+          "location": "int64.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "SymmetricDifference",
+          "location": "int.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "SymmetricDifference",
+          "location": "int32.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Union",
+          "location": "int.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Union",
+          "location": "int64.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Union",
+          "location": "int32.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Union",
+          "location": "byte.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "Union",
+          "location": "string.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "UnsortedList",
+          "location": "int64.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "UnsortedList",
+          "location": "int32.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "UnsortedList",
+          "location": "int.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "UnsortedList",
+          "location": "byte.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "UnsortedList",
+          "location": "string.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "cast",
+          "location": "set.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        },
+        {
+          "name": "clearSetAndAdd",
+          "location": "set_generic_test.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        }
+      ],
+      "score": 0.8
+    }
+  ],
+  "overall_score": 0.8
+}

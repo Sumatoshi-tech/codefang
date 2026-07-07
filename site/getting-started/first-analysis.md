@@ -97,16 +97,16 @@ codefang run -a static/complexity --format text .
     ===============================
 
     static/complexity:
-      internal/framework/runner.go
-        Function RunPipeline            -- Cyclomatic: 12  Cognitive: 8
-        Function buildPipeline          -- Cyclomatic: 7   Cognitive: 5
-        Function initWorkers            -- Cyclomatic: 4   Cognitive: 3
-      cmd/codefang/commands/run.go
+      crates/cf-framework/src/runner.rs
+        Function run_pipeline           -- Cyclomatic: 12  Cognitive: 8
+        Function build_pipeline         -- Cyclomatic: 7   Cognitive: 5
+        Function init_workers           -- Cyclomatic: 4   Cognitive: 3
+      crates/cf-commands/src/run.rs
         Function run                    -- Cyclomatic: 9   Cognitive: 7
-        Function runDirect              -- Cyclomatic: 6   Cognitive: 4
-      pkg/uast/parser.go
-        Function Parse                  -- Cyclomatic: 6   Cognitive: 5
-        Function detectLanguage         -- Cyclomatic: 5   Cognitive: 3
+        Function run_direct             -- Cyclomatic: 6   Cognitive: 4
+      crates/cf-uast/src/parser.rs
+        Function parse                  -- Cyclomatic: 6   Cognitive: 5
+        Function detect_language        -- Cyclomatic: 5   Cognitive: 3
     ```
 
 **How to interpret:** Functions with cyclomatic complexity above 10 are

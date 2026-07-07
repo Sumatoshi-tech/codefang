@@ -1,0 +1,11 @@
+[package]
+name = "cf-alg-mapx"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Generic map and slice helpers (clone, additive merge, deterministic sorted_keys, sort-and-limit, lookup-set, unique)."
+
+[dependencies]

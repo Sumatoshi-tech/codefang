@@ -1,0 +1,19 @@
+[package]
+name = "cf-burndown-core"
+description = "Burndown matrix core data model: line-survival treaps used by the burndown analyzer."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# No runtime dependencies: this is a pure data-model/algorithm crate that
+# performs no report serialization. Machine-format report bytes must always be
+# produced by the shared cf-gojson/cf-goyaml crates, so the downstream burndown
+# analyzer routes Segment data through those and this crate stays
+# serialization-free. The interval tree used for range queries is a local,
+# u32-specialized implementation (src/interval.rs); see its module docs.
+[dependencies]
+
+[dev-dependencies]

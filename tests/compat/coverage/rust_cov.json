@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "scope": "representative-analyzers(cf-gojson,cf-goyaml,cf-complexity,cf-halstead,cf-comments,cf-imports,cf-composition,cf-cohesion,cf-clones,cf-devs,cf-burndown-core,cf-couples,cf-shotness)",
+  "scope_kind": "subset",
+  "branch_coverage_available": false,
+  "elapsed_s": 2.7,
+  "totals": {
+    "lines": {
+      "covered": 11411,
+      "count": 15662,
+      "percent": 72.85787255778317
+    },
+    "regions": {
+      "covered": 19963,
+      "count": 27203,
+      "percent": 73.38528838731023
+    },
+    "functions": {
+      "covered": 1365,
+      "count": 1800,
+      "percent": 75.83333333333333
+    },
+    "branches": {
+      "covered": null,
+      "count": null,
+      "percent": null,
+      "unavailable": "cargo-llvm-cov --branch is nightly-only; region coverage is the stable branch-reach proxy. Branch number NOT fabricated."
+    }
+  },
+  "note": "Coverage measures REACH, not correctness. Reported alongside the differential verdict per SPEC \u00a76, never as a substitute."
+}

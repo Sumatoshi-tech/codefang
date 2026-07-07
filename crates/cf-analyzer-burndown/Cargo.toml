@@ -1,0 +1,15 @@
+[package]
+name = "cf-analyzer-burndown"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Report serialization routes exclusively through cf-gojson (JSON/bin) and
+# cf-goyaml (YAML); the burndown ComputedMetrics output bytes are pinned
+# against the reference binary by tests/compat.
+cf-gojson = { path = "../cf-gojson" }
+cf-goyaml = { path = "../cf-goyaml" }

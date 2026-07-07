@@ -1,0 +1,10 @@
+error[E0599]: no variant or associated item named `Assigment` found for enum `UastType` in the current scope
+ --> tests/ui/fail_bad_vocab.rs:9:19
+  |
+9 |             type: Assigment,
+  |                   ^^^^^^^^^ variant or associated item not found in `UastType`
+  |
+help: there is a variant with a similar name
+  |
+9 |             type: Assignment,
+  |                        +

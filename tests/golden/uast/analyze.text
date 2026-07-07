@@ -1,0 +1,40 @@
+File: /home/dmitriy/sources/kubernetes/staging/src/k8s.io/apimachinery/pkg/util/sets/byte.go
+  Tree shape:
+    Total nodes:    493
+    Leaf nodes:     235 (48%)
+    Max depth:      11
+    Avg depth:      4.6
+    Max children:   67
+    Avg branching:  1.9
+  Coverage:
+    Role coverage:  81%
+    Pos coverage:   100%
+    Synthetic:      20
+    Type diversity: 13
+  Node types:
+    Identifier           180
+    List                 72
+    Parameter            68
+    Call                 48
+    Comment              47
+    Synthetic            20
+    Block                18
+    Return               18
+    Method               16
+    Slice                2
+    Function             2
+    Package              1
+    File                 1
+  Roles:
+    Name                 180
+    Parameter            68
+    Type                 54
+    Call                 48
+    Comment              47
+    Body                 18
+    Return               18
+    Function             18
+    Declaration          18
+    Member               16
+    Module               1
+

@@ -1,0 +1,35 @@
+[package]
+name = "cf-analyzers-plumbing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Analyzer-level git/UAST data providers (TreeDiff, FileDiff, BlobCache, TicksSinceStart, IdentityDetector, LanguagesDetection, UASTChanges)."
+
+[dependencies]
+# libgit2 bindings (the dependency mapping in DESIGN §3 mandates keeping
+# libgit2). Pinned once in the workspace with the vendored-libgit2 feature.
+# Used only by the optional libgit2-backed BlobSource/TreeSource adapters.
+git2 = { workspace = true }
+
+# Ergonomic error derives for the local AnalyzerError taxonomy. thiserror is
+# widely used by sibling crates (cf-uast-node, cf-pathpolicy); it is not in
+# [workspace.dependencies], so it is pinned locally.
+thiserror = "1"
+
+[dev-dependencies]
+# Temp files for the IdentityDetector LoadPeopleDict test. Already present in the
+# workspace lockfile (used by cf-checkpoint/cf-streaming dev-deps).
+tempfile = "3"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+# NOTE: the byte-identity-critical line-diff engine (diff-match-patch line
+# mode) and the enry-parity language classifier are expressed as the local
+# `LineDiffer` / `EnryClassifier` traits and injected. The byte-faithful
+# implementations are `cf-godiff` (diff engine; output pinned by the
+# differential gate) and the enry-data tables that cf-pathfilter/cf-langpath
+# vendor (DESIGN §2.6).

@@ -1,0 +1,29 @@
+# cf-alg-hll — HyperLogLog cardinality estimator with LogLog-Beta bias
+# correction (Qin et al. 2016). Used by the couples and devs analyzers to count
+# distinct items (developers, files, tokens) in fixed memory.
+#
+# This crate is INTERNAL numeric behavior: per DESIGN.md §2.6 ("Sketch/hash
+# determinism") its estimates are a frozen contract because they appear in
+# MACHINE-format reports pinned by the differential gate (tests/compat).
+# The hashing kernel is the shared cf-alg-hashutil (FNV-1a -> Mix64), so the
+# same byte input always maps to the same register. This crate emits no report
+# serialization itself, so it does NOT depend on cf-gojson / cf-goyaml. Its
+# marshal_binary/unmarshal_binary state codec ([precision][registers]) is
+# frozen for any cross-boundary persisted state but is not user-visible
+# output.
+[package]
+name = "cf-alg-hll"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "HyperLogLog cardinality estimator (LogLog-Beta). Estimates are bit-stable: they feed machine reports pinned by the differential gate."
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[dependencies]
+cf-alg-hashutil = { path = "../cf-alg-hashutil" }
+thiserror = "1"

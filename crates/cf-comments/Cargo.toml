@@ -1,0 +1,17 @@
+[package]
+name = "cf-comments"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# cf-comments — static comment density / quality analyzer (analyzer id:
+# static/comments; comment-block grouping sorted by line); also consumed by
+# the quality analyzer. Report serialization routes through cf-gojson (the
+# report-contract encoder), never serde_json, per DESIGN §2.
+
+[dependencies]
+cf-gojson = { workspace = true }
+cf-uast-node = { path = "../cf-uast-node" }

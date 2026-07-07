@@ -1,0 +1,246 @@
+{
+  "overall_score_label": "Info",
+  "sections": [
+    {
+      "title": "COMPOSITION",
+      "score_label": "Info",
+      "status": "File composition analysis completed",
+      "metrics": [
+        {
+          "label": "Total Files",
+          "value": "10"
+        },
+        {
+          "label": "Source Files",
+          "value": "10"
+        },
+        {
+          "label": "Source %",
+          "value": "100.0%"
+        }
+      ],
+      "distribution": [
+        {
+          "label": "source",
+          "percent": 1,
+          "count": 10
+        }
+      ],
+      "issues": [],
+      "files": [
+        {
+          "file_path": "int32.go",
+          "score_label": "Info",
+          "status": "No files analyzed",
+          "metrics": [
+            {
+              "label": "Total Files",
+              "value": "0"
+            },
+            {
+              "label": "Source Files",
+              "value": "0"
+            },
+            {
+              "label": "Source %",
+              "value": "0.0%"
+            }
+          ],
+          "issues": [],
+          "score": -1
+        },
+        {
+          "file_path": "int64.go",
+          "score_label": "Info",
+          "status": "No files analyzed",
+          "metrics": [
+            {
+              "label": "Total Files",
+              "value": "0"
+            },
+            {
+              "label": "Source Files",
+              "value": "0"
+            },
+            {
+              "label": "Source %",
+              "value": "0.0%"
+            }
+          ],
+          "issues": [],
+          "score": -1
+        },
+        {
+          "file_path": "set_generic_test.go",
+          "score_label": "Info",
+          "status": "No files analyzed",
+          "metrics": [
+            {
+              "label": "Total Files",
+              "value": "0"
+            },
+            {
+              "label": "Source Files",
+              "value": "0"
+            },
+            {
+              "label": "Source %",
+              "value": "0.0%"
+            }
+          ],
+          "issues": [],
+          "score": -1
+        },
+        {
+          "file_path": "set_test.go",
+          "score_label": "Info",
+          "status": "No files analyzed",
+          "metrics": [
+            {
+              "label": "Total Files",
+              "value": "0"
+            },
+            {
+              "label": "Source Files",
+              "value": "0"
+            },
+            {
+              "label": "Source %",
+              "value": "0.0%"
+            }
+          ],
+          "issues": [],
+          "score": -1
+        },
+        {
+          "file_path": "string.go",
+          "score_label": "Info",
+          "status": "No files analyzed",
+          "metrics": [
+            {
+              "label": "Total Files",
+              "value": "0"
+            },
+            {
+              "label": "Source Files",
+              "value": "0"
+            },
+            {
+              "label": "Source %",
+              "value": "0.0%"
+            }
+          ],
+          "issues": [],
+          "score": -1
+        },
+        {
+          "file_path": "byte.go",
+          "score_label": "Info",
+          "status": "No files analyzed",
+          "metrics": [
+            {
+              "label": "Total Files",
+              "value": "0"
+            },
+            {
+              "label": "Source Files",
+              "value": "0"
+            },
+            {
+              "label": "Source %",
+              "value": "0.0%"
+            }
+          ],
+          "issues": [],
+          "score": -1
+        },
+        {
+          "file_path": "doc.go",
+          "score_label": "Info",
+          "status": "No files analyzed",
+          "metrics": [
+            {
+              "label": "Total Files",
+              "value": "0"
+            },
+            {
+              "label": "Source Files",
+              "value": "0"
+            },
+            {
+              "label": "Source %",
+              "value": "0.0%"
+            }
+          ],
+          "issues": [],
+          "score": -1
+        },
+        {
+          "file_path": "empty.go",
+          "score_label": "Info",
+          "status": "No files analyzed",
+          "metrics": [
+            {
+              "label": "Total Files",
+              "value": "0"
+            },
+            {
+              "label": "Source Files",
+              "value": "0"
+            },
+            {
+              "label": "Source %",
+              "value": "0.0%"
+            }
+          ],
+          "issues": [],
+          "score": -1
+        },
+        {
+          "file_path": "set.go",
+          "score_label": "Info",
+          "status": "No files analyzed",
+          "metrics": [
+            {
+              "label": "Total Files",
+              "value": "0"
+            },
+            {
+              "label": "Source Files",
+              "value": "0"
+            },
+            {
+              "label": "Source %",
+              "value": "0.0%"
+            }
+          ],
+          "issues": [],
+          "score": -1
+        },
+        {
+          "file_path": "int.go",
+          "score_label": "Info",
+          "status": "No files analyzed",
+          "metrics": [
+            {
+              "label": "Total Files",
+              "value": "0"
+            },
+            {
+              "label": "Source Files",
+              "value": "0"
+            },
+            {
+              "label": "Source %",
+              "value": "0.0%"
+            }
+          ],
+          "issues": [],
+          "score": -1
+        }
+      ],
+      "score": -1
+    }
+  ],
+  "overall_score": -1
+}

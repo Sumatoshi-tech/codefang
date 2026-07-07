@@ -1,0 +1,11 @@
+{
+  "reference": "master",
+  "revision": "cf9799600b2ba5e6620fdabddec3b2db8306bc46",
+  "grammarSha": "32c11c152810c79dca42b3f6048a0f28a062297ae943dbfedb6fad2eecceb062",
+  "language": "cmake",
+  "url": "https://github.com/uyha/tree-sitter-cmake",
+  "maintainedBy": "@uyha",
+  "files": [
+    "scanner.c"
+  ]
+}

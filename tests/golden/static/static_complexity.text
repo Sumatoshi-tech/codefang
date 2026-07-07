@@ -1,0 +1,12 @@
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ COMPLEXITY                                                       Score: 8/10 ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  Summary: Good complexity - functions have reasonable complexity
+
+  Key Metrics
+  ────────────────────────────────────────────────────────────────────────────
+  Total Functions     141         Avg Complexity      2.0         
+  Max Complexity      17          Total Complexity    281         
+  Cognitive Total     19          Decision Points     140         

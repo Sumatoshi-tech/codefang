@@ -1,0 +1,26 @@
+[package]
+name = "doc-examples"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# Makes the Markdown docs RUNNABLE. The integration test in tests/doc_examples.rs
+# scans README.md + docs/**/*.md for fenced `console`/`bash`/`sh` blocks that
+# show codefang/uast invocations, rewrites placeholder paths to the hercules
+# fixture, runs each against the freshly built Rust binary, and asserts rc 0.
+#
+# Depending on the two binaries as dev-deps makes `cargo test -p doc-examples`
+# build them first; the test discovers them in target/{release,debug}.
+[dependencies]
+
+[dev-dependencies]
+codefang = { path = "../../bins/codefang" }
+uast = { path = "../../bins/uast" }
+
+# No library or binary target: this crate exists only to host the integration
+# test under tests/. An empty lib keeps cargo happy without shipping code.
+[lib]
+path = "src/lib.rs"

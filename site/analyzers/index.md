@@ -93,25 +93,25 @@ All analyzers support multiple output formats via the `-f` flag:
 === "JSON"
 
     ```bash
-    codefang run -a history/devs -f json .
+    codefang run -a history/devs --format json .
     ```
 
 === "YAML"
 
     ```bash
-    codefang run -a history/devs -f yaml .
+    codefang run -a history/devs --format yaml .
     ```
 
 === "Plot"
 
     ```bash
-    codefang run -a history/burndown -f plot .
+    codefang run -a history/burndown --format plot .
     ```
 
 === "Binary"
 
     ```bash
-    codefang run -a history/burndown -f binary .
+    codefang run -a history/burndown --format binary .
     ```
 
 !!! tip "Combining analyzers"

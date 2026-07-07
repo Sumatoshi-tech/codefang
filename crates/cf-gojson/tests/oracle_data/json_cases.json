@@ -1,0 +1,147 @@
+[
+  {
+    "name": "null",
+    "compact": "null",
+    "indent": "null"
+  },
+  {
+    "name": "bool_true",
+    "compact": "true",
+    "indent": "true"
+  },
+  {
+    "name": "bool_false",
+    "compact": "false",
+    "indent": "false"
+  },
+  {
+    "name": "int",
+    "compact": "42",
+    "indent": "42"
+  },
+  {
+    "name": "int_neg",
+    "compact": "-7",
+    "indent": "-7"
+  },
+  {
+    "name": "int_zero",
+    "compact": "0",
+    "indent": "0"
+  },
+  {
+    "name": "float_int_valued",
+    "compact": "2",
+    "indent": "2"
+  },
+  {
+    "name": "float_frac",
+    "compact": "3.14",
+    "indent": "3.14"
+  },
+  {
+    "name": "float_exp_big",
+    "compact": "1e+21",
+    "indent": "1e+21"
+  },
+  {
+    "name": "float_exp_small",
+    "compact": "0.00001",
+    "indent": "0.00001"
+  },
+  {
+    "name": "string_plain",
+    "compact": "\"hello\"",
+    "indent": "\"hello\""
+  },
+  {
+    "name": "string_html",
+    "compact": "\"a\\u003cb\\u003ec\\u0026d\"",
+    "indent": "\"a\\u003cb\\u003ec\\u0026d\""
+  },
+  {
+    "name": "string_unicode_sep",
+    "compact": "\"x\\u2028y\\u2029z\"",
+    "indent": "\"x\\u2028y\\u2029z\""
+  },
+  {
+    "name": "string_quotes",
+    "compact": "\"she said \\\"hi\\\"\\tand\\nleft\"",
+    "indent": "\"she said \\\"hi\\\"\\tand\\nleft\""
+  },
+  {
+    "name": "string_backslash",
+    "compact": "\"a\\\\b/c\"",
+    "indent": "\"a\\\\b/c\""
+  },
+  {
+    "name": "string_control",
+    "compact": "\"\\u0000\\u0001\\u001f\"",
+    "indent": "\"\\u0000\\u0001\\u001f\""
+  },
+  {
+    "name": "string_emoji",
+    "compact": "\"go🚀rust\"",
+    "indent": "\"go🚀rust\""
+  },
+  {
+    "name": "empty_array",
+    "compact": "[]",
+    "indent": "[]"
+  },
+  {
+    "name": "empty_object",
+    "compact": "{}",
+    "indent": "{}"
+  },
+  {
+    "name": "array_mixed",
+    "compact": "[1,\"two\",3.5,true,null]",
+    "indent": "[\n  1,\n  \"two\",\n  3.5,\n  true,\n  null\n]"
+  },
+  {
+    "name": "nested_array",
+    "compact": "[[1,2],[],[\"a\"]]",
+    "indent": "[\n  [\n    1,\n    2\n  ],\n  [],\n  [\n    \"a\"\n  ]\n]"
+  },
+  {
+    "name": "map_unsorted",
+    "compact": "{\"Mango\":3,\"_x\":4,\"apple\":2,\"zebra\":1}",
+    "indent": "{\n  \"Mango\": 3,\n  \"_x\": 4,\n  \"apple\": 2,\n  \"zebra\": 1\n}"
+  },
+  {
+    "name": "map_byte_order",
+    "compact": "{\"A\":3,\"Z\":1,\"[\":5,\"a\":2,\"z\":4}",
+    "indent": "{\n  \"A\": 3,\n  \"Z\": 1,\n  \"[\": 5,\n  \"a\": 2,\n  \"z\": 4\n}"
+  },
+  {
+    "name": "map_html_keys",
+    "compact": "{\"\\u003ck\\u003e\":\"\\u003cv\\u003e\",\"a\\u0026b\":\"c\\u0026d\"}",
+    "indent": "{\n  \"\\u003ck\\u003e\": \"\\u003cv\\u003e\",\n  \"a\\u0026b\": \"c\\u0026d\"\n}"
+  },
+  {
+    "name": "map_nested",
+    "compact": "{\"a\":[{\"k\":\"v\"}],\"b\":{\"x\":1,\"y\":2}}",
+    "indent": "{\n  \"a\": [\n    {\n      \"k\": \"v\"\n    }\n  ],\n  \"b\": {\n    \"x\": 1,\n    \"y\": 2\n  }\n}"
+  },
+  {
+    "name": "map_floats",
+    "compact": "{\"big\":1e+21,\"neg\":-0.5,\"pi\":3.141592653589793,\"tiny\":0.00001}",
+    "indent": "{\n  \"big\": 1e+21,\n  \"neg\": -0.5,\n  \"pi\": 3.141592653589793,\n  \"tiny\": 0.00001\n}"
+  },
+  {
+    "name": "deep",
+    "compact": "{\"counts\":{\"go\":3,\"rust\":1},\"items\":[],\"name\":\"test\\u003cx\\u003e\",\"nested\":{\"deep\":{\"deeper\":[1,2,3]}},\"score\":0.875,\"unicode\":\"line1\\u2028line2\"}",
+    "indent": "{\n  \"counts\": {\n    \"go\": 3,\n    \"rust\": 1\n  },\n  \"items\": [],\n  \"name\": \"test\\u003cx\\u003e\",\n  \"nested\": {\n    \"deep\": {\n      \"deeper\": [\n        1,\n        2,\n        3\n      ]\n    }\n  },\n  \"score\": 0.875,\n  \"unicode\": \"line1\\u2028line2\"\n}"
+  },
+  {
+    "name": "all_escapes",
+    "compact": "\"\\b\\f\\n\\r\\t\\\"\\\\\\u003c\\u003e\\u0026\\u2028\\u2029\"",
+    "indent": "\"\\b\\f\\n\\r\\t\\\"\\\\\\u003c\\u003e\\u0026\\u2028\\u2029\""
+  },
+  {
+    "name": "string_with_slash_only",
+    "compact": "\"https://example.com/path?x=1\\u0026y=2\"",
+    "indent": "\"https://example.com/path?x=1\\u0026y=2\""
+  }
+]

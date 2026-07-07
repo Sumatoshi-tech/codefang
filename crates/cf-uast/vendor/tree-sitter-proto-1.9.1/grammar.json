@@ -1,0 +1,8 @@
+{
+  "reference": "main",
+  "revision": "46ae8a8143453b076b5b402cee13c5b47a2c62ee",
+  "grammarSha": "426287da22812f15ff15da1e32cbdedb2ba00c6df1753c1397e65dd300be03a5",
+  "language": "proto",
+  "url": "https://github.com/coder3101/tree-sitter-proto",
+  "maintainedBy": "@coder3101"
+}

@@ -1,0 +1,18 @@
+[package]
+name = "cf-safeconv"
+description = "Overflow-checked numeric conversions and dynamic numeric extraction for report values"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints.clippy]
+# These conversions are intentionally lossy/clamping; centralizing and
+# documenting them is the whole point of the crate, so silence the pedantic
+# cast lints that would otherwise fire on every line.
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_lossless = "allow"

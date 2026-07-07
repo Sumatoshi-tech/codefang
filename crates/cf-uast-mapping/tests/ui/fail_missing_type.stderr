@@ -1,0 +1,11 @@
+error: no rules expected `token`
+ --> tests/ui/fail_missing_type.rs:9:13
+  |
+9 |             token: self,
+  |             ^^^^^ no rules expected this token in macro call
+  |
+note: while trying to match keyword `type`
+ --> src/macros.rs
+  |
+  |                     type: $rtype:ident,
+  |                     ^^^^

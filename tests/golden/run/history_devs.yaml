@@ -1,0 +1,45 @@
+codefang (v2):
+  version: 0
+  hash: <unknown>
+history/devs:
+aggregate:
+    total_commits: 1
+    total_lines_added: 0
+    total_lines_removed: 0
+    total_developers: 1
+    active_developers: 1
+    estimated_total_developers: 1
+    estimated_active_developers: 1
+    analysis_period_ticks: 0
+    project_bus_factor: 0
+    total_languages: 0
+developers:
+    - id: 0
+      name: kubernetes prow robot
+      email: 20407524+k8s-ci-robot@users.noreply.github.com
+      commits: 1
+      lines_added: 0
+      lines_removed: 0
+      lines_changed: 0
+      net_lines: 0
+      languages: []
+      first_tick: 0
+      last_tick: 0
+      active_ticks: 1
+languages: []
+busfactor: []
+activity:
+    - tick: 0
+      start_time: "2026-01-26T21:53:53Z"
+      end_time: "2026-01-26T21:53:53Z"
+      by_developer:
+        - dev_id: 0
+          commits: 1
+      total_commits: 1
+churn:
+    - tick: 0
+      start_time: "2026-01-26T21:53:53Z"
+      end_time: "2026-01-26T21:53:53Z"
+      lines_added: 0
+      lines_removed: 0
+      net_change: 0

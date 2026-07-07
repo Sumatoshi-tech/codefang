@@ -1,0 +1,30 @@
+# cf-checkpoint — incremental-analysis checkpoint/restore for crash recovery.
+#
+# Used by the framework and by the burndown / couples analyzers. See
+# specs/rust-rewrite/DESIGN.md §3 for the serialization rules:
+#   * per-analyzer binary state uses a Rust-native codec (bincode), since
+#     checkpoint state is internal and never user-visible.
+#   * JSON metadata keeps the pinned report-format byte layout (HTML escaping
+#     ON, two-space indent, exactly one trailing newline) so checkpoint.json
+#     files diff cleanly against the reference binary. This routes through
+#     cf-gojson once this crate depends on cf-persist directly; until then the
+#     same byte rules are reproduced locally (see codec.rs).
+[package]
+name = "cf-checkpoint"
+version = "0.1.0"
+edition = "2021"
+description = "Incremental analysis checkpoint/restore for crash recovery. Atomic JSON metadata + per-analyzer state directories."
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bincode = "1"
+sha2 = "0.10"
+# Derived Display/Error impls for CheckpointError; the sentinel error strings
+# are part of the CLI compatibility contract and are kept byte-identical.
+thiserror = "1"
+
+[dev-dependencies]
+tempfile = "3"

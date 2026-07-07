@@ -1,0 +1,275 @@
+//! `cf-uast-mappings` — the Rust-native UAST language mapping tables, the
+//! mapping system of record (specs/uastmap-rust-macros).
+//!
+//! One module per language, each holding a `pub static <LANG>:
+//! LanguageMapping` defined via the `uast_language!` macro (or, for the few
+//! languages containing the tree-sitter wildcard rule `_`, a plain
+//! `MappingRule`-literal table — the macro's escape hatch). Each module was
+//! originally GENERATED during the migration from the corresponding
+//! `<lang>.uastmap` DSL file and validated, table-by-table, to convert (via
+//! [`cf_uast_mapping::LanguageMapping::to_rules`]) to exactly what the DSL
+//! parser produced. The migration is complete: these tables are now the
+//! mapping system of record and the legacy `.uastmap` DSL has been removed.
+//!
+//! The registry below is hand-maintained (one line per language, sorted by
+//! name).
+
+#![forbid(unsafe_code)]
+
+use cf_uast_mapping::LanguageMapping;
+
+pub mod ansible;
+pub mod bash;
+pub mod c;
+pub mod c_sharp;
+pub mod clojure;
+pub mod cmake;
+pub mod commonlisp;
+pub mod cpp;
+pub mod crystal;
+pub mod css;
+pub mod csv;
+pub mod dart;
+pub mod dockerfile;
+pub mod dotenv;
+pub mod elixir;
+pub mod elm;
+pub mod fish;
+pub mod fortran;
+pub mod git_config;
+pub mod gitattributes;
+pub mod gitignore;
+pub mod go;
+pub mod gosum;
+pub mod gotmpl;
+pub mod gowork;
+pub mod graphql;
+pub mod groovy;
+pub mod haskell;
+pub mod hcl;
+pub mod helm;
+pub mod html;
+pub mod ini;
+pub mod java;
+pub mod javascript;
+pub mod json;
+pub mod kotlin;
+pub mod latex;
+pub mod lua;
+pub mod make;
+pub mod markdown;
+pub mod markdown_inline;
+pub mod nim;
+pub mod nim_format_string;
+pub mod perl;
+pub mod php;
+pub mod powershell;
+pub mod properties;
+pub mod proto;
+pub mod proxima;
+pub mod prql;
+pub mod psv;
+pub mod python;
+pub mod r;
+pub mod rego;
+pub mod ruby;
+pub mod rust;
+pub mod rust_with_rstml;
+pub mod scala;
+pub mod sql;
+pub mod ssh_config;
+pub mod swift;
+pub mod tcl;
+pub mod toml;
+pub mod tsx;
+pub mod typescript;
+pub mod xml;
+pub mod yaml;
+pub mod zig;
+
+/// All language mappings as `(registry key, mapping)` pairs, sorted by key
+/// (UTF-8 byte order — the same order the legacy embedded `BTreeMap` iterated
+/// in). [`by_name`] binary searches this slice, so the sort order is
+/// load-bearing; a test asserts it.
+///
+/// The key is the language name the loader and `supported_languages()` use —
+/// the legacy `.uastmap` file stem. For every language but one it equals
+/// `mapping.name`; `c_sharp.uastmap` declares `[language "csharp"]` in its
+/// header, so its key is `"c_sharp"` while the mapping (and its
+/// `LanguageInfo`) faithfully carries `"csharp"`, exactly as the DSL parser
+/// produces.
+pub static ALL: &[(&str, &LanguageMapping)] = &[
+    ("ansible", &ansible::ANSIBLE),
+    ("bash", &bash::BASH),
+    ("c", &c::C),
+    ("c_sharp", &c_sharp::CSHARP),
+    ("clojure", &clojure::CLOJURE),
+    ("cmake", &cmake::CMAKE),
+    ("commonlisp", &commonlisp::COMMONLISP),
+    ("cpp", &cpp::CPP),
+    ("crystal", &crystal::CRYSTAL),
+    ("css", &css::CSS),
+    ("csv", &csv::CSV),
+    ("dart", &dart::DART),
+    ("dockerfile", &dockerfile::DOCKERFILE),
+    ("dotenv", &dotenv::DOTENV),
+    ("elixir", &elixir::ELIXIR),
+    ("elm", &elm::ELM),
+    ("fish", &fish::FISH),
+    ("fortran", &fortran::FORTRAN),
+    ("git_config", &git_config::GIT_CONFIG),
+    ("gitattributes", &gitattributes::GITATTRIBUTES),
+    ("gitignore", &gitignore::GITIGNORE),
+    ("go", &go::GO),
+    ("gosum", &gosum::GOSUM),
+    ("gotmpl", &gotmpl::GOTMPL),
+    ("gowork", &gowork::GOWORK),
+    ("graphql", &graphql::GRAPHQL),
+    ("groovy", &groovy::GROOVY),
+    ("haskell", &haskell::HASKELL),
+    ("hcl", &hcl::HCL),
+    ("helm", &helm::HELM),
+    ("html", &html::HTML),
+    ("ini", &ini::INI),
+    ("java", &java::JAVA),
+    ("javascript", &javascript::JAVASCRIPT),
+    ("json", &json::JSON),
+    ("kotlin", &kotlin::KOTLIN),
+    ("latex", &latex::LATEX),
+    ("lua", &lua::LUA),
+    ("make", &make::MAKE),
+    ("markdown", &markdown::MARKDOWN),
+    ("markdown_inline", &markdown_inline::MARKDOWN_INLINE),
+    ("nim", &nim::NIM),
+    ("nim_format_string", &nim_format_string::NIM_FORMAT_STRING),
+    ("perl", &perl::PERL),
+    ("php", &php::PHP),
+    ("powershell", &powershell::POWERSHELL),
+    ("properties", &properties::PROPERTIES),
+    ("proto", &proto::PROTO),
+    ("proxima", &proxima::PROXIMA),
+    ("prql", &prql::PRQL),
+    ("psv", &psv::PSV),
+    ("python", &python::PYTHON),
+    ("r", &r::R),
+    ("rego", &rego::REGO),
+    ("ruby", &ruby::RUBY),
+    ("rust", &rust::RUST),
+    ("rust_with_rstml", &rust_with_rstml::RUST_WITH_RSTML),
+    ("scala", &scala::SCALA),
+    ("sql", &sql::SQL),
+    ("ssh_config", &ssh_config::SSH_CONFIG),
+    ("swift", &swift::SWIFT),
+    ("tcl", &tcl::TCL),
+    ("toml", &toml::TOML),
+    ("tsx", &tsx::TSX),
+    ("typescript", &typescript::TYPESCRIPT),
+    ("xml", &xml::XML),
+    ("yaml", &yaml::YAML),
+    ("zig", &zig::ZIG),
+];
+
+/// Returns all supported language names, sorted (the registry order).
+///
+/// This is the authoritative supported-language set (68 languages).
+///
+/// # Examples
+///
+/// ```
+/// let langs = cf_uast_mappings::supported_languages();
+/// assert!(langs.contains(&"go"));
+/// assert!(langs.contains(&"rust"));
+/// // The registry is sorted by name.
+/// let mut sorted = langs.clone();
+/// sorted.sort_unstable();
+/// assert_eq!(langs, sorted);
+/// ```
+#[must_use]
+pub fn supported_languages() -> Vec<&'static str> {
+    ALL.iter().map(|(key, _)| *key).collect()
+}
+
+/// Looks up a language mapping by its registry key (binary search over the
+/// key-sorted registry).
+///
+/// # Examples
+///
+/// ```
+/// let go = cf_uast_mappings::by_name("go").expect("go is registered");
+/// assert_eq!(go.name, "go");
+/// assert!(go.extensions.contains(&".go"));
+///
+/// assert!(cf_uast_mappings::by_name("cobol").is_none());
+/// ```
+#[must_use]
+pub fn by_name(name: &str) -> Option<&'static LanguageMapping> {
+    ALL.binary_search_by(|(key, _)| key.cmp(&name))
+        .ok()
+        .map(|i| ALL[i].1)
+}
+
+/// Returns the file extensions registered for a language (empty when the
+/// language is unknown or, like `gosum`, matches by file name only).
+///
+/// # Examples
+///
+/// ```
+/// use cf_uast_mappings::extensions_of;
+///
+/// assert!(extensions_of("go").contains(&".go"));
+/// // Unknown languages yield an empty slice.
+/// assert!(extensions_of("cobol").is_empty());
+/// ```
+#[must_use]
+pub fn extensions_of(name: &str) -> &'static [&'static str] {
+    by_name(name).map_or(&[], |m| m.extensions)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registry_has_all_languages() {
+        assert_eq!(ALL.len(), 68);
+        assert_eq!(supported_languages().len(), 68);
+    }
+
+    #[test]
+    fn registry_is_sorted_by_name() {
+        let names = supported_languages();
+        let mut sorted = names.clone();
+        sorted.sort_unstable();
+        assert_eq!(names, sorted, "ALL must stay sorted by language name");
+    }
+
+    #[test]
+    fn by_name_lookups() {
+        assert_eq!(by_name("go").map(|m| m.name), Some("go"));
+        // The one key/name divergence in the corpus: c_sharp.uastmap declares
+        // `[language "csharp"]`, reproduced faithfully by the static table.
+        assert_eq!(by_name("c_sharp").map(|m| m.name), Some("csharp"));
+        assert_eq!(by_name("zig").map(|m| m.name), Some("zig"));
+        assert_eq!(by_name("ansible").map(|m| m.name), Some("ansible"));
+        assert!(by_name("cobol").is_none());
+        assert!(by_name("").is_none());
+    }
+
+    #[test]
+    fn registry_keys_match_mapping_names() {
+        for (key, mapping) in ALL {
+            if *key == "c_sharp" {
+                assert_eq!(mapping.name, "csharp");
+            } else {
+                assert_eq!(*key, mapping.name, "registry key must equal mapping name");
+            }
+        }
+    }
+
+    #[test]
+    fn extensions_of_lookups() {
+        assert_eq!(extensions_of("go"), &[".go"]);
+        assert_eq!(extensions_of("gosum"), &[] as &[&str]); // file-name match only
+        assert_eq!(extensions_of("unknown"), &[] as &[&str]);
+    }
+}

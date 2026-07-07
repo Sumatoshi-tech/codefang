@@ -1,0 +1,19 @@
+[package]
+name = "cf-uast-mappings"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The static model (LanguageMapping/MappingRule), closed vocabularies, and the
+# uast_language! macro the generated modules expand through.
+cf-uast-mapping = { path = "../cf-uast-mapping" }
+
+[dev-dependencies]
+# Grammar-conformance test (tests/grammar_conformance.rs): compiles every rule
+# pattern as a tree_sitter::Query against the wired grammars.
+cf-uast = { path = "../cf-uast" }
+tree-sitter = { workspace = true }

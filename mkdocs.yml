@@ -110,6 +110,7 @@ nav:
       - CLI reference: guide/cli-reference.md
       - Configuration: guide/configuration.md
       - Output formats: guide/output-formats.md
+      - Data analytics & DWH: guide/data-analytics.md
   - How to:
       - Analyze a monorepo: how-to/analyze-a-monorepo.md
       - Run in CI: how-to/run-in-ci.md

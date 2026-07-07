@@ -1,0 +1,49 @@
+# cf-uast — aggregate UAST parser facade.
+#
+# See specs/rust-rewrite/DESIGN.md §1 (tier 1-2) and §5. This crate is the
+# facade over the sibling crates:
+#
+#   * cf-uast-node     — the Node/Positions tree + byte-sorted ToMap (DESIGN §2.2)
+#   * cf-uast-mapping  — the mapping DSL parser + native tree-sitter compiler
+#   * cf-uast-mappings — the native per-language mapping tables (system of record)
+#   * cf-alg-bloom     — generic bloom filter (NOTE: the loader keeps its OWN
+#                        512-bit FNV-1a double-hash bloom kernel for byte-exact
+#                        parity with the reference implementation; see
+#                        src/loader.rs).
+#
+# It deliberately does NOT depend on cf-framework so the `uast` binary stays the
+# first end-to-end-shippable artifact (DESIGN §1.1).
+#
+# Per DESIGN rule (1) any MACHINE-format report bytes (e.g. `uast parse --format
+# json`) route through cf-gojson: build the node's map-origin GoValue with
+# cf-uast-node's `Node::to_map`, then encode it with the cf-gojson marshaller —
+# never serde_json.
+[package]
+name = "cf-uast"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Aggregate UAST parser facade: tree-sitter parse to UAST over many languages, lazy loader + bloom, parser pool."
+
+[dependencies]
+cf-uast-node = { path = "../cf-uast-node" }
+cf-uast-mapping = { path = "../cf-uast-mapping" }
+# The Rust-native static mapping tables (specs/uastmap-rust-macros): the loader
+# builds its per-language rules from this registry. It is the mapping system of
+# record (the legacy `.uastmap` DSL text and its tooling have been removed).
+cf-uast-mappings = { path = "../cf-uast-mappings" }
+# tree-sitter is pinned in the workspace; per-language grammar C sources are
+# vendored under `vendor/` from go-sitter-forest at the EXACT grammar revision
+# the reference build uses, compiled by `build.rs`, and wired by
+# `languages.rs`'s `get_language` dispatch.
+tree-sitter = { workspace = true }
+# Ergonomic error derives for ParseError (Display strings unchanged; they are
+# part of the CLI contract).
+thiserror = "1"
+
+[build-dependencies]
+# Compiles the vendored grammar C sources (vendor/tree-sitter-<lang>/parser.c).
+cc = { workspace = true }

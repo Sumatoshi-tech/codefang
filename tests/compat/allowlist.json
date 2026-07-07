@@ -1,0 +1,18 @@
+{
+  "_doc": "KNOWN-DIVERGENCE ALLOWLIST (SPEC roadmap 8 / task PHASE CI). Mirrors connectrpc/conformance's tracked 'known-failing/known-flaky'. An entry NEUTRALIZES a cell's FAIL/SIM verdict in the FINAL GATE EXIT CODE *only* when it carries BOTH (a) a written `reason` and (b) `go_nondeterminism_evidence` proving Go itself is nondeterministic on the diverging field(s) -- the differing Go run SHAs/values the live oracle measured. An entry WITHOUT evidence is REJECTED by the gate (fail-closed): it can never silently turn a real Rust bug green. Match is by exact `label` OR `argv` OR `family`+`kind`. NOTHING here blanks a Go-stable field; that is detected by the tamper layer, not excused here.",
+  "_categories": {
+    "go-nondeterminism": "Go's OWN output varies run-to-run on the diverging field(s); evidence = differing Go run SHAs from the live oracle. These DO neutralize the gate exit code.",
+    "tracked-known-failing": "A real, tracked Rust port gap (NOT Go-nondeterminism). These are REPORTED but DO NOT neutralize the gate -- a tracked-known-failing is still a real divergence and keeps the exit nonzero (SPEC: 'nonzero exit on any real divergence'). Listed so triage knows it is already on the board, Connect-style."
+  },
+  "go_nondeterminism": [],
+  "tracked_known_failing": [
+    {
+      "label_glob": "uast/*",
+      "family": "uast_parse",
+      "kind": "rust-empty-go-nonempty",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked.",
+      "evidence_source": "corpus/known_gaps.json",
+      "neutralizes_gate": false
+    }
+  ]
+}

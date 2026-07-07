@@ -1,0 +1,24 @@
+# cf-pipeline — generic processing-pipeline / WorkerPool / ConfigurationOption
+# abstraction. Imported widely (framework, analyzers, mcp, cmd). Tier-0
+# foundation crate.
+#
+# This crate emits NO machine-format report bytes, so it does NOT depend on
+# cf-gojson / cf-goyaml. See specs/rust-rewrite/DESIGN.md §1.
+[package]
+name = "cf-pipeline"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[dependencies]
+# crossbeam-channel provides bounded MPMC channels with blocking send/recv and
+# close-on-drop; std::sync::mpsc cannot model "multiple receivers drain one
+# buffered channel concurrently", which the worker pool relies on.
+crossbeam-channel = "0.5"
+thiserror = "1"

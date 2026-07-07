@@ -1,0 +1,17 @@
+[package]
+name = "cf-alg-lsh"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Locality-Sensitive Hashing index over MinHash signatures (FNV-1a band hashing, deterministic). Used by clone detection."
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[dependencies]
+cf-alg-minhash = { path = "../cf-alg-minhash" }
+cf-alg-hashutil = { path = "../cf-alg-hashutil" }
+thiserror = "1"

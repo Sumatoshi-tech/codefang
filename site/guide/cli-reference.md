@@ -136,13 +136,12 @@ codefang run -a history/couples --limit 500 .
 
 **History phase** — the filter is pushed down into libgit2's `pathspec`
 at the tree-diff stage, so non-matching files are skipped before the
-diff crosses the cgo boundary. On a polyglot repo a narrow filter can
-reduce wall time by 30–40 %. The Go-side language check still runs as
-the authoritative pass for content-disambiguated extensions (`.h`,
-`.pl`, `.m`, `.r`).
+diff is computed. On a polyglot repo a narrow filter can reduce wall
+time by 30–40 %. A content-based language check still runs as the
+authoritative pass for ambiguous extensions (`.h`, `.pl`, `.m`, `.r`).
 
 **Static phase** — the filter is applied at the directory walker
-(`matchesLanguageGlobs`) before the UAST parser or raw-file analyzers
+before the UAST parser or raw-file analyzers
 see the file. It's path-based only: the parser's own language router
 remains the final authority for how a matched file is parsed (e.g. a
 `.h` under `--languages c++` is still parsed as C). Both phases read
@@ -302,20 +301,11 @@ codefang run -a 'history/*' --debug-trace .
 
 ---
 
-### `codefang mcp`
+### MCP server
 
-Start a Model Context Protocol (MCP) server on stdio transport. This exposes
-Codefang analysis capabilities as tools that AI agents can discover and invoke.
-
-```bash
-codefang mcp [flags]
-```
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--debug` | `bool` | `false` | Enable debug logging to stderr |
-
-The MCP server exposes the following tools:
+The Model Context Protocol server lives in the `cf-mcp` crate. It exposes
+Codefang analysis capabilities as tools that AI agents can discover and invoke
+over stdio:
 
 | Tool | Description |
 |------|-------------|
@@ -323,13 +313,8 @@ The MCP server exposes the following tools:
 | `codefang_history` | Git history analysis (burndown, couples, devs, sentiment, etc.) |
 | `uast_parse` | Parse source code into Universal AST |
 
-```bash
-# Start MCP server for agent integration
-codefang mcp
-
-# With debug logging
-codefang mcp --debug
-```
+See the [MCP Integration](../integrations/mcp.md) guide for how to launch and
+configure the server with an MCP-compatible client.
 
 ---
 
@@ -479,39 +464,6 @@ Available interactive commands:
 | `query <dsl>` | Execute a DSL query |
 | `help` | Show available commands |
 | `quit` | Exit exploration |
-
----
-
-### `uast server`
-
-Start an HTTP development server that provides UAST parsing and querying
-via a REST API.
-
-```bash
-uast server [flags]
-```
-
-| Flag | Short | Type | Default | Description |
-|------|-------|------|---------|-------------|
-| `--port` | `-p` | `string` | `8080` | Port to listen on |
-| `--static` | `-s` | `string` | `""` | Directory to serve static files from |
-
-```bash
-# Start on default port
-uast server
-
-# Custom port with static file serving
-uast server -p 3000 -s ./web
-```
-
-**API Endpoints:**
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/parse` | Parse source code to UAST |
-| `POST` | `/api/query` | Query a UAST with DSL expression |
-| `GET` | `/api/mappings` | List available language mappings |
-| `GET` | `/api/mappings/<name>` | Get a specific language mapping |
 
 ---
 

@@ -1,0 +1,21 @@
+[package]
+name = "cf-reportutil"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared report accessors/formatters and the CodeFang Binary (CFB1) envelope."
+
+[dependencies]
+# CFB1 payloads embed the report-contract JSON bytes exactly. Per DESIGN.md
+# §2.2/§2.5 all MACHINE serialization MUST flow through cf-gojson (never raw
+# serde). The envelope marshals its payload with the plain-marshal config
+# (compact, escape_html, no trailing newline).
+cf-gojson = { workspace = true }
+# get_int / get_float64 cross-type numeric coercion delegates to cf-safeconv
+# (to_int / to_float64) so every accessor coerces identically.
+cf-safeconv = { workspace = true }
+# Error enums derive Display/Error via thiserror; the error strings are part of
+# the CLI compatibility contract and are pinned by tests.
+thiserror = "1"
+# The 8-byte CFB1 header's LE u32 length uses `u32::to_le_bytes` directly
+# (DESIGN.md §3); no extra dependency needed.

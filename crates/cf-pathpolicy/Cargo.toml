@@ -1,0 +1,30 @@
+[package]
+name = "cf-pathpolicy"
+description = "Path inclusion policy (vendor/generated/extra-prefix exclusion) for codefang analyzers."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[features]
+# `default-deps` wires the policy to the concrete classification crates
+# (cf-pathfilter for vendor classification and generated-file heuristics,
+# cf-langpath for enry language data). It is OFF by default so the exclusion
+# logic stays usable through the `Classifier` trait alone; analyzer crates that
+# want the production wiring (the `exclude` function / `DefaultClassifier`)
+# enable it explicitly.
+default = []
+default-deps = ["dep:cf-pathfilter", "dep:cf-langpath"]
+
+[dependencies]
+# Vendor classification + generated-file heuristics (filename suffixes,
+# prefixes, content markers).
+cf-pathfilter = { path = "../cf-pathfilter", optional = true }
+# enry language data (vendored Linguist tables).
+cf-langpath = { path = "../cf-langpath", optional = true }
+
+[[example]]
+name = "probe_filter"
+required-features = ["default-deps"]

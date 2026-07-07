@@ -1,0 +1,32 @@
+[package]
+name = "golden-harness"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# Hosts the golden-diff integration test (tests/golden_diff.rs) and the runnable
+# `golden-harness` binary. Depending on the two binaries (dev-deps) makes
+# `cargo test -p golden-harness` build them first; the runnable binary discovers
+# them in target/{release,debug} and (re)builds them on demand.
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+codefang = { path = "../../bins/codefang" }
+uast = { path = "../../bins/uast" }
+
+[lib]
+path = "src/lib.rs"
+
+# Runnable harness: `cargo run -p golden-harness` runs the 7 binding captures
+# under the golden env, prints per-capture IDENTICAL/DIFFER + final N/7, and
+# exits nonzero on any mismatch. It discovers MANIFEST.json + goldens relative to
+# CARGO_MANIFEST_DIR and the two binaries from target/release (building them
+# first if absent).
+[[bin]]
+name = "golden-harness"
+path = "src/main.rs"

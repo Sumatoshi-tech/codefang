@@ -1,0 +1,41 @@
+//! Per-analyzer plot section builders — the Rust analogue of the reference implementation's
+//! `analyze.RegisterPlotSections` registry populated by
+//! each analyzer's `RegisterPlotSections()`.
+//!
+//! # Adding an analyzer's sections
+//!
+//! 1. Create `plot_sections/<analyzer>.rs` with
+//!    `pub fn sections(report: &GoValue) -> Option<Vec<Section>>` — the port
+//!    of that analyzer's the reference implementation section renderer, consuming the
+//!    analyzer's AGGREGATED RAW report value (the `analyze.Report` map, NOT
+//!    the renderer JSON document).
+//! 2. Declare the module below.
+//! 3. Add ONE registration line to
+//!    [`crate::handlers::plot::PLOT_ANALYZERS`] wiring the analyzer id, its
+//!    short report name, its raw-report builder, and `Some(<module>::sections)`.
+
+pub mod clones;
+pub mod cohesion;
+pub mod comments;
+pub mod complexity;
+pub mod halstead;
+pub mod history_anomaly;
+pub mod history_burndown;
+pub mod history_couples;
+pub mod history_devs;
+pub mod history_file_history;
+pub mod history_imports;
+pub mod history_quality;
+pub mod history_sentiment;
+pub mod history_shared;
+pub mod history_shotness;
+pub mod history_typos;
+pub mod imports;
+
+use cf_gojson::GoValue;
+use cf_plotpage::Section;
+
+/// The per-analyzer section renderer signature (the reference `analyze.SectionRendererFunc`:
+/// `func(report analyze.Report) ([]plotpage.Section, error)` — `None` is the
+/// error case, which the reference implementation's page loop skips).
+pub type SectionsFn = fn(&GoValue) -> Option<Vec<Section>>;

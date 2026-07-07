@@ -1,0 +1,19 @@
+breakdown:
+    binary: 0
+    configuration: 0
+    documentation: 0
+    dotfile: 0
+    generated: 0
+    image: 0
+    source: 10
+    vendor: 0
+percentages:
+    binary: 0
+    configuration: 0
+    documentation: 0
+    dotfile: 0
+    generated: 0
+    image: 0
+    source: 100
+    vendor: 0
+total_files: 10

@@ -1,0 +1,337 @@
+{
+  "tier": "smoke",
+  "tally": {
+    "PASS": 43,
+    "SIM": 0,
+    "FAIL": 0,
+    "NA": 3
+  },
+  "records": [
+    {
+      "property": "vary-input",
+      "label": "history/devs hercules-vs-kube",
+      "verdict": "PASS",
+      "go_differs": true,
+      "rust_differs": true
+    },
+    {
+      "property": "vary-input",
+      "label": "history/burndown hercules-vs-kube",
+      "verdict": "PASS",
+      "go_differs": true,
+      "rust_differs": true
+    },
+    {
+      "property": "vary-input",
+      "label": "history/imports hercules-vs-kube",
+      "verdict": "NA",
+      "reason": "go IDENTICAL on both inputs -> no differ premise",
+      "input_a": "/home/dmitriy/sources/hercules",
+      "input_b": "/home/dmitriy/sources/kubernetes"
+    },
+    {
+      "property": "vary-input",
+      "label": "uast/parse go-vs-python",
+      "verdict": "PASS",
+      "go_differs": true,
+      "rust_differs": true
+    },
+    {
+      "property": "vary-input",
+      "label": "uast/parse c-vs-rust",
+      "verdict": "PASS",
+      "go_differs": true,
+      "rust_differs": true
+    },
+    {
+      "property": "vary-input",
+      "label": "uast/parse typescript-vs-javascript",
+      "verdict": "PASS",
+      "go_differs": true,
+      "rust_differs": true
+    },
+    {
+      "property": "grow-limit",
+      "label": "history/devs@kube",
+      "verdict": "PASS",
+      "go_grows": "6455->24450",
+      "rust_grows": "6455->24471"
+    },
+    {
+      "property": "grow-limit",
+      "label": "history/imports@kube",
+      "verdict": "NA",
+      "reason": "go does NOT grow with --limit here -> no grow premise",
+      "go_lo_len": 167,
+      "go_hi_len": 167
+    },
+    {
+      "property": "grow-limit",
+      "label": "history/burndown@kube",
+      "verdict": "PASS",
+      "go_grows": "355->498",
+      "rust_grows": "355->498"
+    },
+    {
+      "property": "grow-limit",
+      "label": "history/typos@kube",
+      "verdict": "PASS",
+      "go_grows": "138->5952",
+      "rust_grows": "138->6082"
+    },
+    {
+      "property": "grow-limit",
+      "label": "history/couples@kube",
+      "verdict": "PASS",
+      "go_grows": "1047972->1380105",
+      "rust_grows": "1049727->1361905"
+    },
+    {
+      "property": "grow-limit",
+      "label": "history/shotness@kube",
+      "verdict": "PASS",
+      "go_grows": "194->3498357",
+      "rust_grows": "190->1329608"
+    },
+    {
+      "property": "determinism",
+      "label": "history/devs@hercules",
+      "verdict": "PASS",
+      "sha": "a320ae7c95fcc6f58f8e276cb6d3fce79fad145d1ad8254e81885ad234abb7f3",
+      "runs": 3
+    },
+    {
+      "property": "determinism",
+      "label": "static/complexity@hercules",
+      "verdict": "PASS",
+      "sha": "54ba4eb574e75aa0a1b824b5d79f736d087775ef8b4327e8c0f1e865334c72d9",
+      "runs": 3
+    },
+    {
+      "property": "determinism",
+      "label": "uast/parse go",
+      "verdict": "PASS",
+      "sha": "2ec23dfe490d9fbb0f06cc055e5e0171c1d536f2704714e2b167c9b748857bf3",
+      "runs": 3
+    },
+    {
+      "property": "non-empty",
+      "label": "history/devs@hercules",
+      "verdict": "PASS",
+      "go_len": 3845,
+      "rust_len": 3845
+    },
+    {
+      "property": "non-empty",
+      "label": "history/burndown@hercules",
+      "verdict": "PASS",
+      "go_len": 933,
+      "rust_len": 933
+    },
+    {
+      "property": "non-empty",
+      "label": "history/imports@hercules",
+      "verdict": "PASS",
+      "go_len": 167,
+      "rust_len": 167
+    },
+    {
+      "property": "non-empty",
+      "label": "history/couples@hercules",
+      "verdict": "PASS",
+      "go_len": 2772,
+      "rust_len": 2772
+    },
+    {
+      "property": "non-empty",
+      "label": "history/shotness@hercules",
+      "verdict": "PASS",
+      "go_len": 388339,
+      "rust_len": 375599
+    },
+    {
+      "property": "non-empty",
+      "label": "history/typos@hercules",
+      "verdict": "PASS",
+      "go_len": 310,
+      "rust_len": 310
+    },
+    {
+      "property": "non-empty",
+      "label": "history/file-history@hercules",
+      "verdict": "PASS",
+      "go_len": 3391,
+      "rust_len": 3391
+    },
+    {
+      "property": "non-empty",
+      "label": "history/sentiment@hercules",
+      "verdict": "PASS",
+      "go_len": 1246,
+      "rust_len": 1246
+    },
+    {
+      "property": "non-empty",
+      "label": "history/quality@hercules",
+      "verdict": "PASS",
+      "go_len": 3232,
+      "rust_len": 3232
+    },
+    {
+      "property": "non-empty",
+      "label": "history/anomaly@hercules",
+      "verdict": "PASS",
+      "go_len": 2379,
+      "rust_len": 2379
+    },
+    {
+      "property": "non-empty",
+      "label": "static/complexity@hercules",
+      "verdict": "PASS",
+      "go_len": 321919,
+      "rust_len": 321919
+    },
+    {
+      "property": "non-empty",
+      "label": "static/composition@hercules",
+      "verdict": "PASS",
+      "go_len": 1458,
+      "rust_len": 1458
+    },
+    {
+      "property": "non-empty",
+      "label": "static/halstead@hercules",
+      "verdict": "PASS",
+      "go_len": 340739,
+      "rust_len": 340739
+    },
+    {
+      "property": "non-empty",
+      "label": "static/comments@hercules",
+      "verdict": "PASS",
+      "go_len": 236197,
+      "rust_len": 236197
+    },
+    {
+      "property": "non-empty",
+      "label": "static/imports@hercules",
+      "verdict": "PASS",
+      "go_len": 26337,
+      "rust_len": 26337
+    },
+    {
+      "property": "non-empty",
+      "label": "static/clones@hercules",
+      "verdict": "PASS",
+      "go_len": 258822,
+      "rust_len": 258822
+    },
+    {
+      "property": "non-empty",
+      "label": "static/cohesion@hercules",
+      "verdict": "PASS",
+      "go_len": 274941,
+      "rust_len": 274941
+    },
+    {
+      "property": "non-empty",
+      "label": "uast/parse go",
+      "verdict": "PASS",
+      "go_len": 1256674,
+      "rust_len": 1256674
+    },
+    {
+      "property": "non-empty",
+      "label": "uast/parse python",
+      "verdict": "PASS",
+      "go_len": 700431,
+      "rust_len": 700431
+    },
+    {
+      "property": "non-empty",
+      "label": "uast/parse c",
+      "verdict": "PASS",
+      "go_len": 142327,
+      "rust_len": 142327
+    },
+    {
+      "property": "non-empty",
+      "label": "uast/parse c-header",
+      "verdict": "PASS",
+      "go_len": 19243,
+      "rust_len": 19243
+    },
+    {
+      "property": "non-empty",
+      "label": "uast/parse rust",
+      "verdict": "PASS",
+      "go_len": 125877,
+      "rust_len": 125877
+    },
+    {
+      "property": "non-empty",
+      "label": "uast/parse typescript",
+      "verdict": "PASS",
+      "go_len": 2555406,
+      "rust_len": 2555406
+    },
+    {
+      "property": "non-empty",
+      "label": "uast/parse tsx",
+      "verdict": "PASS",
+      "go_len": 244099,
+      "rust_len": 244099
+    },
+    {
+      "property": "non-empty",
+      "label": "uast/parse javascript",
+      "verdict": "PASS",
+      "go_len": 54802,
+      "rust_len": 54802
+    },
+    {
+      "property": "non-empty",
+      "label": "uast/parse json",
+      "verdict": "PASS",
+      "go_len": 308147,
+      "rust_len": 308147
+    },
+    {
+      "property": "non-empty",
+      "label": "uast/parse yaml",
+      "verdict": "PASS",
+      "go_len": 150552,
+      "rust_len": 150552
+    },
+    {
+      "property": "non-empty",
+      "label": "uast/parse cpp",
+      "verdict": "PASS",
+      "go_len": 3895930,
+      "rust_len": 3895930
+    },
+    {
+      "property": "non-empty",
+      "label": "uast/parse shell",
+      "verdict": "PASS",
+      "go_len": 148968,
+      "rust_len": 148968
+    },
+    {
+      "property": "golden-drift",
+      "label": "history/devs drift",
+      "verdict": "PASS",
+      "drifted_from_golden": true,
+      "golden_sha": "a320ae7c95fcc6f58f8e276cb6d3fce79fad145d1ad8254e81885ad234abb7f3",
+      "rust_new_sha": "858882acfe31909defb13c2fbfc9af7833e8bbe7fd48885c2adb185a1ec0b9c5"
+    },
+    {
+      "property": "golden-drift",
+      "label": "history/imports drift",
+      "verdict": "NA",
+      "reason": "go did NOT change across the input mutation -> golden may legitimately persist; no drift premise",
+      "input_orig": "/home/dmitriy/sources/hercules@lim20",
+      "input_mut": "/home/dmitriy/sources/kubernetes@lim20"
+    }
+  ]
+}

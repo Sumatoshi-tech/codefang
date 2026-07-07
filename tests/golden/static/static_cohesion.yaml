@@ -1,0 +1,573 @@
+function_cohesion:
+    - name: Len
+      source_file: int64.go
+      cohesion: 0.4
+      quality_level: Good
+    - name: Len
+      source_file: string.go
+      cohesion: 0.4
+      quality_level: Good
+    - name: Len
+      source_file: byte.go
+      cohesion: 0.4
+      quality_level: Good
+    - name: Len
+      source_file: int32.go
+      cohesion: 0.4
+      quality_level: Good
+    - name: List
+      source_file: set.go
+      cohesion: 0.45454545454545453
+      quality_level: Good
+    - name: Int64KeySet
+      source_file: int64.go
+      cohesion: 0.5714285714285714
+      quality_level: Good
+    - name: IntKeySet
+      source_file: int.go
+      cohesion: 0.5714285714285714
+      quality_level: Good
+    - name: ByteKeySet
+      source_file: byte.go
+      cohesion: 0.5714285714285714
+      quality_level: Good
+    - name: StringKeySet
+      source_file: string.go
+      cohesion: 0.5714285714285714
+      quality_level: Good
+    - name: Int32KeySet
+      source_file: int32.go
+      cohesion: 0.5714285714285714
+      quality_level: Good
+    - name: Clear
+      source_file: set.go
+      cohesion: 0.6
+      quality_level: Excellent
+    - name: Len
+      source_file: int.go
+      cohesion: 0.6
+      quality_level: Excellent
+    - name: NewByte
+      source_file: byte.go
+      cohesion: 0.6
+      quality_level: Excellent
+    - name: NewInt
+      source_file: int.go
+      cohesion: 0.6
+      quality_level: Excellent
+    - name: NewInt32
+      source_file: int32.go
+      cohesion: 0.6
+      quality_level: Excellent
+    - name: NewInt64
+      source_file: int64.go
+      cohesion: 0.6
+      quality_level: Excellent
+    - name: NewString
+      source_file: string.go
+      cohesion: 0.6
+      quality_level: Excellent
+    - name: TestStringSetList
+      source_file: set_test.go
+      cohesion: 0.6666666666666666
+      quality_level: Excellent
+    - name: TestSortedList
+      source_file: set_generic_test.go
+      cohesion: 0.6923076923076923
+      quality_level: Excellent
+    - name: TestKeySet
+      source_file: set_generic_test.go
+      cohesion: 0.75
+      quality_level: Excellent
+    - name: BenchmarkStringSet
+      source_file: set_test.go
+      cohesion: 0.7674418604651163
+      quality_level: Excellent
+    - name: KeySet
+      source_file: set.go
+      cohesion: 0.7692307692307693
+      quality_level: Excellent
+    - name: TestStringSetEquals
+      source_file: set_test.go
+      cohesion: 0.7692307692307693
+      quality_level: Excellent
+    - name: PopAny
+      source_file: set.go
+      cohesion: 0.7777777777777778
+      quality_level: Excellent
+    - name: BenchmarkListLarge
+      source_file: set_generic_test.go
+      cohesion: 0.7857142857142857
+      quality_level: Excellent
+    - name: UnsortedList
+      source_file: set.go
+      cohesion: 0.8
+      quality_level: Excellent
+    - name: TestNewStringSet
+      source_file: set_test.go
+      cohesion: 0.8
+      quality_level: Excellent
+    - name: BenchmarkListSmall
+      source_file: set_generic_test.go
+      cohesion: 0.8
+      quality_level: Excellent
+    - name: TestSetEquals
+      source_file: set_generic_test.go
+      cohesion: 0.8
+      quality_level: Excellent
+    - name: TestStringUnion
+      source_file: set_test.go
+      cohesion: 0.8
+      quality_level: Excellent
+    - name: makeString
+      source_file: set_test.go
+      cohesion: 0.8125
+      quality_level: Excellent
+    - name: TestIntersection
+      source_file: set_generic_test.go
+      cohesion: 0.8181818181818182
+      quality_level: Excellent
+    - name: TestNewSet
+      source_file: set_generic_test.go
+      cohesion: 0.8181818181818182
+      quality_level: Excellent
+    - name: TestUnion
+      source_file: set_generic_test.go
+      cohesion: 0.8181818181818182
+      quality_level: Excellent
+    - name: TestStringSetSymmetricDifference
+      source_file: set_test.go
+      cohesion: 0.8235294117647058
+      quality_level: Excellent
+    - name: Len
+      source_file: set.go
+      cohesion: 0.8333333333333334
+      quality_level: Excellent
+    - name: cast
+      source_file: set.go
+      cohesion: 0.8333333333333334
+      quality_level: Excellent
+    - name: TestSetSymmetricDifference
+      source_file: set_generic_test.go
+      cohesion: 0.8333333333333334
+      quality_level: Excellent
+    - name: TestSetDifference
+      source_file: set_generic_test.go
+      cohesion: 0.8421052631578947
+      quality_level: Excellent
+    - name: TestNewEmptySet
+      source_file: set_generic_test.go
+      cohesion: 0.8461538461538461
+      quality_level: Excellent
+    - name: TestStringIntersection
+      source_file: set_test.go
+      cohesion: 0.85
+      quality_level: Excellent
+    - name: SymmetricDifference
+      source_file: set.go
+      cohesion: 0.8571428571428571
+      quality_level: Excellent
+    - name: TestSetClearWithSharedReference
+      source_file: set_generic_test.go
+      cohesion: 0.8666666666666667
+      quality_level: Excellent
+    - name: Intersection
+      source_file: set.go
+      cohesion: 0.8666666666666667
+      quality_level: Excellent
+    - name: TestStringSet
+      source_file: set_test.go
+      cohesion: 0.875
+      quality_level: Excellent
+    - name: Equal
+      source_file: set.go
+      cohesion: 0.875
+      quality_level: Excellent
+    - name: Delete
+      source_file: set.go
+      cohesion: 0.875
+      quality_level: Excellent
+    - name: TestSet
+      source_file: set_generic_test.go
+      cohesion: 0.8888888888888888
+      quality_level: Excellent
+    - name: HasAny
+      source_file: set.go
+      cohesion: 0.8888888888888888
+      quality_level: Excellent
+    - name: Has
+      source_file: set.go
+      cohesion: 0.8888888888888888
+      quality_level: Excellent
+    - name: clearSetAndAdd
+      source_file: set_generic_test.go
+      cohesion: 0.8888888888888888
+      quality_level: Excellent
+    - name: HasAll
+      source_file: set.go
+      cohesion: 0.8888888888888888
+      quality_level: Excellent
+    - name: TestStringSetHasAny
+      source_file: set_test.go
+      cohesion: 0.8888888888888888
+      quality_level: Excellent
+    - name: TestStringSetDifference
+      source_file: set_test.go
+      cohesion: 0.8888888888888888
+      quality_level: Excellent
+    - name: Union
+      source_file: set.go
+      cohesion: 0.9
+      quality_level: Excellent
+    - name: TestSetHasAny
+      source_file: set_generic_test.go
+      cohesion: 0.9
+      quality_level: Excellent
+    - name: Clone
+      source_file: set.go
+      cohesion: 0.9
+      quality_level: Excellent
+    - name: New
+      source_file: set.go
+      cohesion: 0.9
+      quality_level: Excellent
+    - name: TestSetClear
+      source_file: set_generic_test.go
+      cohesion: 0.9230769230769231
+      quality_level: Excellent
+    - name: TestSetDeleteMultiples
+      source_file: set_generic_test.go
+      cohesion: 0.9285714285714286
+      quality_level: Excellent
+    - name: TestSetClearInSeparateFunction
+      source_file: set_generic_test.go
+      cohesion: 0.9285714285714286
+      quality_level: Excellent
+    - name: SymmetricDifference
+      source_file: int64.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Equal
+      source_file: byte.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: IsSuperset
+      source_file: int.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: IsSuperset
+      source_file: int32.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: IsSuperset
+      source_file: set.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: IsSuperset
+      source_file: int64.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: IsSuperset
+      source_file: byte.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: HasAny
+      source_file: int32.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: HasAny
+      source_file: byte.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: HasAny
+      source_file: int.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: HasAll
+      source_file: int.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: HasAll
+      source_file: int64.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: HasAll
+      source_file: string.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: HasAny
+      source_file: int64.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: List
+      source_file: string.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: List
+      source_file: int64.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: List
+      source_file: byte.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: List
+      source_file: int.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: List
+      source_file: int32.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: HasAll
+      source_file: byte.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Intersection
+      source_file: int.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: HasAll
+      source_file: int32.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Has
+      source_file: string.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Has
+      source_file: int.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Intersection
+      source_file: int64.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Has
+      source_file: byte.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Has
+      source_file: int32.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: PopAny
+      source_file: int32.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: PopAny
+      source_file: byte.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: PopAny
+      source_file: string.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: PopAny
+      source_file: int64.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: PopAny
+      source_file: int.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Has
+      source_file: int64.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Insert
+      source_file: int64.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Equal
+      source_file: int32.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: SymmetricDifference
+      source_file: byte.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: SymmetricDifference
+      source_file: int.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: SymmetricDifference
+      source_file: string.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: SymmetricDifference
+      source_file: int32.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: IsSuperset
+      source_file: string.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Equal
+      source_file: int64.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Equal
+      source_file: int.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Equal
+      source_file: string.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Difference
+      source_file: int32.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Difference
+      source_file: set.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Intersection
+      source_file: byte.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Intersection
+      source_file: int32.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Difference
+      source_file: byte.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Intersection
+      source_file: string.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Difference
+      source_file: int64.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Difference
+      source_file: string.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: HasAny
+      source_file: string.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Difference
+      source_file: int.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Delete
+      source_file: int32.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Delete
+      source_file: int.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Delete
+      source_file: byte.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: TestStringSetDeleteMultiples
+      source_file: set_test.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Insert
+      source_file: string.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Delete
+      source_file: int64.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Insert
+      source_file: byte.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Delete
+      source_file: string.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Clone
+      source_file: string.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Clone
+      source_file: byte.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Clone
+      source_file: int64.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Union
+      source_file: int.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Union
+      source_file: int64.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Union
+      source_file: string.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Union
+      source_file: int32.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Insert
+      source_file: int.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Union
+      source_file: byte.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: UnsortedList
+      source_file: int.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: UnsortedList
+      source_file: string.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: UnsortedList
+      source_file: byte.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: UnsortedList
+      source_file: int64.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: UnsortedList
+      source_file: int32.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Clone
+      source_file: int.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Clone
+      source_file: int32.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Insert
+      source_file: set.go
+      cohesion: 1
+      quality_level: Excellent
+    - name: Insert
+      source_file: int32.go
+      cohesion: 1
+      quality_level: Excellent
+distribution:
+    excellent: 130
+    good: 10
+low_cohesion_functions: []
+aggregate:
+    total_functions: 141
+    lcom: 0.6678684635926015
+    lcom_variant: LCOM-HS (Henderson-Sellers)
+    cohesion_score: 0.3321315364073984
+    function_cohesion: 0.913608323772477
+    health_score: 33.21315364073984
+    message: Good overall cohesion with room for improvement

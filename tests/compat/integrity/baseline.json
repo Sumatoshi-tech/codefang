@@ -1,0 +1,41 @@
+{
+  "_doc": "Tamper-evidence baseline. Regenerate ONLY after a reviewed, intentional change via: tamper_check.py --bless. Family cell counts are MINIMUMS; shrinking any below these fails closed.",
+  "go_oracle": {
+    "codefang": "eac6f453b4a9d681566223a55f55b0d55c9756df4b73733514f98663901c617a",
+    "uast": "936b8125f27a2423f7dee980d46ad4516ecd199ece39dbc6ec13d76343dc924b"
+  },
+  "matrix": {
+    "full": {
+      "families": {
+        "analyzer_set": 21,
+        "flag": 9,
+        "format_combo": 3,
+        "history_analyzer": 210,
+        "static_analyzer": 147,
+        "uast_analyze": 24,
+        "uast_parse": 36,
+        "uast_query": 36
+      },
+      "total_cells": 486
+    },
+    "smoke": {
+      "families": {
+        "analyzer_set": 7,
+        "format_combo": 1,
+        "history_analyzer": 30,
+        "static_analyzer": 21,
+        "uast_analyze": 24,
+        "uast_parse": 36,
+        "uast_query": 36
+      },
+      "total_cells": 155
+    }
+  },
+  "protected": {
+    "expand_matrix.py": "916bb428f7cb99a49857df6022c86542390ef2d12174287f9f3656ae9bb291c2",
+    "matrix.toml": "24aeb53082e60fdc9a7e32b7ebfcf2a188dbb416cbf252cb7ae1abffd92494e0",
+    "metamorphic/metamorphic.py": "1518ab83f0d47dc0659bfe12a6bff9a03c9b6656f8cd96a5361ddd3a0aab6df0",
+    "oracle/oracle.py": "2d4fcce871bc65ed88a2fa5398c0f471ca0d8dd1b43fd263cb9df6664511c667",
+    "run_matrix.py": "ea774e8286683cda5718024b38d7a16fd145c97e387e1a131c8f1931b97001a6"
+  }
+}

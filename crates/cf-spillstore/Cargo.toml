@@ -1,0 +1,25 @@
+[package]
+name = "cf-spillstore"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# A generic disk-backed key/value store that spills accumulated state to
+# numbered chunk files during streaming hibernation, freeing memory between
+# chunks while preserving the full dataset for finalization. Consumed by
+# analyze, clones, couples, and file_history.
+#
+# Byte-identity note (DESIGN.md §3): the spilled chunk files are intermediate,
+# never-user-visible state, encoded with a Rust-native serde codec; none of
+# these bytes appear in a MACHINE-format report, so cf-gojson is intentionally
+# NOT used here.
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+# Derived Display/Error impls for SpillError; error strings unchanged.
+thiserror = "1"

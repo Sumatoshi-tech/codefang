@@ -1,0 +1,35 @@
+# cf-config — configuration model + layered loader.
+#
+# Configuration model (analyzer/pipeline/history/checkpoint constants) plus a
+# layered loader with precedence flag > env (CODEFANG_) > file > default.
+#
+# Config is *input*, never machine-format *output*. Per DESIGN.md §2 the
+# byte-identity serializers (cf-gojson / cf-goyaml) are reserved for report
+# output; reading YAML config here uses serde + serde_yaml, which is the correct
+# boundary (no machine-format report bytes are produced by this crate).
+[package]
+name = "cf-config"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Configuration model + loader (analyzer/pipeline/history/checkpoint constants). Used by analyze, mcp, cmd/codefang/commands."
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[dependencies]
+serde = { workspace = true }
+serde_yaml = "0.9"
+# Derived Display/Error impls for LoadError; the `read config:` /
+# `unmarshal config:` / `validate config:` wrappings are part of the CLI
+# compatibility contract and are kept byte-identical.
+thiserror = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lib]
+doctest = false

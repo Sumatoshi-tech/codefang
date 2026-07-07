@@ -1,0 +1,262 @@
+{
+  "overall_score_label": "6/10",
+  "sections": [
+    {
+      "title": "COMMENTS",
+      "score_label": "6/10",
+      "status": "Good comment quality with room for improvement",
+      "metrics": [
+        {
+          "label": "Total Comments",
+          "value": "301"
+        },
+        {
+          "label": "Good Comments",
+          "value": "250"
+        },
+        {
+          "label": "Bad Comments",
+          "value": "51"
+        },
+        {
+          "label": "Doc Coverage",
+          "value": "70.0%"
+        },
+        {
+          "label": "Good Ratio",
+          "value": "58.8%"
+        },
+        {
+          "label": "Total Functions",
+          "value": "147"
+        }
+      ],
+      "distribution": [
+        {
+          "label": "Documented",
+          "percent": 0.7619047619047619,
+          "count": 112
+        },
+        {
+          "label": "Undocumented",
+          "percent": 0.23809523809523808,
+          "count": 35
+        }
+      ],
+      "issues": [
+        {
+          "name": "BenchmarkListLarge",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "BenchmarkListSmall",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "BenchmarkStringSet",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestIntersection",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestKeySet",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestNewEmptySet",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestNewSet",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestNewStringSet",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSet",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSetClear",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSetClearInSeparateFunction",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSetClearWithSharedReference",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSetDeleteMultiples",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSetDifference",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSetEquals",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSetHasAny",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSetSymmetricDifference",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSortedList",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestStringIntersection",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestStringSet",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestStringSetDeleteMultiples",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestStringSetDifference",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestStringSetEquals",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestStringSetHasAny",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestStringSetList",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestStringSetSymmetricDifference",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestStringUnion",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestUnion",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "clearSetAndAdd",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "makeString",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "struct {\n\t\ts1       String\n\t\ts2       String\n\t\texpected String\n\t}",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "struct {\n\t\ts1       String\n\t\ts2       String\n\t\texpected String\n\t}",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "struct {\n\t\ts1       sets.Set[string]\n\t\ts2       sets.Set[string]\n\t\texpected sets.Set[string]\n\t}",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "struct {\n\t\ts1       sets.Set[string]\n\t\ts2       sets.Set[string]\n\t\texpected sets.Set[string]\n\t}",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "struct {\n\t\tsize         int\n\t\tminStringLen int\n\t\tmaxStringLen int\n\t}",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        }
+      ],
+      "score": 0.5881985815602837
+    }
+  ],
+  "overall_score": 0.5881985815602837
+}

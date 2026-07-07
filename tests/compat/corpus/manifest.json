@@ -1,0 +1,173 @@
+{
+  "files": [
+    {
+      "id": "file/go",
+      "language": "go",
+      "ext": "go",
+      "sha256": "44740f6a69ae1eb14a52794bc2543aebf0612d8319ae3c20ea124211c6297fbc",
+      "stored": "files/44740f6a69ae1eb14a52794bc2543aebf0612d8319ae3c20ea124211c6297fbc.go",
+      "size_bytes": 5854,
+      "origin": "/home/dmitriy/sources/hercules/cmd/hercules/combine.go",
+      "oracle_uast_bytes": 1256674,
+      "oracle_uast_nodes": 1337
+    },
+    {
+      "id": "file/python",
+      "language": "python",
+      "ext": "py",
+      "sha256": "984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb",
+      "stored": "files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py",
+      "size_bytes": 4815,
+      "origin": "/home/dmitriy/sources/nanoGPT/bench.py",
+      "oracle_uast_bytes": 700431,
+      "oracle_uast_nodes": 933
+    },
+    {
+      "id": "file/c",
+      "language": "c",
+      "ext": "c",
+      "sha256": "6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae",
+      "stored": "files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c",
+      "size_bytes": 2146,
+      "origin": "/home/dmitriy/sources/ioq3/code/asm/ftola.c",
+      "oracle_uast_bytes": 142327,
+      "oracle_uast_nodes": 218
+    },
+    {
+      "id": "file/c-header",
+      "language": "c-header",
+      "ext": "h",
+      "sha256": "ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8",
+      "stored": "files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h",
+      "size_bytes": 1274,
+      "origin": "/home/dmitriy/sources/ioq3/code/asm/qasm-inline.h",
+      "oracle_uast_bytes": 19243,
+      "oracle_uast_nodes": 36
+    },
+    {
+      "id": "file/rust",
+      "language": "rust",
+      "ext": "rs",
+      "sha256": "e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482",
+      "stored": "files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs",
+      "size_bytes": 3609,
+      "origin": "/home/dmitriy/sources/agent-client-protocol/rust/acp.rs",
+      "oracle_uast_bytes": 125877,
+      "oracle_uast_nodes": 318
+    },
+    {
+      "id": "file/typescript",
+      "language": "typescript",
+      "ext": "ts",
+      "sha256": "48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88",
+      "stored": "files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts",
+      "size_bytes": 14037,
+      "origin": "/home/dmitriy/sources/onlook/apps/web/client/messages/en.d.json.ts",
+      "oracle_uast_bytes": 2555406,
+      "oracle_uast_nodes": 1789
+    },
+    {
+      "id": "file/tsx",
+      "language": "tsx",
+      "ext": "tsx",
+      "sha256": "29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8",
+      "stored": "files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx",
+      "size_bytes": 2365,
+      "origin": "/home/dmitriy/sources/onlook/apps/web/client/src/app/_components/auth-modal.tsx",
+      "oracle_uast_bytes": 244099,
+      "oracle_uast_nodes": 269
+    },
+    {
+      "id": "file/javascript",
+      "language": "javascript",
+      "ext": "js",
+      "sha256": "cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447",
+      "stored": "files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js",
+      "size_bytes": 547,
+      "origin": "/home/dmitriy/sources/onlook/packages/parser/test/data/next-config/with-mdx-alt-name-order/expected.js",
+      "oracle_uast_bytes": 54802,
+      "oracle_uast_nodes": 89
+    },
+    {
+      "id": "file/json",
+      "language": "json",
+      "ext": "json",
+      "sha256": "9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355",
+      "stored": "files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json",
+      "size_bytes": 3217,
+      "origin": "/home/dmitriy/sources/agent-client-protocol/docs/docs.json",
+      "oracle_uast_bytes": 308147,
+      "oracle_uast_nodes": 382
+    },
+    {
+      "id": "file/yaml",
+      "language": "yaml",
+      "ext": "yml",
+      "sha256": "fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868",
+      "stored": "files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml",
+      "size_bytes": 1344,
+      "origin": "/home/dmitriy/sources/hercules/.appveyor.yml",
+      "oracle_uast_bytes": 150552,
+      "oracle_uast_nodes": 190
+    },
+    {
+      "id": "file/cpp",
+      "language": "cpp",
+      "ext": "cpp",
+      "sha256": "8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6",
+      "stored": "files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp",
+      "size_bytes": 21582,
+      "origin": "/home/dmitriy/sources/llama.cpp/common/chat-auto-parser-generator.cpp",
+      "oracle_uast_bytes": 3895930,
+      "oracle_uast_nodes": 3598
+    },
+    {
+      "id": "file/shell",
+      "language": "shell",
+      "ext": "sh",
+      "sha256": "5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58",
+      "stored": "files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh",
+      "size_bytes": 2453,
+      "origin": "/home/dmitriy/sources/ioq3/misc/linux/server_compile.sh",
+      "oracle_uast_bytes": 148968,
+      "oracle_uast_nodes": 245
+    }
+  ],
+  "repos": [
+    {
+      "id": "hercules",
+      "path": "/home/dmitriy/sources/hercules",
+      "head_commit": "68bb211faaedeffb53e799ab89e2aa48d8cb0ad3",
+      "commit_count": 1006,
+      "note": "Go, medium history (~1k commits) -- beyond kubernetes"
+    },
+    {
+      "id": "ioq3",
+      "path": "/home/dmitriy/sources/ioq3",
+      "head_commit": "e29c74e1367fe4c5c6676964bbaaa29003227cdc",
+      "commit_count": 3784,
+      "note": "C, larger history (~3.8k commits), different language -- beyond kubernetes"
+    },
+    {
+      "id": "kubernetes",
+      "path": "/home/dmitriy/sources/kubernetes",
+      "head_commit": "2c9cc8da1aa316c30cfba4210cfcd09aff193c81",
+      "commit_count": 135104,
+      "note": "Go, very large history -- the reference large repo"
+    }
+  ],
+  "languages_supported_probed": [
+    "go",
+    "python",
+    "c",
+    "c-header",
+    "rust",
+    "typescript",
+    "tsx",
+    "javascript",
+    "json",
+    "yaml",
+    "cpp",
+    "shell"
+  ]
+}

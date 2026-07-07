@@ -72,12 +72,12 @@ At startup, the analyzer injects ~93,000 multilingual word entries from the [Che
 
 Only non-ASCII words are injected to avoid overriding VADER's curated English entries. Words receive binary valence: +1.5 (positive) or -1.5 (negative), which is the mid-range of VADER's scale.
 
-To regenerate lexicons from updated source data:
-
-```bash
-go run tools/lexgen/lexgen.go -pos pos_words.txt -neg neg_words.txt \
-  -o internal/analyzers/sentiment/lexicons/lexicon_data.gen.go
-```
+The lexicon data is vendored as one tab-separated file per language under
+`crates/cf-sentiment-lexicons/data/` (e.g. `de.tsv`, `ja.tsv`), with a
+`MANIFEST.tsv` listing them. The `cf-sentiment-lexicons` build script compiles
+these tables into the crate at build time, so updating a lexicon is a matter of
+editing the corresponding `data/*.tsv` file and rebuilding — no code generation
+step is required.
 
 #### SE-domain adjustments
 

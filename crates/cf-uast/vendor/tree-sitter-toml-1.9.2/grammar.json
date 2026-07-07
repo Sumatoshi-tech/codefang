@@ -1,0 +1,11 @@
+{
+  "reference": "master",
+  "revision": "64b56832c2cffe41758f28e05c756a3a98d16f41",
+  "grammarSha": "ed5125db94891531c9fe79f50850a8694510cf0cf24794c28176b13766c09ed4",
+  "language": "toml",
+  "url": "https://github.com/tree-sitter-grammars/tree-sitter-toml",
+  "maintainedBy": "@tk-shirasaka, @ObserverOfTime",
+  "files": [
+    "scanner.c"
+  ]
+}

@@ -1,0 +1,430 @@
+//! Output-format constants, normalization, validation, and resolution — the
+//! Rust port of the reference implementation plus the
+//! `ResolveFormats` / `ResolveInputFormat` conversion helpers.
+//!
+//! `cf-commands` reproduces these here (rather than re-exporting `cf-analyze`)
+//! because the format gate is exercised directly by the `run` command's flag
+//! handling and because `cf-analyze` is not yet building in this tree. When
+//! `cf-analyze` compiles, this module's constants and functions are kept
+//! byte-behavior-identical to `cf_analyze::formats` so the eventual switch is a
+//! pure dependency change with no behavior delta.
+//!
+//! # Behavior parity
+//!
+//! - [`normalize_format`] trims surrounding whitespace, lower-cases (reference:
+//!   `strings.ToLower(strings.TrimSpace(...))`), and maps the `bin` alias to
+//!   [`FORMAT_BINARY`], mirroring the reference `NormalizeFormat`.
+//! - [`validate_format`] accepts the per-analyzer machine formats
+//!   (`json`/`yaml`/`binary`/`text`/`compact`); it intentionally rejects
+//!   [`FORMAT_PLOT`], matching the reference `ValidateFormat` switch.
+//! - [`validate_universal_format`] accepts the cross-format-conversion set used
+//!   by `run`/`render` (`json`/`yaml`/`binary`/`timeseries`/`ndjson`/`compact`/
+//!   `timeseries+ndjson`).
+//!
+//! All three return the **exact** CLI-contract error string `unsupported format: <fmt>`,
+//! where `<fmt>` is the caller's *original* (un-normalized) input — the reference implementation formats
+//! `fmt.Errorf("%w: %s", ErrUnsupportedFormat, format)` with the original
+//! `format` argument, not the normalized one. See [`FormatError`].
+
+/// `json` — indented JSON (`SetIndent("","  ")`), the default run/render format.
+pub const FORMAT_JSON: &str = "json";
+/// `yaml` — YAML via the go-compat YAML emitter.
+pub const FORMAT_YAML: &str = "yaml";
+/// `plot` — interactive HTML plot output (handled specially, not a machine format).
+pub const FORMAT_PLOT: &str = "plot";
+/// `bin` alias accepted on input; normalizes to [`FORMAT_BINARY`].
+pub const FORMAT_BIN_ALIAS: &str = "bin";
+/// `binary` — the CFB1 envelope machine format.
+pub const FORMAT_BINARY: &str = "binary";
+/// `timeseries` — merged time-series JSON.
+pub const FORMAT_TIMESERIES: &str = "timeseries";
+/// `ndjson` — newline-delimited JSON (one report per line).
+pub const FORMAT_NDJSON: &str = "ndjson";
+/// `compact` — compact single-line JSON.
+pub const FORMAT_COMPACT: &str = "compact";
+/// `timeseries+ndjson` — streaming per-commit NDJSON time series.
+pub const FORMAT_TIMESERIES_NDJSON: &str = "timeseries+ndjson";
+/// `text` — human-readable table / plain output.
+pub const FORMAT_TEXT: &str = "text";
+
+/// `auto` — the sentinel that asks [`resolve_input_format`] to infer the input
+/// format from the file extension.
+pub const INPUT_FORMAT_AUTO: &str = "auto";
+/// `json` input format.
+pub const INPUT_FORMAT_JSON: &str = "json";
+/// `binary` input format.
+pub const INPUT_FORMAT_BINARY: &str = "binary";
+
+/// Error returned when a format string is not recognized.
+///
+/// `Display` formats as the exact reference string `unsupported format: <fmt>`, where
+/// `<fmt>` is the original (un-normalized) caller input — matching the reference implementation's
+/// `fmt.Errorf("%w: %s", ErrUnsupportedFormat, format)`.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("unsupported format: {fmt}")]
+pub struct FormatError {
+    /// The offending format string, exactly as the caller supplied it.
+    pub fmt: String,
+}
+
+/// Lower-cases (after trimming surrounding whitespace) and maps aliases to
+/// canonical format names. Mirrors the reference `NormalizeFormat`.
+///
+/// `bin` → [`FORMAT_BINARY`]; everything else is returned trimmed + lower-cased.
+#[must_use]
+pub fn normalize_format(format: &str) -> String {
+    let normalized = format.trim().to_lowercase();
+    if normalized == FORMAT_BIN_ALIAS {
+        return FORMAT_BINARY.to_string();
+    }
+    normalized
+}
+
+/// Validates a format for **per-analyzer** machine output. Accepts
+/// `json`/`yaml`/`binary`/`text`/`compact`; rejects everything else (including
+/// `plot`, which the reference implementation routes specially). Mirrors the reference `ValidateFormat`.
+///
+/// On success returns the normalized name. On failure returns a [`FormatError`]
+/// carrying the *original* `format` string.
+///
+/// # Errors
+///
+/// Returns [`FormatError`] if the normalized format is not one of the accepted
+/// per-analyzer formats.
+///
+/// ```
+/// use cf_commands::validate_format;
+///
+/// // Accepts per-analyzer machine formats; `bin` normalizes to `binary`.
+/// assert_eq!(validate_format("bin").unwrap(), "binary");
+/// assert_eq!(validate_format("compact").unwrap(), "compact");
+/// // `plot` is routed specially and is intentionally rejected here.
+/// assert!(validate_format("plot").is_err());
+/// assert_eq!(validate_format("plot").unwrap_err().to_string(), "unsupported format: plot");
+/// ```
+pub fn validate_format(format: &str) -> Result<String, FormatError> {
+    let normalized = normalize_format(format);
+    match normalized.as_str() {
+        FORMAT_JSON | FORMAT_YAML | FORMAT_BINARY | FORMAT_TEXT | FORMAT_COMPACT => Ok(normalized),
+        _ => Err(FormatError {
+            fmt: format.to_string(),
+        }),
+    }
+}
+
+/// Returns `true` if `normalized` is in the universal-conversion set. Mirrors
+/// the reference implementation's `UniversalFormats()` = {json, yaml, plot, binary, timeseries, ndjson,
+/// text}. Note the reference implementation's universal set INCLUDES `text` but EXCLUDES `compact`
+/// (compact is a static-only output format, see [`validate_format`]); `plot` is
+/// handled specially by [`resolve_formats`] before this check. The
+/// `timeseries+ndjson` combo is the Rust pipeline's pre-resolved spelling of the
+/// `--ndjson` modifier and is accepted here so a directly-supplied combo string
+/// validates.
+fn is_universal_format(normalized: &str) -> bool {
+    matches!(
+        normalized,
+        FORMAT_JSON
+            | FORMAT_YAML
+            | FORMAT_PLOT
+            | FORMAT_BINARY
+            | FORMAT_TIMESERIES
+            | FORMAT_NDJSON
+            | FORMAT_TEXT
+            | FORMAT_TIMESERIES_NDJSON
+    )
+}
+
+/// Validates a format for **universal** cross-format conversion. mirrors the reference implementation
+/// `ValidateUniversalFormat`.
+///
+/// On success returns the normalized name. On failure returns a [`FormatError`]
+/// carrying the *original* `format` string.
+///
+/// # Errors
+///
+/// Returns [`FormatError`] if the normalized format is not in the universal set.
+pub fn validate_universal_format(format: &str) -> Result<String, FormatError> {
+    let normalized = normalize_format(format);
+    if is_universal_format(&normalized) {
+        Ok(normalized)
+    } else {
+        Err(FormatError {
+            fmt: format.to_string(),
+        })
+    }
+}
+
+/// Resolves the per-phase output formats for a mixed static/history run, mirror
+/// of the reference `ResolveFormats`.
+///
+/// Returns `(static_format, history_format)`. Each is the validated universal
+/// format when the corresponding phase has analyzers, or the empty string when
+/// it does not. `plot` is handled specially: both phases render `plot` to the
+/// same output directory and validation is skipped.
+///
+/// # Errors
+///
+/// Returns [`FormatError`] when a non-plot `format` fails
+/// [`validate_universal_format`].
+///
+/// ```
+/// use cf_commands::resolve_formats;
+///
+/// // `plot` routes both active phases to the same output dir without validation.
+/// assert_eq!(resolve_formats("plot", true, true).unwrap(), ("plot".to_string(), "plot".to_string()));
+///
+/// // Static-only accepts `compact` (a static output format)...
+/// assert_eq!(resolve_formats("compact", true, false).unwrap(), ("compact".to_string(), String::new()));
+/// // ...but a mixed run validates against the universal set, which excludes it.
+/// assert!(resolve_formats("compact", true, true).is_err());
+/// ```
+pub fn resolve_formats(
+    format: &str,
+    has_static: bool,
+    has_history: bool,
+) -> Result<(String, String), FormatError> {
+    let normalized = normalize_format(format);
+
+    // Plot format is handled specially - both phases render to the same dir.
+    if normalized == FORMAT_PLOT {
+        let static_fmt = if has_static {
+            FORMAT_PLOT.to_string()
+        } else {
+            String::new()
+        };
+        let history_fmt = if has_history {
+            FORMAT_PLOT.to_string()
+        } else {
+            String::new()
+        };
+        return Ok((static_fmt, history_fmt));
+    }
+
+    // Mirror the reference `ResolveFormats` branching exactly:
+    //   * mixed (static && history) -> ValidateUniversalFormat (text yes, compact no)
+    //   * static-only               -> ValidateFormat(staticOutputFormats) (text & compact yes)
+    //   * history-only              -> ValidateUniversalFormat (text yes, compact no)
+    // The earlier port validated EVERY non-plot path against the universal set,
+    // which wrongly rejected static-only `text` (reference: accepts it) and wrongly
+    // accepted history/mixed `compact` (reference: rejects it).
+    if has_static && has_history {
+        let validated = validate_universal_format(format)?;
+        return Ok((validated.clone(), validated));
+    }
+    if has_static {
+        let validated = validate_format(format)?;
+        return Ok((validated, String::new()));
+    }
+    if has_history {
+        let validated = validate_universal_format(format)?;
+        return Ok((String::new(), validated));
+    }
+
+    Ok((String::new(), String::new()))
+}
+
+/// Determines the input format from the path and explicit flag, mirror of the reference implementation
+/// `ResolveInputFormat`.
+///
+/// When `input_format` is not [`INPUT_FORMAT_AUTO`] it is normalized and
+/// returned. Otherwise the file extension drives the choice: `.json` → `json`,
+/// `.bin`/`.binary` → `binary`, anything else → `json` (the reference implementation's `default`).
+///
+/// This never errors (the reference signature returns an error, but the body has no
+/// failure path); the `Result` is kept for signature parity with the reference caller.
+///
+/// # Errors
+///
+/// Never returns `Err`; the `Result` mirrors the reference signature.
+#[allow(clippy::missing_panics_doc)]
+pub fn resolve_input_format(input_path: &str, input_format: &str) -> Result<String, FormatError> {
+    if input_format != INPUT_FORMAT_AUTO {
+        return Ok(normalize_format(input_format));
+    }
+
+    let ext = extension_lower(input_path);
+    match ext.as_str() {
+        ".json" => Ok(INPUT_FORMAT_JSON.to_string()),
+        ".bin" | ".binary" => Ok(INPUT_FORMAT_BINARY.to_string()),
+        _ => Ok(INPUT_FORMAT_JSON.to_string()),
+    }
+}
+
+/// Returns the lower-cased file extension (including the leading dot), mirroring
+/// the reference `strings.ToLower(filepath.Ext(path))`. the reference implementation's `filepath.Ext` returns the
+/// suffix from the final dot of the final path element, or "" if none.
+fn extension_lower(path: &str) -> String {
+    // Restrict to the final path element so dots in directory names are ignored,
+    // matching the reference implementation's filepath.Ext.
+    let base = path.rsplit(['/', '\\']).next().unwrap_or(path);
+    match base.rfind('.') {
+        Some(idx) => base[idx..].to_lowercase(),
+        None => String::new(),
+    }
+}
+
+/// Applies the `--ndjson` modifier to a resolved format: when set and the format
+/// is `timeseries`, composes it into `timeseries+ndjson`; otherwise returns the
+/// format unchanged. Mirrors the reference composition in
+/// (`if opts.NDJSON && format == FormatTimeSeries { format = FormatTimeSeriesNDJSON }`).
+///
+/// ```
+/// use cf_commands::apply_ndjson_modifier;
+///
+/// // Only `timeseries` composes with the `--ndjson` modifier.
+/// assert_eq!(apply_ndjson_modifier("timeseries", true), "timeseries+ndjson");
+/// assert_eq!(apply_ndjson_modifier("timeseries", false), "timeseries");
+/// assert_eq!(apply_ndjson_modifier("json", true), "json");
+/// ```
+#[must_use]
+pub fn apply_ndjson_modifier(format: &str, ndjson: bool) -> String {
+    if ndjson && format == FORMAT_TIMESERIES {
+        FORMAT_TIMESERIES_NDJSON.to_string()
+    } else {
+        format.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_lowercases_and_trims() {
+        assert_eq!(normalize_format("JSON"), "json");
+        assert_eq!(normalize_format("  YaMl  "), "yaml");
+    }
+
+    #[test]
+    fn normalize_maps_bin_alias_to_binary() {
+        assert_eq!(normalize_format("bin"), "binary");
+        assert_eq!(normalize_format("BIN"), "binary");
+        // already-canonical "binary" is untouched.
+        assert_eq!(normalize_format("binary"), "binary");
+    }
+
+    #[test]
+    fn validate_format_accepts_per_analyzer_set() {
+        for f in ["json", "yaml", "binary", "text", "compact", "bin"] {
+            assert!(validate_format(f).is_ok(), "{f} should validate");
+        }
+        // bin normalizes to binary on success.
+        assert_eq!(validate_format("bin").unwrap(), "binary");
+    }
+
+    #[test]
+    fn validate_format_rejects_plot_and_unknown() {
+        assert!(validate_format("plot").is_err());
+        assert!(validate_format("timeseries").is_err());
+        assert!(validate_format("ndjson").is_err());
+    }
+
+    #[test]
+    fn validate_universal_accepts_conversion_set() {
+        // reference `UniversalFormats`() = {json, yaml, plot, binary, timeseries, ndjson,
+        // text}. `bin` normalizes to `binary`; `timeseries+ndjson` is the Rust
+        // pre-resolved modifier spelling.
+        for f in [
+            "json",
+            "yaml",
+            "plot",
+            "binary",
+            "timeseries",
+            "ndjson",
+            "text",
+            "timeseries+ndjson",
+            "bin",
+        ] {
+            assert!(validate_universal_format(f).is_ok(), "{f} should validate");
+        }
+    }
+
+    #[test]
+    fn validate_universal_rejects_compact() {
+        // compact is a static-only output format; the reference implementation's universal set excludes it.
+        assert!(validate_universal_format("compact").is_err());
+    }
+
+    #[test]
+    fn error_string_uses_original_format_and_go_wording() {
+        // Reference: fmt.Errorf("%w: %s", ErrUnsupportedFormat, format) with original arg.
+        // `plot` IS in the reference implementation's universal set, so use a genuinely-unsupported token to
+        // exercise the error path while proving the original casing is preserved.
+        let err = validate_universal_format("BOGUS").unwrap_err();
+        assert_eq!(err.to_string(), "unsupported format: BOGUS");
+        let err2 = validate_format("nope").unwrap_err();
+        assert_eq!(err2.to_string(), "unsupported format: nope");
+    }
+
+    #[test]
+    fn resolve_formats_plot_routes_both_phases() {
+        let (s, h) = resolve_formats("plot", true, true).unwrap();
+        assert_eq!(s, "plot");
+        assert_eq!(h, "plot");
+        let (s, h) = resolve_formats("plot", false, true).unwrap();
+        assert_eq!(s, "");
+        assert_eq!(h, "plot");
+    }
+
+    #[test]
+    fn resolve_formats_non_plot_fills_only_present_phases() {
+        let (s, h) = resolve_formats("json", true, false).unwrap();
+        assert_eq!(s, "json");
+        assert_eq!(h, "");
+        let (s, h) = resolve_formats("bin", true, true).unwrap();
+        assert_eq!(s, "binary");
+        assert_eq!(h, "binary");
+    }
+
+    #[test]
+    fn resolve_formats_propagates_unsupported_error() {
+        // `compact` is rejected on the MIXED path (reference `ResolveFormats` ->
+        // ValidateUniversalFormat, which excludes compact).
+        let err = resolve_formats("compact", true, true).unwrap_err();
+        assert_eq!(err.to_string(), "unsupported format: compact");
+    }
+
+    #[test]
+    fn resolve_formats_static_only_accepts_text_and_compact() {
+        // The reference static-only path validates against `staticOutputFormats()`, which
+        // includes BOTH text and compact (universal set does not).
+        let (s, h) = resolve_formats("text", true, false).unwrap();
+        assert_eq!((s.as_str(), h.as_str()), ("text", ""));
+        let (s, h) = resolve_formats("compact", true, false).unwrap();
+        assert_eq!((s.as_str(), h.as_str()), ("compact", ""));
+    }
+
+    #[test]
+    fn resolve_input_format_explicit_is_normalized() {
+        assert_eq!(resolve_input_format("x.dat", "bin").unwrap(), "binary");
+        assert_eq!(resolve_input_format("x.dat", "JSON").unwrap(), "json");
+    }
+
+    #[test]
+    fn resolve_input_format_auto_uses_extension() {
+        assert_eq!(resolve_input_format("report.json", "auto").unwrap(), "json");
+        assert_eq!(
+            resolve_input_format("report.BIN", "auto").unwrap(),
+            "binary"
+        );
+        assert_eq!(
+            resolve_input_format("report.binary", "auto").unwrap(),
+            "binary"
+        );
+        // Unknown / no extension -> json.
+        assert_eq!(resolve_input_format("report.txt", "auto").unwrap(), "json");
+        assert_eq!(resolve_input_format("report", "auto").unwrap(), "json");
+        // Dot in directory, none in basename -> no extension -> json.
+        assert_eq!(resolve_input_format("a.b/report", "auto").unwrap(), "json");
+    }
+
+    #[test]
+    fn ndjson_modifier_composes_only_timeseries() {
+        assert_eq!(
+            apply_ndjson_modifier("timeseries", true),
+            "timeseries+ndjson"
+        );
+        assert_eq!(apply_ndjson_modifier("timeseries", false), "timeseries");
+        assert_eq!(apply_ndjson_modifier("json", true), "json");
+    }
+}

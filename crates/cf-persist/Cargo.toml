@@ -1,0 +1,34 @@
+[package]
+name = "cf-persist"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Codec-based file persistence for arbitrary state types (JSON in the pinned report-format layout, plus a binary codec for internal state)."
+
+[dependencies]
+# serde is the in-memory data model used by the codecs. The JSON codec emits
+# the pinned report-format byte layout via a self-contained encoder over
+# `serde_json::Value` (HTML-escape ON, optional indent, trailing newline,
+# map-key byte-sort). serde_json is used ONLY as the value model + decoder
+# here; its Serializer is never used to produce output bytes (see DESIGN.md
+# §2).
+serde = { workspace = true }
+serde_json = { workspace = true }
+# itoa/ryu give the shortest round-trip digit sequences that the report-format
+# float renderer re-formats (see json::go_float); the shortest-digits property
+# is what keeps the rendering pinned.
+itoa = "1"
+ryu = "1"
+# Rust-native binary codec for internal state (no cross-implementation wire
+# format is reproduced per DESIGN.md §3; persist state is never user-visible
+# output).
+bincode = "1"
+# Derived Display/Error impls for PersistError; the `<op>: ` error prefixes
+# are stable and tests assert on them.
+thiserror = "1"
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,4333 @@
+comment_quality:
+    - line_number: 1
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 1
+      source_file: set_test.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 1
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 1
+      source_file: doc.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 1
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 1
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 1
+      source_file: empty.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 1
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 1
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 1
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 17
+      source_file: doc.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 18
+      source_file: doc.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 19
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 19
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 19
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 19
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 19
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 19
+      source_file: empty.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 20
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 20
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 20
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 20
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 20
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 20
+      source_file: empty.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 21
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 21
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 21
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 21
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 21
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 22
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 22
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 22
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 22
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 22
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 23
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 23
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 23
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 23
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 23
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 24
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 24
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 24
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 24
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 24
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 24
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 27
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 27
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 27
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 27
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 27
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 27
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 30
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 31
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 32
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 32
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 32
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 32
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 32
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 33
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 33
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 33
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 33
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 33
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 38
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 38
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 38
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 38
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 38
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 38
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 39
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 43
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 43
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 43
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 43
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 43
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 48
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 48
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 48
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 48
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 48
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 48
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 53
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 53
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 53
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 53
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 53
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 58
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 58
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 58
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 58
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 58
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 60
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 63
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 63
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 63
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 63
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 63
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 68
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 68
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 68
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 68
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 68
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 68
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 69
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 69
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 69
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 69
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 69
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 69
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 70
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 70
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 70
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 70
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 70
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 70
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 71
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 71
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 71
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 71
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 71
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 72
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 72
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 72
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 72
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 72
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 73
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 73
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 73
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 73
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 73
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 76
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 78
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 78
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 78
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 78
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 78
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 79
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 79
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 79
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 79
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 79
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 80
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 80
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 80
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 80
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 80
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 81
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 81
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 81
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 81
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 81
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 82
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 82
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 82
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 82
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 82
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 82
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 83
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 83
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 83
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 83
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 83
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 88
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 88
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 88
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 88
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 88
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 89
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 89
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 89
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 89
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 89
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 90
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 90
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 90
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 90
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 90
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 91
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 91
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 91
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 91
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 91
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 92
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 92
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 92
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 92
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 92
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 92
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 93
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 93
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 93
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 93
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 93
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 98
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 98
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 98
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 98
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 98
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 99
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 99
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 99
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 99
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 99
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 100
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 100
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 100
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 100
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 100
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 101
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 101
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 101
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 101
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 101
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 102
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 102
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 102
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 102
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 102
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 102
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 107
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 107
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 107
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 107
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 107
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 111
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 112
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 112
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 112
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 112
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 112
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 112
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 113
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 113
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 113
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 113
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 113
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 113
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 114
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 114
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 114
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 114
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 114
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 114
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 115
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 116
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 119
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 119
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 119
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 119
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 119
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 124
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 124
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 124
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 124
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 124
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 127
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 128
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 129
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 129
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 129
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 129
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 129
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 129
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 130
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 131
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 132
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 134
+      source_file: int64.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 134
+      source_file: byte.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 134
+      source_file: int.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 134
+      source_file: string.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 134
+      source_file: int32.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 137
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 138
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 139
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 140
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 141
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 142
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 149
+      source_file: set_test.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 151
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 152
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 153
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 154
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 155
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 156
+      source_file: set_test.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 162
+      source_file: set_test.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 174
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 179
+      source_file: set_test.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 184
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 185
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 186
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 191
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 192
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 193
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 194
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 201
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 210
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 220
+      source_file: set.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 222
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 229
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 235
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+    - line_number: 252
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      quality: ""
+      type: ""
+      target_name: ""
+      score: 0
+function_documentation:
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: empty.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      is_documented: false
+      documentation_score: 0
+      status: Undocumented
+undocumented_functions:
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: byte.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: empty.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int32.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: int64.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: set_test.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+    - name: ""
+      source_file: string.go
+      language: go
+      directory: .
+      needs_comment: false
+      risk_level: MEDIUM
+aggregate:
+    total_comments: 301
+    good_comments: 250
+    bad_comments: 51
+    overall_score: 0.5881985815602837
+    total_functions: 147
+    documented_functions: 112
+    good_comments_ratio: 0.5881985815602837
+    documentation_coverage: 0.7
+    health_score: 58.819858156028374
+    message: Fair comment quality - consider improving placement

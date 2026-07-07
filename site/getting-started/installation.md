@@ -1,6 +1,7 @@
 # Installation
 
-This guide covers every way to install Codefang and its companion UAST parser.
+This guide covers how to build Codefang and its companion UAST parser from the
+Rust workspace.
 
 ---
 
@@ -10,85 +11,42 @@ Before you begin, make sure the following tools are available on your system:
 
 | Requirement | Minimum Version | Notes |
 |-------------|-----------------|-------|
-| **Go** | 1.24+ | Required for `go install` and building from source |
-| **Git** | 2.x | Used by history analyzers to walk repository objects |
-| **C compiler** | GCC or Clang | CGO is required for libgit2 bindings |
-| **CMake** | 3.14+ | Needed when building libgit2 from the vendored source |
-| **OpenSSL** (dev headers) | 1.1+ | libgit2 HTTPS transport dependency |
+| **Rust** | stable (recent) | The project is a Cargo workspace under `rust/` |
+| **Git** | 2.x | Used to clone (with submodules) and by history analyzers |
+| **C compiler** | GCC or Clang | Builds the vendored libgit2 via the `git2` crate |
+| **CMake** | 3.14+ | Needed by the `git2` crate's build of vendored libgit2 |
 
-!!! info "CGO is required"
+!!! info "Vendored libgit2"
     Codefang links against **libgit2** for high-performance Git repository
-    access. The library is vendored and built automatically, but a working C
-    toolchain and `CGO_ENABLED=1` (the Go default) are mandatory.
-
----
-
-## Install from source (recommended)
-
-The fastest way to get both binaries:
-
-```bash
-go install github.com/Sumatoshi-tech/codefang/cmd/codefang@latest
-go install github.com/Sumatoshi-tech/codefang/cmd/uast@latest
-```
-
-This places `codefang` and `uast` in your `$GOPATH/bin` (or `$GOBIN` if set).
-Make sure that directory is on your `$PATH`:
-
-```bash
-export PATH="$(go env GOPATH)/bin:$PATH"
-```
-
-!!! tip "Add to your shell profile"
-    Append the `export` line above to your `~/.bashrc`, `~/.zshrc`, or
-    equivalent so the binaries are always available.
+    access. The `git2` crate's `vendored-libgit2` feature compiles the pinned
+    sources in `third_party/libgit2` at build time, so no system libgit2 is
+    required — but a C toolchain and CMake are. See
+    [ADR-0003](../adr/0003-libgit2-via-cgo.md) for the rationale.
 
 ---
 
 ## Build from source
 
-For contributors or when you need a custom build:
+Clone with submodules (the vendored libgit2 lives in a submodule), then build
+both binaries with Cargo:
 
 ```bash
-git clone https://github.com/Sumatoshi-tech/codefang.git
-cd codefang
-make build    # (1)!
-make install  # (2)!
+git clone --recurse-submodules https://github.com/Sumatoshi-tech/codefang.git
+cd codefang/rust
+cargo build --release -p codefang -p uast
 ```
 
-1. Builds libgit2, pre-compiles UAST mappings, then compiles both `uast` and `codefang` into `build/bin/`.
-2. Copies the binaries to `~/.local/bin/`. The Makefile will warn you if that directory is not on your `$PATH`.
-
-### What `make build` does
-
-The build process has three stages:
-
-```mermaid
-graph LR
-    A[make libgit2] --> B[precompile UAST mappings]
-    B --> C[go build uast + codefang]
-```
-
-1. **libgit2** -- The vendored C library in `third_party/libgit2` is compiled
-   as a static archive via CMake. This only happens once (subsequent builds
-   skip it if the artifact already exists).
-2. **UAST mappings** -- A code-generation step pre-compiles Tree-sitter
-   language mappings into `pkg/uast/embedded_mappings.gen.go` for faster
-   startup.
-3. **Go build** -- Both binaries are compiled with version/commit metadata
-   injected via `-ldflags`.
-
-### Building libgit2 separately
-
-If you only need to rebuild the native library:
+The binaries are produced at `target/release/codefang` and
+`target/release/uast`. Add that directory to your `PATH`:
 
 ```bash
-make libgit2
+export PATH="$PWD/target/release:$PATH"
 ```
 
-The static archive is installed to `third_party/libgit2/install/`. The Makefile
-automatically sets `PKG_CONFIG_PATH`, `CGO_CFLAGS`, and `CGO_LDFLAGS` so that
-subsequent Go builds find it.
+!!! tip "Add to your shell profile"
+    Append an `export` line pointing at the absolute path of
+    `target/release` to your `~/.bashrc`, `~/.zshrc`, or equivalent so the
+    binaries are always available.
 
 ---
 
@@ -103,50 +61,37 @@ docker build -t codefang .
 Run analysis on a local repository:
 
 ```bash
-docker run --rm -v "$(pwd):/repo" codefang run -a static/complexity /repo
+docker run --rm -v "$(pwd):/repo" codefang run -a static/complexity --head /repo
 ```
 
 Run history analysis (the container needs the full `.git` directory):
 
 ```bash
-docker run --rm -v "$(pwd):/repo" codefang run -a history/burndown --format yaml /repo
+docker run --rm -v "$(pwd):/repo" codefang run -a history/burndown --format yaml --limit 50 /repo
 ```
 
 !!! note "Image size"
-    The production image is built on a minimal base. The libgit2 static
-    library and Tree-sitter grammars are embedded at build time, so no
+    The production image is built on a minimal base. The vendored libgit2 and
+    Tree-sitter grammars are compiled into the binary at build time, so no
     additional runtime dependencies are needed inside the container.
 
 ---
 
 ## Verify installation
 
-After installing, confirm both binaries are working:
+After building, confirm both binaries work:
 
 === "codefang"
 
-    ```bash
-    $ codefang --version
-    codefang version v0.1.0 (abc1234) built 2026-01-15T10:00:00Z
+    ```console
+    $ codefang version
     ```
 
 === "uast"
 
-    ```bash
-    $ uast --version
-    uast version v0.1.0 (abc1234) built 2026-01-15T10:00:00Z
+    ```console
+    $ uast version
     ```
-
-If either command is not found, verify that the installation directory is on
-your `$PATH`:
-
-```bash
-# For go install:
-echo "$(go env GOPATH)/bin"
-
-# For make install:
-echo "$HOME/.local/bin"
-```
 
 ---
 
@@ -155,24 +100,24 @@ echo "$HOME/.local/bin"
 ### Linux
 
 Fully supported. Install build essentials if you do not already have a C
-compiler:
+compiler and CMake:
 
 === "Debian / Ubuntu"
 
     ```bash
-    sudo apt-get install build-essential cmake libssl-dev pkg-config
+    sudo apt-get install build-essential cmake pkg-config
     ```
 
 === "Fedora / RHEL"
 
     ```bash
-    sudo dnf install gcc gcc-c++ cmake openssl-devel pkg-config
+    sudo dnf install gcc gcc-c++ cmake pkg-config
     ```
 
 === "Arch Linux"
 
     ```bash
-    sudo pacman -S base-devel cmake openssl pkg-config
+    sudo pacman -S base-devel cmake pkg-config
     ```
 
 ### macOS
@@ -181,16 +126,8 @@ Fully supported. Xcode Command Line Tools provide the required C toolchain:
 
 ```bash
 xcode-select --install
-brew install cmake openssl pkg-config
+brew install cmake pkg-config
 ```
-
-!!! warning "Apple Silicon"
-    On ARM-based Macs you may need to point `pkg-config` at the Homebrew
-    OpenSSL installation:
-
-    ```bash
-    export PKG_CONFIG_PATH="$(brew --prefix openssl)/lib/pkgconfig:$PKG_CONFIG_PATH"
-    ```
 
 ### Windows
 
@@ -201,5 +138,5 @@ distribution and follow the Linux instructions above.
 
 ## Next steps
 
-With both binaries installed, head to the [Quick Start](quickstart.md) guide
-to run your first analysis.
+With both binaries built, head to the [Quick Start](quickstart.md) guide to run
+your first analysis.

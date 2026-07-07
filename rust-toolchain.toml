@@ -1,0 +1,6 @@
+# Pinned toolchain for reproducible float-formatting and sort behavior across
+# machines. cf-gojson's hand-written shortest-float renderer and byte-sorted map
+# keys must be deterministic; pinning the toolchain removes a variable.
+[toolchain]
+channel = "1.94.0"
+components = ["rustfmt", "clippy"]

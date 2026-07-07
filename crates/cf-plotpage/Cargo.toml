@@ -1,0 +1,16 @@
+[package]
+name = "cf-plotpage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "HTML plot-page renderer for codefang --format plot: themes, go-echarts chart option serialization, page/section components, and the multi-page index renderer."
+
+[dependencies]
+# The chart `option_*` JSON embedded in each page reproduces go-echarts
+# BaseConfiguration.JSONNotEscaped output and MUST be byte-identical to the
+# reference binary's (pinned by tests/compat), so it routes through the
+# report-format encoder — never serde.
+cf-gojson = { path = "../cf-gojson" }

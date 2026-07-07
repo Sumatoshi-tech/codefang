@@ -1,0 +1,2446 @@
+{
+  "overall_score_label": "3/10",
+  "sections": [
+    {
+      "title": "HALSTEAD",
+      "score_label": "3/10",
+      "status": "Moderate Halstead complexity - acceptable",
+      "metrics": [
+        {
+          "label": "Total Functions",
+          "value": "141"
+        },
+        {
+          "label": "Distinct Operators (n1)",
+          "value": "54"
+        },
+        {
+          "label": "Distinct Operands (n2)",
+          "value": "41"
+        },
+        {
+          "label": "Total Operators (N1)",
+          "value": "96"
+        },
+        {
+          "label": "Total Operands (N2)",
+          "value": "209"
+        },
+        {
+          "label": "Vocabulary",
+          "value": "95"
+        },
+        {
+          "label": "Volume",
+          "value": "2243.6"
+        },
+        {
+          "label": "Difficulty",
+          "value": "132.6"
+        },
+        {
+          "label": "Effort",
+          "value": "714652.1"
+        },
+        {
+          "label": "Est. Bugs",
+          "value": "0.7"
+        }
+      ],
+      "distribution": [
+        {
+          "label": "Low (\u003c=100)",
+          "percent": 0.8156028368794326,
+          "count": 115
+        },
+        {
+          "label": "Medium (101-1000)",
+          "percent": 0.1773049645390071,
+          "count": 25
+        },
+        {
+          "label": "High (1001-5000)",
+          "percent": 0.0070921985815602835,
+          "count": 1
+        },
+        {
+          "label": "Very High (\u003e5000)",
+          "percent": 0,
+          "count": 0
+        }
+      ],
+      "issues": [
+        {
+          "name": "BenchmarkStringSet",
+          "location": "set_test.go",
+          "value": "effort=72439.0 | vol=1530.0 | bugs=0.5",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSetEquals",
+          "location": "set_generic_test.go",
+          "value": "effort=37694.5 | vol=689.8 | bugs=0.2",
+          "severity": "fair"
+        },
+        {
+          "name": "TestStringSetEquals",
+          "location": "set_test.go",
+          "value": "effort=35426.9 | vol=622.9 | bugs=0.2",
+          "severity": "fair"
+        },
+        {
+          "name": "TestStringSet",
+          "location": "set_test.go",
+          "value": "effort=23594.7 | vol=512.9 | bugs=0.2",
+          "severity": "fair"
+        },
+        {
+          "name": "TestSet",
+          "location": "set_generic_test.go",
+          "value": "effort=23264.8 | vol=541.8 | bugs=0.2",
+          "severity": "fair"
+        },
+        {
+          "name": "TestIntersection",
+          "location": "set_generic_test.go",
+          "value": "effort=18401.0 | vol=737.0 | bugs=0.2",
+          "severity": "fair"
+        },
+        {
+          "name": "TestUnion",
+          "location": "set_generic_test.go",
+          "value": "effort=16400.9 | vol=660.6 | bugs=0.2",
+          "severity": "fair"
+        },
+        {
+          "name": "TestStringIntersection",
+          "location": "set_test.go",
+          "value": "effort=11571.0 | vol=555.4 | bugs=0.2",
+          "severity": "fair"
+        },
+        {
+          "name": "TestStringUnion",
+          "location": "set_test.go",
+          "value": "effort=9773.4 | vol=498.3 | bugs=0.2",
+          "severity": "good"
+        },
+        {
+          "name": "TestSetDifference",
+          "location": "set_generic_test.go",
+          "value": "effort=9370.1 | vol=369.9 | bugs=0.1",
+          "severity": "good"
+        },
+        {
+          "name": "TestStringSetDifference",
+          "location": "set_test.go",
+          "value": "effort=8517.0 | vol=346.4 | bugs=0.1",
+          "severity": "good"
+        },
+        {
+          "name": "TestStringSetDeleteMultiples",
+          "location": "set_test.go",
+          "value": "effort=4707.8 | vol=239.7 | bugs=0.1",
+          "severity": "good"
+        },
+        {
+          "name": "TestSetDeleteMultiples",
+          "location": "set_generic_test.go",
+          "value": "effort=4479.5 | vol=255.4 | bugs=0.1",
+          "severity": "good"
+        },
+        {
+          "name": "TestSetSymmetricDifference",
+          "location": "set_generic_test.go",
+          "value": "effort=3707.3 | vol=255.2 | bugs=0.1",
+          "severity": "good"
+        },
+        {
+          "name": "TestNewEmptySet",
+          "location": "set_generic_test.go",
+          "value": "effort=3697.7 | vol=227.5 | bugs=0.1",
+          "severity": "good"
+        },
+        {
+          "name": "TestStringSetSymmetricDifference",
+          "location": "set_test.go",
+          "value": "effort=2905.1 | vol=223.5 | bugs=0.1",
+          "severity": "good"
+        },
+        {
+          "name": "Intersection",
+          "location": "set.go",
+          "value": "effort=1949.4 | vol=200.7 | bugs=0.1",
+          "severity": "good"
+        },
+        {
+          "name": "TestSetClearWithSharedReference",
+          "location": "set_generic_test.go",
+          "value": "effort=1875.5 | vol=205.1 | bugs=0.1",
+          "severity": "good"
+        },
+        {
+          "name": "TestNewStringSet",
+          "location": "set_test.go",
+          "value": "effort=1796.0 | vol=146.9 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "TestNewSet",
+          "location": "set_generic_test.go",
+          "value": "effort=1775.6 | vol=153.7 | bugs=0.1",
+          "severity": "good"
+        },
+        {
+          "name": "TestSetClearInSeparateFunction",
+          "location": "set_generic_test.go",
+          "value": "effort=1772.1 | vol=182.8 | bugs=0.1",
+          "severity": "good"
+        },
+        {
+          "name": "makeString",
+          "location": "set_test.go",
+          "value": "effort=1135.2 | vol=153.7 | bugs=0.1",
+          "severity": "good"
+        },
+        {
+          "name": "TestSetClear",
+          "location": "set_generic_test.go",
+          "value": "effort=791.2 | vol=137.6 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "TestSortedList",
+          "location": "set_generic_test.go",
+          "value": "effort=491.7 | vol=124.9 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "TestKeySet",
+          "location": "set_generic_test.go",
+          "value": "effort=483.5 | vol=150.4 | bugs=0.1",
+          "severity": "good"
+        },
+        {
+          "name": "UnsortedList",
+          "location": "set.go",
+          "value": "effort=479.2 | vol=89.9 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Difference",
+          "location": "set.go",
+          "value": "effort=445.4 | vol=93.8 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "TestStringSetList",
+          "location": "set_test.go",
+          "value": "effort=395.3 | vol=109.8 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "TestSetHasAny",
+          "location": "set_generic_test.go",
+          "value": "effort=364.6 | vol=78.1 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "TestStringSetHasAny",
+          "location": "set_test.go",
+          "value": "effort=352.7 | vol=72.3 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "BenchmarkListLarge",
+          "location": "set_generic_test.go",
+          "value": "effort=299.9 | vol=91.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Clone",
+          "location": "set.go",
+          "value": "effort=293.6 | vol=77.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "KeySet",
+          "location": "set.go",
+          "value": "effort=291.3 | vol=92.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Equal",
+          "location": "set.go",
+          "value": "effort=269.5 | vol=58.8 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "SymmetricDifference",
+          "location": "set.go",
+          "value": "effort=244.7 | vol=56.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "New",
+          "location": "set.go",
+          "value": "effort=207.2 | vol=66.6 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Union",
+          "location": "set.go",
+          "value": "effort=181.6 | vol=68.1 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "List",
+          "location": "set.go",
+          "value": "effort=168.3 | vol=64.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "IsSuperset",
+          "location": "set.go",
+          "value": "effort=147.9 | vol=53.8 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAll",
+          "location": "set.go",
+          "value": "effort=115.1 | vol=51.8 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Union",
+          "location": "int64.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Insert",
+          "location": "set.go",
+          "value": "effort=109.6 | vol=46.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Intersection",
+          "location": "int.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "SymmetricDifference",
+          "location": "int64.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Difference",
+          "location": "int32.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "SymmetricDifference",
+          "location": "int32.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Union",
+          "location": "int32.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Intersection",
+          "location": "int32.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Difference",
+          "location": "int64.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Union",
+          "location": "int.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "SymmetricDifference",
+          "location": "int.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Union",
+          "location": "string.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Intersection",
+          "location": "int64.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Intersection",
+          "location": "string.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Difference",
+          "location": "byte.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "SymmetricDifference",
+          "location": "byte.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Difference",
+          "location": "int.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Difference",
+          "location": "string.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Union",
+          "location": "byte.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Intersection",
+          "location": "byte.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "SymmetricDifference",
+          "location": "string.go",
+          "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "PopAny",
+          "location": "set.go",
+          "value": "effort=107.5 | vol=53.8 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "BenchmarkListSmall",
+          "location": "set_generic_test.go",
+          "value": "effort=92.0 | vol=50.2 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAny",
+          "location": "set.go",
+          "value": "effort=77.7 | vol=46.6 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "IsSuperset",
+          "location": "string.go",
+          "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Equal",
+          "location": "int.go",
+          "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "IsSuperset",
+          "location": "int64.go",
+          "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Equal",
+          "location": "int64.go",
+          "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Equal",
+          "location": "string.go",
+          "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "IsSuperset",
+          "location": "int.go",
+          "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Equal",
+          "location": "byte.go",
+          "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "IsSuperset",
+          "location": "byte.go",
+          "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "IsSuperset",
+          "location": "int32.go",
+          "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Equal",
+          "location": "int32.go",
+          "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Delete",
+          "location": "set.go",
+          "value": "effort=64.8 | vol=41.2 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Delete",
+          "location": "byte.go",
+          "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Insert",
+          "location": "byte.go",
+          "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Delete",
+          "location": "int32.go",
+          "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Insert",
+          "location": "int64.go",
+          "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Delete",
+          "location": "int64.go",
+          "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Insert",
+          "location": "int32.go",
+          "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Insert",
+          "location": "string.go",
+          "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Delete",
+          "location": "string.go",
+          "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Delete",
+          "location": "int.go",
+          "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Insert",
+          "location": "int.go",
+          "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "UnsortedList",
+          "location": "int.go",
+          "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "UnsortedList",
+          "location": "string.go",
+          "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "List",
+          "location": "int.go",
+          "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Clone",
+          "location": "int32.go",
+          "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "List",
+          "location": "int32.go",
+          "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "UnsortedList",
+          "location": "int32.go",
+          "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Clone",
+          "location": "byte.go",
+          "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Clone",
+          "location": "string.go",
+          "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Clone",
+          "location": "int64.go",
+          "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "List",
+          "location": "byte.go",
+          "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "UnsortedList",
+          "location": "byte.go",
+          "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Clone",
+          "location": "int.go",
+          "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "List",
+          "location": "string.go",
+          "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "List",
+          "location": "int64.go",
+          "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "UnsortedList",
+          "location": "int64.go",
+          "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "StringKeySet",
+          "location": "string.go",
+          "value": "effort=42.8 | vol=28.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "IntKeySet",
+          "location": "int.go",
+          "value": "effort=42.8 | vol=28.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "ByteKeySet",
+          "location": "byte.go",
+          "value": "effort=42.8 | vol=28.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Int32KeySet",
+          "location": "int32.go",
+          "value": "effort=42.8 | vol=28.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Int64KeySet",
+          "location": "int64.go",
+          "value": "effort=42.8 | vol=28.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "clearSetAndAdd",
+          "location": "set_generic_test.go",
+          "value": "effort=41.1 | vol=36.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Clear",
+          "location": "set.go",
+          "value": "effort=40.7 | vol=23.3 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Insert",
+          "location": "set.go",
+          "value": "effort=40.0 | vol=30.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Has",
+          "location": "set.go",
+          "value": "effort=36.2 | vol=31.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Has",
+          "location": "int32.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAll",
+          "location": "byte.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAny",
+          "location": "int64.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAll",
+          "location": "int64.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Has",
+          "location": "int64.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Has",
+          "location": "int.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "NewInt64",
+          "location": "int64.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAll",
+          "location": "int32.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAny",
+          "location": "byte.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAny",
+          "location": "string.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Has",
+          "location": "byte.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAny",
+          "location": "int.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "NewInt32",
+          "location": "int32.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "NewInt",
+          "location": "int.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "NewString",
+          "location": "string.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAll",
+          "location": "int.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "NewByte",
+          "location": "byte.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAny",
+          "location": "int32.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Has",
+          "location": "string.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "HasAll",
+          "location": "string.go",
+          "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "PopAny",
+          "location": "int.go",
+          "value": "effort=23.3 | vol=15.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "PopAny",
+          "location": "int64.go",
+          "value": "effort=23.3 | vol=15.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "PopAny",
+          "location": "int32.go",
+          "value": "effort=23.3 | vol=15.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "PopAny",
+          "location": "byte.go",
+          "value": "effort=23.3 | vol=15.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "PopAny",
+          "location": "string.go",
+          "value": "effort=23.3 | vol=15.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Len",
+          "location": "set.go",
+          "value": "effort=15.5 | vol=15.5 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "cast",
+          "location": "set.go",
+          "value": "effort=10.9 | vol=18.1 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Len",
+          "location": "int64.go",
+          "value": "effort=8.0 | vol=8.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Len",
+          "location": "int32.go",
+          "value": "effort=8.0 | vol=8.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Len",
+          "location": "int.go",
+          "value": "effort=8.0 | vol=8.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Len",
+          "location": "byte.go",
+          "value": "effort=8.0 | vol=8.0 | bugs=0.0",
+          "severity": "good"
+        },
+        {
+          "name": "Len",
+          "location": "string.go",
+          "value": "effort=8.0 | vol=8.0 | bugs=0.0",
+          "severity": "good"
+        }
+      ],
+      "files": [
+        {
+          "file_path": "int64.go",
+          "score_label": "3/10",
+          "status": "High complexity - code should be refactored for better maintainability",
+          "metrics": [
+            {
+              "label": "Total Functions",
+              "value": "18"
+            },
+            {
+              "label": "Distinct Operators (n1)",
+              "value": "49"
+            },
+            {
+              "label": "Distinct Operands (n2)",
+              "value": "29"
+            },
+            {
+              "label": "Total Operators (N1)",
+              "value": "68"
+            },
+            {
+              "label": "Total Operands (N2)",
+              "value": "83"
+            },
+            {
+              "label": "Vocabulary",
+              "value": "78"
+            },
+            {
+              "label": "Volume",
+              "value": "949.1"
+            },
+            {
+              "label": "Difficulty",
+              "value": "70.1"
+            },
+            {
+              "label": "Effort",
+              "value": "66551.2"
+            },
+            {
+              "label": "Est. Bugs",
+              "value": "0.3"
+            }
+          ],
+          "distribution": [
+            {
+              "label": "Low (\u003c=100)",
+              "percent": 1,
+              "count": 18
+            },
+            {
+              "label": "Medium (101-1000)",
+              "percent": 0,
+              "count": 0
+            },
+            {
+              "label": "High (1001-5000)",
+              "percent": 0,
+              "count": 0
+            },
+            {
+              "label": "Very High (\u003e5000)",
+              "percent": 0,
+              "count": 0
+            }
+          ],
+          "issues": [
+            {
+              "name": "Difference",
+              "location": "int64.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Intersection",
+              "location": "int64.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Union",
+              "location": "int64.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "SymmetricDifference",
+              "location": "int64.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "IsSuperset",
+              "location": "int64.go",
+              "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Equal",
+              "location": "int64.go",
+              "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Delete",
+              "location": "int64.go",
+              "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Insert",
+              "location": "int64.go",
+              "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "UnsortedList",
+              "location": "int64.go",
+              "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Clone",
+              "location": "int64.go",
+              "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "List",
+              "location": "int64.go",
+              "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Int64KeySet",
+              "location": "int64.go",
+              "value": "effort=42.8 | vol=28.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "NewInt64",
+              "location": "int64.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "HasAll",
+              "location": "int64.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Has",
+              "location": "int64.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "HasAny",
+              "location": "int64.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "PopAny",
+              "location": "int64.go",
+              "value": "effort=23.3 | vol=15.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Len",
+              "location": "int64.go",
+              "value": "effort=8.0 | vol=8.0 | bugs=0.0",
+              "severity": "good"
+            }
+          ],
+          "score": 0.3
+        },
+        {
+          "file_path": "set.go",
+          "score_label": "3/10",
+          "status": "High complexity - code should be refactored for better maintainability",
+          "metrics": [
+            {
+              "label": "Total Functions",
+              "value": "21"
+            },
+            {
+              "label": "Distinct Operators (n1)",
+              "value": "52"
+            },
+            {
+              "label": "Distinct Operands (n2)",
+              "value": "55"
+            },
+            {
+              "label": "Total Operators (N1)",
+              "value": "80"
+            },
+            {
+              "label": "Total Operands (N2)",
+              "value": "270"
+            },
+            {
+              "label": "Vocabulary",
+              "value": "107"
+            },
+            {
+              "label": "Volume",
+              "value": "2359.5"
+            },
+            {
+              "label": "Difficulty",
+              "value": "127.6"
+            },
+            {
+              "label": "Effort",
+              "value": "301159.7"
+            },
+            {
+              "label": "Est. Bugs",
+              "value": "0.8"
+            }
+          ],
+          "distribution": [
+            {
+              "label": "Low (\u003c=100)",
+              "percent": 0.9523809523809523,
+              "count": 20
+            },
+            {
+              "label": "Medium (101-1000)",
+              "percent": 0.047619047619047616,
+              "count": 1
+            },
+            {
+              "label": "High (1001-5000)",
+              "percent": 0,
+              "count": 0
+            },
+            {
+              "label": "Very High (\u003e5000)",
+              "percent": 0,
+              "count": 0
+            }
+          ],
+          "issues": [
+            {
+              "name": "Intersection",
+              "location": "set.go",
+              "value": "effort=1949.4 | vol=200.7 | bugs=0.1",
+              "severity": "good"
+            },
+            {
+              "name": "UnsortedList",
+              "location": "set.go",
+              "value": "effort=479.2 | vol=89.9 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Difference",
+              "location": "set.go",
+              "value": "effort=445.4 | vol=93.8 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Clone",
+              "location": "set.go",
+              "value": "effort=293.6 | vol=77.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "KeySet",
+              "location": "set.go",
+              "value": "effort=291.3 | vol=92.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Equal",
+              "location": "set.go",
+              "value": "effort=269.5 | vol=58.8 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "SymmetricDifference",
+              "location": "set.go",
+              "value": "effort=244.7 | vol=56.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "New",
+              "location": "set.go",
+              "value": "effort=207.2 | vol=66.6 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Union",
+              "location": "set.go",
+              "value": "effort=181.6 | vol=68.1 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "List",
+              "location": "set.go",
+              "value": "effort=168.3 | vol=64.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "IsSuperset",
+              "location": "set.go",
+              "value": "effort=147.9 | vol=53.8 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "HasAll",
+              "location": "set.go",
+              "value": "effort=115.1 | vol=51.8 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Insert",
+              "location": "set.go",
+              "value": "effort=109.6 | vol=46.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "PopAny",
+              "location": "set.go",
+              "value": "effort=107.5 | vol=53.8 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "HasAny",
+              "location": "set.go",
+              "value": "effort=77.7 | vol=46.6 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Delete",
+              "location": "set.go",
+              "value": "effort=64.8 | vol=41.2 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Clear",
+              "location": "set.go",
+              "value": "effort=40.7 | vol=23.3 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Insert",
+              "location": "set.go",
+              "value": "effort=40.0 | vol=30.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Has",
+              "location": "set.go",
+              "value": "effort=36.2 | vol=31.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Len",
+              "location": "set.go",
+              "value": "effort=15.5 | vol=15.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "cast",
+              "location": "set.go",
+              "value": "effort=10.9 | vol=18.1 | bugs=0.0",
+              "severity": "good"
+            }
+          ],
+          "score": 0.3
+        },
+        {
+          "file_path": "doc.go",
+          "score_label": "10/10",
+          "status": "Excellent complexity - code is simple and maintainable",
+          "metrics": [
+            {
+              "label": "Total Functions",
+              "value": "0"
+            },
+            {
+              "label": "Distinct Operators (n1)",
+              "value": "0"
+            },
+            {
+              "label": "Distinct Operands (n2)",
+              "value": "0"
+            },
+            {
+              "label": "Total Operators (N1)",
+              "value": "0"
+            },
+            {
+              "label": "Total Operands (N2)",
+              "value": "0"
+            },
+            {
+              "label": "Vocabulary",
+              "value": "0"
+            },
+            {
+              "label": "Volume",
+              "value": "0.0"
+            },
+            {
+              "label": "Difficulty",
+              "value": "0.0"
+            },
+            {
+              "label": "Effort",
+              "value": "0.0"
+            },
+            {
+              "label": "Est. Bugs",
+              "value": "0.0"
+            }
+          ],
+          "issues": [],
+          "score": 1
+        },
+        {
+          "file_path": "int.go",
+          "score_label": "3/10",
+          "status": "High complexity - code should be refactored for better maintainability",
+          "metrics": [
+            {
+              "label": "Total Functions",
+              "value": "18"
+            },
+            {
+              "label": "Distinct Operators (n1)",
+              "value": "49"
+            },
+            {
+              "label": "Distinct Operands (n2)",
+              "value": "29"
+            },
+            {
+              "label": "Total Operators (N1)",
+              "value": "68"
+            },
+            {
+              "label": "Total Operands (N2)",
+              "value": "83"
+            },
+            {
+              "label": "Vocabulary",
+              "value": "78"
+            },
+            {
+              "label": "Volume",
+              "value": "949.1"
+            },
+            {
+              "label": "Difficulty",
+              "value": "70.1"
+            },
+            {
+              "label": "Effort",
+              "value": "66551.2"
+            },
+            {
+              "label": "Est. Bugs",
+              "value": "0.3"
+            }
+          ],
+          "distribution": [
+            {
+              "label": "Low (\u003c=100)",
+              "percent": 1,
+              "count": 18
+            },
+            {
+              "label": "Medium (101-1000)",
+              "percent": 0,
+              "count": 0
+            },
+            {
+              "label": "High (1001-5000)",
+              "percent": 0,
+              "count": 0
+            },
+            {
+              "label": "Very High (\u003e5000)",
+              "percent": 0,
+              "count": 0
+            }
+          ],
+          "issues": [
+            {
+              "name": "Difference",
+              "location": "int.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Intersection",
+              "location": "int.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Union",
+              "location": "int.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "SymmetricDifference",
+              "location": "int.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "IsSuperset",
+              "location": "int.go",
+              "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Equal",
+              "location": "int.go",
+              "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Delete",
+              "location": "int.go",
+              "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Insert",
+              "location": "int.go",
+              "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "UnsortedList",
+              "location": "int.go",
+              "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Clone",
+              "location": "int.go",
+              "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "List",
+              "location": "int.go",
+              "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "IntKeySet",
+              "location": "int.go",
+              "value": "effort=42.8 | vol=28.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "NewInt",
+              "location": "int.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "HasAll",
+              "location": "int.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Has",
+              "location": "int.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "HasAny",
+              "location": "int.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "PopAny",
+              "location": "int.go",
+              "value": "effort=23.3 | vol=15.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Len",
+              "location": "int.go",
+              "value": "effort=8.0 | vol=8.0 | bugs=0.0",
+              "severity": "good"
+            }
+          ],
+          "score": 0.3
+        },
+        {
+          "file_path": "set_generic_test.go",
+          "score_label": "3/10",
+          "status": "High complexity - code should be refactored for better maintainability",
+          "metrics": [
+            {
+              "label": "Total Functions",
+              "value": "18"
+            },
+            {
+              "label": "Distinct Operators (n1)",
+              "value": "119"
+            },
+            {
+              "label": "Distinct Operands (n2)",
+              "value": "92"
+            },
+            {
+              "label": "Total Operators (N1)",
+              "value": "276"
+            },
+            {
+              "label": "Total Operands (N2)",
+              "value": "735"
+            },
+            {
+              "label": "Vocabulary",
+              "value": "211"
+            },
+            {
+              "label": "Volume",
+              "value": "7806.0"
+            },
+            {
+              "label": "Difficulty",
+              "value": "475.4"
+            },
+            {
+              "label": "Effort",
+              "value": "3710622.4"
+            },
+            {
+              "label": "Est. Bugs",
+              "value": "2.6"
+            }
+          ],
+          "distribution": [
+            {
+              "label": "Low (\u003c=100)",
+              "percent": 0.2222222222222222,
+              "count": 4
+            },
+            {
+              "label": "Medium (101-1000)",
+              "percent": 0.7777777777777778,
+              "count": 14
+            },
+            {
+              "label": "High (1001-5000)",
+              "percent": 0,
+              "count": 0
+            },
+            {
+              "label": "Very High (\u003e5000)",
+              "percent": 0,
+              "count": 0
+            }
+          ],
+          "issues": [
+            {
+              "name": "TestSetEquals",
+              "location": "set_generic_test.go",
+              "value": "effort=37694.5 | vol=689.8 | bugs=0.2",
+              "severity": "fair"
+            },
+            {
+              "name": "TestSet",
+              "location": "set_generic_test.go",
+              "value": "effort=23264.8 | vol=541.8 | bugs=0.2",
+              "severity": "fair"
+            },
+            {
+              "name": "TestIntersection",
+              "location": "set_generic_test.go",
+              "value": "effort=18401.0 | vol=737.0 | bugs=0.2",
+              "severity": "fair"
+            },
+            {
+              "name": "TestUnion",
+              "location": "set_generic_test.go",
+              "value": "effort=16400.9 | vol=660.6 | bugs=0.2",
+              "severity": "fair"
+            },
+            {
+              "name": "TestSetDifference",
+              "location": "set_generic_test.go",
+              "value": "effort=9370.1 | vol=369.9 | bugs=0.1",
+              "severity": "good"
+            },
+            {
+              "name": "TestSetDeleteMultiples",
+              "location": "set_generic_test.go",
+              "value": "effort=4479.5 | vol=255.4 | bugs=0.1",
+              "severity": "good"
+            },
+            {
+              "name": "TestSetSymmetricDifference",
+              "location": "set_generic_test.go",
+              "value": "effort=3707.3 | vol=255.2 | bugs=0.1",
+              "severity": "good"
+            },
+            {
+              "name": "TestNewEmptySet",
+              "location": "set_generic_test.go",
+              "value": "effort=3697.7 | vol=227.5 | bugs=0.1",
+              "severity": "good"
+            },
+            {
+              "name": "TestSetClearWithSharedReference",
+              "location": "set_generic_test.go",
+              "value": "effort=1875.5 | vol=205.1 | bugs=0.1",
+              "severity": "good"
+            },
+            {
+              "name": "TestNewSet",
+              "location": "set_generic_test.go",
+              "value": "effort=1775.6 | vol=153.7 | bugs=0.1",
+              "severity": "good"
+            },
+            {
+              "name": "TestSetClearInSeparateFunction",
+              "location": "set_generic_test.go",
+              "value": "effort=1772.1 | vol=182.8 | bugs=0.1",
+              "severity": "good"
+            },
+            {
+              "name": "TestSetClear",
+              "location": "set_generic_test.go",
+              "value": "effort=791.2 | vol=137.6 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "TestSortedList",
+              "location": "set_generic_test.go",
+              "value": "effort=491.7 | vol=124.9 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "TestKeySet",
+              "location": "set_generic_test.go",
+              "value": "effort=483.5 | vol=150.4 | bugs=0.1",
+              "severity": "good"
+            },
+            {
+              "name": "TestSetHasAny",
+              "location": "set_generic_test.go",
+              "value": "effort=364.6 | vol=78.1 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "BenchmarkListLarge",
+              "location": "set_generic_test.go",
+              "value": "effort=299.9 | vol=91.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "BenchmarkListSmall",
+              "location": "set_generic_test.go",
+              "value": "effort=92.0 | vol=50.2 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "clearSetAndAdd",
+              "location": "set_generic_test.go",
+              "value": "effort=41.1 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            }
+          ],
+          "score": 0.3
+        },
+        {
+          "file_path": "set_test.go",
+          "score_label": "3/10",
+          "status": "High complexity - code should be refactored for better maintainability",
+          "metrics": [
+            {
+              "label": "Total Functions",
+              "value": "12"
+            },
+            {
+              "label": "Distinct Operators (n1)",
+              "value": "130"
+            },
+            {
+              "label": "Distinct Operands (n2)",
+              "value": "118"
+            },
+            {
+              "label": "Total Operators (N1)",
+              "value": "270"
+            },
+            {
+              "label": "Total Operands (N2)",
+              "value": "676"
+            },
+            {
+              "label": "Vocabulary",
+              "value": "248"
+            },
+            {
+              "label": "Volume",
+              "value": "7524.7"
+            },
+            {
+              "label": "Difficulty",
+              "value": "372.4"
+            },
+            {
+              "label": "Effort",
+              "value": "2801982.9"
+            },
+            {
+              "label": "Est. Bugs",
+              "value": "2.5"
+            }
+          ],
+          "distribution": [
+            {
+              "label": "Low (\u003c=100)",
+              "percent": 0.08333333333333333,
+              "count": 1
+            },
+            {
+              "label": "Medium (101-1000)",
+              "percent": 0.8333333333333334,
+              "count": 10
+            },
+            {
+              "label": "High (1001-5000)",
+              "percent": 0.08333333333333333,
+              "count": 1
+            },
+            {
+              "label": "Very High (\u003e5000)",
+              "percent": 0,
+              "count": 0
+            }
+          ],
+          "issues": [
+            {
+              "name": "BenchmarkStringSet",
+              "location": "set_test.go",
+              "value": "effort=72439.0 | vol=1530.0 | bugs=0.5",
+              "severity": "poor"
+            },
+            {
+              "name": "TestStringSetEquals",
+              "location": "set_test.go",
+              "value": "effort=35426.9 | vol=622.9 | bugs=0.2",
+              "severity": "fair"
+            },
+            {
+              "name": "TestStringSet",
+              "location": "set_test.go",
+              "value": "effort=23594.7 | vol=512.9 | bugs=0.2",
+              "severity": "fair"
+            },
+            {
+              "name": "TestStringIntersection",
+              "location": "set_test.go",
+              "value": "effort=11571.0 | vol=555.4 | bugs=0.2",
+              "severity": "fair"
+            },
+            {
+              "name": "TestStringUnion",
+              "location": "set_test.go",
+              "value": "effort=9773.4 | vol=498.3 | bugs=0.2",
+              "severity": "good"
+            },
+            {
+              "name": "TestStringSetDifference",
+              "location": "set_test.go",
+              "value": "effort=8517.0 | vol=346.4 | bugs=0.1",
+              "severity": "good"
+            },
+            {
+              "name": "TestStringSetDeleteMultiples",
+              "location": "set_test.go",
+              "value": "effort=4707.8 | vol=239.7 | bugs=0.1",
+              "severity": "good"
+            },
+            {
+              "name": "TestStringSetSymmetricDifference",
+              "location": "set_test.go",
+              "value": "effort=2905.1 | vol=223.5 | bugs=0.1",
+              "severity": "good"
+            },
+            {
+              "name": "TestNewStringSet",
+              "location": "set_test.go",
+              "value": "effort=1796.0 | vol=146.9 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "makeString",
+              "location": "set_test.go",
+              "value": "effort=1135.2 | vol=153.7 | bugs=0.1",
+              "severity": "good"
+            },
+            {
+              "name": "TestStringSetList",
+              "location": "set_test.go",
+              "value": "effort=395.3 | vol=109.8 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "TestStringSetHasAny",
+              "location": "set_test.go",
+              "value": "effort=352.7 | vol=72.3 | bugs=0.0",
+              "severity": "good"
+            }
+          ],
+          "score": 0.3
+        },
+        {
+          "file_path": "string.go",
+          "score_label": "3/10",
+          "status": "High complexity - code should be refactored for better maintainability",
+          "metrics": [
+            {
+              "label": "Total Functions",
+              "value": "18"
+            },
+            {
+              "label": "Distinct Operators (n1)",
+              "value": "49"
+            },
+            {
+              "label": "Distinct Operands (n2)",
+              "value": "29"
+            },
+            {
+              "label": "Total Operators (N1)",
+              "value": "68"
+            },
+            {
+              "label": "Total Operands (N2)",
+              "value": "83"
+            },
+            {
+              "label": "Vocabulary",
+              "value": "78"
+            },
+            {
+              "label": "Volume",
+              "value": "949.1"
+            },
+            {
+              "label": "Difficulty",
+              "value": "70.1"
+            },
+            {
+              "label": "Effort",
+              "value": "66551.2"
+            },
+            {
+              "label": "Est. Bugs",
+              "value": "0.3"
+            }
+          ],
+          "distribution": [
+            {
+              "label": "Low (\u003c=100)",
+              "percent": 1,
+              "count": 18
+            },
+            {
+              "label": "Medium (101-1000)",
+              "percent": 0,
+              "count": 0
+            },
+            {
+              "label": "High (1001-5000)",
+              "percent": 0,
+              "count": 0
+            },
+            {
+              "label": "Very High (\u003e5000)",
+              "percent": 0,
+              "count": 0
+            }
+          ],
+          "issues": [
+            {
+              "name": "Difference",
+              "location": "string.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Intersection",
+              "location": "string.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Union",
+              "location": "string.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "SymmetricDifference",
+              "location": "string.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "IsSuperset",
+              "location": "string.go",
+              "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Equal",
+              "location": "string.go",
+              "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Delete",
+              "location": "string.go",
+              "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Insert",
+              "location": "string.go",
+              "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "UnsortedList",
+              "location": "string.go",
+              "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Clone",
+              "location": "string.go",
+              "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "List",
+              "location": "string.go",
+              "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "StringKeySet",
+              "location": "string.go",
+              "value": "effort=42.8 | vol=28.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "NewString",
+              "location": "string.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "HasAll",
+              "location": "string.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Has",
+              "location": "string.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "HasAny",
+              "location": "string.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "PopAny",
+              "location": "string.go",
+              "value": "effort=23.3 | vol=15.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Len",
+              "location": "string.go",
+              "value": "effort=8.0 | vol=8.0 | bugs=0.0",
+              "severity": "good"
+            }
+          ],
+          "score": 0.3
+        },
+        {
+          "file_path": "byte.go",
+          "score_label": "3/10",
+          "status": "High complexity - code should be refactored for better maintainability",
+          "metrics": [
+            {
+              "label": "Total Functions",
+              "value": "18"
+            },
+            {
+              "label": "Distinct Operators (n1)",
+              "value": "49"
+            },
+            {
+              "label": "Distinct Operands (n2)",
+              "value": "29"
+            },
+            {
+              "label": "Total Operators (N1)",
+              "value": "68"
+            },
+            {
+              "label": "Total Operands (N2)",
+              "value": "83"
+            },
+            {
+              "label": "Vocabulary",
+              "value": "78"
+            },
+            {
+              "label": "Volume",
+              "value": "949.1"
+            },
+            {
+              "label": "Difficulty",
+              "value": "70.1"
+            },
+            {
+              "label": "Effort",
+              "value": "66551.2"
+            },
+            {
+              "label": "Est. Bugs",
+              "value": "0.3"
+            }
+          ],
+          "distribution": [
+            {
+              "label": "Low (\u003c=100)",
+              "percent": 1,
+              "count": 18
+            },
+            {
+              "label": "Medium (101-1000)",
+              "percent": 0,
+              "count": 0
+            },
+            {
+              "label": "High (1001-5000)",
+              "percent": 0,
+              "count": 0
+            },
+            {
+              "label": "Very High (\u003e5000)",
+              "percent": 0,
+              "count": 0
+            }
+          ],
+          "issues": [
+            {
+              "name": "Difference",
+              "location": "byte.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Intersection",
+              "location": "byte.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Union",
+              "location": "byte.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "SymmetricDifference",
+              "location": "byte.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "IsSuperset",
+              "location": "byte.go",
+              "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Equal",
+              "location": "byte.go",
+              "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Delete",
+              "location": "byte.go",
+              "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Insert",
+              "location": "byte.go",
+              "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "UnsortedList",
+              "location": "byte.go",
+              "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Clone",
+              "location": "byte.go",
+              "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "List",
+              "location": "byte.go",
+              "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "ByteKeySet",
+              "location": "byte.go",
+              "value": "effort=42.8 | vol=28.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "NewByte",
+              "location": "byte.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "HasAll",
+              "location": "byte.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Has",
+              "location": "byte.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "HasAny",
+              "location": "byte.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "PopAny",
+              "location": "byte.go",
+              "value": "effort=23.3 | vol=15.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Len",
+              "location": "byte.go",
+              "value": "effort=8.0 | vol=8.0 | bugs=0.0",
+              "severity": "good"
+            }
+          ],
+          "score": 0.3
+        },
+        {
+          "file_path": "empty.go",
+          "score_label": "10/10",
+          "status": "Excellent complexity - code is simple and maintainable",
+          "metrics": [
+            {
+              "label": "Total Functions",
+              "value": "0"
+            },
+            {
+              "label": "Distinct Operators (n1)",
+              "value": "0"
+            },
+            {
+              "label": "Distinct Operands (n2)",
+              "value": "0"
+            },
+            {
+              "label": "Total Operators (N1)",
+              "value": "0"
+            },
+            {
+              "label": "Total Operands (N2)",
+              "value": "0"
+            },
+            {
+              "label": "Vocabulary",
+              "value": "0"
+            },
+            {
+              "label": "Volume",
+              "value": "0.0"
+            },
+            {
+              "label": "Difficulty",
+              "value": "0.0"
+            },
+            {
+              "label": "Effort",
+              "value": "0.0"
+            },
+            {
+              "label": "Est. Bugs",
+              "value": "0.0"
+            }
+          ],
+          "issues": [],
+          "score": 1
+        },
+        {
+          "file_path": "int32.go",
+          "score_label": "3/10",
+          "status": "High complexity - code should be refactored for better maintainability",
+          "metrics": [
+            {
+              "label": "Total Functions",
+              "value": "18"
+            },
+            {
+              "label": "Distinct Operators (n1)",
+              "value": "49"
+            },
+            {
+              "label": "Distinct Operands (n2)",
+              "value": "29"
+            },
+            {
+              "label": "Total Operators (N1)",
+              "value": "68"
+            },
+            {
+              "label": "Total Operands (N2)",
+              "value": "83"
+            },
+            {
+              "label": "Vocabulary",
+              "value": "78"
+            },
+            {
+              "label": "Volume",
+              "value": "949.1"
+            },
+            {
+              "label": "Difficulty",
+              "value": "70.1"
+            },
+            {
+              "label": "Effort",
+              "value": "66551.2"
+            },
+            {
+              "label": "Est. Bugs",
+              "value": "0.3"
+            }
+          ],
+          "distribution": [
+            {
+              "label": "Low (\u003c=100)",
+              "percent": 1,
+              "count": 18
+            },
+            {
+              "label": "Medium (101-1000)",
+              "percent": 0,
+              "count": 0
+            },
+            {
+              "label": "High (1001-5000)",
+              "percent": 0,
+              "count": 0
+            },
+            {
+              "label": "Very High (\u003e5000)",
+              "percent": 0,
+              "count": 0
+            }
+          ],
+          "issues": [
+            {
+              "name": "Difference",
+              "location": "int32.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Intersection",
+              "location": "int32.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Union",
+              "location": "int32.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "SymmetricDifference",
+              "location": "int32.go",
+              "value": "effort=109.6 | vol=36.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "IsSuperset",
+              "location": "int32.go",
+              "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Equal",
+              "location": "int32.go",
+              "value": "effort=67.5 | vol=27.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Delete",
+              "location": "int32.go",
+              "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Insert",
+              "location": "int32.go",
+              "value": "effort=57.1 | vol=28.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "UnsortedList",
+              "location": "int32.go",
+              "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Clone",
+              "location": "int32.go",
+              "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "List",
+              "location": "int32.go",
+              "value": "effort=48.0 | vol=24.0 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Int32KeySet",
+              "location": "int32.go",
+              "value": "effort=42.8 | vol=28.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "NewInt32",
+              "location": "int32.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "HasAll",
+              "location": "int32.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Has",
+              "location": "int32.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "HasAny",
+              "location": "int32.go",
+              "value": "effort=29.5 | vol=19.7 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "PopAny",
+              "location": "int32.go",
+              "value": "effort=23.3 | vol=15.5 | bugs=0.0",
+              "severity": "good"
+            },
+            {
+              "name": "Len",
+              "location": "int32.go",
+              "value": "effort=8.0 | vol=8.0 | bugs=0.0",
+              "severity": "good"
+            }
+          ],
+          "score": 0.3
+        }
+      ],
+      "score": 0.3
+    }
+  ],
+  "overall_score": 0.3
+}

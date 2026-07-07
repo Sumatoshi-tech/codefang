@@ -1,0 +1,1440 @@
+function_halstead:
+    - name: BenchmarkStringSet
+      source_file: set_test.go
+      language: go
+      directory: .
+      volume: 1530.009463523262
+      difficulty: 47.345454545454544
+      effort: 72438.99350935589
+      time_to_program: 4024.3885282975493
+      delivered_bugs: 0.510003154507754
+      complexity_level: High
+    - name: TestIntersection
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      volume: 737.0232685160352
+      difficulty: 24.96666666666667
+      effort: 18401.01427061701
+      time_to_program: 1022.278570589834
+      delivered_bugs: 0.24567442283867838
+      complexity_level: Medium
+    - name: TestSetEquals
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      volume: 689.8333013081152
+      difficulty: 54.64285714285714
+      effort: 37694.46253576486
+      time_to_program: 2094.1368075424925
+      delivered_bugs: 0.22994443376937174
+      complexity_level: Medium
+    - name: TestUnion
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      volume: 660.591225855113
+      difficulty: 24.82758620689655
+      effort: 16400.885607437285
+      time_to_program: 911.1603115242937
+      delivered_bugs: 0.22019707528503765
+      complexity_level: Medium
+    - name: TestStringSetEquals
+      source_file: set_test.go
+      language: go
+      directory: .
+      volume: 622.8902627834143
+      difficulty: 56.875
+      effort: 35426.88369580669
+      time_to_program: 1968.1602053225938
+      delivered_bugs: 0.20763008759447144
+      complexity_level: Medium
+    - name: TestStringIntersection
+      source_file: set_test.go
+      language: go
+      directory: .
+      volume: 555.4086945462124
+      difficulty: 20.833333333333332
+      effort: 11571.014469712756
+      time_to_program: 642.8341372062642
+      delivered_bugs: 0.18513623151540412
+      complexity_level: Medium
+    - name: TestSet
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      volume: 541.7831500254108
+      difficulty: 42.94117647058823
+      effort: 23264.805854032344
+      time_to_program: 1292.489214112908
+      delivered_bugs: 0.1805943833418036
+      complexity_level: Medium
+    - name: TestStringSet
+      source_file: set_test.go
+      language: go
+      directory: .
+      volume: 512.9283016944967
+      difficulty: 46
+      effort: 23594.701877946845
+      time_to_program: 1310.816770997047
+      delivered_bugs: 0.17097610056483223
+      complexity_level: Medium
+    - name: TestStringUnion
+      source_file: set_test.go
+      language: go
+      directory: .
+      volume: 498.2523364294818
+      difficulty: 19.615384615384617
+      effort: 9773.411214578296
+      time_to_program: 542.9672896987943
+      delivered_bugs: 0.1660841121431606
+      complexity_level: Medium
+    - name: TestSetDifference
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      volume: 369.87118895965546
+      difficulty: 25.333333333333332
+      effort: 9370.070120311271
+      time_to_program: 520.5594511284039
+      delivered_bugs: 0.12329039631988516
+      complexity_level: Medium
+    - name: TestStringSetDifference
+      source_file: set_test.go
+      language: go
+      directory: .
+      volume: 346.3849750966349
+      difficulty: 24.58823529411765
+      effort: 8516.99527002314
+      time_to_program: 473.1664038901745
+      delivered_bugs: 0.11546165836554496
+      complexity_level: Medium
+    - name: TestSetDeleteMultiples
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      volume: 255.41209043760983
+      difficulty: 17.538461538461537
+      effort: 4479.53512459808
+      time_to_program: 248.86306247767112
+      delivered_bugs: 0.08513736347920328
+      complexity_level: Medium
+    - name: TestSetSymmetricDifference
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      volume: 255.15831097164298
+      difficulty: 14.529411764705882
+      effort: 3707.3001652938715
+      time_to_program: 205.96112029410398
+      delivered_bugs: 0.08505277032388099
+      complexity_level: Medium
+    - name: TestStringSetDeleteMultiples
+      source_file: set_test.go
+      language: go
+      directory: .
+      volume: 239.7487836710217
+      difficulty: 19.636363636363637
+      effort: 4707.794297540063
+      time_to_program: 261.5441276411146
+      delivered_bugs: 0.0799162612236739
+      complexity_level: Medium
+    - name: TestNewEmptySet
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      volume: 227.5489532989615
+      difficulty: 16.25
+      effort: 3697.670491108124
+      time_to_program: 205.4261383948958
+      delivered_bugs: 0.07584965109965383
+      complexity_level: Medium
+    - name: TestStringSetSymmetricDifference
+      source_file: set_test.go
+      language: go
+      directory: .
+      volume: 223.4671257758683
+      difficulty: 13
+      effort: 2905.072635086288
+      time_to_program: 161.39292417146044
+      delivered_bugs: 0.07448904192528943
+      complexity_level: Medium
+    - name: TestSetClearWithSharedReference
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      volume: 205.13385445731566
+      difficulty: 9.142857142857142
+      effort: 1875.509526466886
+      time_to_program: 104.19497369260478
+      delivered_bugs: 0.06837795148577189
+      complexity_level: Medium
+    - name: Intersection
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 200.67442283867837
+      difficulty: 9.714285714285714
+      effort: 1949.408679004304
+      time_to_program: 108.30048216690578
+      delivered_bugs: 0.06689147427955945
+      complexity_level: Medium
+    - name: TestSetClearInSeparateFunction
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      volume: 182.83669636412918
+      difficulty: 9.692307692307692
+      effort: 1772.109518606175
+      time_to_program: 98.45052881145416
+      delivered_bugs: 0.06094556545470973
+      complexity_level: Medium
+    - name: TestNewSet
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      volume: 153.73110979725664
+      difficulty: 11.55
+      effort: 1775.5943181583143
+      time_to_program: 98.64412878657302
+      delivered_bugs: 0.05124370326575221
+      complexity_level: Medium
+    - name: makeString
+      source_file: set_test.go
+      language: go
+      directory: .
+      volume: 153.73110979725664
+      difficulty: 7.384615384615385
+      effort: 1135.2451185028183
+      time_to_program: 63.069173250156574
+      delivered_bugs: 0.05124370326575221
+      complexity_level: Medium
+    - name: TestKeySet
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      volume: 150.41407098051494
+      difficulty: 3.2142857142857144
+      effort: 483.4737995802266
+      time_to_program: 26.85965553223481
+      delivered_bugs: 0.05013802366017164
+      complexity_level: Medium
+    - name: TestNewStringSet
+      source_file: set_test.go
+      language: go
+      directory: .
+      volume: 146.94555522617034
+      difficulty: 12.222222222222223
+      effort: 1796.001230542082
+      time_to_program: 99.77784614122679
+      delivered_bugs: 0.048981851742056784
+      complexity_level: Medium
+    - name: TestSetClear
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      volume: 137.6075250475963
+      difficulty: 5.75
+      effort: 791.2432690236787
+      time_to_program: 43.95795939020437
+      delivered_bugs: 0.04586917501586544
+      complexity_level: Medium
+    - name: TestSortedList
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      volume: 124.86408532184433
+      difficulty: 3.9375
+      effort: 491.65233595476207
+      time_to_program: 27.314018664153448
+      delivered_bugs: 0.04162136177394811
+      complexity_level: Medium
+    - name: TestStringSetList
+      source_file: set_test.go
+      language: go
+      directory: .
+      volume: 109.80793556946902
+      difficulty: 3.5999999999999996
+      effort: 395.30856805008847
+      time_to_program: 21.961587113893803
+      delivered_bugs: 0.03660264518982301
+      complexity_level: Medium
+    - name: Difference
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 93.76537429460444
+      difficulty: 4.75
+      effort: 445.3855278993711
+      time_to_program: 24.743640438853948
+      delivered_bugs: 0.03125512476486815
+      complexity_level: Low
+    - name: KeySet
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 92
+      difficulty: 3.1666666666666665
+      effort: 291.3333333333333
+      time_to_program: 16.185185185185183
+      delivered_bugs: 0.030666666666666665
+      complexity_level: Low
+    - name: BenchmarkListLarge
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      volume: 91.73835003173087
+      difficulty: 3.269230769230769
+      effort: 299.9138366421971
+      time_to_program: 16.661879813455396
+      delivered_bugs: 0.030579450010576957
+      complexity_level: Low
+    - name: UnsortedList
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 89.85848369899593
+      difficulty: 5.333333333333333
+      effort: 479.24524639464494
+      time_to_program: 26.62473591081361
+      delivered_bugs: 0.02995282789966531
+      complexity_level: Low
+    - name: TestSetHasAny
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      volume: 78.13781191217038
+      difficulty: 4.666666666666667
+      effort: 364.6431222567951
+      time_to_program: 20.257951236488616
+      delivered_bugs: 0.026045937304056792
+      complexity_level: Low
+    - name: Clone
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 77.70923408096293
+      difficulty: 3.7777777777777777
+      effort: 293.5682176391933
+      time_to_program: 16.309345424399627
+      delivered_bugs: 0.025903078026987644
+      complexity_level: Low
+    - name: TestStringSetHasAny
+      source_file: set_test.go
+      language: go
+      directory: .
+      volume: 72.33974351909448
+      difficulty: 4.875
+      effort: 352.6562496555856
+      time_to_program: 19.592013869754755
+      delivered_bugs: 0.024113247839698163
+      complexity_level: Low
+    - name: Union
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 68.11428751370197
+      difficulty: 2.6666666666666665
+      effort: 181.63810003653856
+      time_to_program: 10.091005557585476
+      delivered_bugs: 0.022704762504567322
+      complexity_level: Low
+    - name: New
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 66.60791492653966
+      difficulty: 3.111111111111111
+      effort: 207.22462421590117
+      time_to_program: 11.51247912310562
+      delivered_bugs: 0.022202638308846556
+      complexity_level: Low
+    - name: List
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 64.72503367497927
+      difficulty: 2.6
+      effort: 168.2850875549461
+      time_to_program: 9.34917153083034
+      delivered_bugs: 0.02157501122499309
+      complexity_level: Low
+    - name: Equal
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 58.81033751683405
+      difficulty: 4.583333333333333
+      effort: 269.5473802854894
+      time_to_program: 14.974854460304966
+      delivered_bugs: 0.019603445838944685
+      complexity_level: Low
+    - name: SymmetricDifference
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 56.47277761308516
+      difficulty: 4.333333333333333
+      effort: 244.71536965670234
+      time_to_program: 13.59529831426124
+      delivered_bugs: 0.018824259204361718
+      complexity_level: Low
+    - name: IsSuperset
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 53.77443751081734
+      difficulty: 2.75
+      effort: 147.8797031547477
+      time_to_program: 8.21553906415265
+      delivered_bugs: 0.01792481250360578
+      complexity_level: Low
+    - name: PopAny
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 53.77443751081734
+      difficulty: 2
+      effort: 107.54887502163469
+      time_to_program: 5.974937501201927
+      delivered_bugs: 0.01792481250360578
+      complexity_level: Low
+    - name: HasAll
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 51.80615605397529
+      difficulty: 2.2222222222222223
+      effort: 115.12479123105621
+      time_to_program: 6.395821735058679
+      delivered_bugs: 0.01726871868465843
+      complexity_level: Low
+    - name: BenchmarkListSmall
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      volume: 50.18947501009619
+      difficulty: 1.8333333333333335
+      effort: 92.01403751850968
+      time_to_program: 5.111890973250538
+      delivered_bugs: 0.016729825003365395
+      complexity_level: Low
+    - name: HasAny
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 46.60451250937503
+      difficulty: 1.6666666666666667
+      effort: 77.67418751562505
+      time_to_program: 4.315232639756947
+      delivered_bugs: 0.01553483750312501
+      complexity_level: Low
+    - name: Insert
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 46.50699332842307
+      difficulty: 2.357142857142857
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.015502331109474358
+      complexity_level: Low
+    - name: Delete
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 41.20902501875006
+      difficulty: 1.5714285714285714
+      effort: 64.75703931517867
+      time_to_program: 3.597613295287704
+      delivered_bugs: 0.013736341672916687
+      complexity_level: Low
+    - name: Union
+      source_file: string.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: clearSetAndAdd
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 1.125
+      effort: 41.10886017423111
+      time_to_program: 2.2838255652350616
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: Intersection
+      source_file: int32.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: SymmetricDifference
+      source_file: int32.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: Difference
+      source_file: int32.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: Difference
+      source_file: string.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: Union
+      source_file: int64.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: Difference
+      source_file: byte.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: Intersection
+      source_file: string.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: SymmetricDifference
+      source_file: byte.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: Union
+      source_file: byte.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: Union
+      source_file: int32.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: Intersection
+      source_file: byte.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: Intersection
+      source_file: int.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: SymmetricDifference
+      source_file: string.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: Union
+      source_file: int.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: Intersection
+      source_file: int64.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: Difference
+      source_file: int64.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: SymmetricDifference
+      source_file: int.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: SymmetricDifference
+      source_file: int64.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: Difference
+      source_file: int.go
+      language: go
+      directory: .
+      volume: 36.541209043760986
+      difficulty: 3
+      effort: 109.62362713128296
+      time_to_program: 6.090201507293497
+      delivered_bugs: 0.012180403014586996
+      complexity_level: Low
+    - name: Has
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 31.699250014423125
+      difficulty: 1.1428571428571428
+      effort: 36.22771430219785
+      time_to_program: 2.0126507945665475
+      delivered_bugs: 0.010566416671474375
+      complexity_level: Low
+    - name: Insert
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 30
+      difficulty: 1.3333333333333333
+      effort: 40
+      time_to_program: 2.2222222222222223
+      delivered_bugs: 0.01
+      complexity_level: Low
+    - name: Delete
+      source_file: byte.go
+      language: go
+      directory: .
+      volume: 28.529325012980813
+      difficulty: 2
+      effort: 57.058650025961626
+      time_to_program: 3.1699250014423126
+      delivered_bugs: 0.009509775004326938
+      complexity_level: Low
+    - name: Delete
+      source_file: int64.go
+      language: go
+      directory: .
+      volume: 28.529325012980813
+      difficulty: 2
+      effort: 57.058650025961626
+      time_to_program: 3.1699250014423126
+      delivered_bugs: 0.009509775004326938
+      complexity_level: Low
+    - name: Delete
+      source_file: string.go
+      language: go
+      directory: .
+      volume: 28.529325012980813
+      difficulty: 2
+      effort: 57.058650025961626
+      time_to_program: 3.1699250014423126
+      delivered_bugs: 0.009509775004326938
+      complexity_level: Low
+    - name: Insert
+      source_file: int32.go
+      language: go
+      directory: .
+      volume: 28.529325012980813
+      difficulty: 2
+      effort: 57.058650025961626
+      time_to_program: 3.1699250014423126
+      delivered_bugs: 0.009509775004326938
+      complexity_level: Low
+    - name: Insert
+      source_file: string.go
+      language: go
+      directory: .
+      volume: 28.529325012980813
+      difficulty: 2
+      effort: 57.058650025961626
+      time_to_program: 3.1699250014423126
+      delivered_bugs: 0.009509775004326938
+      complexity_level: Low
+    - name: Int32KeySet
+      source_file: int32.go
+      language: go
+      directory: .
+      volume: 28.529325012980813
+      difficulty: 1.5
+      effort: 42.793987519471216
+      time_to_program: 2.377443751081734
+      delivered_bugs: 0.009509775004326938
+      complexity_level: Low
+    - name: StringKeySet
+      source_file: string.go
+      language: go
+      directory: .
+      volume: 28.529325012980813
+      difficulty: 1.5
+      effort: 42.793987519471216
+      time_to_program: 2.377443751081734
+      delivered_bugs: 0.009509775004326938
+      complexity_level: Low
+    - name: ByteKeySet
+      source_file: byte.go
+      language: go
+      directory: .
+      volume: 28.529325012980813
+      difficulty: 1.5
+      effort: 42.793987519471216
+      time_to_program: 2.377443751081734
+      delivered_bugs: 0.009509775004326938
+      complexity_level: Low
+    - name: Insert
+      source_file: byte.go
+      language: go
+      directory: .
+      volume: 28.529325012980813
+      difficulty: 2
+      effort: 57.058650025961626
+      time_to_program: 3.1699250014423126
+      delivered_bugs: 0.009509775004326938
+      complexity_level: Low
+    - name: Delete
+      source_file: int.go
+      language: go
+      directory: .
+      volume: 28.529325012980813
+      difficulty: 2
+      effort: 57.058650025961626
+      time_to_program: 3.1699250014423126
+      delivered_bugs: 0.009509775004326938
+      complexity_level: Low
+    - name: Int64KeySet
+      source_file: int64.go
+      language: go
+      directory: .
+      volume: 28.529325012980813
+      difficulty: 1.5
+      effort: 42.793987519471216
+      time_to_program: 2.377443751081734
+      delivered_bugs: 0.009509775004326938
+      complexity_level: Low
+    - name: IntKeySet
+      source_file: int.go
+      language: go
+      directory: .
+      volume: 28.529325012980813
+      difficulty: 1.5
+      effort: 42.793987519471216
+      time_to_program: 2.377443751081734
+      delivered_bugs: 0.009509775004326938
+      complexity_level: Low
+    - name: Insert
+      source_file: int.go
+      language: go
+      directory: .
+      volume: 28.529325012980813
+      difficulty: 2
+      effort: 57.058650025961626
+      time_to_program: 3.1699250014423126
+      delivered_bugs: 0.009509775004326938
+      complexity_level: Low
+    - name: Delete
+      source_file: int32.go
+      language: go
+      directory: .
+      volume: 28.529325012980813
+      difficulty: 2
+      effort: 57.058650025961626
+      time_to_program: 3.1699250014423126
+      delivered_bugs: 0.009509775004326938
+      complexity_level: Low
+    - name: Insert
+      source_file: int64.go
+      language: go
+      directory: .
+      volume: 28.529325012980813
+      difficulty: 2
+      effort: 57.058650025961626
+      time_to_program: 3.1699250014423126
+      delivered_bugs: 0.009509775004326938
+      complexity_level: Low
+    - name: Equal
+      source_file: byte.go
+      language: go
+      directory: .
+      volume: 27
+      difficulty: 2.5
+      effort: 67.5
+      time_to_program: 3.75
+      delivered_bugs: 0.009
+      complexity_level: Low
+    - name: IsSuperset
+      source_file: byte.go
+      language: go
+      directory: .
+      volume: 27
+      difficulty: 2.5
+      effort: 67.5
+      time_to_program: 3.75
+      delivered_bugs: 0.009
+      complexity_level: Low
+    - name: IsSuperset
+      source_file: string.go
+      language: go
+      directory: .
+      volume: 27
+      difficulty: 2.5
+      effort: 67.5
+      time_to_program: 3.75
+      delivered_bugs: 0.009
+      complexity_level: Low
+    - name: IsSuperset
+      source_file: int.go
+      language: go
+      directory: .
+      volume: 27
+      difficulty: 2.5
+      effort: 67.5
+      time_to_program: 3.75
+      delivered_bugs: 0.009
+      complexity_level: Low
+    - name: Equal
+      source_file: int.go
+      language: go
+      directory: .
+      volume: 27
+      difficulty: 2.5
+      effort: 67.5
+      time_to_program: 3.75
+      delivered_bugs: 0.009
+      complexity_level: Low
+    - name: Equal
+      source_file: int32.go
+      language: go
+      directory: .
+      volume: 27
+      difficulty: 2.5
+      effort: 67.5
+      time_to_program: 3.75
+      delivered_bugs: 0.009
+      complexity_level: Low
+    - name: IsSuperset
+      source_file: int32.go
+      language: go
+      directory: .
+      volume: 27
+      difficulty: 2.5
+      effort: 67.5
+      time_to_program: 3.75
+      delivered_bugs: 0.009
+      complexity_level: Low
+    - name: Equal
+      source_file: string.go
+      language: go
+      directory: .
+      volume: 27
+      difficulty: 2.5
+      effort: 67.5
+      time_to_program: 3.75
+      delivered_bugs: 0.009
+      complexity_level: Low
+    - name: IsSuperset
+      source_file: int64.go
+      language: go
+      directory: .
+      volume: 27
+      difficulty: 2.5
+      effort: 67.5
+      time_to_program: 3.75
+      delivered_bugs: 0.009
+      complexity_level: Low
+    - name: Equal
+      source_file: int64.go
+      language: go
+      directory: .
+      volume: 27
+      difficulty: 2.5
+      effort: 67.5
+      time_to_program: 3.75
+      delivered_bugs: 0.009
+      complexity_level: Low
+    - name: UnsortedList
+      source_file: int.go
+      language: go
+      directory: .
+      volume: 24
+      difficulty: 2
+      effort: 48
+      time_to_program: 2.6666666666666665
+      delivered_bugs: 0.008
+      complexity_level: Low
+    - name: UnsortedList
+      source_file: string.go
+      language: go
+      directory: .
+      volume: 24
+      difficulty: 2
+      effort: 48
+      time_to_program: 2.6666666666666665
+      delivered_bugs: 0.008
+      complexity_level: Low
+    - name: List
+      source_file: int64.go
+      language: go
+      directory: .
+      volume: 24
+      difficulty: 2
+      effort: 48
+      time_to_program: 2.6666666666666665
+      delivered_bugs: 0.008
+      complexity_level: Low
+    - name: Clone
+      source_file: int.go
+      language: go
+      directory: .
+      volume: 24
+      difficulty: 2
+      effort: 48
+      time_to_program: 2.6666666666666665
+      delivered_bugs: 0.008
+      complexity_level: Low
+    - name: Clone
+      source_file: string.go
+      language: go
+      directory: .
+      volume: 24
+      difficulty: 2
+      effort: 48
+      time_to_program: 2.6666666666666665
+      delivered_bugs: 0.008
+      complexity_level: Low
+    - name: Clone
+      source_file: int32.go
+      language: go
+      directory: .
+      volume: 24
+      difficulty: 2
+      effort: 48
+      time_to_program: 2.6666666666666665
+      delivered_bugs: 0.008
+      complexity_level: Low
+    - name: Clone
+      source_file: int64.go
+      language: go
+      directory: .
+      volume: 24
+      difficulty: 2
+      effort: 48
+      time_to_program: 2.6666666666666665
+      delivered_bugs: 0.008
+      complexity_level: Low
+    - name: UnsortedList
+      source_file: int64.go
+      language: go
+      directory: .
+      volume: 24
+      difficulty: 2
+      effort: 48
+      time_to_program: 2.6666666666666665
+      delivered_bugs: 0.008
+      complexity_level: Low
+    - name: List
+      source_file: int.go
+      language: go
+      directory: .
+      volume: 24
+      difficulty: 2
+      effort: 48
+      time_to_program: 2.6666666666666665
+      delivered_bugs: 0.008
+      complexity_level: Low
+    - name: List
+      source_file: int32.go
+      language: go
+      directory: .
+      volume: 24
+      difficulty: 2
+      effort: 48
+      time_to_program: 2.6666666666666665
+      delivered_bugs: 0.008
+      complexity_level: Low
+    - name: UnsortedList
+      source_file: int32.go
+      language: go
+      directory: .
+      volume: 24
+      difficulty: 2
+      effort: 48
+      time_to_program: 2.6666666666666665
+      delivered_bugs: 0.008
+      complexity_level: Low
+    - name: Clone
+      source_file: byte.go
+      language: go
+      directory: .
+      volume: 24
+      difficulty: 2
+      effort: 48
+      time_to_program: 2.6666666666666665
+      delivered_bugs: 0.008
+      complexity_level: Low
+    - name: List
+      source_file: byte.go
+      language: go
+      directory: .
+      volume: 24
+      difficulty: 2
+      effort: 48
+      time_to_program: 2.6666666666666665
+      delivered_bugs: 0.008
+      complexity_level: Low
+    - name: UnsortedList
+      source_file: byte.go
+      language: go
+      directory: .
+      volume: 24
+      difficulty: 2
+      effort: 48
+      time_to_program: 2.6666666666666665
+      delivered_bugs: 0.008
+      complexity_level: Low
+    - name: List
+      source_file: string.go
+      language: go
+      directory: .
+      volume: 24
+      difficulty: 2
+      effort: 48
+      time_to_program: 2.6666666666666665
+      delivered_bugs: 0.008
+      complexity_level: Low
+    - name: Clear
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 23.264662506490403
+      difficulty: 1.75
+      effort: 40.71315938635821
+      time_to_program: 2.2618421881310113
+      delivered_bugs: 0.007754887502163467
+      complexity_level: Low
+    - name: HasAny
+      source_file: byte.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: Has
+      source_file: byte.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: NewInt64
+      source_file: int64.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: Has
+      source_file: int32.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: Has
+      source_file: int.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: HasAll
+      source_file: int.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: HasAll
+      source_file: int64.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: HasAny
+      source_file: int64.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: HasAny
+      source_file: int.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: Has
+      source_file: int64.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: NewInt
+      source_file: int.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: NewByte
+      source_file: byte.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: HasAll
+      source_file: byte.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: NewInt32
+      source_file: int32.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: NewString
+      source_file: string.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: HasAny
+      source_file: int32.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: HasAny
+      source_file: string.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: HasAll
+      source_file: int32.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: Has
+      source_file: string.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: HasAll
+      source_file: string.go
+      language: go
+      directory: .
+      volume: 19.651484454403228
+      difficulty: 1.5
+      effort: 29.47722668160484
+      time_to_program: 1.6376237045336022
+      delivered_bugs: 0.00655049481813441
+      complexity_level: Low
+    - name: cast
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 18.094737505048094
+      difficulty: 0.6
+      effort: 10.856842503028856
+      time_to_program: 0.6031579168349365
+      delivered_bugs: 0.006031579168349364
+      complexity_level: Low
+    - name: PopAny
+      source_file: int.go
+      language: go
+      directory: .
+      volume: 15.509775004326936
+      difficulty: 1.5
+      effort: 23.264662506490403
+      time_to_program: 1.292481250360578
+      delivered_bugs: 0.005169925001442312
+      complexity_level: Low
+    - name: Len
+      source_file: set.go
+      language: go
+      directory: .
+      volume: 15.509775004326936
+      difficulty: 1
+      effort: 15.509775004326936
+      time_to_program: 0.861654166907052
+      delivered_bugs: 0.005169925001442312
+      complexity_level: Low
+    - name: PopAny
+      source_file: int64.go
+      language: go
+      directory: .
+      volume: 15.509775004326936
+      difficulty: 1.5
+      effort: 23.264662506490403
+      time_to_program: 1.292481250360578
+      delivered_bugs: 0.005169925001442312
+      complexity_level: Low
+    - name: PopAny
+      source_file: int32.go
+      language: go
+      directory: .
+      volume: 15.509775004326936
+      difficulty: 1.5
+      effort: 23.264662506490403
+      time_to_program: 1.292481250360578
+      delivered_bugs: 0.005169925001442312
+      complexity_level: Low
+    - name: PopAny
+      source_file: byte.go
+      language: go
+      directory: .
+      volume: 15.509775004326936
+      difficulty: 1.5
+      effort: 23.264662506490403
+      time_to_program: 1.292481250360578
+      delivered_bugs: 0.005169925001442312
+      complexity_level: Low
+    - name: PopAny
+      source_file: string.go
+      language: go
+      directory: .
+      volume: 15.509775004326936
+      difficulty: 1.5
+      effort: 23.264662506490403
+      time_to_program: 1.292481250360578
+      delivered_bugs: 0.005169925001442312
+      complexity_level: Low
+    - name: Len
+      source_file: int64.go
+      language: go
+      directory: .
+      volume: 8
+      difficulty: 1
+      effort: 8
+      time_to_program: 0.4444444444444444
+      delivered_bugs: 0.0026666666666666666
+      complexity_level: Low
+    - name: Len
+      source_file: int32.go
+      language: go
+      directory: .
+      volume: 8
+      difficulty: 1
+      effort: 8
+      time_to_program: 0.4444444444444444
+      delivered_bugs: 0.0026666666666666666
+      complexity_level: Low
+    - name: Len
+      source_file: int.go
+      language: go
+      directory: .
+      volume: 8
+      difficulty: 1
+      effort: 8
+      time_to_program: 0.4444444444444444
+      delivered_bugs: 0.0026666666666666666
+      complexity_level: Low
+    - name: Len
+      source_file: byte.go
+      language: go
+      directory: .
+      volume: 8
+      difficulty: 1
+      effort: 8
+      time_to_program: 0.4444444444444444
+      delivered_bugs: 0.0026666666666666666
+      complexity_level: Low
+    - name: Len
+      source_file: string.go
+      language: go
+      directory: .
+      volume: 8
+      difficulty: 1
+      effort: 8
+      time_to_program: 0.4444444444444444
+      delivered_bugs: 0.0026666666666666666
+      complexity_level: Low
+distribution:
+    low: 115
+    medium: 25
+    high: 1
+    very_high: 0
+high_effort_functions:
+    - name: BenchmarkStringSet
+      source_file: set_test.go
+      volume: 1530.009463523262
+      effort: 72438.99350935589
+      time_to_program: 4024.3885282975493
+      delivered_bugs: 0.510003154507754
+      risk_level: MEDIUM
+aggregate:
+    total_functions: 141
+    volume: 2243.569310989035
+    difficulty: 132.5965954137723
+    effort: 714652.1317873196
+    time_to_program: 39702.896210406645
+    delivered_bugs: 0.7478564369963447
+    distinct_operators: 0
+    distinct_operands: 0
+    total_operators: 0
+    total_operands: 0
+    vocabulary: 0
+    length: 0
+    estimated_length: 584.0119514998204
+    health_score: 100
+    message: Low Halstead complexity - well-structured code

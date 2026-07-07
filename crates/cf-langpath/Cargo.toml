@@ -1,0 +1,14 @@
+[package]
+name = "cf-langpath"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# enry tokenizer regexes. enry's regexp engine and Rust `regex` are both
+# RE2-derived (leftmost-first, lazy `*?` supported), so the tokenization
+# passes match.
+regex = "1"

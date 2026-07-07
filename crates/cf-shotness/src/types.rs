@@ -1,0 +1,78 @@
+//! Core data types shared across the shotness analyzer.
+//!
+//! These are the in-memory intermediate representations; the machine-format
+//! serialization lives in [`crate::report`].
+
+use std::collections::HashMap;
+
+/// Identifying information for a code node (UAST entity).
+///
+/// The [`NodeSummary::key`] derivation `Type + "_" + Name + "_" + File` is the
+/// canonical node key used for last-wins collision resolution and additive
+/// merge across commits.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NodeSummary {
+    /// UAST node type (e.g. the grammar type string).
+    pub type_: String,
+    /// Extracted display name (from the name DSL, or the node token).
+    pub name: String,
+    /// Source file path the node belongs to.
+    pub file: String,
+}
+
+impl NodeSummary {
+    /// Constructs a [`NodeSummary`].
+    pub fn new(type_: impl Into<String>, name: impl Into<String>, file: impl Into<String>) -> Self {
+        Self {
+            type_: type_.into(),
+            name: name.into(),
+            file: file.into(),
+        }
+    }
+
+    /// Canonical node key: `Type + "_" + Name + "_" + File`.
+    ///
+    /// ```
+    /// use cf_shotness::types::NodeSummary;
+    ///
+    /// let ns = NodeSummary::new("Function", "foo", "a.go");
+    /// assert_eq!(ns.key(), "Function_foo_a.go");
+    /// // Empty fields still produce the two separators.
+    /// assert_eq!(NodeSummary::new("", "", "").key(), "__");
+    /// ```
+    #[must_use]
+    pub fn key(&self) -> String {
+        format!("{}_{}_{}", self.type_, self.name, self.file)
+    }
+}
+
+/// Parsed report input for the metric computation stage.
+///
+/// `counters[i]` is the co-change row for node `i`; `counters[i][i]` is node
+/// `i`'s self-change count, and `counters[i][j]` (`j != i`) is the co-change
+/// count between nodes `i` and `j`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ReportData {
+    /// Ordered list of nodes (sorted by node key when produced by the report
+    /// builder).
+    pub nodes: Vec<NodeSummary>,
+    /// Per-node co-change counter rows, parallel to [`ReportData::nodes`].
+    pub counters: Vec<HashMap<usize, i64>>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn node_summary_key_matches_contract_format() {
+        let ns = NodeSummary::new("Function", "foo", "a.go");
+        assert_eq!(ns.key(), "Function_foo_a.go");
+    }
+
+    #[test]
+    fn node_summary_key_with_empty_fields() {
+        let ns = NodeSummary::new("", "", "");
+        assert_eq!(ns.key(), "__");
+    }
+}

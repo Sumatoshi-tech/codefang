@@ -1,0 +1,34 @@
+{
+  "overall_score_label": "Info",
+  "sections": [
+    {
+      "title": "COMPOSITION",
+      "score_label": "Info",
+      "status": "File composition analysis completed",
+      "metrics": [
+        {
+          "label": "Total Files",
+          "value": "10"
+        },
+        {
+          "label": "Source Files",
+          "value": "10"
+        },
+        {
+          "label": "Source %",
+          "value": "100.0%"
+        }
+      ],
+      "distribution": [
+        {
+          "label": "source",
+          "percent": 1,
+          "count": 10
+        }
+      ],
+      "issues": [],
+      "score": -1
+    }
+  ],
+  "overall_score": -1
+}

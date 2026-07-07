@@ -1,0 +1,30 @@
+# cf-storage — atomic file writes.
+#
+# Storage backend abstraction. Its sole responsibility is `write_atomic`: write
+# to a target path atomically by writing a `.tmp` sibling, syncing it to disk,
+# then renaming over the target, so a reader never observes a partially written
+# file. Used by cache, analyze, and the `render` command (which writes
+# `report.json` + HTML artifacts).
+#
+# This crate emits NO machine-format report bytes itself — the caller's `write`
+# closure produces the bytes — so it does NOT depend on cf-gojson/cf-goyaml.
+# Callers serialize through those crates and write the finished bytes to the
+# provided writer.
+#
+# No external dependencies: everything needed maps onto the Rust standard
+# library.
+[package]
+name = "cf-storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Atomic file writes (temp sibling + fsync + rename) for reports and caches."
+
+[dependencies]
+
+[dev-dependencies]
+# Scratch directories for unit tests only.
+tempfile = "3"

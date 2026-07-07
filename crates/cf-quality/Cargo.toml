@@ -1,0 +1,23 @@
+[package]
+name = "cf-quality"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Serialization compat (DESIGN section 2): all machine output goes through these.
+cf-gojson = { workspace = true }
+cf-reportutil = { path = "../cf-reportutil" }
+# Numeric parity for mean/median/P95/max/min/sum (shared statistics kernel).
+cf-alg-stats = { path = "../cf-alg-stats" }
+
+# NOTE: the four component analyzers (cf-complexity, cf-halstead, cf-comments,
+# cf-cohesion) are consumed only via the `ScalarReport` / `ComponentSet` traits
+# in `analyzer.rs`, so they are NOT direct build dependencies yet. They are
+# wired in when the framework layer (Consume over cf-plumbing + cf-analyze
+# BaseHistoryAnalyzer) is implemented. Listing them now would add unused deps
+# (and break the crate whenever those scaffolds lack targets), so they are
+# deferred until there are real call sites.

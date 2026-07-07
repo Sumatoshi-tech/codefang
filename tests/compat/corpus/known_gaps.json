@@ -1,0 +1,83 @@
+{
+  "phase": "MatrixCorpus",
+  "known_divergences": [
+    {
+      "language": "python",
+      "sha256": "984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb",
+      "kind": "rust-empty-go-nonempty",
+      "go_uast_bytes": 700431,
+      "rust_stderr": "Error: failed to parse corpus/files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py: parse corpus/files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py: no tree"
+    },
+    {
+      "language": "c",
+      "sha256": "6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae",
+      "kind": "rust-empty-go-nonempty",
+      "go_uast_bytes": 142327,
+      "rust_stderr": "Error: failed to parse corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c: parse corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c: no tree-s"
+    },
+    {
+      "language": "c-header",
+      "sha256": "ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8",
+      "kind": "rust-empty-go-nonempty",
+      "go_uast_bytes": 19243,
+      "rust_stderr": "Error: failed to parse corpus/files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h: parse corpus/files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h: no tree-s"
+    },
+    {
+      "language": "rust",
+      "sha256": "e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482",
+      "kind": "rust-empty-go-nonempty",
+      "go_uast_bytes": 125877,
+      "rust_stderr": "Error: failed to parse corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs: parse corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs: no tree"
+    },
+    {
+      "language": "typescript",
+      "sha256": "48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88",
+      "kind": "rust-empty-go-nonempty",
+      "go_uast_bytes": 2555406,
+      "rust_stderr": "Error: failed to parse corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts: parse corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts: no tree"
+    },
+    {
+      "language": "tsx",
+      "sha256": "29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8",
+      "kind": "rust-empty-go-nonempty",
+      "go_uast_bytes": 244099,
+      "rust_stderr": "Error: failed to parse corpus/files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx: parse corpus/files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx: no tr"
+    },
+    {
+      "language": "javascript",
+      "sha256": "cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447",
+      "kind": "rust-empty-go-nonempty",
+      "go_uast_bytes": 54802,
+      "rust_stderr": "Error: failed to parse corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js: parse corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js: no tree"
+    },
+    {
+      "language": "json",
+      "sha256": "9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355",
+      "kind": "rust-empty-go-nonempty",
+      "go_uast_bytes": 308147,
+      "rust_stderr": "Error: failed to parse corpus/files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json: parse corpus/files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json: no "
+    },
+    {
+      "language": "yaml",
+      "sha256": "fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868",
+      "kind": "rust-empty-go-nonempty",
+      "go_uast_bytes": 150552,
+      "rust_stderr": "Error: failed to parse corpus/files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml: parse corpus/files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml: no tr"
+    },
+    {
+      "language": "cpp",
+      "sha256": "8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6",
+      "kind": "rust-empty-go-nonempty",
+      "go_uast_bytes": 3895930,
+      "rust_stderr": "Error: failed to parse corpus/files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp: parse corpus/files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp: no tr"
+    },
+    {
+      "language": "shell",
+      "sha256": "5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58",
+      "kind": "rust-empty-go-nonempty",
+      "go_uast_bytes": 148968,
+      "rust_stderr": "Error: failed to parse corpus/files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh: parse corpus/files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh: no tree"
+    }
+  ],
+  "summary": "11 languages where Go parses but Rust emits nothing (grammar vendoring pending)"
+}

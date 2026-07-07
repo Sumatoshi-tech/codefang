@@ -1,0 +1,14 @@
+error: no rules expected identifier `descendant`
+  --> tests/ui/fail_bad_token_form.rs:4:31
+   |
+ 4 |   static BAD: LanguageMapping = uast_language! {
+   |  _______________________________^
+ 5 | |     name: "bad",
+ 6 | |     extensions: [".bad"],
+ 7 | |     rules: {
+...  |
+13 | | };
+   | |_^ no rules expected this token in macro call
+   |
+   = note: while trying to match end of macro
+   = note: this error originates in the macro `uast_language` (in Nightly builds, run with -Z macro-backtrace for more info)

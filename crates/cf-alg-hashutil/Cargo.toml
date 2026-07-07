@@ -1,0 +1,11 @@
+[package]
+name = "cf-alg-hashutil"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Shared hash mixing utilities (Splitmix64, Mix64, FNV-1a) for probabilistic sketches (CMS, HLL, MinHash). Deterministic seeds — reproducibility critical."
+
+[dependencies]
