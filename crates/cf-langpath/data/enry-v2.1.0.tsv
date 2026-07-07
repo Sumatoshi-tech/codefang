@@ -1,0 +1,1488 @@
+A	1c_enterprise	1C Enterprise
+A	abap	ABAP
+A	abl	OpenEdge ABL
+A	abnf	ABNF
+A	abuild	Alpine Abuild
+A	acfm	Adobe Font Metrics
+A	aconf	ApacheConf
+A	actionscript	ActionScript
+A	actionscript3	ActionScript
+A	actionscript_3	ActionScript
+A	ada	Ada
+A	ada2005	Ada
+A	ada95	Ada
+A	adobe_composite_font_metrics	Adobe Font Metrics
+A	adobe_font_metrics	Adobe Font Metrics
+A	adobe_multiple_font_metrics	Adobe Font Metrics
+A	advpl	xBase
+A	afdko	OpenType Feature File
+A	agda	Agda
+A	ags	AGS Script
+A	ags_script	AGS Script
+A	ahk	AutoHotkey
+A	alloy	Alloy
+A	alpine_abuild	Alpine Abuild
+A	altium	Altium Designer
+A	altium_designer	Altium Designer
+A	amfm	Adobe Font Metrics
+A	ampl	AMPL
+A	angelscript	AngelScript
+A	ant_build_system	Ant Build System
+A	antlr	ANTLR
+A	apache	ApacheConf
+A	apacheconf	ApacheConf
+A	apex	Apex
+A	api_blueprint	API Blueprint
+A	apkbuild	Alpine Abuild
+A	apl	APL
+A	apollo_guidance_computer	Apollo Guidance Computer
+A	applescript	AppleScript
+A	arc	Arc
+A	arexx	REXX
+A	as3	ActionScript
+A	asciidoc	AsciiDoc
+A	asm	Assembly
+A	asn.1	ASN.1
+A	asp	ASP
+A	aspectj	AspectJ
+A	aspx	ASP
+A	aspx-vb	ASP
+A	assembly	Assembly
+A	asymptote	Asymptote
+A	ats	ATS
+A	ats2	ATS
+A	au3	AutoIt
+A	augeas	Augeas
+A	autoconf	M4Sugar
+A	autohotkey	AutoHotkey
+A	autoit	AutoIt
+A	autoit3	AutoIt
+A	autoitscript	AutoIt
+A	awk	Awk
+A	b3d	BlitzBasic
+A	ballerina	Ballerina
+A	bash	Shell
+A	bash_session	ShellSession
+A	bat	Batchfile
+A	batch	Batchfile
+A	batchfile	Batchfile
+A	befunge	Befunge
+A	bison	Bison
+A	bitbake	BitBake
+A	blade	Blade
+A	blitz3d	BlitzBasic
+A	blitzbasic	BlitzBasic
+A	blitzmax	BlitzMax
+A	blitzplus	BlitzBasic
+A	bluespec	Bluespec
+A	bmax	BlitzMax
+A	boo	Boo
+A	bplus	BlitzBasic
+A	brainfuck	Brainfuck
+A	brightscript	Brightscript
+A	bro	Zeek
+A	bsdmake	Makefile
+A	byond	DM
+A	c	C
+A	c#	C#
+A	c++	C++
+A	c++-objdump	Cpp-ObjDump
+A	c-objdump	C-ObjDump
+A	c2hs	C2hs Haskell
+A	c2hs_haskell	C2hs Haskell
+A	cabal	Cabal Config
+A	cabal_config	Cabal Config
+A	cap'n_proto	Cap'n Proto
+A	carto	CartoCSS
+A	cartocss	CartoCSS
+A	ceylon	Ceylon
+A	cfc	ColdFusion CFC
+A	cfm	ColdFusion
+A	cfml	ColdFusion
+A	chapel	Chapel
+A	charity	Charity
+A	chpl	Chapel
+A	chuck	ChucK
+A	cirru	Cirru
+A	clarion	Clarion
+A	clean	Clean
+A	click	Click
+A	clipper	xBase
+A	clips	CLIPS
+A	clojure	Clojure
+A	closure_templates	Closure Templates
+A	cloud_firestore_security_rules	Cloud Firestore Security Rules
+A	cmake	CMake
+A	cobol	COBOL
+A	coffee	CoffeeScript
+A	coffee-script	CoffeeScript
+A	coffeescript	CoffeeScript
+A	coldfusion	ColdFusion
+A	coldfusion_cfc	ColdFusion CFC
+A	coldfusion_html	ColdFusion
+A	collada	COLLADA
+A	common_lisp	Common Lisp
+A	common_workflow_language	Common Workflow Language
+A	component_pascal	Component Pascal
+A	conll	CoNLL-U
+A	conll-u	CoNLL-U
+A	conll-x	CoNLL-U
+A	console	ShellSession
+A	cool	Cool
+A	coq	Coq
+A	cperl	Perl
+A	cpp	C++
+A	cpp-objdump	Cpp-ObjDump
+A	creole	Creole
+A	crystal	Crystal
+A	csharp	C#
+A	cson	CSON
+A	csound	Csound
+A	csound-csd	Csound Document
+A	csound-orc	Csound
+A	csound-sco	Csound Score
+A	csound_document	Csound Document
+A	csound_score	Csound Score
+A	css	CSS
+A	csv	CSV
+A	cucumber	Gherkin
+A	cuda	Cuda
+A	cweb	CWeb
+A	cwl	Common Workflow Language
+A	cycript	Cycript
+A	cython	Cython
+A	d	D
+A	d-objdump	D-ObjDump
+A	darcs_patch	Darcs Patch
+A	dart	Dart
+A	dataweave	DataWeave
+A	dcl	DIGITAL Command Language
+A	delphi	Component Pascal
+A	desktop	desktop
+A	dhall	Dhall
+A	diff	Diff
+A	digital_command_language	DIGITAL Command Language
+A	django	HTML+Django
+A	dm	DM
+A	dns_zone	DNS Zone
+A	dockerfile	Dockerfile
+A	dogescript	Dogescript
+A	dosbatch	Batchfile
+A	dosini	INI
+A	dpatch	Darcs Patch
+A	dtrace	DTrace
+A	dtrace-script	DTrace
+A	dylan	Dylan
+A	e	E
+A	eagle	Eagle
+A	easybuild	Easybuild
+A	ebnf	EBNF
+A	ec	eC
+A	ecere_projects	Ecere Projects
+A	ecl	ECL
+A	eclipse	ECLiPSe
+A	ecr	HTML+ECR
+A	editor-config	EditorConfig
+A	editorconfig	EditorConfig
+A	edje_data_collection	Edje Data Collection
+A	edn	edn
+A	eeschema_schematic	KiCad Schematic
+A	eex	HTML+EEX
+A	eiffel	Eiffel
+A	ejs	EJS
+A	elisp	Emacs Lisp
+A	elixir	Elixir
+A	elm	Elm
+A	emacs	Emacs Lisp
+A	emacs_lisp	Emacs Lisp
+A	emberscript	EmberScript
+A	eml	EML
+A	eq	EQ
+A	erb	HTML+ERB
+A	erlang	Erlang
+A	f#	F#
+A	f*	F*
+A	factor	Factor
+A	fancy	Fancy
+A	fantom	Fantom
+A	figfont	FIGlet Font
+A	figlet_font	FIGlet Font
+A	filebench_wml	Filebench WML
+A	filterscript	Filterscript
+A	fish	fish
+A	flex	Lex
+A	flux	FLUX
+A	formatted	Formatted
+A	forth	Forth
+A	fortran	Fortran
+A	foxpro	xBase
+A	freemarker	FreeMarker
+A	frege	Frege
+A	fsharp	F#
+A	fstar	F*
+A	ftl	FreeMarker
+A	fundamental	Text
+A	g-code	G-code
+A	game_maker_language	Game Maker Language
+A	gams	GAMS
+A	gap	GAP
+A	gcc_machine_description	GCC Machine Description
+A	gdb	GDB
+A	gdscript	GDScript
+A	genie	Genie
+A	genshi	Genshi
+A	gentoo_ebuild	Gentoo Ebuild
+A	gentoo_eclass	Gentoo Eclass
+A	gerber_image	Gerber Image
+A	gettext_catalog	Gettext Catalog
+A	gf	Grammatical Framework
+A	gherkin	Gherkin
+A	git-ignore	Ignore List
+A	git_attributes	Git Attributes
+A	git_config	Git Config
+A	gitattributes	Git Attributes
+A	gitconfig	Git Config
+A	gitignore	Ignore List
+A	gitmodules	Git Config
+A	glsl	GLSL
+A	glyph	Glyph
+A	glyph_bitmap_distribution_format	Glyph Bitmap Distribution Format
+A	gn	GN
+A	gnuplot	Gnuplot
+A	go	Go
+A	golang	Go
+A	golo	Golo
+A	gosu	Gosu
+A	grace	Grace
+A	gradle	Gradle
+A	grammatical_framework	Grammatical Framework
+A	graph_modeling_language	Graph Modeling Language
+A	graphql	GraphQL
+A	graphviz_(dot)	Graphviz (DOT)
+A	groff	Roff
+A	groovy	Groovy
+A	groovy_server_pages	Groovy Server Pages
+A	gsp	Groovy Server Pages
+A	hack	Hack
+A	haml	Haml
+A	handlebars	Handlebars
+A	haproxy	HAProxy
+A	harbour	Harbour
+A	haskell	Haskell
+A	haxe	Haxe
+A	hbs	Handlebars
+A	hcl	HCL
+A	hiveql	HiveQL
+A	hlsl	HLSL
+A	holyc	HolyC
+A	html	HTML
+A	html+django	HTML+Django
+A	html+django/jinja	HTML+Django
+A	html+ecr	HTML+ECR
+A	html+eex	HTML+EEX
+A	html+erb	HTML+ERB
+A	html+jinja	HTML+Django
+A	html+php	HTML+PHP
+A	html+razor	HTML+Razor
+A	html+ruby	RHTML
+A	htmlbars	Handlebars
+A	htmldjango	HTML+Django
+A	http	HTTP
+A	hxml	HXML
+A	hy	Hy
+A	hylang	Hy
+A	hyphy	HyPhy
+A	i7	Inform 7
+A	idl	IDL
+A	idris	Idris
+A	ignore	Ignore List
+A	ignore_list	Ignore List
+A	igor	IGOR Pro
+A	igor_pro	IGOR Pro
+A	igorpro	IGOR Pro
+A	inc	PHP
+A	inform7	Inform 7
+A	inform_7	Inform 7
+A	ini	INI
+A	inno_setup	Inno Setup
+A	io	Io
+A	ioke	Ioke
+A	ipython_notebook	Jupyter Notebook
+A	irc	IRC log
+A	irc_log	IRC log
+A	irc_logs	IRC log
+A	isabelle	Isabelle
+A	isabelle_root	Isabelle ROOT
+A	j	J
+A	jasmin	Jasmin
+A	java	Java
+A	java_properties	Java Properties
+A	java_server_page	Groovy Server Pages
+A	java_server_pages	Java Server Pages
+A	javascript	JavaScript
+A	javascript+erb	JavaScript+ERB
+A	jflex	JFlex
+A	jison	Jison
+A	jison_lex	Jison Lex
+A	jolie	Jolie
+A	jruby	Ruby
+A	js	JavaScript
+A	json	JSON
+A	json5	JSON5
+A	json_with_comments	JSON with Comments
+A	jsonc	JSON with Comments
+A	jsoniq	JSONiq
+A	jsonld	JSONLD
+A	jsonnet	Jsonnet
+A	jsp	Java Server Pages
+A	jsx	JSX
+A	julia	Julia
+A	jupyter_notebook	Jupyter Notebook
+A	kicad_layout	KiCad Layout
+A	kicad_legacy_layout	KiCad Legacy Layout
+A	kicad_schematic	KiCad Schematic
+A	kit	Kit
+A	kotlin	Kotlin
+A	krl	KRL
+A	labview	LabVIEW
+A	lasso	Lasso
+A	lassoscript	Lasso
+A	latex	TeX
+A	latte	Latte
+A	lean	Lean
+A	less	Less
+A	lex	Lex
+A	lfe	LFE
+A	lhaskell	Literate Haskell
+A	lhs	Literate Haskell
+A	lilypond	LilyPond
+A	limbo	Limbo
+A	linker_script	Linker Script
+A	linux_kernel_module	Linux Kernel Module
+A	liquid	Liquid
+A	lisp	Common Lisp
+A	litcoffee	Literate CoffeeScript
+A	literate_agda	Literate Agda
+A	literate_coffeescript	Literate CoffeeScript
+A	literate_haskell	Literate Haskell
+A	live-script	LiveScript
+A	livescript	LiveScript
+A	llvm	LLVM
+A	logos	Logos
+A	logtalk	Logtalk
+A	lolcode	LOLCODE
+A	lookml	LookML
+A	loomscript	LoomScript
+A	ls	LiveScript
+A	lsl	LSL
+A	ltspice_symbol	LTspice Symbol
+A	lua	Lua
+A	m	M
+A	m4	M4
+A	m4sugar	M4Sugar
+A	macruby	Ruby
+A	make	Makefile
+A	makefile	Makefile
+A	mako	Mako
+A	man	Roff
+A	man-page	Roff
+A	man_page	Roff
+A	manpage	Roff
+A	markdown	Markdown
+A	marko	Marko
+A	markojs	Marko
+A	mask	Mask
+A	mathematica	Mathematica
+A	matlab	MATLAB
+A	maven_pom	Maven POM
+A	max	Max
+A	max/msp	Max
+A	maxmsp	Max
+A	maxscript	MAXScript
+A	mcfunction	mcfunction
+A	mdoc	Roff
+A	mediawiki	MediaWiki
+A	mercury	Mercury
+A	meson	Meson
+A	metal	Metal
+A	mf	Makefile
+A	minid	MiniD
+A	mirah	Mirah
+A	mma	Mathematica
+A	modelica	Modelica
+A	modula-2	Modula-2
+A	modula-3	Modula-3
+A	module_management_system	Module Management System
+A	monkey	Monkey
+A	moocode	Moocode
+A	moonscript	MoonScript
+A	motorola_68k_assembly	Motorola 68K Assembly
+A	mql4	MQL4
+A	mql5	MQL5
+A	mtml	MTML
+A	muf	MUF
+A	mumps	M
+A	mupad	mupad
+A	myghty	Myghty
+A	nanorc	nanorc
+A	nasm	Assembly
+A	ncl	NCL
+A	nearley	Nearley
+A	nemerle	Nemerle
+A	nesc	nesC
+A	netlinx	NetLinx
+A	netlinx+erb	NetLinx+ERB
+A	netlogo	NetLogo
+A	newlisp	NewLisp
+A	nextflow	Nextflow
+A	nginx	Nginx
+A	nginx_configuration_file	Nginx
+A	nim	Nim
+A	ninja	Ninja
+A	nit	Nit
+A	nix	Nix
+A	nixos	Nix
+A	njk	HTML+Django
+A	nl	NL
+A	node	JavaScript
+A	nroff	Roff
+A	nsis	NSIS
+A	nu	Nu
+A	numpy	NumPy
+A	nunjucks	HTML+Django
+A	nush	Nu
+A	nvim	Vim script
+A	obj-c	Objective-C
+A	obj-c++	Objective-C++
+A	obj-j	Objective-J
+A	objc	Objective-C
+A	objc++	Objective-C++
+A	objdump	ObjDump
+A	objective-c	Objective-C
+A	objective-c++	Objective-C++
+A	objective-j	Objective-J
+A	objectivec	Objective-C
+A	objectivec++	Objective-C++
+A	objectivej	Objective-J
+A	objectpascal	Component Pascal
+A	objectscript	ObjectScript
+A	objj	Objective-J
+A	ocaml	OCaml
+A	octave	MATLAB
+A	omgrofl	Omgrofl
+A	oncrpc	RPC
+A	ooc	ooc
+A	opa	Opa
+A	opal	Opal
+A	opencl	OpenCL
+A	openedge	OpenEdge ABL
+A	openedge_abl	OpenEdge ABL
+A	openrc	OpenRC runscript
+A	openrc_runscript	OpenRC runscript
+A	openscad	OpenSCAD
+A	opentype_feature_file	OpenType Feature File
+A	org	Org
+A	osascript	AppleScript
+A	ox	Ox
+A	oxygene	Oxygene
+A	oz	Oz
+A	p4	P4
+A	pan	Pan
+A	pandoc	Markdown
+A	papyrus	Papyrus
+A	parrot	Parrot
+A	parrot_assembly	Parrot Assembly
+A	parrot_internal_representation	Parrot Internal Representation
+A	pascal	Pascal
+A	pasm	Parrot Assembly
+A	pawn	Pawn
+A	pcbnew	KiCad Layout
+A	pep8	Pep8
+A	perl	Perl
+A	perl6	Perl 6
+A	perl_6	Perl 6
+A	php	PHP
+A	pic	Pic
+A	pickle	Pickle
+A	picolisp	PicoLisp
+A	piglatin	PigLatin
+A	pike	Pike
+A	pir	Parrot Internal Representation
+A	plpgsql	PLpgSQL
+A	plsql	PLSQL
+A	pod	Pod
+A	pod_6	Pod 6
+A	pogoscript	PogoScript
+A	pony	Pony
+A	posh	PowerShell
+A	postcss	PostCSS
+A	postscr	PostScript
+A	postscript	PostScript
+A	pot	Gettext Catalog
+A	pov-ray	POV-Ray SDL
+A	pov-ray_sdl	POV-Ray SDL
+A	povray	POV-Ray SDL
+A	powerbuilder	PowerBuilder
+A	powershell	PowerShell
+A	processing	Processing
+A	progress	OpenEdge ABL
+A	prolog	Prolog
+A	propeller_spin	Propeller Spin
+A	protobuf	Protocol Buffer
+A	protocol_buffer	Protocol Buffer
+A	protocol_buffers	Protocol Buffer
+A	public_key	Public Key
+A	pug	Pug
+A	puppet	Puppet
+A	pure_data	Pure Data
+A	purebasic	PureBasic
+A	purescript	PureScript
+A	pwsh	PowerShell
+A	pycon	Python console
+A	pyrex	Cython
+A	python	Python
+A	python3	Python
+A	python_console	Python console
+A	python_traceback	Python traceback
+A	q	q
+A	qmake	QMake
+A	qml	QML
+A	quake	Quake
+A	r	R
+A	racket	Racket
+A	ragel	Ragel
+A	ragel-rb	Ragel
+A	ragel-ruby	Ragel
+A	rake	Ruby
+A	raml	RAML
+A	rascal	Rascal
+A	raw	Raw token data
+A	raw_token_data	Raw token data
+A	razor	HTML+Razor
+A	rb	Ruby
+A	rbx	Ruby
+A	rdoc	RDoc
+A	realbasic	REALbasic
+A	reason	Reason
+A	rebol	Rebol
+A	red	Red
+A	red/system	Red
+A	redcode	Redcode
+A	regex	Regular Expression
+A	regexp	Regular Expression
+A	regular_expression	Regular Expression
+A	ren'py	Ren'Py
+A	renderscript	RenderScript
+A	renpy	Ren'Py
+A	restructuredtext	reStructuredText
+A	rexx	REXX
+A	rhtml	RHTML
+A	rich_text_format	Rich Text Format
+A	ring	Ring
+A	rmarkdown	RMarkdown
+A	robotframework	RobotFramework
+A	roff	Roff
+A	roff_manpage	Roff Manpage
+A	rouge	Rouge
+A	rpc	RPC
+A	rpcgen	RPC
+A	rpm_spec	RPM Spec
+A	rs-274x	Gerber Image
+A	rscript	R
+A	rss	XML
+A	rst	reStructuredText
+A	ruby	Ruby
+A	runoff	RUNOFF
+A	rust	Rust
+A	rusthon	Python
+A	sage	Sage
+A	salt	SaltStack
+A	saltstack	SaltStack
+A	saltstate	SaltStack
+A	sas	SAS
+A	sass	Sass
+A	scala	Scala
+A	scaml	Scaml
+A	scheme	Scheme
+A	scilab	Scilab
+A	scss	SCSS
+A	sed	sed
+A	self	Self
+A	sh	Shell
+A	shaderlab	ShaderLab
+A	shell	Shell
+A	shell-script	Shell
+A	shellsession	ShellSession
+A	shen	Shen
+A	slash	Slash
+A	slice	Slice
+A	slim	Slim
+A	smali	Smali
+A	smalltalk	Smalltalk
+A	smarty	Smarty
+A	sml	Standard ML
+A	smt	SMT
+A	snippet	YASnippet
+A	solidity	Solidity
+A	sourcemod	SourcePawn
+A	sourcepawn	SourcePawn
+A	soy	Closure Templates
+A	sparql	SPARQL
+A	specfile	RPM Spec
+A	spline_font_database	Spline Font Database
+A	splus	R
+A	sqf	SQF
+A	sql	SQL
+A	sqlpl	SQLPL
+A	squeak	Smalltalk
+A	squirrel	Squirrel
+A	srecode_template	SRecode Template
+A	ssh_config	SSH Config
+A	stan	Stan
+A	standard_ml	Standard ML
+A	stata	Stata
+A	ston	STON
+A	stylus	Stylus
+A	subrip_text	SubRip Text
+A	sugarss	SugarSS
+A	supercollider	SuperCollider
+A	svelte	Svelte
+A	svg	SVG
+A	swift	Swift
+A	systemverilog	SystemVerilog
+A	tcl	Tcl
+A	tcsh	Tcsh
+A	tea	Tea
+A	terra	Terra
+A	terraform	HCL
+A	tex	TeX
+A	text	Text
+A	textile	Textile
+A	thrift	Thrift
+A	ti_program	TI Program
+A	tl	Type Language
+A	tla	TLA
+A	toml	TOML
+A	troff	Roff
+A	ts	TypeScript
+A	tsql	TSQL
+A	tsx	TSX
+A	turing	Turing
+A	turtle	Turtle
+A	twig	Twig
+A	txl	TXL
+A	type_language	Type Language
+A	typescript	TypeScript
+A	udiff	Diff
+A	unified_parallel_c	Unified Parallel C
+A	unity3d_asset	Unity3D Asset
+A	unix_assembly	Unix Assembly
+A	uno	Uno
+A	unrealscript	UnrealScript
+A	ur	UrWeb
+A	ur/web	UrWeb
+A	urweb	UrWeb
+A	vala	Vala
+A	vb.net	Visual Basic
+A	vbnet	Visual Basic
+A	vcl	VCL
+A	verilog	Verilog
+A	vhdl	VHDL
+A	vim	Vim script
+A	vim_script	Vim script
+A	viml	Vim script
+A	visual_basic	Visual Basic
+A	volt	Volt
+A	vue	Vue
+A	wasm	WebAssembly
+A	wast	WebAssembly
+A	wavefront_material	Wavefront Material
+A	wavefront_object	Wavefront Object
+A	wdl	wdl
+A	web_ontology_language	Web Ontology Language
+A	webassembly	WebAssembly
+A	webidl	WebIDL
+A	webvtt	WebVTT
+A	winbatch	Batchfile
+A	windows_registry_entries	Windows Registry Entries
+A	wisp	wisp
+A	wollok	Wollok
+A	world_of_warcraft_addon_data	World of Warcraft Addon Data
+A	wsdl	XML
+A	x10	X10
+A	x_bitmap	X BitMap
+A	x_font_directory_index	X Font Directory Index
+A	x_pixmap	X PixMap
+A	xbase	xBase
+A	xbm	X BitMap
+A	xc	XC
+A	xcompose	XCompose
+A	xdr	RPC
+A	xhtml	HTML
+A	xml	XML
+A	xml+genshi	Genshi
+A	xml+kid	Genshi
+A	xojo	Xojo
+A	xpages	XPages
+A	xpm	X PixMap
+A	xproc	XProc
+A	xquery	XQuery
+A	xs	XS
+A	xsd	XML
+A	xsl	XSLT
+A	xslt	XSLT
+A	xten	X10
+A	xtend	Xtend
+A	yacc	Yacc
+A	yaml	YAML
+A	yang	YANG
+A	yara	YARA
+A	yas	YASnippet
+A	yasnippet	YASnippet
+A	yml	YAML
+A	zap	ZAP
+A	zeek	Zeek
+A	zenscript	ZenScript
+A	zephir	Zephir
+A	zig	Zig
+A	zil	ZIL
+A	zimpl	Zimpl
+A	zsh	Shell
+E	1C Enterprise	.bsl	.os
+E	ABAP	.abap
+E	ABNF	.abnf
+E	AGS Script	.asc	.ash
+E	AMPL	.ampl	.mod
+E	ANTLR	.g4
+E	API Blueprint	.apib
+E	APL	.apl	.dyalog
+E	ASN.1	.asn	.asn1
+E	ASP	.asp	.asax	.ascx	.ashx	.asmx	.aspx	.axd
+E	ATS	.dats	.hats	.sats
+E	ActionScript	.as
+E	Ada	.adb	.ada	.ads
+E	Adobe Font Metrics	.afm
+E	Agda	.agda
+E	Alloy	.als
+E	Altium Designer	.outjob	.pcbdoc	.prjpcb	.schdoc
+E	AngelScript	.as	.angelscript
+E	ApacheConf	.apacheconf	.vhost
+E	Apex	.cls
+E	Apollo Guidance Computer	.agc
+E	AppleScript	.applescript	.scpt
+E	Arc	.arc
+E	AsciiDoc	.asciidoc	.adoc	.asc
+E	AspectJ	.aj
+E	Assembly	.asm	.a51	.inc	.nasm
+E	Asymptote	.asy
+E	Augeas	.aug
+E	AutoHotkey	.ahk	.ahkl
+E	AutoIt	.au3
+E	Awk	.awk	.auk	.gawk	.mawk	.nawk
+E	Ballerina	.bal
+E	Batchfile	.bat	.cmd
+E	Befunge	.befunge
+E	Bison	.bison
+E	BitBake	.bb
+E	Blade	.blade	.blade.php
+E	BlitzBasic	.bb	.decls
+E	BlitzMax	.bmx
+E	Bluespec	.bsv
+E	Boo	.boo
+E	Brainfuck	.b	.bf
+E	Brightscript	.brs
+E	C	.c	.cats	.h	.idc
+E	C#	.cs	.cake	.csx
+E	C++	.cpp	.c++	.cc	.cp	.cxx	.h	.h++	.hh	.hpp	.hxx	.inc	.inl	.ino	.ipp	.re	.tcc	.tpp
+E	C-ObjDump	.c-objdump
+E	C2hs Haskell	.chs
+E	CLIPS	.clp
+E	CMake	.cmake	.cmake.in
+E	COBOL	.cob	.cbl	.ccp	.cobol	.cpy
+E	COLLADA	.dae
+E	CSON	.cson
+E	CSS	.css
+E	CSV	.csv
+E	CWeb	.w
+E	Cabal Config	.cabal
+E	Cap'n Proto	.capnp
+E	CartoCSS	.mss
+E	Ceylon	.ceylon
+E	Chapel	.chpl
+E	Charity	.ch
+E	ChucK	.ck
+E	Cirru	.cirru
+E	Clarion	.clw
+E	Clean	.icl	.dcl
+E	Click	.click
+E	Clojure	.clj	.boot	.cl2	.cljc	.cljs	.cljs.hl	.cljscm	.cljx	.hic
+E	Closure Templates	.soy
+E	CoNLL-U	.conllu	.conll
+E	CoffeeScript	.coffee	._coffee	.cake	.cjsx	.iced
+E	ColdFusion	.cfm	.cfml
+E	ColdFusion CFC	.cfc
+E	Common Lisp	.lisp	.asd	.cl	.l	.lsp	.ny	.podsl	.sexp
+E	Common Workflow Language	.cwl
+E	Component Pascal	.cp	.cps
+E	Cool	.cl
+E	Coq	.coq	.v
+E	Cpp-ObjDump	.cppobjdump	.c++-objdump	.c++objdump	.cpp-objdump	.cxx-objdump
+E	Creole	.creole
+E	Crystal	.cr
+E	Csound	.orc	.udo
+E	Csound Document	.csd
+E	Csound Score	.sco
+E	Cuda	.cu	.cuh
+E	Cycript	.cy
+E	Cython	.pyx	.pxd	.pxi
+E	D	.d	.di
+E	D-ObjDump	.d-objdump
+E	DIGITAL Command Language	.com
+E	DM	.dm
+E	DNS Zone	.zone	.arpa
+E	DTrace	.d
+E	Darcs Patch	.darcspatch	.dpatch
+E	Dart	.dart
+E	DataWeave	.dwl
+E	Dhall	.dhall
+E	Diff	.diff	.patch
+E	Dockerfile	.dockerfile
+E	Dogescript	.djs
+E	Dylan	.dylan	.dyl	.intr	.lid
+E	E	.e
+E	EBNF	.ebnf
+E	ECL	.ecl	.eclxml
+E	ECLiPSe	.ecl
+E	EJS	.ejs
+E	EML	.eml	.mbox
+E	EQ	.eq
+E	Eagle	.sch	.brd
+E	Easybuild	.eb
+E	Ecere Projects	.epj
+E	Edje Data Collection	.edc
+E	Eiffel	.e
+E	Elixir	.ex	.exs
+E	Elm	.elm
+E	Emacs Lisp	.el	.emacs	.emacs.desktop
+E	EmberScript	.em	.emberscript
+E	Erlang	.erl	.app.src	.es	.escript	.hrl	.xrl	.yrl
+E	F#	.fs	.fsi	.fsx
+E	F*	.fst
+E	FIGlet Font	.flf
+E	FLUX	.fx	.flux
+E	Factor	.factor
+E	Fancy	.fy	.fancypack
+E	Fantom	.fan
+E	Filebench WML	.f
+E	Filterscript	.fs
+E	Formatted	.for	.eam.fs
+E	Forth	.fth	.4th	.f	.for	.forth	.fr	.frt	.fs
+E	Fortran	.f90	.f	.f03	.f08	.f77	.f95	.for	.fpp
+E	FreeMarker	.ftl
+E	Frege	.fr
+E	G-code	.g	.cnc	.gco	.gcode
+E	GAMS	.gms
+E	GAP	.g	.gap	.gd	.gi	.tst
+E	GCC Machine Description	.md
+E	GDB	.gdb	.gdbinit
+E	GDScript	.gd
+E	GLSL	.glsl	.fp	.frag	.frg	.fs	.fsh	.fshader	.geo	.geom	.glslv	.gshader	.shader	.tesc	.tese	.vert	.vrx	.vsh	.vshader
+E	GN	.gn	.gni
+E	Game Maker Language	.gml
+E	Genie	.gs
+E	Genshi	.kid
+E	Gentoo Ebuild	.ebuild
+E	Gentoo Eclass	.eclass
+E	Gerber Image	.gbr	.gbl	.gbo	.gbp	.gbs	.gko	.gml	.gpb	.gpt	.gtl	.gto	.gtp	.gts
+E	Gettext Catalog	.po	.pot
+E	Gherkin	.feature
+E	Git Config	.gitconfig
+E	Glyph	.glf
+E	Glyph Bitmap Distribution Format	.bdf
+E	Gnuplot	.gp	.gnu	.gnuplot	.plot	.plt
+E	Go	.go
+E	Golo	.golo
+E	Gosu	.gs	.gst	.gsx	.vark
+E	Grace	.grace
+E	Gradle	.gradle
+E	Grammatical Framework	.gf
+E	Graph Modeling Language	.gml
+E	GraphQL	.graphql	.gql	.graphqls
+E	Graphviz (DOT)	.dot	.gv
+E	Groovy	.groovy	.grt	.gtpl	.gvy
+E	Groovy Server Pages	.gsp
+E	HAProxy	.cfg
+E	HCL	.hcl	.tf	.tfvars	.workflow
+E	HLSL	.hlsl	.cginc	.fx	.fxh	.hlsli
+E	HTML	.html	.htm	.html.hl	.inc	.st	.xht	.xhtml
+E	HTML+Django	.jinja	.jinja2	.mustache	.njk
+E	HTML+ECR	.ecr
+E	HTML+EEX	.eex
+E	HTML+ERB	.erb	.erb.deface
+E	HTML+PHP	.phtml
+E	HTML+Razor	.cshtml	.razor
+E	HTTP	.http
+E	HXML	.hxml
+E	Hack	.hh	.php
+E	Haml	.haml	.haml.deface
+E	Handlebars	.handlebars	.hbs
+E	Harbour	.hb
+E	Haskell	.hs	.hsc
+E	Haxe	.hx	.hxsl
+E	HiveQL	.q
+E	HolyC	.hc
+E	Hy	.hy
+E	HyPhy	.bf
+E	IDL	.pro	.dlm
+E	IGOR Pro	.ipf
+E	INI	.ini	.cfg	.lektorproject	.prefs	.pro	.properties
+E	IRC log	.irclog	.weechatlog
+E	Idris	.idr	.lidr
+E	Ignore List	.gitignore
+E	Inform 7	.ni	.i7x
+E	Inno Setup	.iss
+E	Io	.io
+E	Ioke	.ik
+E	Isabelle	.thy
+E	J	.ijs
+E	JFlex	.flex	.jflex
+E	JSON	.json	.avsc	.geojson	.gltf	.har	.ice	.json-tmlanguage	.jsonl	.mcmeta	.tfstate	.tfstate.backup	.topojson	.webapp	.webmanifest	.yy	.yyp
+E	JSON with Comments	.sublime-build	.sublime-commands	.sublime-completions	.sublime-keymap	.sublime-macro	.sublime-menu	.sublime-mousemap	.sublime-project	.sublime-settings	.sublime-theme	.sublime-workspace	.sublime_metrics	.sublime_session
+E	JSON5	.json5
+E	JSONLD	.jsonld
+E	JSONiq	.jq
+E	JSX	.jsx
+E	Jasmin	.j
+E	Java	.java
+E	Java Properties	.properties
+E	Java Server Pages	.jsp
+E	JavaScript	.js	._js	.bones	.es	.es6	.frag	.gs	.jake	.jsb	.jscad	.jsfl	.jsm	.jss	.mjs	.njs	.pac	.sjs	.ssjs	.xsjs	.xsjslib
+E	JavaScript+ERB	.js.erb
+E	Jison	.jison
+E	Jison Lex	.jisonlex
+E	Jolie	.ol	.iol
+E	Jsonnet	.jsonnet	.libsonnet
+E	Julia	.jl
+E	Jupyter Notebook	.ipynb
+E	KRL	.krl
+E	KiCad Layout	.kicad_pcb	.kicad_mod	.kicad_wks
+E	KiCad Legacy Layout	.brd
+E	KiCad Schematic	.sch
+E	Kit	.kit
+E	Kotlin	.kt	.ktm	.kts
+E	LFE	.lfe
+E	LLVM	.ll
+E	LOLCODE	.lol
+E	LSL	.lsl	.lslp
+E	LTspice Symbol	.asy
+E	LabVIEW	.lvproj
+E	Lasso	.lasso	.las	.lasso8	.lasso9	.ldml
+E	Latte	.latte
+E	Lean	.lean	.hlean
+E	Less	.less
+E	Lex	.l	.lex
+E	LilyPond	.ly	.ily
+E	Limbo	.b	.m
+E	Linker Script	.ld	.lds	.x
+E	Linux Kernel Module	.mod
+E	Liquid	.liquid
+E	Literate Agda	.lagda
+E	Literate CoffeeScript	.litcoffee
+E	Literate Haskell	.lhs
+E	LiveScript	.ls	._ls
+E	Logos	.xm	.x	.xi
+E	Logtalk	.lgt	.logtalk
+E	LookML	.lookml	.model.lkml	.view.lkml
+E	LoomScript	.ls
+E	Lua	.lua	.fcgi	.nse	.p8	.pd_lua	.rbxs	.wlua
+E	M	.mumps	.m
+E	M4	.m4
+E	M4Sugar	.m4
+E	MATLAB	.matlab	.m
+E	MAXScript	.ms	.mcr
+E	MQL4	.mq4	.mqh
+E	MQL5	.mq5	.mqh
+E	MTML	.mtml
+E	MUF	.muf	.m
+E	Makefile	.mak	.d	.make	.mk	.mkfile
+E	Mako	.mako	.mao
+E	Markdown	.md	.markdown	.mdown	.mdwn	.mdx	.mkd	.mkdn	.mkdown	.ronn	.workbook
+E	Marko	.marko
+E	Mask	.mask
+E	Mathematica	.mathematica	.cdf	.m	.ma	.mt	.nb	.nbp	.wl	.wlt
+E	Max	.maxpat	.maxhelp	.maxproj	.mxt	.pat
+E	MediaWiki	.mediawiki	.wiki
+E	Mercury	.m	.moo
+E	Metal	.metal
+E	MiniD	.minid
+E	Mirah	.druby	.duby	.mirah
+E	Modelica	.mo
+E	Modula-2	.mod
+E	Modula-3	.i3	.ig	.m3	.mg
+E	Module Management System	.mms	.mmk
+E	Monkey	.monkey	.monkey2
+E	Moocode	.moo
+E	MoonScript	.moon
+E	Motorola 68K Assembly	.x68
+E	Myghty	.myt
+E	NCL	.ncl
+E	NL	.nl
+E	NSIS	.nsi	.nsh
+E	Nearley	.ne	.nearley
+E	Nemerle	.n
+E	NetLinx	.axs	.axi
+E	NetLinx+ERB	.axs.erb	.axi.erb
+E	NetLogo	.nlogo
+E	NewLisp	.nl	.lisp	.lsp
+E	Nextflow	.nf
+E	Nginx	.nginxconf	.vhost
+E	Nim	.nim	.nim.cfg	.nimble	.nimrod	.nims
+E	Ninja	.ninja
+E	Nit	.nit
+E	Nix	.nix
+E	Nu	.nu
+E	NumPy	.numpy	.numpyw	.numsc
+E	OCaml	.ml	.eliom	.eliomi	.ml4	.mli	.mll	.mly
+E	ObjDump	.objdump
+E	ObjectScript	.cls
+E	Objective-C	.m	.h
+E	Objective-C++	.mm
+E	Objective-J	.j	.sj
+E	Omgrofl	.omgrofl
+E	Opa	.opa
+E	Opal	.opal
+E	OpenCL	.cl	.opencl
+E	OpenEdge ABL	.p	.cls	.w
+E	OpenSCAD	.scad
+E	OpenType Feature File	.fea
+E	Org	.org
+E	Ox	.ox	.oxh	.oxo
+E	Oxygene	.oxygene
+E	Oz	.oz
+E	P4	.p4
+E	PHP	.php	.aw	.ctp	.fcgi	.inc	.php3	.php4	.php5	.phps	.phpt
+E	PLSQL	.pls	.bdy	.ddl	.fnc	.pck	.pkb	.pks	.plb	.plsql	.prc	.spc	.sql	.tpb	.tps	.trg	.vw
+E	PLpgSQL	.pgsql	.sql
+E	POV-Ray SDL	.pov	.inc
+E	Pan	.pan
+E	Papyrus	.psc
+E	Parrot	.parrot
+E	Parrot Assembly	.pasm
+E	Parrot Internal Representation	.pir
+E	Pascal	.pas	.dfm	.dpr	.inc	.lpr	.pascal	.pp
+E	Pawn	.pwn	.inc	.sma
+E	Pep8	.pep
+E	Perl	.pl	.al	.cgi	.fcgi	.perl	.ph	.plx	.pm	.psgi	.t
+E	Perl 6	.6pl	.6pm	.nqp	.p6	.p6l	.p6m	.pl	.pl6	.pm	.pm6	.t
+E	Pic	.pic	.chem
+E	Pickle	.pkl
+E	PicoLisp	.l
+E	PigLatin	.pig
+E	Pike	.pike	.pmod
+E	Pod	.pod
+E	Pod 6	.pod	.pod6
+E	PogoScript	.pogo
+E	Pony	.pony
+E	PostCSS	.pcss
+E	PostScript	.ps	.eps	.pfa
+E	PowerBuilder	.pbt	.sra	.sru	.srw
+E	PowerShell	.ps1	.psd1	.psm1
+E	Processing	.pde
+E	Prolog	.pl	.pro	.prolog	.yap
+E	Propeller Spin	.spin
+E	Protocol Buffer	.proto
+E	Public Key	.asc	.pub
+E	Pug	.jade	.pug
+E	Puppet	.pp
+E	Pure Data	.pd
+E	PureBasic	.pb	.pbi
+E	PureScript	.purs
+E	Python	.py	.bzl	.cgi	.fcgi	.gyp	.gypi	.lmi	.py3	.pyde	.pyi	.pyp	.pyt	.pyw	.rpy	.spec	.tac	.wsgi	.xpy
+E	Python traceback	.pytb
+E	QML	.qml	.qbs
+E	QMake	.pro	.pri
+E	R	.r	.rd	.rsx
+E	RAML	.raml
+E	RDoc	.rdoc
+E	REALbasic	.rbbas	.rbfrm	.rbmnu	.rbres	.rbtbar	.rbuistate
+E	REXX	.rexx	.pprx	.rex
+E	RHTML	.rhtml
+E	RMarkdown	.rmd
+E	RPC	.x
+E	RPM Spec	.spec
+E	RUNOFF	.rnh	.rno
+E	Racket	.rkt	.rktd	.rktl	.scrbl
+E	Ragel	.rl
+E	Rascal	.rsc
+E	Raw token data	.raw
+E	Reason	.re	.rei
+E	Rebol	.reb	.r	.r2	.r3	.rebol
+E	Red	.red	.reds
+E	Redcode	.cw
+E	Regular Expression	.regexp	.regex
+E	Ren'Py	.rpy
+E	RenderScript	.rs	.rsh
+E	Rich Text Format	.rtf
+E	Ring	.ring
+E	RobotFramework	.robot
+E	Roff	.roff	.1	.1in	.1m	.1x	.2	.3	.3in	.3m	.3p	.3pm	.3qt	.3x	.4	.5	.6	.7	.8	.9	.l	.man	.mdoc	.me	.ms	.n	.nr	.rno	.tmac
+E	Roff Manpage	.1	.1in	.1m	.1x	.2	.3	.3in	.3m	.3p	.3pm	.3qt	.3x	.4	.5	.6	.7	.8	.9	.man	.mdoc
+E	Rouge	.rg
+E	Ruby	.rb	.builder	.eye	.fcgi	.gemspec	.god	.jbuilder	.mspec	.pluginspec	.podspec	.rabl	.rake	.rbuild	.rbw	.rbx	.ru	.ruby	.spec	.thor	.watchr
+E	Rust	.rs	.rs.in
+E	SAS	.sas
+E	SCSS	.scss
+E	SMT	.smt2	.smt
+E	SPARQL	.sparql	.rq
+E	SQF	.sqf	.hqf
+E	SQL	.sql	.cql	.ddl	.inc	.mysql	.prc	.tab	.udf	.viw
+E	SQLPL	.sql	.db2
+E	SRecode Template	.srt
+E	STON	.ston
+E	SVG	.svg
+E	Sage	.sage	.sagews
+E	SaltStack	.sls
+E	Sass	.sass
+E	Scala	.scala	.kojo	.sbt	.sc
+E	Scaml	.scaml
+E	Scheme	.scm	.sch	.sld	.sls	.sps	.ss
+E	Scilab	.sci	.sce	.tst
+E	Self	.self
+E	ShaderLab	.shader
+E	Shell	.sh	.bash	.bats	.cgi	.command	.fcgi	.ksh	.sh.in	.tmux	.tool	.zsh
+E	ShellSession	.sh-session
+E	Shen	.shen
+E	Slash	.sl
+E	Slice	.ice
+E	Slim	.slim
+E	Smali	.smali
+E	Smalltalk	.st	.cs
+E	Smarty	.tpl
+E	SourcePawn	.sp	.inc
+E	Spline Font Database	.sfd
+E	Squirrel	.nut
+E	Stan	.stan
+E	Standard ML	.ml	.fun	.sig	.sml
+E	Stata	.do	.ado	.doh	.ihlp	.mata	.matah	.sthlp
+E	Stylus	.styl
+E	SubRip Text	.srt
+E	SugarSS	.sss
+E	SuperCollider	.sc	.scd
+E	Svelte	.svelte
+E	Swift	.swift
+E	SystemVerilog	.sv	.svh	.vh
+E	TI Program	.8xp	.8xk	.8xk.txt	.8xp.txt
+E	TLA	.tla
+E	TOML	.toml
+E	TSQL	.sql
+E	TSX	.tsx
+E	TXL	.txl
+E	Tcl	.tcl	.adp	.tm
+E	Tcsh	.tcsh	.csh
+E	TeX	.tex	.aux	.bbx	.bib	.cbx	.cls	.dtx	.ins	.lbx	.ltx	.mkii	.mkiv	.mkvi	.sty	.toc
+E	Tea	.tea
+E	Terra	.t
+E	Text	.txt	.fr	.nb	.ncl	.no
+E	Textile	.textile
+E	Thrift	.thrift
+E	Turing	.t	.tu
+E	Turtle	.ttl
+E	Twig	.twig
+E	Type Language	.tl
+E	TypeScript	.ts
+E	Unified Parallel C	.upc
+E	Unity3D Asset	.anim	.asset	.mat	.meta	.prefab	.unity
+E	Unix Assembly	.s	.ms
+E	Uno	.uno
+E	UnrealScript	.uc
+E	UrWeb	.ur	.urs
+E	VCL	.vcl
+E	VHDL	.vhdl	.vhd	.vhf	.vhi	.vho	.vhs	.vht	.vhw
+E	Vala	.vala	.vapi
+E	Verilog	.v	.veo
+E	Vim script	.vim	.vba	.vmb
+E	Visual Basic	.vb	.bas	.cls	.frm	.frx	.vba	.vbhtml	.vbs
+E	Volt	.volt
+E	Vue	.vue
+E	Wavefront Material	.mtl
+E	Wavefront Object	.obj
+E	Web Ontology Language	.owl
+E	WebAssembly	.wast	.wat
+E	WebIDL	.webidl
+E	WebVTT	.vtt
+E	Windows Registry Entries	.reg
+E	Wollok	.wlk
+E	World of Warcraft Addon Data	.toc
+E	X BitMap	.xbm
+E	X PixMap	.xpm	.pm
+E	X10	.x10
+E	XC	.xc
+E	XML	.xml	.adml	.admx	.ant	.axml	.builds	.ccproj	.ccxml	.clixml	.cproject	.cscfg	.csdef	.csl	.csproj	.ct	.depproj	.dita	.ditamap	.ditaval	.dll.config	.dotsettings	.filters	.fsproj	.fxml	.glade	.gml	.gmx	.grxml	.iml	.ivy	.jelly	.jsproj	.kml	.launch	.mdpolicy	.mjml	.mm	.mod	.mxml	.natvis	.ncl	.ndproj	.nproj	.nuspec	.odd	.osm	.pkgproj	.plist	.pluginspec	.proj	.props	.ps1xml	.psc1	.pt	.rdf	.resx	.rss	.sch	.scxml	.sfproj	.shproj	.srdf	.storyboard	.sttheme	.sublime-snippet	.targets	.tmcommand	.tml	.tmlanguage	.tmpreferences	.tmsnippet	.tmtheme	.ts	.tsx	.ui	.urdf	.ux	.vbproj	.vcxproj	.vsixmanifest	.vssettings	.vstemplate	.vxml	.wixproj	.workflow	.wsdl	.wsf	.wxi	.wxl	.wxs	.x3d	.xacro	.xaml	.xib	.xlf	.xliff	.xmi	.xml.dist	.xproj	.xsd	.xspec	.xul	.zcml
+E	XPages	.xsp-config	.xsp.metadata
+E	XProc	.xpl	.xproc
+E	XQuery	.xquery	.xq	.xql	.xqm	.xqy
+E	XS	.xs
+E	XSLT	.xslt	.xsl
+E	Xojo	.xojo_code	.xojo_menu	.xojo_report	.xojo_script	.xojo_toolbar	.xojo_window
+E	Xtend	.xtend
+E	YAML	.yml	.mir	.reek	.rviz	.sublime-syntax	.syntax	.yaml	.yaml-tmlanguage	.yml.mysql
+E	YANG	.yang
+E	YARA	.yar	.yara
+E	YASnippet	.yasnippet
+E	Yacc	.y	.yacc	.yy
+E	ZAP	.zap	.xzap
+E	ZIL	.zil	.mud
+E	Zeek	.zeek	.bro
+E	ZenScript	.zs
+E	Zephir	.zep
+E	Zig	.zig
+E	Zimpl	.zimpl	.zmpl	.zpl
+E	desktop	.desktop	.desktop.in
+E	eC	.ec	.eh
+E	edn	.edn
+E	fish	.fish
+E	mcfunction	.mcfunction
+E	mupad	.mu
+E	nanorc	.nanorc
+E	nesC	.nc
+E	ooc	.ooc
+E	q	.q
+E	reStructuredText	.rst	.rest	.rest.txt	.rst.txt
+E	sed	.sed
+E	wdl	.wdl
+E	wisp	.wisp
+E	xBase	.prg	.ch	.prw
+F	.Rprofile	R
+F	.XCompose	XCompose
+F	.abbrev_defs	Emacs Lisp
+F	.arcconfig	JSON
+F	.atomignore	Ignore List
+F	.babelignore	Ignore List
+F	.babelrc	JSON with Comments
+F	.bash_aliases	Shell
+F	.bash_history	Shell
+F	.bash_logout	Shell
+F	.bash_profile	Shell
+F	.bashrc	Shell
+F	.bzrignore	Ignore List
+F	.clang-format	YAML
+F	.clang-tidy	YAML
+F	.classpath	XML
+F	.coffeelintignore	Ignore List
+F	.cproject	XML
+F	.cshrc	Shell
+F	.cvsignore	Ignore List
+F	.dockerignore	Ignore List
+F	.editorconfig	EditorConfig
+F	.emacs	Emacs Lisp
+F	.emacs.desktop	Emacs Lisp
+F	.eslintignore	Ignore List
+F	.eslintrc.json	JSON with Comments
+F	.factor-boot-rc	Factor
+F	.factor-rc	Factor
+F	.gclient	Python
+F	.gemrc	YAML
+F	.gitattributes	Git Attributes
+F	.gitconfig	Git Config
+F	.gitignore	Ignore List
+F	.gitmodules	Git Config
+F	.gn	GN
+F	.gnus	Emacs Lisp
+F	.gvimrc	Vim script
+F	.htaccess	ApacheConf
+F	.htmlhintrc	JSON
+F	.irbrc	Ruby
+F	.jscsrc	JSON with Comments
+F	.jshintrc	JSON with Comments
+F	.jslintrc	JSON with Comments
+F	.login	Shell
+F	.nanorc	nanorc
+F	.nodemonignore	Ignore List
+F	.npmignore	Ignore List
+F	.nvimrc	Vim script
+F	.php	PHP
+F	.php_cs	PHP
+F	.php_cs.dist	PHP
+F	.prettierignore	Ignore List
+F	.profile	Shell
+F	.project	XML
+F	.pryrc	Ruby
+F	.spacemacs	Emacs Lisp
+F	.stylelintignore	Ignore List
+F	.tern-config	JSON
+F	.tern-project	JSON
+F	.vimrc	Vim script
+F	.viper	Emacs Lisp
+F	.vscodeignore	Ignore List
+F	.watchmanconfig	JSON
+F	.zlogin	Shell
+F	.zlogout	Shell
+F	.zprofile	Shell
+F	.zshenv	Shell
+F	.zshrc	Shell
+F	9fs	Shell
+F	APKBUILD	Alpine Abuild
+F	App.config	XML
+F	Appraisals	Ruby
+F	BSDmakefile	Makefile
+F	BUCK	Python
+F	BUILD	Python
+F	BUILD.bazel	Python
+F	Berksfile	Ruby
+F	Brewfile	Ruby
+F	Buildfile	Ruby
+F	CMakeLists.txt	CMake
+F	COPYING	Text
+F	COPYING.regex	Text
+F	COPYRIGHT.regex	Text
+F	Cakefile	CoffeeScript
+F	Capfile	Ruby
+F	Cargo.lock	TOML
+F	Cask	Emacs Lisp
+F	Dangerfile	Ruby
+F	Deliverfile	Ruby
+F	Dockerfile	Dockerfile
+F	Emakefile	Erlang
+F	FONTLOG	Text
+F	Fakefile	Fancy
+F	Fastfile	Ruby
+F	GNUmakefile	Makefile
+F	Gemfile	Ruby
+F	Gemfile.lock	Ruby
+F	Gopkg.lock	TOML
+F	Guardfile	Ruby
+F	INSTALL	Text
+F	INSTALL.mysql	Text
+F	Jakefile	JavaScript
+F	Jarfile	Ruby
+F	Jenkinsfile	Groovy
+F	Kbuild	Makefile
+F	LICENSE	Text
+F	LICENSE.mysql	Text
+F	Makefile	Makefile
+F	Makefile.PL	Perl
+F	Makefile.am	Makefile
+F	Makefile.boot	Makefile
+F	Makefile.frag	Makefile
+F	Makefile.in	Makefile
+F	Makefile.inc	Makefile
+F	Makefile.wat	Makefile
+F	Mavenfile	Ruby
+F	Modulefile	Puppet
+F	NEWS	Text
+F	Notebook	Jupyter Notebook
+F	NuGet.config	XML
+F	Nukefile	Nu
+F	PKGBUILD	Shell
+F	Phakefile	PHP
+F	Podfile	Ruby
+F	Project.ede	Emacs Lisp
+F	Puppetfile	Ruby
+F	README.1ST	Text
+F	README.me	Text
+F	README.mysql	Text
+F	ROOT	Isabelle ROOT
+F	Rakefile	Ruby
+F	Rexfile	Perl
+F	SConscript	Python
+F	SConstruct	Python
+F	Settings.StyleCop	XML
+F	Slakefile	LiveScript
+F	Snakefile	Python
+F	Snapfile	Ruby
+F	Thorfile	Ruby
+F	Vagrantfile	Ruby
+F	WORKSPACE	Python
+F	Web.Debug.config	XML
+F	Web.Release.config	XML
+F	Web.config	XML
+F	XCompose	XCompose
+F	_emacs	Emacs Lisp
+F	_vimrc	Vim script
+F	abbrev_defs	Emacs Lisp
+F	ack	Perl
+F	ant.xml	Ant Build System
+F	apache2.conf	ApacheConf
+F	bash_aliases	Shell
+F	bash_logout	Shell
+F	bash_profile	Shell
+F	bashrc	Shell
+F	build.xml	Ant Build System
+F	buildfile	Ruby
+F	buildozer.spec	INI
+F	cabal.config	Cabal Config
+F	cabal.project	Cabal Config
+F	click.me	Text
+F	composer.lock	JSON
+F	configure.ac	M4Sugar
+F	contents.lr	Markdown
+F	cpanfile	Perl
+F	cshrc	Shell
+F	delete.me	Text
+F	descrip.mmk	Module Management System
+F	descrip.mms	Module Management System
+F	encodings.dir	X Font Directory Index
+F	expr-dist	R
+F	firestore.rules	Cloud Firestore Security Rules
+F	fonts.alias	X Font Directory Index
+F	fonts.dir	X Font Directory Index
+F	fonts.scale	X Font Directory Index
+F	fp-lib-table	KiCad Layout
+F	gitignore-global	Ignore List
+F	gitignore_global	Ignore List
+F	glide.lock	YAML
+F	go.mod	Text
+F	go.sum	Text
+F	gradlew	Shell
+F	gvimrc	Vim script
+F	haproxy.cfg	HAProxy
+F	httpd.conf	ApacheConf
+F	jsconfig.json	JSON with Comments
+F	keep.me	Text
+F	language-configuration.json	JSON with Comments
+F	ld.script	Linker Script
+F	login	Shell
+F	m3makefile	Quake
+F	m3overrides	Quake
+F	makefile	Makefile
+F	makefile.sco	Makefile
+F	man	Shell
+F	mcmod.info	JSON
+F	meson.build	Meson
+F	meson_options.txt	Meson
+F	mix.lock	Elixir
+F	mkfile	Makefile
+F	mmn	Roff
+F	mmt	Roff
+F	nanorc	nanorc
+F	nextflow.config	Nextflow
+F	nginx.conf	Nginx
+F	nim.cfg	Nim
+F	nvimrc	Vim script
+F	owh	Tcl
+F	packages.config	XML
+F	pom.xml	Maven POM
+F	profile	Shell
+F	read.me	Text
+F	readme.1st	Text
+F	rebar.config	Erlang
+F	rebar.config.lock	Erlang
+F	rebar.lock	Erlang
+F	riemann.config	Clojure
+F	ssh-config	SSH Config
+F	ssh_config	SSH Config
+F	sshconfig	SSH Config
+F	sshconfig.snip	SSH Config
+F	sshd-config	SSH Config
+F	sshd_config	SSH Config
+F	starfield	Tcl
+F	test.me	Text
+F	tsconfig.json	JSON with Comments
+F	vimrc	Vim script
+F	wscript	Python
+F	xcompose	XCompose
+F	zlogin	Shell
+F	zlogout	Shell
+F	zprofile	Shell
+F	zshenv	Shell
+F	zshrc	Shell

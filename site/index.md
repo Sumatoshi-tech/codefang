@@ -117,11 +117,11 @@ analysis of entire repositories. One tool, one config, complete understanding.
 Verify the build:
 
 ```console
-$ codefang version
+codefang version
 ```
 
 ```console
-$ uast version
+uast version
 ```
 
 ---

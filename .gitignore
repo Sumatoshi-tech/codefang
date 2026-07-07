@@ -42,6 +42,12 @@ _testmain.go
 *.tsv.gz
 *.rawast.json
 
+# Vendored enry data is embedded at compile time via include_str!, so it must
+# be tracked despite the blanket *.tsv rule above.
+!crates/cf-langpath/data/enry-v2.1.0.tsv
+!crates/cf-langpath/data/enry-frequencies-v2.1.0.tsv
+!crates/cf-langpath/data/enry-interpreters-v2.1.0.tsv
+
 **/__pycache__
 debug*
 test/data/

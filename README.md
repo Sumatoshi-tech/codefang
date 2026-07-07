@@ -70,11 +70,11 @@ touching `PATH`? Use `make build` (equivalently
 Check the install:
 
 ```console
-$ codefang version
+codefang version
 ```
 
 ```console
-$ uast version
+uast version
 ```
 
 ---
@@ -86,25 +86,25 @@ $ uast version
 Parse a source file into a UAST:
 
 ```console
-$ uast parse main.rs
+uast parse main.rs
 ```
 
 Run a static analyzer over a checkout (UAST is built internally per file):
 
 ```console
-$ codefang run --analyzers static/complexity --format json --head /path/to/repo
+codefang run --analyzers static/complexity --format json --head /path/to/repo
 ```
 
 Run a history analyzer by walking Git history (use `--limit` to cap commits):
 
 ```console
-$ codefang run --analyzers history/burndown --format json --limit 50 /path/to/repo
+codefang run --analyzers history/burndown --format json --limit 50 /path/to/repo
 ```
 
 List every analyzer ID:
 
 ```console
-$ codefang run --list-analyzers
+codefang run --list-analyzers
 ```
 
 Analyzer IDs are `static/<name>` and `history/<name>`; `-a` accepts globs
