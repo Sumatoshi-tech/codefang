@@ -92,7 +92,7 @@ fn ensure_built(name: &str) -> Option<PathBuf> {
     };
     let status = Command::new(env!("CARGO"))
         .args(["build", "-p", name, "--profile", profile])
-        .current_dir(repo_root().join("rust"))
+        .current_dir(repo_root())
         .status();
     if !matches!(status, Ok(s) if s.success()) {
         return None;
