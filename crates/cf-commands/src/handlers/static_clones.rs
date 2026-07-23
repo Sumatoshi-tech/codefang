@@ -54,7 +54,17 @@ use cf_uast_node::Node as UastNode;
 /// `None` when the path cannot be read.
 #[must_use]
 pub fn clones_report_json(root_path: &str) -> Option<Vec<u8>> {
-    let value = clones_report_value(root_path)?;
+    clones_report_json_flags(root_path, false)
+}
+
+/// [`clones_report_json`] with the `--per-file` flag applied. The clones
+/// aggregator retains NO per-file snapshots (it is not `PerFileModeEnabled` in
+/// the reference implementation), but `EnrichWithPerFileData` still initializes
+/// EVERY section with an EMPTY `files` array under `--per-file` — so the flag
+/// adds `files: []` to the clones section, exactly as the reference emits.
+#[must_use]
+pub fn clones_report_json_flags(root_path: &str, per_file: bool) -> Option<Vec<u8>> {
+    let value = clones_report_value_flags(root_path, per_file)?;
     // Reference: json.NewEncoder(w).SetIndent("", "  ").Encode(report) -> two-space
     // indent + one trailing newline.
     let bytes = Encoder::indented("  ")
@@ -68,8 +78,20 @@ pub fn clones_report_json(root_path: &str) -> Option<Vec<u8>> {
 /// static-JSON merge. `None` when the path cannot be walked.
 #[must_use]
 pub fn clones_report_value(root_path: &str) -> Option<cf_gojson::GoValue> {
+    clones_report_value_flags(root_path, false)
+}
+
+/// [`clones_report_value`] with the `--per-file` section enrichment (an empty
+/// `files` array — see [`clones_report_json_flags`]).
+#[must_use]
+pub fn clones_report_value_flags(root_path: &str, per_file: bool) -> Option<cf_gojson::GoValue> {
     let report = aggregate_report(root_path)?;
-    Some(report_section_json_value(&report))
+    let value = report_section_json_value(&report);
+    if per_file {
+        Some(super::ensure_sections_files_key(value))
+    } else {
+        Some(value)
+    }
 }
 
 /// Builds the `static/clones --format yaml` report bytes for `root_path`
@@ -206,5 +228,44 @@ fn make_relative_path(file_path: &str, root_path: &str) -> String {
     match file.strip_prefix(root) {
         Ok(rel) => rel.to_string_lossy().into_owned(),
         Err(_) => file_path.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod per_file_tests {
+    use super::*;
+
+    fn fixture() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("a.go"),
+            "package main\n\nfunc add(a, b int) int {\n\treturn a + b\n}\n",
+        )
+        .unwrap();
+        dir
+    }
+
+    #[test]
+    fn per_file_flag_emits_empty_files_array() {
+        let dir = fixture();
+        let bytes = clones_report_json_flags(dir.path().to_str().unwrap(), true).unwrap();
+        let json = String::from_utf8(bytes).unwrap();
+        // Clones retains no per-file data, but the enrichment still initializes
+        // the section with an EMPTY files array (present, not omitted).
+        assert!(
+            json.contains("\"files\": []"),
+            "empty files array missing:\n{json}"
+        );
+    }
+
+    #[test]
+    fn no_per_file_flag_omits_files() {
+        let dir = fixture();
+        let bytes = clones_report_json_flags(dir.path().to_str().unwrap(), false).unwrap();
+        let json = String::from_utf8(bytes).unwrap();
+        assert!(
+            !json.contains("\"files\""),
+            "files key must be omitted:\n{json}"
+        );
     }
 }
