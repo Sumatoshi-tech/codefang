@@ -107,6 +107,23 @@ struct Aggregated {
     /// Functions keyed by the composite `(_source_file, name)` dedup key; last
     /// write wins (reference: buffer overwrite).
     functions: BTreeMap<String, FnItem>,
+    /// Per-file snapshots (the reference `PerFileRetainer` clones of each
+    /// visitor report) consumed by the `--per-file` section enrichment; walk
+    /// order.
+    per_file: Vec<PerFileCohesion>,
+}
+
+/// One retained per-file cohesion report: the visitor result's scalars,
+/// per-file `message`, and this file's `(name, cohesion)` function list.
+struct PerFileCohesion {
+    /// Path relative to the analyzed root (the `StampSourceFile` stamp).
+    rel: String,
+    total_functions: i64,
+    lcom: f64,
+    cohesion_score: f64,
+    function_cohesion: f64,
+    message: String,
+    functions: Vec<(String, f64)>,
 }
 
 impl Aggregated {
@@ -203,6 +220,7 @@ fn walk(
 
         let stamped = make_relative_path(&path_str, root_path);
         accumulate(agg, &report, &stamped);
+        retain_per_file(agg, &report, &stamped);
     }
 }
 
@@ -261,6 +279,55 @@ fn accumulate(agg: &mut Aggregated, report: &Report, source_file: &str) {
     }
 }
 
+/// Retains the per-file visitor report for `--per-file` (the reference
+/// `PerFileRetainer.Retain` shallow clone, keyed by the stamped path): the
+/// scalar metrics, the ANALYZER's per-file `message` (`No functions found`
+/// for function-free files), and this file's `(name, cohesion)` functions.
+fn retain_per_file(agg: &mut Aggregated, report: &Report, source_file: &str) {
+    let get_f = |key: &str| {
+        report
+            .get(key)
+            .and_then(ReportValue::as_float)
+            .unwrap_or(0.0)
+    };
+    let functions: Vec<(String, f64)> = report
+        .get("functions")
+        .and_then(ReportValue::as_functions)
+        .map(|fns| {
+            fns.iter()
+                .map(|f| {
+                    (
+                        f.get("name")
+                            .and_then(ReportValue::as_str)
+                            .unwrap_or_default()
+                            .to_string(),
+                        f.get("cohesion")
+                            .and_then(ReportValue::as_float)
+                            .unwrap_or(0.0),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    agg.per_file.push(PerFileCohesion {
+        rel: source_file.to_string(),
+        total_functions: report
+            .get("total_functions")
+            .and_then(ReportValue::as_int)
+            .unwrap_or(0),
+        lcom: get_f("lcom"),
+        cohesion_score: get_f("cohesion_score"),
+        function_cohesion: get_f("function_cohesion"),
+        message: report
+            .get("message")
+            .and_then(ReportValue::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        functions,
+    });
+}
+
 /// The collected functions sorted by `name` (the reference `GetSortedData`, last identifier
 /// key). Equal-name order is nondeterministic in the reference implementation and canonicalized by the
 /// harness; a stable secondary order keeps our output deterministic.
@@ -291,7 +358,17 @@ fn make_relative_path(file_path: &str, root_path: &str) -> String {
 /// path cannot be read.
 #[must_use]
 pub fn cohesion_report_json(root_path: &str) -> Option<Vec<u8>> {
-    let report = cohesion_report_value(root_path)?;
+    cohesion_report_json_flags(root_path, false)
+}
+
+/// [`cohesion_report_json`] with the `--per-file` flag applied: `per_file`
+/// enables the reference implementation's section enrichment
+/// (`StaticService.enrichWithPerFileData` → `JSONReport.EnrichWithPerFileData`
+/// over the `PerFileRetainer` snapshots — one `JSONFileEntry` per ANALYZED
+/// file, function-free files included, keyed into the section's `files` array).
+#[must_use]
+pub fn cohesion_report_json_flags(root_path: &str, per_file: bool) -> Option<Vec<u8>> {
+    let report = cohesion_report_value_flags(root_path, per_file)?;
     let bytes = Encoder::indented("  ")
         .with_trailing_newline(true)
         .encode_to_vec(&report);
@@ -303,8 +380,22 @@ pub fn cohesion_report_json(root_path: &str) -> Option<Vec<u8>> {
 /// static-JSON merge. `None` when the path cannot be walked.
 #[must_use]
 pub fn cohesion_report_value(root_path: &str) -> Option<GoValue> {
+    cohesion_report_value_flags(root_path, false)
+}
+
+/// [`cohesion_report_value`] with the `--per-file` section enrichment.
+#[must_use]
+pub fn cohesion_report_value_flags(root_path: &str, per_file: bool) -> Option<GoValue> {
     let agg = aggregate(root_path)?;
-    Some(build_json_report(&agg))
+    // --per-file: one JSONFileEntry per ANALYZED file, in walk order (the
+    // reference implementation ranges the retainer map here — run-to-run
+    // random; the oracle's measured-variance canonicalization compares the set).
+    let file_entries: Option<Vec<GoValue>> = if per_file {
+        Some(agg.per_file.iter().map(build_file_entry).collect())
+    } else {
+        None
+    };
+    Some(build_json_report(&agg, file_entries))
 }
 
 /// Builds the `static/cohesion` section tree in the reference implementation's `AggregationModeSummaryOnly`
@@ -315,7 +406,7 @@ pub fn cohesion_report_value(root_path: &str) -> Option<GoValue> {
 pub fn cohesion_report_value_summary(root_path: &str) -> Option<GoValue> {
     let mut agg = aggregate(root_path)?;
     agg.functions.clear();
-    Some(build_json_report(&agg))
+    Some(build_json_report(&agg, None))
 }
 
 /// Builds the AGGREGATED RAW `analyze.Report` GoValue for `static/cohesion` —
@@ -396,7 +487,97 @@ fn cohesion_message(score: f64) -> &'static str {
     }
 }
 
-fn build_json_report(agg: &Aggregated) -> GoValue {
+/// Builds one `renderer.JSONFileEntry` for `--per-file` (the reference
+/// `SectionToJSONFileEntry` over `cohesion.NewReportSection(perFileReport)`):
+/// status/score come from the PER-FILE report (`message` / `cohesion_score`),
+/// the metrics are the per-file scalars, and the distribution and
+/// value-string-ascending issues cover this file's functions only.
+fn build_file_entry(pf: &PerFileCohesion) -> GoValue {
+    let score = pf.cohesion_score;
+    let status = if pf.message.is_empty() {
+        DEFAULT_STATUS_MESSAGE.to_string()
+    } else {
+        pf.message.clone()
+    };
+
+    let metrics = GoValue::Array(vec![
+        metric(METRIC_TOTAL_FUNCTIONS, &pf.total_functions.to_string()),
+        metric(METRIC_LCOM, &format_float(pf.lcom)),
+        metric(METRIC_COHESION_SCORE, &format_float(pf.cohesion_score)),
+        metric(
+            METRIC_FUNCTION_COHESION,
+            &format_float(pf.function_cohesion),
+        ),
+    ]);
+
+    // Distribution over THIS file's functions (absent for function-free files
+    // — Distribution() returns nil ⇒ omitempty).
+    let total = pf.functions.len() as i64;
+    let mut dist_items = Vec::new();
+    if total != 0 {
+        let mut excellent = 0i64;
+        let mut good = 0i64;
+        let mut fair = 0i64;
+        let mut poor = 0i64;
+        for (_, coh) in &pf.functions {
+            if *coh >= DIST_EXCELLENT_MIN {
+                excellent += 1;
+            } else if *coh >= DIST_GOOD_MIN {
+                good += 1;
+            } else if *coh >= DIST_FAIR_MIN {
+                fair += 1;
+            } else {
+                poor += 1;
+            }
+        }
+        dist_items.push(dist_item(
+            DIST_LABEL_EXCELLENT,
+            pct(excellent, total),
+            excellent,
+        ));
+        dist_items.push(dist_item(DIST_LABEL_GOOD, pct(good, total), good));
+        dist_items.push(dist_item(DIST_LABEL_FAIR, pct(fair, total), fair));
+        dist_items.push(dist_item(DIST_LABEL_POOR, pct(poor, total), poor));
+    }
+
+    // Issues: this file's functions sorted by the FormatFloat string ascending
+    // (the section comparator; name tie-break keeps our output deterministic
+    // where the reference unstable sort varies).
+    let mut issues: Vec<&(String, f64)> = pf.functions.iter().collect();
+    issues.sort_by(|a, b| {
+        format_float(a.1)
+            .cmp(&format_float(b.1))
+            .then_with(|| a.0.cmp(&b.0))
+    });
+    let issue_items: Vec<GoValue> = issues
+        .iter()
+        .map(|(name, coh)| {
+            let mut iss = GoMap::new(MapOrigin::Struct);
+            iss.push("name", GoValue::Str(name.clone()));
+            iss.push("location", GoValue::Str(pf.rel.clone()));
+            iss.push("value", GoValue::Str(format_float(*coh)));
+            iss.push(
+                "severity",
+                GoValue::Str(severity_for_cohesion(*coh).to_string()),
+            );
+            GoValue::Map(iss)
+        })
+        .collect();
+
+    let mut entry = GoMap::new(MapOrigin::Struct);
+    entry.push("file_path", GoValue::Str(pf.rel.clone()));
+    entry.push("score_label", GoValue::Str(score_label(score)));
+    entry.push("status", GoValue::Str(status));
+    entry.push("metrics", metrics);
+    if !dist_items.is_empty() {
+        entry.push("distribution", GoValue::Array(dist_items));
+    }
+    entry.push("issues", GoValue::Array(issue_items));
+    entry.push("score", GoValue::Float(score));
+    GoValue::Map(entry)
+}
+
+fn build_json_report(agg: &Aggregated, file_entries: Option<Vec<GoValue>>) -> GoValue {
     let cohesion_score = agg.cohesion_score_avg();
     let functions = sorted_functions(agg);
 
@@ -484,6 +665,11 @@ fn build_json_report(agg: &Aggregated) -> GoValue {
         section.push("distribution", GoValue::Array(dist_items));
     }
     section.push("issues", GoValue::Array(issue_items));
+    // --per-file enrichment: `files` sits between `issues` and `score`
+    // (renderer.JSONSection field order; omitempty without the flag).
+    if let Some(entries) = file_entries {
+        section.push("files", GoValue::Array(entries));
+    }
     section.push("score", GoValue::Float(cohesion_score));
 
     // ---- report ----
@@ -686,4 +872,59 @@ fn severity_for_cohesion(coh: f64) -> &'static str {
 fn score_label(score: f64) -> String {
     let n = (score * 10.0).round() as i64;
     format!("{n}/10")
+}
+
+#[cfg(test)]
+mod per_file_tests {
+    use super::*;
+
+    /// Fixture: one file with a function, one function-free file.
+    fn fixture() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("a.go"),
+            "package main\n\nfunc add(a, b int) int {\n\tc := a + b\n\treturn c\n}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("types.go"),
+            "package main\n\ntype Config struct {\n\tName string\n}\n",
+        )
+        .unwrap();
+        dir
+    }
+
+    #[test]
+    fn per_file_flag_emits_files_entries() {
+        let dir = fixture();
+        let bytes = cohesion_report_json_flags(dir.path().to_str().unwrap(), true).unwrap();
+        let json = String::from_utf8(bytes).unwrap();
+        assert!(json.contains("\"files\""), "files key missing:\n{json}");
+        assert!(
+            json.contains("\"file_path\": \"a.go\""),
+            "a.go entry missing:\n{json}"
+        );
+        assert!(
+            json.contains("\"file_path\": \"types.go\""),
+            "types.go entry missing:\n{json}"
+        );
+        // Per-file status is the ANALYZER's per-file message; a function-free
+        // file reports the empty-result message.
+        assert!(
+            json.contains("\"status\": \"No functions found\""),
+            "per-file empty-result status missing:\n{json}"
+        );
+    }
+
+    #[test]
+    fn no_per_file_flag_omits_files() {
+        let dir = fixture();
+        let bytes = cohesion_report_json_flags(dir.path().to_str().unwrap(), false).unwrap();
+        let json = String::from_utf8(bytes).unwrap();
+        assert!(
+            !json.contains("\"files\""),
+            "files key must be omitted:\n{json}"
+        );
+        assert!(!json.contains("\"file_path\""));
+    }
 }

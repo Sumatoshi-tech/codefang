@@ -315,7 +315,7 @@ mod tests {
     use cf_gojson::{GoMap, MapOrigin};
 
     fn raw_report() -> GoValue {
-        let imports = vec!["fmt", "github.com/x/y", "./../../../deep"];
+        let imports = ["fmt", "github.com/x/y", "./../../../deep"];
         let mut counts = GoMap::new(MapOrigin::Map);
         counts.push("./../../../deep", GoValue::Int(1));
         counts.push("fmt", GoValue::Int(3));

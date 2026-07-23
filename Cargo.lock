@@ -406,6 +406,7 @@ dependencies = [
  "cf-version",
  "clap",
  "clap_complete",
+ "tempfile",
  "thiserror",
 ]
 
