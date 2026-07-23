@@ -995,7 +995,9 @@ fn h_static_cohesion(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     // `bin` CLI alias has already been normalized to `binary` (formats.rs
     // `normalize_format`). Match the normalized name (accept the raw alias too).
     match format {
-        "json" => static_cohesion::cohesion_report_json(path),
+        "json" => {
+            static_cohesion::cohesion_report_json_flags(path, ctx.matches.get_flag("per-file"))
+        }
         "yaml" => static_cohesion::cohesion_report_yaml(path),
         "binary" | "bin" => static_cohesion::cohesion_report_bin(path),
         "compact" => Some(section_render::render_compact_report(
@@ -1034,7 +1036,9 @@ fn h_static_halstead(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     // `normalize_format`). Match the normalized name so `--format bin` dispatches
     // to the CFB1 envelope builder rather than falling through to `None`.
     match format {
-        "json" => static_halstead::halstead_json_report(path),
+        "json" => {
+            static_halstead::halstead_json_report_flags(path, ctx.matches.get_flag("per-file"))
+        }
         "yaml" => static_halstead::halstead_yaml_report(path),
         "binary" => static_halstead::halstead_bin_report(path),
         "compact" => Some(section_render::render_compact_report(
@@ -1054,7 +1058,7 @@ fn h_static_imports(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     // `normalize_format`). Match the normalized name so `--format bin` dispatches
     // to the CFB1 envelope builder rather than falling through to `None`.
     match format {
-        "json" => static_imports::imports_report_json(path),
+        "json" => static_imports::imports_report_json_flags(path, ctx.matches.get_flag("per-file")),
         "yaml" => static_imports::imports_report_yaml(path),
         "binary" => static_imports::imports_report_bin(path),
         "compact" => Some(section_render::render_compact_report(

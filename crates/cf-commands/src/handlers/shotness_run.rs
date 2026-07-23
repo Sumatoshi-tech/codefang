@@ -326,7 +326,7 @@ pub(crate) struct ShotnessReducer {
 impl ShotnessReducer {
     /// shouldConsumeCommit: a merge commit is processed only the first time.
     pub(crate) fn should_consume(&mut self, hash: cf_gitlib::Hash, num_parents: usize) -> bool {
-        !(num_parents > 1 && !self.seen_merges.insert(hash))
+        num_parents <= 1 || self.seen_merges.insert(hash)
     }
 
     /// Applies one commit's products to the cumulative state and returns the

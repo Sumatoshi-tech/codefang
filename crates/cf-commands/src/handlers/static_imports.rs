@@ -101,7 +101,17 @@ fn aggregate_report_value(root_path: &str) -> Option<cf_imports::ReportValue> {
 /// ordering: count descending, ties broken by the aggregator's sorted import
 /// keys (the same set the reference implementation emits, just stably ordered).
 pub fn imports_report_json(root_path: &str) -> Option<Vec<u8>> {
-    let root = imports_report_value(root_path)?;
+    imports_report_json_flags(root_path, false)
+}
+
+/// [`imports_report_json`] with the `--per-file` flag applied: `per_file`
+/// enables the reference implementation's section enrichment
+/// (`StaticService.enrichWithPerFileData` → `JSONReport.EnrichWithPerFileData`
+/// over the `PerFileRetainer` snapshots — one `JSONFileEntry` per ANALYZED
+/// file, import-free files included, keyed into the section's `files` array).
+#[must_use]
+pub fn imports_report_json_flags(root_path: &str, per_file: bool) -> Option<Vec<u8>> {
+    let root = imports_report_value_flags(root_path, per_file)?;
     Some(
         cf_gojson::Encoder::indented("  ")
             .with_trailing_newline(true)
@@ -114,7 +124,18 @@ pub fn imports_report_json(root_path: &str) -> Option<Vec<u8>> {
 /// static-JSON merge. `None` when the path cannot be walked.
 #[must_use]
 pub fn imports_report_value(root_path: &str) -> Option<GoValue> {
-    let (all_imports, total_files) = walk_and_count(root_path)?;
+    imports_report_value_flags(root_path, false)
+}
+
+/// [`imports_report_value`] with the `--per-file` section enrichment.
+#[must_use]
+pub fn imports_report_value_flags(root_path: &str, per_file: bool) -> Option<GoValue> {
+    let mut per_file_data: Vec<(String, Vec<String>)> = Vec::new();
+    let (all_imports, total_files) = walk_and_count_opts(
+        root_path,
+        &Options::default(),
+        per_file.then_some(&mut per_file_data),
+    )?;
     let count = all_imports.len() as i64;
 
     // --- status / score (info-only) ---
@@ -154,6 +175,20 @@ pub fn imports_report_value(root_path: &str) -> Option<GoValue> {
         })
         .collect();
 
+    // --- --per-file: one JSONFileEntry per ANALYZED file, in walk order (the
+    // reference implementation ranges the retainer map here — run-to-run
+    // random; the oracle's measured-variance canonicalization compares the set) ---
+    let file_entries: Option<Vec<GoValue>> = if per_file {
+        Some(
+            per_file_data
+                .iter()
+                .map(|(rel, imports)| build_file_entry(rel, imports))
+                .collect(),
+        )
+    } else {
+        None
+    };
+
     // --- section (JSONSection field order) ---
     let mut section = GoMap::new(MapOrigin::Struct);
     section.push("title", GoValue::Str("IMPORTS".to_string()));
@@ -162,6 +197,11 @@ pub fn imports_report_value(root_path: &str) -> Option<GoValue> {
     section.push("metrics", GoValue::Array(metrics));
     // Distribution() returns nil ⇒ omitempty omits it.
     section.push("issues", GoValue::Array(issues));
+    // --per-file enrichment: `files` sits between `issues` and `score`
+    // (renderer.JSONSection field order; omitempty without the flag).
+    if let Some(entries) = file_entries {
+        section.push("files", GoValue::Array(entries));
+    }
     section.push("score", GoValue::Float(-1.0));
 
     // --- top-level JSONReport (overall info-only) ---
@@ -171,6 +211,51 @@ pub fn imports_report_value(root_path: &str) -> Option<GoValue> {
     root.push("overall_score", GoValue::Float(-1.0));
 
     Some(GoValue::Map(root))
+}
+
+/// Builds one `renderer.JSONFileEntry` for `--per-file` (the reference
+/// `SectionToJSONFileEntry` over `imports.CreateReportSection(perFileReport)`):
+/// the per-file report is the analyzer's `{imports, count}` map — no
+/// `import_counts` — so the issues take the alphabetical-list fallback, each
+/// valued `"1"` and located at the stamped relative path, and `Total Files`
+/// reads the absent key as 0. Imports stays info-only per file (`score = -1`).
+fn build_file_entry(rel_path: &str, imports: &[String]) -> GoValue {
+    let count = imports.len() as i64;
+
+    let metric = |label: &str, value: String| {
+        let mut m = GoMap::new(MapOrigin::Struct);
+        m.push("label", GoValue::Str(label.to_string()));
+        m.push("value", GoValue::Str(value));
+        GoValue::Map(m)
+    };
+    let metrics = vec![
+        metric("Unique Imports", cf_reportutil::format_int(count)),
+        metric("Total Files", cf_reportutil::format_int(0)),
+    ];
+
+    let mut sorted: Vec<&String> = imports.iter().collect();
+    sorted.sort();
+    let issues: Vec<GoValue> = sorted
+        .iter()
+        .map(|name| {
+            let mut m = GoMap::new(MapOrigin::Struct);
+            m.push("name", GoValue::Str((*name).clone()));
+            m.push("location", GoValue::Str(rel_path.to_string()));
+            m.push("value", GoValue::Str("1".to_string()));
+            m.push("severity", GoValue::Str("info".to_string()));
+            GoValue::Map(m)
+        })
+        .collect();
+
+    let mut entry = GoMap::new(MapOrigin::Struct);
+    entry.push("file_path", GoValue::Str(rel_path.to_string()));
+    entry.push("score_label", GoValue::Str("Info".to_string()));
+    entry.push("status", GoValue::Str(build_status_message(count)));
+    entry.push("metrics", GoValue::Array(metrics));
+    // Distribution() returns nil for imports ⇒ omitempty omits it.
+    entry.push("issues", GoValue::Array(issues));
+    entry.push("score", GoValue::Float(-1.0));
+    GoValue::Map(entry)
 }
 
 /// Builds the AGGREGATED RAW `analyze.Report` GoValue for `static/imports` —
@@ -185,7 +270,7 @@ pub fn imports_report_value(root_path: &str) -> Option<GoValue> {
 /// * `count`: unique import count; `total_files`: every analyzed file.
 #[must_use]
 pub fn imports_raw_report_value(root_path: &str, opts: &Options) -> Option<GoValue> {
-    let (all_imports, total_files) = walk_and_count_opts(root_path, opts)?;
+    let (all_imports, total_files) = walk_and_count_opts(root_path, opts, None)?;
 
     let imports: Vec<GoValue> = all_imports
         .keys()
@@ -218,14 +303,18 @@ fn build_status_message(count: i64) -> String {
 /// alongside the total analyzed-file count. Returns `None` when the path is
 /// missing. Mirrors the per-file analyze + `imports.Aggregator` accumulation.
 fn walk_and_count(root_path: &str) -> Option<(std::collections::BTreeMap<String, i64>, i64)> {
-    walk_and_count_opts(root_path, &Options::default())
+    walk_and_count_opts(root_path, &Options::default(), None)
 }
 
 /// [`walk_and_count`] with explicit path-policy options (the plot path passes
-/// the run flags; the stdout formats keep the defaults).
+/// the run flags; the stdout formats keep the defaults). When `per_file_out`
+/// is set, each analyzed file's deduplicated import list is also pushed as
+/// `(relative path, imports)` in walk order — the reference `PerFileRetainer`
+/// snapshot the `--per-file` section enrichment consumes.
 fn walk_and_count_opts(
     root_path: &str,
     opts: &Options,
+    mut per_file_out: Option<&mut Vec<(String, Vec<String>)>>,
 ) -> Option<(std::collections::BTreeMap<String, i64>, i64)> {
     let root = Path::new(root_path);
     if !root.exists() {
@@ -251,14 +340,17 @@ fn walk_and_count_opts(
         total_files += 1;
         // Parse failures on supported files (markdown without a wired grammar)
         // fold as an empty report: +1 file, no imports (see module docs).
-        let Ok(node) = parser.parse(path, &content) else {
-            continue;
-        };
-
         // extract_imports_from_uast deduplicates within the file in first-seen
         // order; the cross-file aggregator then counts file occurrences.
-        for imp in extract_imports_from_uast(&node) {
-            *all_imports.entry(imp).or_insert(0) += 1;
+        let file_imports: Vec<String> = match parser.parse(path, &content) {
+            Ok(node) => extract_imports_from_uast(&node),
+            Err(_) => Vec::new(),
+        };
+        for imp in &file_imports {
+            *all_imports.entry(imp.clone()).or_insert(0) += 1;
+        }
+        if let Some(out) = per_file_out.as_deref_mut() {
+            out.push((make_relative_path(path, root_path), file_imports));
         }
     }
 
@@ -266,6 +358,18 @@ fn walk_and_count_opts(
         return None;
     }
     Some((all_imports, total_files))
+}
+
+/// The reference `filepath.Rel(rootPath, filePath)` (flat repos → path under
+/// the root) — the `StampSourceFile` path stamped onto per-file reports.
+fn make_relative_path(file_path: &str, root_path: &str) -> String {
+    if root_path.is_empty() {
+        return file_path.to_string();
+    }
+    match Path::new(file_path).strip_prefix(Path::new(root_path)) {
+        Ok(rel) => rel.to_string_lossy().into_owned(),
+        Err(_) => file_path.to_string(),
+    }
 }
 
 /// Recursively collects UAST-supported, non-excluded regular files under `dir`
@@ -410,4 +514,65 @@ fn parse_import_format(path: &str) -> String {
         return String::new();
     }
     String::new()
+}
+
+#[cfg(test)]
+mod per_file_tests {
+    use super::*;
+
+    /// Fixture: one file with two imports, one import-free file.
+    fn fixture() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("a.go"),
+            "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n)\n\nfunc main() {\n\tfmt.Println(os.Args)\n}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("types.go"),
+            "package main\n\ntype Config struct {\n\tName string\n}\n",
+        )
+        .unwrap();
+        dir
+    }
+
+    #[test]
+    fn per_file_flag_emits_files_entries() {
+        let dir = fixture();
+        let bytes = imports_report_json_flags(dir.path().to_str().unwrap(), true).unwrap();
+        let json = String::from_utf8(bytes).unwrap();
+        // The section gains a `files` array with one JSONFileEntry per
+        // ANALYZED file (import-free files included).
+        assert!(json.contains("\"files\""), "files key missing:\n{json}");
+        assert!(
+            json.contains("\"file_path\": \"a.go\""),
+            "a.go entry missing:\n{json}"
+        );
+        assert!(
+            json.contains("\"file_path\": \"types.go\""),
+            "types.go entry missing:\n{json}"
+        );
+        // Per-file status uses the per-file unique-import count.
+        assert!(
+            json.contains("\"status\": \"No import data available\""),
+            "import-free per-file status missing:\n{json}"
+        );
+        // Per-file issues carry the stamped relative path as location.
+        assert!(
+            json.contains("\"location\": \"a.go\""),
+            "per-file issue location missing:\n{json}"
+        );
+    }
+
+    #[test]
+    fn no_per_file_flag_omits_files() {
+        let dir = fixture();
+        let bytes = imports_report_json_flags(dir.path().to_str().unwrap(), false).unwrap();
+        let json = String::from_utf8(bytes).unwrap();
+        assert!(
+            !json.contains("\"files\""),
+            "files key must be omitted:\n{json}"
+        );
+        assert!(!json.contains("\"file_path\""));
+    }
 }
