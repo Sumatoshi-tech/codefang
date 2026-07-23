@@ -57,6 +57,11 @@ struct Counts {
     total_files: i64,
     /// Per-category counts, indexed by [`ALL_CATEGORIES`] position.
     by_category: std::collections::HashMap<&'static str, i64>,
+    /// Walked file paths relative to the analyzed root (walk order) — the
+    /// reference `PerFileRetainer` key set consumed by the `--per-file`
+    /// section enrichment. Composition is a raw-file analyzer, so EVERY
+    /// classified file (non-UAST files included) gets an entry.
+    files: Vec<String>,
 }
 
 impl Counts {
@@ -82,7 +87,7 @@ fn composition_counts_opts(root_path: &str, opts: &Options) -> Option<Counts> {
     let classifier = Classifier::new();
     let mut counts = Counts::default();
 
-    walk(root, &classifier, opts, &mut counts);
+    walk(root, root_path, &classifier, opts, &mut counts);
     Some(counts)
 }
 
@@ -101,8 +106,17 @@ pub fn composition_raw_report_value(root_path: &str, opts: &Options) -> Option<G
 /// caller then falls through to the blocked-dependency sentinel).
 #[must_use]
 pub fn composition_report(root_path: &str) -> Option<Vec<u8>> {
-    let counts = composition_counts(root_path)?;
-    let report = build_json_report(&counts);
+    composition_report_flags(root_path, false)
+}
+
+/// [`composition_report`] with the `--per-file` flag applied: `per_file`
+/// enables the reference implementation's section enrichment
+/// (`StaticService.enrichWithPerFileData` → `JSONReport.EnrichWithPerFileData`
+/// over the `PerFileRetainer` snapshots — one `JSONFileEntry` per WALKED file,
+/// non-UAST files included since composition is a raw-file analyzer).
+#[must_use]
+pub fn composition_report_flags(root_path: &str, per_file: bool) -> Option<Vec<u8>> {
+    let report = composition_report_value_flags(root_path, per_file)?;
     let bytes = Encoder::indented("  ")
         .with_trailing_newline(true)
         .encode_to_vec(&report);
@@ -114,8 +128,52 @@ pub fn composition_report(root_path: &str) -> Option<Vec<u8>> {
 /// multi-analyzer static-JSON merge. `None` when the path cannot be walked.
 #[must_use]
 pub fn composition_report_value(root_path: &str) -> Option<GoValue> {
+    composition_report_value_flags(root_path, false)
+}
+
+/// [`composition_report_value`] with the `--per-file` section enrichment.
+///
+/// The reference per-file composition entry is DEGENERATE: the retained
+/// per-file report is the raw-file classify result (`file_category`, no
+/// `total_files`/`breakdown`), so `NewReportSection` reads every aggregate key
+/// as zero — each entry carries the empty-report section values
+/// (`No files analyzed`, all-zero metrics, info-only score) and only
+/// `file_path` varies. Reproduced byte-for-byte.
+#[must_use]
+pub fn composition_report_value_flags(root_path: &str, per_file: bool) -> Option<GoValue> {
     let counts = composition_counts(root_path)?;
-    Some(build_json_report(&counts))
+    let file_entries: Option<Vec<GoValue>> = if per_file {
+        Some(
+            counts
+                .files
+                .iter()
+                .map(|rel| build_file_entry(rel))
+                .collect(),
+        )
+    } else {
+        None
+    };
+    Some(build_json_report_files(&counts, file_entries))
+}
+
+/// Builds one degenerate composition `renderer.JSONFileEntry` (see
+/// [`composition_report_value_flags`]).
+fn build_file_entry(rel_path: &str) -> GoValue {
+    let metrics = vec![
+        metric(METRIC_TOTAL_FILES, "0"),
+        metric(METRIC_SOURCE, "0"),
+        metric(METRIC_SOURCE_PCT, &format_percent(0.0)),
+    ];
+
+    let mut entry = GoMap::new(MapOrigin::Struct);
+    entry.push("file_path", GoValue::Str(rel_path.to_string()));
+    entry.push("score_label", GoValue::Str(SCORE_LABEL_INFO.to_string()));
+    entry.push("status", GoValue::Str(STATUS_EMPTY.to_string()));
+    entry.push("metrics", GoValue::Array(metrics));
+    // Distribution/issues are empty for the zero-value report.
+    entry.push("issues", GoValue::Array(Vec::new()));
+    entry.push("score", GoValue::Float(SCORE_INFO_ONLY));
+    GoValue::Map(entry)
 }
 
 /// Builds the `static/composition --format bin` report bytes for `root_path`,
@@ -190,7 +248,7 @@ fn build_raw_report(counts: &Counts) -> GoValue {
 /// Recursively walks `dir` in lexical order, mirroring `filepath.WalkDir`:
 /// directories are recursed (except `.git`), files are filtered through the
 /// path policy and classified.
-fn walk(dir: &Path, classifier: &Classifier, opts: &Options, counts: &mut Counts) {
+fn walk(dir: &Path, root_path: &str, classifier: &Classifier, opts: &Options, counts: &mut Counts) {
     let Ok(read) = fs::read_dir(dir) else {
         // Permission / not-exist errors are skipped.
         return;
@@ -211,7 +269,7 @@ fn walk(dir: &Path, classifier: &Classifier, opts: &Options, counts: &mut Counts
             if super::should_skip_walk_dir(&entry.path(), &entry.file_name()) {
                 continue; // filepath.SkipDir on .git
             }
-            walk(&path, classifier, opts, counts);
+            walk(&path, root_path, classifier, opts, counts);
             continue;
         }
 
@@ -228,6 +286,19 @@ fn walk(dir: &Path, classifier: &Classifier, opts: &Options, counts: &mut Counts
         let category = classifier.classify(&path_str, &header);
         counts.total_files += 1;
         *counts.by_category.entry(category.as_str()).or_insert(0) += 1;
+        counts.files.push(make_relative_path(&path_str, root_path));
+    }
+}
+
+/// The reference `filepath.Rel(rootPath, filePath)` (flat repos → path under
+/// the root) — the `StampSourceFile` path stamped onto per-file reports.
+fn make_relative_path(file_path: &str, root_path: &str) -> String {
+    if root_path.is_empty() {
+        return file_path.to_string();
+    }
+    match Path::new(file_path).strip_prefix(Path::new(root_path)) {
+        Ok(rel) => rel.to_string_lossy().into_owned(),
+        Err(_) => file_path.to_string(),
     }
 }
 
@@ -253,15 +324,19 @@ fn read_header(path: &Path) -> Vec<u8> {
 /// Field order mirrors the reference structs exactly (struct-origin maps keep
 /// declaration order): `overall_score_label`, `sections`, `overall_score`; and
 /// per section `title`, `score_label`, `status`, `metrics`, `distribution`
-/// (omitted when empty), `issues`, `score`.
-fn build_json_report(counts: &Counts) -> GoValue {
+/// (omitted when empty), `issues`, `score`. `file_entries` is the `--per-file`
+/// enrichment (`None` without the flag).
+fn build_json_report_files(counts: &Counts, file_entries: Option<Vec<GoValue>>) -> GoValue {
     // Single info-only section → overall score is ScoreInfoOnly (-1), label Info.
     let mut report = GoMap::new(MapOrigin::Struct);
     report.push(
         "overall_score_label",
         GoValue::Str(SCORE_LABEL_INFO.to_string()),
     );
-    report.push("sections", GoValue::Array(vec![build_section(counts)]));
+    report.push(
+        "sections",
+        GoValue::Array(vec![build_section_files(counts, file_entries)]),
+    );
     report.push("overall_score", GoValue::Float(SCORE_INFO_ONLY));
     GoValue::Map(report)
 }
@@ -269,7 +344,7 @@ fn build_json_report(counts: &Counts) -> GoValue {
 /// Builds the single composition `renderer.JSONSection` GoValue (reference:
 /// `SectionToJSON`). Field order mirrors the reference struct: `title`, `score_label`,
 /// `status`, `metrics`, `distribution` (omitted when empty), `issues`, `score`.
-fn build_section(counts: &Counts) -> GoValue {
+fn build_section_files(counts: &Counts, file_entries: Option<Vec<GoValue>>) -> GoValue {
     let total = counts.total_files;
     let source_count = counts.get(Category::Source);
 
@@ -337,7 +412,12 @@ fn build_section(counts: &Counts) -> GoValue {
         section.push("distribution", GoValue::Array(dist_items));
     }
     section.push("issues", GoValue::Array(issue_items));
-    // `files` is a nil `*[]JSONFileEntry` (omitempty) → omitted (no per-file).
+    // --per-file enrichment: `files` sits between `issues` and `score`
+    // (renderer.JSONSection field order; a nil `*[]JSONFileEntry` — omitempty —
+    // without the flag).
+    if let Some(entries) = file_entries {
+        section.push("files", GoValue::Array(entries));
+    }
     section.push("score", GoValue::Float(SCORE_INFO_ONLY));
 
     GoValue::Map(section)
@@ -367,5 +447,54 @@ fn severity_for(cat: Category) -> &'static str {
     match cat {
         Category::Binary => SEVERITY_POOR,
         _ => SEVERITY_INFO,
+    }
+}
+
+#[cfg(test)]
+mod per_file_tests {
+    use super::*;
+
+    /// Fixture: one UAST-supported file and one plain-text file — composition
+    /// is a raw-file analyzer, so BOTH get per-file entries.
+    fn fixture() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("a.go"), "package main\n\nfunc main() {}\n").unwrap();
+        std::fs::write(dir.path().join("notes.txt"), "just text\n").unwrap();
+        dir
+    }
+
+    #[test]
+    fn per_file_flag_emits_files_entries() {
+        let dir = fixture();
+        let bytes = composition_report_flags(dir.path().to_str().unwrap(), true).unwrap();
+        let json = String::from_utf8(bytes).unwrap();
+        assert!(json.contains("\"files\""), "files key missing:\n{json}");
+        assert!(
+            json.contains("\"file_path\": \"a.go\""),
+            "a.go entry missing:\n{json}"
+        );
+        // Raw-file analyzer: non-UAST files get entries too.
+        assert!(
+            json.contains("\"file_path\": \"notes.txt\""),
+            "notes.txt entry missing:\n{json}"
+        );
+        // The per-file report lacks the aggregate keys, so every entry carries
+        // the reference empty-report section values.
+        assert!(
+            json.contains("\"status\": \"No files analyzed\""),
+            "degenerate per-file status missing:\n{json}"
+        );
+    }
+
+    #[test]
+    fn no_per_file_flag_omits_files() {
+        let dir = fixture();
+        let bytes = composition_report_flags(dir.path().to_str().unwrap(), false).unwrap();
+        let json = String::from_utf8(bytes).unwrap();
+        assert!(
+            !json.contains("\"files\""),
+            "files key must be omitted:\n{json}"
+        );
+        assert!(!json.contains("\"file_path\""));
     }
 }

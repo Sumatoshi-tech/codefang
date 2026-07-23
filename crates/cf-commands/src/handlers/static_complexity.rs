@@ -136,6 +136,13 @@ pub fn complexity_report_value(root_path: &str) -> Option<GoValue> {
     complexity_report_value_opts(root_path, false, &Options::default(), false)
 }
 
+/// [`complexity_report_value`] with the `--per-file` section enrichment (the
+/// multi-analyzer static-JSON merge threads the run flag through this).
+#[must_use]
+pub fn complexity_report_value_flags(root_path: &str, per_file: bool) -> Option<GoValue> {
+    complexity_report_value_opts(root_path, false, &Options::default(), per_file)
+}
+
 /// Builds the `static/complexity` section tree in the reference implementation's `AggregationModeSummaryOnly`
 /// shape used for the `text` / `compact` formats: the per-item `functions`
 /// detailed collection is a no-op, so the distribution and top-issues sections

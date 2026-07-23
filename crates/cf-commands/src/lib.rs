@@ -386,7 +386,9 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
             .all(|a| handlers::is_static_id_or_glob(a))
         && handlers::static_json_selects_multiple(&analyzer_strs)
     {
-        if let Some(bytes) = handlers::static_multi_json(&analyzer_strs, &ctx.path) {
+        if let Some(bytes) =
+            handlers::static_multi_json(&analyzer_strs, &ctx.path, ctx.matches.get_flag("per-file"))
+        {
             std::io::stdout().write_all(&bytes).expect("write stdout");
             return 0;
         }
