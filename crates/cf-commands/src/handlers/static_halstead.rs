@@ -607,6 +607,22 @@ struct Aggregate {
     averages: HashMap<&'static str, f64>,
     total_functions: i64,
     functions: Vec<FunctionMetrics>,
+    /// Per-file snapshots (the reference `PerFileRetainer` clones) consumed by
+    /// the `--per-file` section enrichment; walk order.
+    file_reports: Vec<PerFileHalstead>,
+}
+
+/// One retained per-file report: the FILE-level scalars plus the range of this
+/// file's functions inside the concatenated [`Aggregate::functions`] list
+/// (empty range for function-free files).
+struct PerFileHalstead {
+    /// Path relative to the analyzed root (the `StampSourceFile` stamp).
+    rel: String,
+    /// FILE-level scalar metrics (exact per-file values, not averages).
+    scalars: HashMap<&'static str, f64>,
+    total_functions: i64,
+    start: usize,
+    end: usize,
 }
 
 /// Walks `root` (lexical order, `.git` skipped, vendor/generated excluded),
@@ -634,6 +650,10 @@ fn aggregate_opts(root_path: &str, opts: &Options) -> Option<Aggregate> {
     // per-file function WITHOUT deduplication (so two same-named functions in one
     // file are both kept), in file-processing (lexical walk) order.
     let mut functions: Vec<FunctionMetrics> = Vec::new();
+    // Per-file snapshots for --per-file (rel path + file-level scalars + the
+    // function range just appended); retained unconditionally — one small map
+    // and two indices per file.
+    let mut file_reports: Vec<PerFileHalstead> = Vec::new();
 
     let mut files: Vec<String> = Vec::new();
     collect_files(root, &parser, opts, &mut files);
@@ -672,7 +692,15 @@ fn aggregate_opts(root_path: &str, opts: &Options) -> Option<Aggregate> {
         }
         total_functions += report.total_functions;
 
+        let start = functions.len();
         functions.extend(report.functions);
+        file_reports.push(PerFileHalstead {
+            rel,
+            scalars: report.scalars,
+            total_functions: report.total_functions,
+            start,
+            end: functions.len(),
+        });
     }
 
     if report_count == 0 {
@@ -688,6 +716,7 @@ fn aggregate_opts(root_path: &str, opts: &Options) -> Option<Aggregate> {
         averages,
         total_functions,
         functions,
+        file_reports,
     })
 }
 
@@ -1528,11 +1557,154 @@ fn format_issue_value(effort: f64, volume: f64, bugs: f64) -> String {
     )
 }
 
+/// The reference `ReportFormatter.GetHalsteadMessage` — the PER-FILE report
+/// `message` the analyzer builds from the file-level volume/difficulty/effort
+/// (an all-zero function-free file lands in the "Excellent" bucket, matching
+/// the visitor-path reports the reference retainer snapshots).
+fn per_file_message(volume: f64, difficulty: f64, effort: f64) -> &'static str {
+    if volume <= 100.0 && difficulty <= 5.0 && effort <= 1000.0 {
+        "Excellent complexity - code is simple and maintainable"
+    } else if volume <= 1000.0 && difficulty <= 15.0 && effort <= 10000.0 {
+        "Good complexity - code is reasonably complex"
+    } else if volume <= 5000.0 && difficulty <= 30.0 && effort <= 50000.0 {
+        "Fair complexity - consider simplifying some functions"
+    } else {
+        "High complexity - code should be refactored for better maintainability"
+    }
+}
+
+/// Builds one `renderer.JSONFileEntry` for `--per-file` (the reference
+/// `SectionToJSONFileEntry` over `halstead.NewReportSection(perFileReport)`):
+/// the per-file report is the analyzer's single-file result, so the ten key
+/// metrics are the FILE-level scalars (exact ints, not cross-file averages),
+/// the status is the per-file `GetHalsteadMessage` label, the distribution and
+/// effort-descending issues cover this file's functions only, and the score
+/// derives from the FILE difficulty.
+fn build_file_entry(f: &PerFileHalstead, functions: &[FunctionMetrics]) -> GoValue {
+    let s = |k: &str| f.scalars.get(k).copied().unwrap_or(0.0);
+    let difficulty = s("difficulty");
+    let score = section_score(difficulty);
+
+    let fmt_f = cf_reportutil::format_float;
+    let metric = |label: &str, value: String| {
+        let mut m = GoMap::new(MapOrigin::Struct);
+        m.push("label", GoValue::Str(label.to_string()));
+        m.push("value", GoValue::Str(value));
+        GoValue::Map(m)
+    };
+    let metrics = vec![
+        metric("Total Functions", f.total_functions.to_string()),
+        metric(
+            "Distinct Operators (n1)",
+            get_int(s("distinct_operators")).to_string(),
+        ),
+        metric(
+            "Distinct Operands (n2)",
+            get_int(s("distinct_operands")).to_string(),
+        ),
+        metric(
+            "Total Operators (N1)",
+            get_int(s("total_operators")).to_string(),
+        ),
+        metric(
+            "Total Operands (N2)",
+            get_int(s("total_operands")).to_string(),
+        ),
+        metric("Vocabulary", get_int(s("vocabulary")).to_string()),
+        metric("Volume", fmt_f(s("volume"))),
+        metric("Difficulty", fmt_f(difficulty)),
+        metric("Effort", fmt_f(s("effort"))),
+        metric("Est. Bugs", fmt_f(s("delivered_bugs"))),
+    ];
+
+    // Distribution over THIS file's functions (4 volume buckets; absent for
+    // function-free files — Distribution() returns nil ⇒ omitempty).
+    let frecs = &functions[f.start..f.end];
+    let total = frecs.len();
+    let (mut low, mut medium, mut high, mut very_high) = (0i64, 0i64, 0i64, 0i64);
+    for r in frecs {
+        if r.volume <= DIST_LOW_MAX {
+            low += 1;
+        } else if r.volume <= DIST_MED_MAX {
+            medium += 1;
+        } else if r.volume <= DIST_HIGH_MAX {
+            high += 1;
+        } else {
+            very_high += 1;
+        }
+    }
+    let dist_item = |label: &str, count: i64| {
+        let mut m = GoMap::new(MapOrigin::Struct);
+        m.push("label", GoValue::Str(label.to_string()));
+        m.push("percent", GoValue::Float(count as f64 / total as f64));
+        m.push("count", GoValue::Int(count));
+        GoValue::Map(m)
+    };
+    let distribution: Vec<GoValue> = if total == 0 {
+        Vec::new()
+    } else {
+        vec![
+            dist_item("Low (<=100)", low),
+            dist_item("Medium (101-1000)", medium),
+            dist_item("High (1001-5000)", high),
+            dist_item("Very High (>5000)", very_high),
+        ]
+    };
+
+    // Issues: this file's functions sorted by effort descending (the same
+    // unstable-sort reproduction the aggregate section uses).
+    let mut issue_funcs: Vec<&FunctionMetrics> = frecs.iter().collect();
+    let mut efforts: Vec<f64> = issue_funcs.iter().map(|f| f.effort).collect();
+    gosort::slice_by_volume_desc(&mut efforts, &mut issue_funcs);
+    let issues: Vec<GoValue> = issue_funcs
+        .iter()
+        .map(|r| {
+            let mut m = GoMap::new(MapOrigin::Struct);
+            m.push("name", GoValue::Str(r.name.clone()));
+            m.push("location", GoValue::Str(r.source_file.clone()));
+            m.push(
+                "value",
+                GoValue::Str(format_issue_value(r.effort, r.volume, r.delivered_bugs)),
+            );
+            m.push(
+                "severity",
+                GoValue::Str(severity_for_function(r.effort, r.delivered_bugs).to_string()),
+            );
+            GoValue::Map(m)
+        })
+        .collect();
+
+    let mut entry = GoMap::new(MapOrigin::Struct);
+    entry.push("file_path", GoValue::Str(f.rel.clone()));
+    entry.push("score_label", GoValue::Str(format_score(score)));
+    entry.push(
+        "status",
+        GoValue::Str(per_file_message(s("volume"), difficulty, s("effort")).to_string()),
+    );
+    entry.push("metrics", GoValue::Array(metrics));
+    if !distribution.is_empty() {
+        entry.push("distribution", GoValue::Array(distribution));
+    }
+    entry.push("issues", GoValue::Array(issues));
+    entry.push("score", GoValue::Float(score));
+    GoValue::Map(entry)
+}
+
 /// Builds the `static/halstead --format json` structured report bytes for
 /// `root_path`, or `None` when the folder cannot be walked.
 #[must_use]
 pub fn halstead_json_report(root_path: &str) -> Option<Vec<u8>> {
-    let root = halstead_report_value(root_path)?;
+    halstead_json_report_flags(root_path, false)
+}
+
+/// [`halstead_json_report`] with the `--per-file` flag applied: `per_file`
+/// enables the reference implementation's section enrichment
+/// (`StaticService.enrichWithPerFileData` → `JSONReport.EnrichWithPerFileData`
+/// over the `PerFileRetainer` snapshots — one `JSONFileEntry` per ANALYZED
+/// file, function-free files included, keyed into the section's `files` array).
+#[must_use]
+pub fn halstead_json_report_flags(root_path: &str, per_file: bool) -> Option<Vec<u8>> {
+    let root = halstead_report_value_flags(root_path, per_file)?;
     Some(
         cf_gojson::Encoder::indented("  ")
             .with_trailing_newline(true)
@@ -1548,6 +1720,12 @@ pub fn halstead_report_value(root_path: &str) -> Option<GoValue> {
     halstead_report_value_mode(root_path, false)
 }
 
+/// [`halstead_report_value`] with the `--per-file` section enrichment.
+#[must_use]
+pub fn halstead_report_value_flags(root_path: &str, per_file: bool) -> Option<GoValue> {
+    halstead_report_value_mode_flags(root_path, false, per_file)
+}
+
 /// Builds the `static/halstead` section tree in the reference implementation's `AggregationModeSummaryOnly`
 /// shape (`text` / `compact`): the detailed `functions` collection is a no-op, so
 /// the per-function volume distribution and the top-issues list are absent while
@@ -1558,7 +1736,32 @@ pub fn halstead_report_value_summary(root_path: &str) -> Option<GoValue> {
 }
 
 fn halstead_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoValue> {
+    halstead_report_value_mode_flags(root_path, summary_only, false)
+}
+
+fn halstead_report_value_mode_flags(
+    root_path: &str,
+    summary_only: bool,
+    per_file: bool,
+) -> Option<GoValue> {
     let mut agg = aggregate(root_path)?;
+
+    // --per-file: one JSONFileEntry per ANALYZED file, in walk order (the
+    // reference implementation ranges the retainer map here — run-to-run
+    // random; the oracle's measured-variance canonicalization compares the
+    // set). Built BEFORE the summary-only clear (the modes never combine, but
+    // the ranges index into `functions`).
+    let file_entries: Option<Vec<GoValue>> = if per_file {
+        Some(
+            agg.file_reports
+                .iter()
+                .map(|f| build_file_entry(f, &agg.functions))
+                .collect(),
+        )
+    } else {
+        None
+    };
+
     if summary_only {
         agg.functions.clear();
     }
@@ -1680,7 +1883,12 @@ fn halstead_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoV
         section.push("distribution", GoValue::Array(distribution));
     }
     section.push("issues", GoValue::Array(issues));
-    // `files` is omitted (no --per-file); omitempty on a nil pointer.
+    // --per-file enrichment: `files` sits between `issues` and `score`
+    // (renderer.JSONSection field order; omitempty on a nil pointer without
+    // the flag).
+    if let Some(entries) = file_entries {
+        section.push("files", GoValue::Array(entries));
+    }
     section.push("score", GoValue::Float(score));
 
     // --- top-level JSONReport (field order: label, sections, score) ---
@@ -1690,4 +1898,59 @@ fn halstead_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoV
     root.push("overall_score", GoValue::Float(overall_score));
 
     Some(GoValue::Map(root))
+}
+
+#[cfg(test)]
+mod per_file_tests {
+    use super::*;
+
+    /// Fixture: one file with a function, one function-free file.
+    fn fixture() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("a.go"),
+            "package main\n\nfunc add(a, b int) int {\n\treturn a + b\n}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("types.go"),
+            "package main\n\ntype Config struct {\n\tName string\n}\n",
+        )
+        .unwrap();
+        dir
+    }
+
+    #[test]
+    fn per_file_flag_emits_files_entries() {
+        let dir = fixture();
+        let bytes = halstead_json_report_flags(dir.path().to_str().unwrap(), true).unwrap();
+        let json = String::from_utf8(bytes).unwrap();
+        assert!(json.contains("\"files\""), "files key missing:\n{json}");
+        assert!(
+            json.contains("\"file_path\": \"a.go\""),
+            "a.go entry missing:\n{json}"
+        );
+        assert!(
+            json.contains("\"file_path\": \"types.go\""),
+            "types.go entry missing:\n{json}"
+        );
+        // Per-file status is the reference GetHalsteadMessage over the
+        // FILE-level metrics (all-zero for the function-free file).
+        assert!(
+            json.contains("\"status\": \"Excellent complexity - code is simple and maintainable\""),
+            "per-file halstead message missing:\n{json}"
+        );
+    }
+
+    #[test]
+    fn no_per_file_flag_omits_files() {
+        let dir = fixture();
+        let bytes = halstead_json_report_flags(dir.path().to_str().unwrap(), false).unwrap();
+        let json = String::from_utf8(bytes).unwrap();
+        assert!(
+            !json.contains("\"files\""),
+            "files key must be omitted:\n{json}"
+        );
+        assert!(!json.contains("\"file_path\""));
+    }
 }
