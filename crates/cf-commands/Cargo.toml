@@ -104,3 +104,6 @@ cf-budget = { path = "../cf-budget", optional = true }
 cf-observability = { path = "../cf-observability", optional = true }
 cf-storage = { path = "../cf-storage", optional = true }
 cf-mcp = { path = "../cf-mcp", optional = true }
+
+[dev-dependencies]
+tempfile = "3"

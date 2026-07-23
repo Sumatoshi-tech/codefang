@@ -470,22 +470,37 @@ pub fn static_multi_bin(patterns: &[&str], path: &str) -> Option<Vec<u8>> {
 /// static analyzer id → the crate-owned builder of that analyzer's single-section
 /// `renderer.JSONReport` GoValue. Used by [`static_multi_json`] to merge several
 /// analyzers' sections; the merge never branches per format — the same GoValue
-/// feeds the serializer.
-type ReportValueFn = fn(&str) -> Option<GoValue>;
+/// feeds the serializer. The `bool` is the run's `--per-file` flag: every
+/// builder owns its section's `files` enrichment (the reference
+/// `EnrichWithPerFileData` gives EVERY section at least an empty `files` array
+/// under the flag, so no post-processing happens in the merge).
+type ReportValueFn = fn(&str, bool) -> Option<GoValue>;
 
 use cf_gojson::{GoMap, GoValue, MapOrigin};
 
 const STATIC_JSON_VALUE_BUILDERS: &[(&str, ReportValueFn)] = &[
-    ("static/clones", static_clones::clones_report_value),
+    ("static/clones", static_clones::clones_report_value_flags),
     (
         "static/complexity",
-        static_complexity::complexity_report_value,
+        static_complexity::complexity_report_value_flags,
     ),
-    ("static/comments", static_comments::comments_report_value),
-    ("static/halstead", static_halstead::halstead_report_value),
-    ("static/cohesion", static_cohesion::cohesion_report_value),
-    ("static/imports", static_imports::imports_report_value),
-    ("static/composition", static_json::composition_report_value),
+    (
+        "static/comments",
+        static_comments::comments_report_value_flags,
+    ),
+    (
+        "static/halstead",
+        static_halstead::halstead_report_value_flags,
+    ),
+    (
+        "static/cohesion",
+        static_cohesion::cohesion_report_value_flags,
+    ),
+    ("static/imports", static_imports::imports_report_value_flags),
+    (
+        "static/composition",
+        static_json::composition_report_value_flags,
+    ),
 ];
 
 /// Pulls the `sections` array and `overall_score` out of a single-analyzer
@@ -533,7 +548,7 @@ fn overall_score_label(score: f64) -> String {
 /// selected or any selected analyzer cannot produce a report (the caller then
 /// falls through to the same error path the reference implementation takes).
 #[must_use]
-pub fn static_multi_json(patterns: &[&str], path: &str) -> Option<Vec<u8>> {
+pub fn static_multi_json(patterns: &[&str], path: &str, per_file: bool) -> Option<Vec<u8>> {
     let mut sections: Vec<GoValue> = Vec::new();
     let mut score_total = 0.0_f64;
     let mut score_count = 0_usize;
@@ -549,7 +564,7 @@ pub fn static_multi_json(patterns: &[&str], path: &str) -> Option<Vec<u8>> {
         if !matched {
             continue;
         }
-        let report = build(path)?;
+        let report = build(path, per_file)?;
         for section in extract_sections(&report) {
             let s = section_score(&section);
             if s >= 0.0 {
@@ -582,6 +597,49 @@ pub fn static_multi_json(patterns: &[&str], path: &str) -> Option<Vec<u8>> {
         .with_trailing_newline(true)
         .encode_to_vec(&GoValue::Map(root));
     Some(bytes)
+}
+
+/// The reference `EnrichWithPerFileData` INITIALIZATION step: under
+/// `--per-file` every section gets at least an EMPTY `files` array (inserted
+/// between `issues` and `score`, the renderer.JSONSection field order), even
+/// when its analyzer retains no per-file snapshots (clones is not
+/// `PerFileModeEnabled`). Sections that already carry `files` are unchanged.
+pub(crate) fn ensure_sections_files_key(report: GoValue) -> GoValue {
+    let GoValue::Map(root) = report else {
+        return report;
+    };
+    let mut new_root = GoMap::new(MapOrigin::Struct);
+    for (key, value) in root.iter() {
+        if key != "sections" {
+            new_root.push(key, value.clone());
+            continue;
+        }
+        let GoValue::Array(sections) = value else {
+            new_root.push(key, value.clone());
+            continue;
+        };
+        let enriched: Vec<GoValue> = sections
+            .iter()
+            .map(|section| {
+                let GoValue::Map(m) = section else {
+                    return section.clone();
+                };
+                if m.get("files").is_some() {
+                    return section.clone();
+                }
+                let mut out = GoMap::new(MapOrigin::Struct);
+                for (k, v) in m.iter() {
+                    if k == "score" {
+                        out.push("files", GoValue::Array(Vec::new()));
+                    }
+                    out.push(k, v.clone());
+                }
+                GoValue::Map(out)
+            })
+            .collect();
+        new_root.push(key, GoValue::Array(enriched));
+    }
+    GoValue::Map(new_root)
 }
 
 /// True when `patterns` select MORE THAN ONE static analyzer (a literal multi-id
@@ -943,7 +1001,7 @@ fn h_static_clones(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     // `"binary"` (the reference `ValidateFormat` maps the `bin` alias to `binary`); accept
     // both spellings for robustness.
     match format {
-        "json" => static_clones::clones_report_json(path),
+        "json" => static_clones::clones_report_json_flags(path, ctx.matches.get_flag("per-file")),
         "yaml" => static_clones::clones_report_yaml(path),
         "binary" | "bin" => static_clones::clones_report_bin(path),
         "compact" => static_clones::clones_report_compact(path),
@@ -995,7 +1053,9 @@ fn h_static_cohesion(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     // `bin` CLI alias has already been normalized to `binary` (formats.rs
     // `normalize_format`). Match the normalized name (accept the raw alias too).
     match format {
-        "json" => static_cohesion::cohesion_report_json(path),
+        "json" => {
+            static_cohesion::cohesion_report_json_flags(path, ctx.matches.get_flag("per-file"))
+        }
         "yaml" => static_cohesion::cohesion_report_yaml(path),
         "binary" | "bin" => static_cohesion::cohesion_report_bin(path),
         "compact" => Some(section_render::render_compact_report(
@@ -1011,7 +1071,7 @@ fn h_static_cohesion(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
 fn h_static_composition(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     let path = &ctx.path;
     match format {
-        "json" => static_json::composition_report(path),
+        "json" => static_json::composition_report_flags(path, ctx.matches.get_flag("per-file")),
         "yaml" => static_json::composition_yaml(path),
         // The pipeline resolves the `bin` alias to the canonical `binary`
         // (formats::normalize_format) before dispatch, so match that; accept the
@@ -1034,7 +1094,9 @@ fn h_static_halstead(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     // `normalize_format`). Match the normalized name so `--format bin` dispatches
     // to the CFB1 envelope builder rather than falling through to `None`.
     match format {
-        "json" => static_halstead::halstead_json_report(path),
+        "json" => {
+            static_halstead::halstead_json_report_flags(path, ctx.matches.get_flag("per-file"))
+        }
         "yaml" => static_halstead::halstead_yaml_report(path),
         "binary" => static_halstead::halstead_bin_report(path),
         "compact" => Some(section_render::render_compact_report(
@@ -1054,7 +1116,7 @@ fn h_static_imports(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     // `normalize_format`). Match the normalized name so `--format bin` dispatches
     // to the CFB1 envelope builder rather than falling through to `None`.
     match format {
-        "json" => static_imports::imports_report_json(path),
+        "json" => static_imports::imports_report_json_flags(path, ctx.matches.get_flag("per-file")),
         "yaml" => static_imports::imports_report_yaml(path),
         "binary" => static_imports::imports_report_bin(path),
         "compact" => Some(section_render::render_compact_report(
@@ -1070,7 +1132,9 @@ fn h_static_imports(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
 fn h_static_comments(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     let path = &ctx.path;
     match format {
-        "json" => static_comments::comments_report_json(path),
+        "json" => {
+            static_comments::comments_report_json_flags(path, ctx.matches.get_flag("per-file"))
+        }
         "yaml" => static_comments::comments_report_yaml(path),
         // The pipeline resolves the `bin` alias to the canonical `binary`
         // (formats::normalize_format) before dispatch, so match that; accept the
@@ -1288,4 +1352,52 @@ pub fn default_registry() -> Registry {
     r.register(h("history/burndown", h_history_burndown));
 
     r
+}
+
+#[cfg(test)]
+mod per_file_multi_tests {
+    use super::*;
+
+    /// Fixture: one Go file with functions/comments/imports plus a plain-text
+    /// file, exercising every static analyzer through the merged JSON path.
+    fn fixture() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("a.go"),
+            "package main\n\nimport \"fmt\"\n\n// main prints.\nfunc main() {\n\tfmt.Println(\"hi\")\n}\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("notes.txt"), "just text\n").unwrap();
+        dir
+    }
+
+    #[test]
+    fn per_file_flag_enriches_every_merged_section() {
+        let dir = fixture();
+        let bytes = static_multi_json(&["static/*"], dir.path().to_str().unwrap(), true).unwrap();
+        let json = String::from_utf8(bytes).unwrap();
+        // Every merged section gets a files key — the retaining analyzers with
+        // real entries, clones with the initialized empty array.
+        let sections = json.matches("\"title\"").count();
+        let files_keys = json.matches("\"files\"").count();
+        assert_eq!(
+            sections, files_keys,
+            "every section must carry a files key (sections={sections} files={files_keys}):\n{json}"
+        );
+        assert!(
+            json.contains("\"file_path\": \"a.go\""),
+            "per-file entries missing:\n{json}"
+        );
+    }
+
+    #[test]
+    fn no_per_file_flag_omits_files_in_merge() {
+        let dir = fixture();
+        let bytes = static_multi_json(&["static/*"], dir.path().to_str().unwrap(), false).unwrap();
+        let json = String::from_utf8(bytes).unwrap();
+        assert!(
+            !json.contains("\"files\""),
+            "files key must be omitted:\n{json}"
+        );
+    }
 }
