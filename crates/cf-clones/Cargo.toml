@@ -29,6 +29,9 @@ cf-analyze = { path = "../cf-analyze" }
 cf-gojson = { path = "../cf-gojson" }
 # CFB1 binary envelope + report accessors/formatters.
 cf-reportutil = { path = "../cf-reportutil" }
+# Frozen Go pdqsort — the reference's sort.Slice permutation is part of the
+# terminal/text output contract (tie order among equal-similarity pairs).
+cf-gosort = { path = "../cf-gosort" }
 
 [lints.clippy]
 pedantic = "warn"

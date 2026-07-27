@@ -1,0 +1,11 @@
+{
+  "reference": "main",
+  "revision": "971acdd908568b4531b0ba28a445bf0bb720aba5",
+  "grammarSha": "9b1d516b80fd3261757eddaa2d8e99e628643937232af93a1ea576911aa1e960",
+  "language": "dockerfile",
+  "url": "https://github.com/camdencheek/tree-sitter-dockerfile",
+  "maintainedBy": "@camdencheek",
+  "files": [
+    "scanner.c"
+  ]
+}

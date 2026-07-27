@@ -165,9 +165,13 @@ pub static JAVA: LanguageMapping = uast_language! {
             token: self,
             roles: [Struct, Declaration],
         },
+        // Constructors are callable members with bodies and complexity of
+        // their own; mapping them as Struct hid every Java constructor from
+        // the function-detection predicate (Function/Method type or
+        // Function+Declaration roles).
         constructor_declaration => {
-            type: Struct,
-            roles: [Struct, Declaration],
+            type: Method,
+            roles: [Function, Declaration, Member],
             children: ["constructor_body", "formal_parameters", "identifier", "type_parameters"],
         },
         continue_statement => {

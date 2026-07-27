@@ -7,27 +7,27 @@
 //! `computeCouplingPairs`) → `ticksToReport` (`buildReportFromMerged`) →
 //! `ComputeAllMetrics`).
 //!
-//! ## Node identity in the streaming pipeline (irreducible reference-binary nondeterminism)
+//! ## Node identity in the streaming pipeline (measured reference-binary wobble)
 //!
-//! The reference analyzer keys touched nodes through `reverseNodeMap`, a
-//! `map[node.ID]name`. In the **streaming** pipeline the UAST plumbing
-//! (`parseBlob`) never calls `AssignStableIDs`, so every parsed node carries the
-//! **empty** id `""`. `reverseNodeMap` therefore collapses to a single entry
-//! `{"" : <one name>}` whose value is whichever entry the reference implementation's randomized map
-//! iteration visits last. Consequently `recordTouchedNodes` attributes every
-//! diff-touched line's node(s) to that one (random) name. This makes the reference implementation
-//! shotness output genuinely nondeterministic at the *content* level — the
-//! selected node SET differs run-to-run, not merely byte order (confirmed: two
-//! the reference implementation runs at `--limit 20` select disjoint node sets of differing size). No
-//! deterministic port can be byte-identical to the reference binary, and the recorded golden is
-//! itself non-reproducible.
+//! The reference analyzer registers extracted nodes in a name-keyed map
+//! (`res map[name]node`) and attributes every diff-touched line's spanning
+//! node through `reverseNodeMap` (node identity → registered name), i.e. each
+//! touched node is attributed to its OWN name (hercules
+//! `addNode(reversedNodesBefore[UniqueKey(node)], node, toName)`). The live Go
+//! binary's per-commit records confirm this: one commit attributes MULTIPLE
+//! distinct names per file per diff side (e.g. hercules 4d3f9500 touches
+//! `Function_groupStatus` AND `Function_loc` in `analyser.go`), which is
+//! impossible under any single-winner collapse.
 //!
-//! This port reproduces the *algorithm* faithfully and resolves the empty-id
-//! collapse **deterministically**: the `reverseNodeMap[""]` winner is the
-//! maximum extracted name (the reference implementation picks a random one; we pick the well-defined
-//! maximum so the output is stable). All accumulation, coupling, metric, and
-//! serialization logic is the byte-exact cf-shotness port; only the
-//! (intrinsically nondeterministic) node-name tiebreak is made deterministic.
+//! The reference binary's reverse map keys do collide for a minority of nodes,
+//! and Go's randomized map iteration then picks the surviving name at random —
+//! measured: repeated Go runs at the same argv differ in a small fraction of
+//! change counts / member nodes (content-level nondeterminism, so the compat
+//! oracle downgrades these cells to its structural contract). No deterministic
+//! port can be byte-identical to that wobble; this port attributes every
+//! touched node to its own registered name (the collision-free reference
+//! behavior, and Go's measured majority behavior). All accumulation, coupling,
+//! metric, and serialization logic is the byte-exact cf-shotness port.
 //!
 //! Output bytes route through `cf-gojson` (the reference `encoding/json` parity); never
 //! `serde_json`.
@@ -144,7 +144,12 @@ pub(crate) fn shotness_walk(sub: &clap::ArgMatches) -> Option<Vec<ShotnessCommit
         vec![repo.head().ok()?]
     } else {
         // Window: `limit` NEWEST commits oldest-first.
-        crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?
+        crate::handlers::load_history_commit_hashes(
+            &repo,
+            limit,
+            first_parent,
+            crate::handlers::history_since_spec(sub),
+        )?
     };
 
     let parser = cf_uast::Parser::new();
@@ -241,9 +246,7 @@ pub(crate) enum ShotnessChangeProduct {
 /// The diff-driven inputs of one surviving Modify change.
 pub(crate) struct ShotnessModifyDetail {
     nodes_before: Vec<ExtractedNode>,
-    winner_before: Option<String>,
     nodes_after: Vec<ExtractedNode>,
-    winner_after: Option<String>,
     diff: FileDiff,
 }
 
@@ -272,10 +275,9 @@ pub(crate) fn shotness_commit_product(
             ChangeAction::Insert => {
                 if let ParseOutcome::Parsed(after) = &*cache.parse(&change.to.name, change.to.hash)
                 {
-                    let (nodes, _winner) = extract_nodes(after);
                     products.push(ShotnessChangeProduct::Insert {
                         to_name: change.to.name.clone(),
-                        nodes,
+                        nodes: extract_nodes(after),
                     });
                 }
             }
@@ -284,16 +286,10 @@ pub(crate) fn shotness_commit_product(
                 let after = cache.parse(&change.to.name, change.to.hash);
                 let detail = match (&*before, &*after) {
                     (ParseOutcome::Parsed(before), ParseOutcome::Parsed(after)) => {
-                        file_diff(cache, change).map(|diff| {
-                            let (nodes_before, winner_before) = extract_nodes(before);
-                            let (nodes_after, winner_after) = extract_nodes(after);
-                            ShotnessModifyDetail {
-                                nodes_before,
-                                winner_before,
-                                nodes_after,
-                                winner_after,
-                                diff,
-                            }
+                        file_diff(cache, change).map(|diff| ShotnessModifyDetail {
+                            nodes_before: extract_nodes(before),
+                            nodes_after: extract_nodes(after),
+                            diff,
                         })
                     }
                     _ => None,
@@ -365,9 +361,7 @@ impl ShotnessReducer {
                         self.state.apply_diff_edits(
                             to_name,
                             &d.nodes_before,
-                            d.winner_before.as_deref(),
                             &d.nodes_after,
-                            d.winner_after.as_deref(),
                             &d.diff,
                             &mut all_nodes,
                         );
@@ -475,15 +469,12 @@ pub(crate) struct ExtractedNode {
 
 /// Extracts structural nodes via the struct DSL and resolves each node's name
 /// via the name DSL. Returns one entry per distinct name
-/// (last-wins on name collision over the deterministic `FindDSL` slice order)
-/// plus the deterministic `reverseNodeMap[""]` winner name (the maximum name).
-///
-/// The reference implementation builds `res map[name]*Node` and then `reverseNodeMap` maps every node's
-/// (empty) ID to a single name, picking one at random. We return the maximum
-/// name as the deterministic winner.
-fn extract_nodes(root: &Node) -> (Vec<ExtractedNode>, Option<String>) {
+/// (last-wins on name collision over the deterministic `FindDSL` slice order),
+/// each carrying its own name/type/span — the reference `res map[name]node`
+/// registration that `reverseNodeMap` inverts for per-node attribution.
+fn extract_nodes(root: &Node) -> Vec<ExtractedNode> {
     let Ok(structs) = root.find_dsl(DSL_STRUCT) else {
-        return (Vec::new(), None);
+        return Vec::new();
     };
 
     // name → node (last-wins over the deterministic FindDSL slice order).
@@ -521,10 +512,7 @@ fn extract_nodes(root: &Node) -> (Vec<ExtractedNode>, Option<String>) {
         );
     }
 
-    // reverseNodeMap[""] winner: deterministic stand-in for the reference implementation's random map pick.
-    let winner = named.keys().next_back().cloned();
-    let nodes: Vec<ExtractedNode> = named.into_values().collect();
-    (nodes, winner)
+    named.into_values().collect()
 }
 
 /// Resolves a node's 1-based inclusive line span (the reference `pos.StartLine` /
@@ -727,17 +715,15 @@ impl ShotnessState {
     }
 
     /// Walks the diff edits and records touched nodes (the reference `applyDiffEdits` +
-    /// `recordTouchedNodes`). With the empty-id `reverseNodeMap` collapse, a
-    /// Delete hunk attributes the Before-winner name and an Insert hunk the
-    /// After-winner name; the node Type comes from each line-spanning node `n`.
-    #[allow(clippy::too_many_arguments)]
+    /// `recordTouchedNodes`): a Delete hunk touches the Before-side nodes
+    /// spanning its lines, an Insert hunk the After-side nodes, and each
+    /// touched node is attributed to its OWN registered name and type
+    /// (hercules `addNode(reversedNodes[UniqueKey(node)], node, toName)`).
     fn apply_diff_edits(
         &mut self,
         to_name: &str,
         nodes_before: &[ExtractedNode],
-        winner_before: Option<&str>,
         nodes_after: &[ExtractedNode],
-        winner_after: Option<&str>,
         diff: &FileDiff,
         all_nodes: &mut BTreeSet<String>,
     ) {
@@ -754,7 +740,6 @@ impl ShotnessState {
                     self.record_touched(
                         &line2node_before,
                         nodes_before,
-                        winner_before,
                         line_before,
                         size,
                         to_name,
@@ -766,7 +751,6 @@ impl ShotnessState {
                     self.record_touched(
                         &line2node_after,
                         nodes_after,
-                        winner_after,
                         line_after,
                         size,
                         to_name,
@@ -782,26 +766,24 @@ impl ShotnessState {
         }
     }
 
-    /// Records nodes touched by a hunk spanning `[start, start+size)`
-    ///. For each line-spanning node, `addNode` is
-    /// called with the winner name and that node's type.
-    #[allow(clippy::too_many_arguments)]
+    /// Records nodes touched by a hunk spanning `[start, start+size)`: for each
+    /// line-spanning node, `addNode` is called with that node's own name and
+    /// type (per-node attribution, the reference `recordTouchedNodes`).
     fn record_touched(
         &mut self,
         line2node: &[Vec<usize>],
         nodes: &[ExtractedNode],
-        winner: Option<&str>,
         start: usize,
         size: usize,
         file: &str,
         all_nodes: &mut BTreeSet<String>,
     ) {
-        let Some(winner) = winner else { return };
         for l in start..start + size {
             if l < line2node.len() {
                 for &idx in &line2node[l] {
-                    let type_ = nodes[idx].type_.clone();
-                    self.add_node(winner, &type_, file, all_nodes);
+                    let node = &nodes[idx];
+                    let (name, type_) = (node.name.clone(), node.type_.clone());
+                    self.add_node(&name, &type_, file, all_nodes);
                 }
             }
         }

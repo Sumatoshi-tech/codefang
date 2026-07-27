@@ -130,6 +130,22 @@ fn walk(
     decision_points: &mut i64,
     max_complexity: &mut i64,
 ) {
+    // Go parity: filepath.WalkDir visits a FILE root as a single entry, so
+    // `codefang run <analyzer> path/to/file.c` analyzes that one file.
+    if dir.is_file() {
+        visit_file(
+            dir,
+            root_path,
+            parser,
+            analyzer,
+            functions,
+            total_functions,
+            total_complexity,
+            decision_points,
+            max_complexity,
+        );
+        return;
+    }
     let Ok(read) = fs::read_dir(dir) else {
         return;
     };
@@ -137,6 +153,11 @@ fn walk(
     entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
+        // SIGINT/SIGTERM: bail out of the walk promptly (durability, not
+        // output-affecting: the run exits 130 before any report is written).
+        if super::run_cancelled() {
+            return;
+        }
         let path = entry.path();
         let Ok(ft) = entry.file_type() else { continue };
         if ft.is_dir() {
@@ -157,61 +178,90 @@ fn walk(
             continue;
         }
 
-        let path_str = path.to_string_lossy();
-        if !parser.is_supported(&path_str) {
-            continue;
-        }
-        // pathpolicy.Exclude(path, nil, opts): skip vendored / generated paths,
-        // exactly as the reference static `streamFiles` filter does (without this, the
-        // walk over a repo with a `vendor/` tree pulls in thousands of extra
-        // functions and the report diverges from the reference output).
-        if exclude(&path_str, None, &Options::default()) {
-            continue;
-        }
-        let Ok(content) = fs::read(&path) else {
-            continue;
-        };
-        let Ok(uroot) = parser.parse(&path_str, &content) else {
-            continue;
-        };
+        visit_file(
+            &path,
+            root_path,
+            parser,
+            analyzer,
+            functions,
+            total_functions,
+            total_complexity,
+            decision_points,
+            max_complexity,
+        );
+    }
+}
 
-        let croot = bridge(&uroot);
-        let metrics: Vec<FunctionMetrics> = analyzer.function_metrics(Some(&croot));
-        if metrics.is_empty() {
-            // A per-file report with no functions ("No functions found")
-            // contributes nothing to the aggregator's count keys.
-            continue;
-        }
+/// Analyzes one file entry of the walk (the non-directory branch of the
+/// `filepath.WalkDir` callback): parser support + path policy filters, parse,
+/// per-file metrics, and fold into the accumulators.
+#[allow(clippy::too_many_arguments)]
+fn visit_file(
+    path: &Path,
+    root_path: &str,
+    parser: &Parser,
+    analyzer: &Analyzer,
+    functions: &mut Vec<FunctionData>,
+    total_functions: &mut i64,
+    total_complexity: &mut i64,
+    decision_points: &mut i64,
+    max_complexity: &mut i64,
+) {
+    let path_str = path.to_string_lossy();
+    if !parser.is_supported(&path_str) {
+        return;
+    }
+    // pathpolicy.Exclude(path, nil, opts): skip vendored / generated paths,
+    // exactly as the reference static `streamFiles` filter does (without this, the
+    // walk over a repo with a `vendor/` tree pulls in thousands of extra
+    // functions and the report diverges from the reference output).
+    if exclude(&path_str, None, &Options::default()) {
+        return;
+    }
+    let Some(content) = super::read_source_capped(path) else {
+        return;
+    };
+    let Ok(uroot) = parser.parse(&path_str, &content) else {
+        super::note_skipped_file();
+        return;
+    };
 
-        let stamped = make_relative_path(&path, root_path);
-        let dir_rel = parent_dir(&stamped);
-        let language = parser.get_language(&path_str);
+    let croot = bridge(&uroot);
+    let metrics: Vec<FunctionMetrics> = analyzer.function_metrics(Some(&croot));
+    if metrics.is_empty() {
+        // A per-file report with no functions ("No functions found")
+        // contributes nothing to the aggregator's count keys.
+        return;
+    }
 
-        let mut file_max: i64 = 0;
-        *total_functions += metrics.len() as i64;
-        for m in &metrics {
-            *total_complexity += m.cyclomatic_complexity;
-            *decision_points += m.decision_points;
-            if m.cyclomatic_complexity > file_max {
-                file_max = m.cyclomatic_complexity;
-            }
-        }
-        if file_max > *max_complexity {
-            *max_complexity = file_max;
-        }
+    let stamped = make_relative_path(path, root_path);
+    let dir_rel = parent_dir(&stamped);
+    let language = parser.get_language(&path_str);
 
-        for m in metrics {
-            functions.push(FunctionData {
-                name: m.name,
-                source_file: stamped.clone(),
-                language: language.clone(),
-                directory: dir_rel.clone(),
-                cyclomatic: m.cyclomatic_complexity,
-                cognitive: m.cognitive_complexity,
-                nesting: m.nesting_depth,
-                loc: m.lines_of_code,
-            });
+    let mut file_max: i64 = 0;
+    *total_functions += metrics.len() as i64;
+    for m in &metrics {
+        *total_complexity += m.cyclomatic_complexity;
+        *decision_points += m.decision_points;
+        if m.cyclomatic_complexity > file_max {
+            file_max = m.cyclomatic_complexity;
         }
+    }
+    if file_max > *max_complexity {
+        *max_complexity = file_max;
+    }
+
+    for m in metrics {
+        functions.push(FunctionData {
+            name: m.name,
+            source_file: stamped.clone(),
+            language: language.clone(),
+            directory: dir_rel.clone(),
+            cyclomatic: m.cyclomatic_complexity,
+            cognitive: m.cognitive_complexity,
+            nesting: m.nesting_depth,
+            loc: m.lines_of_code,
+        });
     }
 }
 
@@ -243,6 +293,8 @@ fn bridge(u: &UNode) -> CNode {
 fn make_relative_path(path: &Path, root_path: &str) -> String {
     let root = Path::new(root_path);
     match path.strip_prefix(root) {
+        // filepath.Rel(root, root) == "." (a FILE root stamps ".").
+        Ok(rel) if rel.as_os_str().is_empty() => ".".to_string(),
         Ok(rel) => rel.to_string_lossy().into_owned(),
         Err(_) => path.to_string_lossy().into_owned(),
     }

@@ -50,9 +50,15 @@ pub fn computed_metrics_to_go(m: &ComputedMetrics) -> GoValue {
     );
     obj.push("aggregate", aggregate_to_go(&m.aggregate));
     obj.push("composition", composition_to_go(&m.composition));
+    // Reference: `composition_ts` is a `var`-declared append target — an
+    // empty-walk run leaves it nil (JSON `null`, YAML `[]`), never `[]`.
     obj.push(
         "composition_ts",
-        GoValue::Array(m.composition_ts.iter().map(composition_ts_to_go).collect()),
+        if m.composition_ts.is_empty() {
+            GoValue::NilSlice
+        } else {
+            GoValue::Array(m.composition_ts.iter().map(composition_ts_to_go).collect())
+        },
     );
     GoValue::Object(obj)
 }
@@ -176,6 +182,9 @@ mod tests {
     fn empty_metrics_compact_json_field_order() {
         // Field declaration order must be preserved in compact output, and
         // empty slices render as [] (report contract), empty maps as {}.
+        // `composition_ts` is the exception: the reference leaves it a nil
+        // append target on an empty walk, so it renders as `null` (see
+        // `computed_metrics_to_go`).
         let m = ComputedMetrics::default();
         let s = to_compact_json_string(&m);
         assert_eq!(
@@ -183,7 +192,7 @@ mod tests {
             "{\"file_churn\":[],\"file_contributors\":[],\"hotspots\":[],\
 \"aggregate\":{\"total_files\":0,\"total_commits\":0,\"total_contributors\":0,\
 \"avg_commits_per_file\":0,\"avg_contributors_per_file\":0,\"high_churn_files\":0},\
-\"composition\":{\"breakdown\":{},\"percentages\":{}},\"composition_ts\":[]}"
+\"composition\":{\"breakdown\":{},\"percentages\":{}},\"composition_ts\":null}"
         );
     }
 

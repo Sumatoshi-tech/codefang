@@ -195,6 +195,14 @@ fn output_node(node: &cf_uast::Node, output: &str, format: &str) -> Result<(), S
 
 /// Writes `node.to_map()` through the shared go-compat encoder (DESIGN rule 1).
 fn write_node(writer: &mut dyn Write, node: &cf_uast::Node, pretty: bool) -> Result<(), String> {
+    // Go parity: on an empty source the reference parser returns a NIL node
+    // and `json.Marshal(nil)` emits `null`. The Rust loader surfaces that
+    // collapsed root as `Node::default()` (empty type, no children, zero
+    // positions) — a shape no real parse produces, since every lowered node
+    // carries a type.
+    if node.node_type.is_empty() && node.children.is_empty() && node.token.is_empty() {
+        return writeln!(writer, "null").map_err(|e| e.to_string());
+    }
     let value = node_to_value(node);
     cf_textutil::write_json(writer, &value, pretty).map_err(|e| e.to_string())
 }

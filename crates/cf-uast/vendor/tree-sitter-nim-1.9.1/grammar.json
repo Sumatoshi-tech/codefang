@@ -1,0 +1,12 @@
+{
+  "reference": "main",
+  "revision": "9ed4696d7f76e4937e2b63512a249a3ead7a0399",
+  "grammarSha": "818a6875ad29c2c3bad3f9fa7b7205a382fea860411bd68d49733a5650087221",
+  "language": "nim",
+  "url": "https://github.com/alaviss/tree-sitter-nim",
+  "doc": "high memory usage (7GB)",
+  "maintainedBy": "@aMOPel",
+  "files": [
+    "scanner.c"
+  ]
+}

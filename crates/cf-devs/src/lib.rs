@@ -407,7 +407,11 @@ mod tests {
 
     fn lang_with_contribs(name: &str, total: i64, contribs: &[(i64, i64)]) -> LanguageData {
         let mut c = BTreeMap::new();
+        let mut order = Vec::new();
         for (id, v) in contribs {
+            if !c.contains_key(id) {
+                order.push(*id);
+            }
             c.insert(*id, *v);
         }
         LanguageData {
@@ -415,6 +419,7 @@ mod tests {
             total_lines: total,
             total_contribution: total,
             contributors: c,
+            contributor_order: order,
         }
     }
 
@@ -836,6 +841,7 @@ mod tests {
             total_lines: 12,
             total_contribution: 12,
             contributors,
+            contributor_order: vec![2, 10],
         };
         let json = cf_gojson::marshal(&serialize::language_data_to_go(&ld));
         let s = String::from_utf8(json).unwrap();

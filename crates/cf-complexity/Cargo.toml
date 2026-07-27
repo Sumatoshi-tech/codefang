@@ -21,6 +21,10 @@ publish.workspace = true
 cf-gojson = { workspace = true }
 # Pinned unstable sort (pdqsort) for tie ordering, shared across analyzers.
 cf-gosort = { workspace = true }
+# On-demand stack growth for the recursive complexity walk — the trees come
+# from cf-uast, which already needs a segmented stack to build them (>10k
+# nesting levels on real sources).
+stacker = "0.1.24"
 
 [lints.clippy]
 pedantic = "warn"

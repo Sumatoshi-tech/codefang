@@ -1,0 +1,13 @@
+{
+  "reference": "split_parser",
+  "revision": "413285231ce8fa8b11e7074bbe265b48aa7277f9",
+  "grammarSha": "20398dfcbc3c975821d8093638477815d8374ff41dc32cdbc08cbed5d3c71c53",
+  "language": "markdown",
+  "altName": "markdown (basic highlighting)",
+  "url": "https://github.com/tree-sitter-grammars/tree-sitter-markdown",
+  "maintainedBy": "@MDeiml",
+  "srcRoot": "tree-sitter-markdown",
+  "files": [
+    "scanner.c"
+  ]
+}

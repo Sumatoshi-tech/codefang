@@ -86,10 +86,27 @@ impl Analyzer {
     ///
     /// Returns [`NilRootNode`] when `root` is `None`.
     pub fn analyze(&self, root: Option<&Node>) -> Result<GoValue, NilRootNode> {
+        self.analyze_with_find_depth(root, None)
+    }
+
+    /// [`analyze`](Self::analyze) with the reference shared traverser's
+    /// `maxDepth` applied to the comment / function DISCOVERY walks: with
+    /// `Some(cap)`, only nodes at depth `<= cap` below the root (root at
+    /// depth 0) are found. The history `quality` analyzer's comments instance
+    /// runs with `maxDepth = 10`; the static surfaces run uncapped.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NilRootNode`] when `root` is `None`.
+    pub fn analyze_with_find_depth(
+        &self,
+        root: Option<&Node>,
+        find_depth: Option<usize>,
+    ) -> Result<GoValue, NilRootNode> {
         let root = root.ok_or(NilRootNode)?;
 
-        let comments = self.find_comments(root);
-        let functions = self.find_functions(root);
+        let comments = self.find_comments(root, find_depth);
+        let functions = self.find_functions(root, find_depth);
 
         if comments.is_empty() {
             return Ok(build_empty_result());
@@ -104,21 +121,25 @@ impl Analyzer {
 
     // --- node discovery -----------------------------------------------------
 
-    fn find_comments<'a>(&self, root: &'a Node) -> Vec<&'a Node> {
-        find_nodes_by_type(root, &[uast::COMMENT])
+    fn find_comments<'a>(&self, root: &'a Node, find_depth: Option<usize>) -> Vec<&'a Node> {
+        match find_depth {
+            Some(cap) => crate::traverse::find_nodes_by_type_capped(root, &[uast::COMMENT], cap),
+            None => find_nodes_by_type(root, &[uast::COMMENT]),
+        }
     }
 
-    fn find_functions<'a>(&self, root: &'a Node) -> Vec<&'a Node> {
-        find_nodes_by_type(
-            root,
-            &[
-                uast::FUNCTION,
-                uast::METHOD,
-                uast::CLASS,
-                uast::INTERFACE,
-                uast::STRUCT,
-            ],
-        )
+    fn find_functions<'a>(&self, root: &'a Node, find_depth: Option<usize>) -> Vec<&'a Node> {
+        const TYPES: [&str; 5] = [
+            uast::FUNCTION,
+            uast::METHOD,
+            uast::CLASS,
+            uast::INTERFACE,
+            uast::STRUCT,
+        ];
+        match find_depth {
+            Some(cap) => crate::traverse::find_nodes_by_type_capped(root, &TYPES, cap),
+            None => find_nodes_by_type(root, &TYPES),
+        }
     }
 
     // --- block grouping (sorted by line) ------------------------------------
@@ -628,9 +649,9 @@ fn comment_message(score: f64) -> String {
     } else if score >= 0.6 {
         "Good comment quality with room for improvement".to_string()
     } else if score >= 0.4 {
-        "Fair comment quality".to_string()
+        "Fair comment quality - consider improving placement".to_string()
     } else {
-        "Poor comment quality".to_string()
+        "Poor comment quality - significant improvement needed".to_string()
     }
 }
 

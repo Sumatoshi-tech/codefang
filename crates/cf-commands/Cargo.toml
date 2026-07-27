@@ -41,6 +41,12 @@ mcp = ["dep:cf-mcp"]
 [dependencies]
 clap = { workspace = true }
 thiserror = "1"
+# On-demand stack growth for the recursive UAST deep-copy in the complexity
+# handler — mirrors cf-uast's lowering walk, which needs a segmented stack on
+# real >10k-deep sources.
+stacker = "0.1.24"
+# SIGINT/SIGTERM → cooperative cancellation of the static folder walks.
+signal-hook = { workspace = true }
 # Generates the shell-completion scripts for the `completion` subcommand, the
 # Rust analogue of the bytes cobra emits for its auto-registered completion
 # command (bash/fish/powershell/zsh).

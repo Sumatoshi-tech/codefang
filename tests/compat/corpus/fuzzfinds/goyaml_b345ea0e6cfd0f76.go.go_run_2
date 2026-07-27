@@ -1,0 +1,35 @@
+function_complexity:
+    - name: classify
+      source_file: input.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 8
+      cognitive_complexity: 9
+      nesting_depth: 2
+      lines_of_code: 18
+      complexity_density: 0.4444444444444444
+      risk_level: MEDIUM
+    - name: main
+      source_file: input.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 1
+      complexity_density: 1
+      risk_level: LOW
+distribution:
+    moderate: 1
+    simple: 1
+high_risk_functions: []
+aggregate:
+    total_functions: 2
+    average_complexity: 4.5
+    max_complexity: 8
+    total_complexity: 9
+    cognitive_complexity: 0
+    nesting_depth: 0
+    decision_points: 7
+    health_score: 68.75
+    message: Fair complexity - some functions could be simplified

@@ -701,10 +701,12 @@ fn cleanup_semantic_score(one: &[u32], two: &[u32]) -> i32 {
     let whitespace2 = non_alnum2 && is_go_whitespace(char2);
     let linebreak1 = whitespace1 && (char1 == '\r' || char1 == '\n');
     let linebreak2 = whitespace2 && (char2 == '\r' || char2 == '\n');
-    // blanklineEndRegex = `\n\r?\n$` on `one`; blanklineStartRegex `^\r?\n\r?\n`
-    // on `two`. Operates on the decoded char string.
+    // blanklineEndRegex = `\n\r?\n$` is applied to BOTH `one` and `two` in the
+    // reference (`blankLine2 := lineBreak2 && blanklineEndRegex.MatchString(two)`
+    // — the reference matches the END regex against `two`, not the START regex;
+    // reproduced verbatim for byte parity). Operates on the decoded char string.
     let blank_line1 = linebreak1 && blankline_end(&decode(one));
-    let blank_line2 = linebreak2 && blankline_start(&decode(two));
+    let blank_line2 = linebreak2 && blankline_end(&decode(two));
 
     if blank_line1 || blank_line2 {
         5
@@ -721,22 +723,18 @@ fn cleanup_semantic_score(one: &[u32], two: &[u32]) -> i32 {
     }
 }
 
-/// The reference whitespace class `\s`: ASCII `[\t\n\f\r ]` plus the Unicode
-/// whitespace property. For the encoded line-index domain only these matter.
+/// The reference whitespace class: RE2 `\s`, which is EXACTLY `[\t\n\f\r ]`.
+/// Vertical tab (U+000B) and all non-ASCII Unicode whitespace (NBSP, NEL,
+/// U+2000-200A, U+2028/2029, ...) do NOT match RE2 `\s` and must not match
+/// here — the scoring runs over the encoded line-index domain, where these
+/// code points are ordinary line indices (e.g. index 11 = U+000B).
 fn is_go_whitespace(c: char) -> bool {
-    matches!(c, '\t' | '\n' | '\u{0B}' | '\u{0C}' | '\r' | ' ') || c.is_whitespace()
+    matches!(c, '\t' | '\n' | '\u{0C}' | '\r' | ' ')
 }
 
 /// `\n\r?\n$`: ends with `\n\n` or `\n\r\n`.
 fn blankline_end(s: &str) -> bool {
     s.ends_with("\n\n") || s.ends_with("\n\r\n")
-}
-
-/// `^\r?\n\r?\n`: starts with `\n\n`, `\r\n\n`, `\n\r\n`, or `\r\n\r\n`.
-fn blankline_start(s: &str) -> bool {
-    let b = s.as_bytes();
-    let starts = |p: &[u8]| b.starts_with(p);
-    starts(b"\n\n") || starts(b"\r\n\n") || starts(b"\n\r\n") || starts(b"\r\n\r\n")
 }
 
 fn cleanup_semantic_lossless(mut diffs: Vec<Segment>) -> Vec<Segment> {

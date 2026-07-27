@@ -562,6 +562,27 @@ fn walk(
     records: &mut Vec<FnRecord>,
     files: &mut Vec<FileBoundary>,
 ) {
+    // Go parity: filepath.WalkDir visits a FILE root as a single entry, so
+    // `codefang run <analyzer> path/to/file.c` analyzes that one file.
+    if dir.is_file() {
+        visit_file(
+            dir,
+            root_path,
+            parser,
+            opts,
+            analyzer,
+            total_functions,
+            total_complexity,
+            cognitive_total,
+            nesting_total,
+            decision_points,
+            max_complexity,
+            report_count,
+            records,
+            files,
+        );
+        return;
+    }
     let Ok(read) = fs::read_dir(dir) else {
         return;
     };
@@ -570,6 +591,11 @@ fn walk(
     entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
+        // SIGINT/SIGTERM: bail out of the walk promptly (durability, not
+        // output-affecting: the run exits 130 before any report is written).
+        if super::run_cancelled() {
+            return;
+        }
         let path = entry.path();
         let Ok(file_type) = entry.file_type() else {
             continue;
@@ -598,22 +624,63 @@ fn walk(
             continue;
         }
 
+        visit_file(
+            &path,
+            root_path,
+            parser,
+            opts,
+            analyzer,
+            total_functions,
+            total_complexity,
+            cognitive_total,
+            nesting_total,
+            decision_points,
+            max_complexity,
+            report_count,
+            records,
+            files,
+        );
+    }
+}
+
+/// Analyzes one file entry of the walk (the non-directory branch of the
+/// `filepath.WalkDir` callback): parser support + path policy filters, parse,
+/// per-file metrics, and fold into the accumulators.
+#[allow(clippy::too_many_arguments)]
+fn visit_file(
+    path: &Path,
+    root_path: &str,
+    parser: &Parser,
+    opts: &Options,
+    analyzer: &Analyzer,
+    total_functions: &mut i64,
+    total_complexity: &mut i64,
+    cognitive_total: &mut i64,
+    nesting_total: &mut i64,
+    decision_points: &mut i64,
+    max_complexity: &mut i64,
+    report_count: &mut usize,
+    records: &mut Vec<FnRecord>,
+    files: &mut Vec<FileBoundary>,
+) {
+    {
         let path_str = path.to_string_lossy();
 
         // ShouldSkipFolderNode: must be UAST-supported.
         if !parser.is_supported(&path_str) {
-            continue;
+            return;
         }
         // matchesLanguageGlobs (empty → all match), then pathpolicy.Exclude.
         if exclude(&path_str, None, opts) {
-            continue;
+            return;
         }
 
-        let Ok(content) = fs::read(&path) else {
-            continue;
+        let Some(content) = super::read_source_capped(path) else {
+            return;
         };
         let Ok(uast_root) = parser.parse(&path_str, &content) else {
-            continue;
+            super::note_skipped_file();
+            return;
         };
 
         // Every successfully parsed & analyzed file produces a report, even one
@@ -646,7 +713,7 @@ fn walk(
                 decision_points: 0,
                 max_complexity: 0,
             });
-            continue;
+            return;
         }
 
         // Aggregate the per-file totals (matches the analyzer's own result
@@ -706,6 +773,8 @@ fn make_relative_path(file_path: &str, root_path: &str) -> String {
     let root = Path::new(root_path);
     let file = Path::new(file_path);
     match file.strip_prefix(root) {
+        // filepath.Rel(root, root) == "." (a FILE root stamps ".").
+        Ok(rel) if rel.as_os_str().is_empty() => ".".to_string(),
         Ok(rel) => rel.to_string_lossy().into_owned(),
         Err(_) => file_path.to_string(),
     }
@@ -713,7 +782,16 @@ fn make_relative_path(file_path: &str, root_path: &str) -> String {
 
 /// Converts a `cf_uast_node::Node` into the `cf_complexity::node::Node` subset
 /// the complexity analyzer reads (type, token, roles, props, children, pos).
+///
+/// Wrapped in `stacker::maybe_grow` like the cf-uast lowering walk that built
+/// this tree: real sources exceed 10k nesting levels, and an unguarded
+/// recursive deep-copy of a tree that needed a segmented stack to construct
+/// would SIGSEGV on the fixed 8 MiB main stack.
 fn convert_node(n: &UastNode) -> CxNode {
+    stacker::maybe_grow(64 * 1024, 16 * 1024 * 1024, || convert_node_inner(n))
+}
+
+fn convert_node_inner(n: &UastNode) -> CxNode {
     let mut out = CxNode::new(n.node_type.clone());
     out.token = n.token.clone();
     out.roles = n.roles.clone();

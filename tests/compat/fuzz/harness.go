@@ -43,8 +43,9 @@ func repoRoot() string {
 	if !ok {
 		panic("cannot resolve caller for repoRoot")
 	}
-	// self = …/tests/compat/fuzz/harness.go  -> up 5 = repo root
-	return filepath.Clean(filepath.Join(filepath.Dir(self), "..", "..", "..", ".."))
+	// self = …/tests/compat/fuzz/harness.go; Dir(self) = …/tests/compat/fuzz,
+	// so three levels up is the repo root.
+	return filepath.Clean(filepath.Join(filepath.Dir(self), "..", "..", ".."))
 }
 
 func goBin(name string) string { return filepath.Join(repoRoot(), "build", "bin", name) }
@@ -56,11 +57,13 @@ func rustBin(name string) string {
 	if d := os.Getenv("CFFUZZ_RUST_DIR"); d != "" {
 		return filepath.Join(d, name)
 	}
-	return filepath.Join(repoRoot(), "rust", "target", "release", name)
+	// The Rust workspace moved from rust/ to the repo root when the rewrite
+	// superseded the Go implementation.
+	return filepath.Join(repoRoot(), "target", "release", name)
 }
 
 func corpusFuzzFinds() string {
-	return filepath.Join(repoRoot(), "rust", "tests", "compat", "corpus", "fuzzfinds")
+	return filepath.Join(repoRoot(), "tests", "compat", "corpus", "fuzzfinds")
 }
 
 var pinnedEnv = []string{

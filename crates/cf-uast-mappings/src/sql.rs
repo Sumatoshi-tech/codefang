@@ -31,6 +31,17 @@ pub static SQL: LanguageMapping = uast_language! {
             type: Call,
             roles: [Call],
         },
+        // `CREATE FUNCTION` bodies were previously unmapped, so SQL files
+        // defining functions reported zero for the complexity/cohesion
+        // analyzers.
+        create_function => {
+            type: Function,
+            roles: [Function, Declaration],
+        },
+        function_body => {
+            type: Block,
+            roles: [Body],
+        },
         create_table => {
             type: Call,
             roles: [Call, Declaration],

@@ -1,9 +1,9 @@
 //! Anomaly detection over per-tick and external time-series data.
 
-use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
 use cf_alg_stats::mean_std_dev;
+use cf_gosort::go_sort_slice;
 
 use crate::model::{ExternalAnomaly, ExternalSummary, RawMetrics, Record, TickMetrics, ZScoreSet};
 use crate::zscore::compute_z_scores;
@@ -67,15 +67,11 @@ pub fn detect_anomalies_from_ticks(
         threshold_f,
     );
 
-    // Sort by max absolute Z-score descending. The reference binary's sort is
-    // unstable on ties (unspecified relative order); we use a stable sort with
-    // a strict comparator so behavior is deterministic without altering the
-    // documented "most extreme first" semantics.
-    anomalies.sort_by(|a, b| {
-        b.max_abs_z_score
-            .partial_cmp(&a.max_abs_z_score)
-            .unwrap_or(Ordering::Equal)
-    });
+    // Sort by max absolute Z-score descending. The reference binary uses
+    // Go's unstable sort.Slice, so the relative order of ties is fixed by
+    // pdqsort's deterministic-but-unstable behavior; replicate it exactly
+    // via cf-gosort rather than a stable sort.
+    go_sort_slice(&mut anomalies, |a, b| a.max_abs_z_score > b.max_abs_z_score);
 
     anomalies
 }
@@ -201,16 +197,16 @@ pub fn detect_external_anomalies(
 /// summary list by `(source, dimension)`, so callers that merge per-analyzer
 /// results produce the same deterministic order as the reference binary.
 pub fn sort_external_results(anomalies: &mut [ExternalAnomaly], summaries: &mut [ExternalSummary]) {
-    anomalies.sort_by(|a, b| {
-        b.z_score
-            .abs()
-            .partial_cmp(&a.z_score.abs())
-            .unwrap_or(Ordering::Equal)
-    });
+    // Both lists are sorted with Go's unstable sort.Slice in the reference
+    // binary; tie order must replicate pdqsort exactly.
+    go_sort_slice(anomalies, |a, b| a.z_score.abs() > b.z_score.abs());
 
-    summaries.sort_by(|a, b| match a.source.cmp(&b.source) {
-        Ordering::Equal => a.dimension.cmp(&b.dimension),
-        other => other,
+    go_sort_slice(summaries, |a, b| {
+        if a.source != b.source {
+            a.source < b.source
+        } else {
+            a.dimension < b.dimension
+        }
     });
 }
 

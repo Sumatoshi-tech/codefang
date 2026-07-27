@@ -140,7 +140,26 @@ impl Analyzer {
     /// traverser to surface errors. Pass an explicitly-empty subtree to model
     /// "no functions".
     pub fn analyze<N: Node>(&self, root: &N) -> Result<Report, NilRootNode> {
-        let functions = self.find_functions(root);
+        self.analyze_with_find_depth(root, None)
+    }
+
+    /// [`analyze`](Self::analyze) with the reference shared traverser's
+    /// `maxDepth` applied to the function DISCOVERY walk: with `Some(cap)`,
+    /// only function nodes at depth `<= cap` below the root (root at depth 0)
+    /// are found; per-function variable extraction over each found function's
+    /// whole subtree is unchanged. The history `quality` analyzer's cohesion
+    /// instance runs with `maxDepth = 10` ([`MAX_DEPTH_VALUE`]); the static
+    /// surfaces run uncapped.
+    ///
+    /// # Errors
+    ///
+    /// Currently never fails (see [`analyze`](Self::analyze)).
+    pub fn analyze_with_find_depth<N: Node>(
+        &self,
+        root: &N,
+        find_depth: Option<usize>,
+    ) -> Result<Report, NilRootNode> {
+        let functions = self.find_functions_capped(root, find_depth);
 
         if functions.is_empty() {
             return Ok(self.build_empty_result());
@@ -437,17 +456,36 @@ impl Analyzer {
     /// it.
     #[must_use]
     pub fn find_functions<N: Node>(&self, root: &N) -> Vec<Function> {
+        self.find_functions_capped(root, None)
+    }
+
+    /// [`find_functions`](Self::find_functions) with the optional discovery
+    /// depth cap: with `Some(cap)`, only function nodes at depth `<= cap`
+    /// below `root` (`root` at depth 0) are matched. The reference traverser
+    /// filters MATCHES by depth (it still descends), so pruning the walk at
+    /// the cap is output-equivalent.
+    #[must_use]
+    pub fn find_functions_capped<N: Node>(
+        &self,
+        root: &N,
+        find_depth: Option<usize>,
+    ) -> Vec<Function> {
         let mut out = Vec::new();
-        self.collect_functions(root, &mut out);
+        self.collect_functions(root, find_depth, &mut out);
         out
     }
 
-    fn collect_functions<N: Node>(&self, n: &N, out: &mut Vec<Function>) {
+    fn collect_functions<N: Node>(&self, n: &N, remaining: Option<usize>, out: &mut Vec<Function>) {
         if self.is_function_node(n) {
             out.push(self.extract_function(n));
         }
+        let child_remaining = match remaining {
+            Some(0) => return,
+            Some(r) => Some(r - 1),
+            None => None,
+        };
         for child in n.children() {
-            self.collect_functions(child, out);
+            self.collect_functions(child, child_remaining, out);
         }
     }
 

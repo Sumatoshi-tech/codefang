@@ -89,6 +89,63 @@ pub(crate) fn run_concurrent<T: Send>(
         .collect()
 }
 
+/// The process-wide cooperative cancellation flag, set by the SIGINT/SIGTERM
+/// handlers installed in [`crate::install_signal_handlers`].
+pub(crate) fn cancel_flag() -> &'static std::sync::Arc<std::sync::atomic::AtomicBool> {
+    static FLAG: std::sync::OnceLock<std::sync::Arc<std::sync::atomic::AtomicBool>> =
+        std::sync::OnceLock::new();
+    FLAG.get_or_init(|| std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)))
+}
+
+/// True once SIGINT/SIGTERM was received: long-running walks poll this and
+/// bail out so the process can exit promptly instead of grinding through the
+/// rest of the tree.
+pub(crate) fn run_cancelled() -> bool {
+    cancel_flag().load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Upper bound for a single source file on the static path (64 MiB). No
+/// legitimate source file approaches this; without a bound, a pathological
+/// file is fully read, tree-sitter-parsed (tree several times the source
+/// size), lowered to a UAST, and — on the complexity path — deep-copied
+/// again, so peak RSS is a large multiple of the largest file encountered.
+/// Oversized files are skipped exactly like unreadable ones.
+pub(crate) const MAX_STATIC_FILE_SIZE: u64 = 64 * 1024 * 1024;
+
+/// Count of files the static walks skipped (unreadable, oversized, or
+/// unparseable). Skips used to be completely silent, so a permissions
+/// failure across half a tree produced a plausible-looking but wrong report
+/// with no signal; the run summary now surfaces the count on stderr.
+static SKIPPED_FILES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Records one skipped file for the end-of-run summary.
+pub(crate) fn note_skipped_file() {
+    SKIPPED_FILES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Number of files skipped so far in this run.
+pub(crate) fn skipped_file_count() -> u64 {
+    SKIPPED_FILES.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Reads a source file for static analysis, refusing oversized files
+/// (see [`MAX_STATIC_FILE_SIZE`]). `None` mirrors the walkers' existing
+/// skip-on-unreadable behavior.
+pub(crate) fn read_source_capped(path: &std::path::Path) -> Option<Vec<u8>> {
+    let read = || -> Option<Vec<u8>> {
+        let meta = std::fs::metadata(path).ok()?;
+        if meta.len() > MAX_STATIC_FILE_SIZE {
+            return None;
+        }
+        std::fs::read(path).ok()
+    };
+    let content = read();
+    if content.is_none() {
+        note_skipped_file();
+    }
+    content
+}
+
 /// Directory-level skip predicate for the static folder walks. The reference
 /// pipeline only does `filepath.SkipDir` on `.git`; this EXTENDS that to also
 /// skip any directory carrying a `CACHEDIR.TAG` — the BSD cache-directory
@@ -164,6 +221,183 @@ pub fn effective_first_parent(sub: &clap::ArgMatches) -> bool {
     history_ids.iter().any(|id| id == "history/burndown")
 }
 
+/// The parsed `--since` state of a history run (reference `--since` parity).
+///
+/// The reference pipeline resolves `--since` BEFORE planning the streaming
+/// chunks, and the observable stdout contract has three measured classes
+/// (oracle-verified against the live reference binary on hercules):
+///
+/// - **cutoff at/before the oldest commit** (filter excludes nothing) — output
+///   is byte-identical to a run without `--since`;
+/// - **cutoff after every commit** (filter excludes everything, e.g.
+///   `--since 2030-01-01` or a duration like `24h`) — the planner plans ZERO
+///   chunks and the run succeeds with each analyzer's empty-walk report;
+/// - **partial filter** (some commits pass, some don't) — the planner counts
+///   the passing commits, but the oldest-first loading iterator stops at the
+///   FIRST commit older than the cutoff (the reference `Since` stop filter
+///   composed with the reversed walk), yields zero commits, and the run aborts
+///   (`expected N commits, got 0: EOF`) with EMPTY stdout and exit 1.
+///
+/// An unparseable value aborts before walking (reference: `Error: invalid time
+/// format for --since`), also with empty stdout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SinceSpec {
+    /// `--since` absent or empty: the walk is unfiltered.
+    Inactive,
+    /// Cutoff in Unix seconds; commits with author time >= cutoff pass
+    /// (the reference iterator's stop comparison uses the AUTHOR clock).
+    Active(i64),
+    /// Unparseable `--since` value: the run aborts with empty stdout.
+    Invalid,
+}
+
+/// Resolves the run's `--since` flag into a [`SinceSpec`].
+#[must_use]
+pub fn history_since_spec(sub: &clap::ArgMatches) -> SinceSpec {
+    let raw = sub.get_one::<String>("since").map_or("", String::as_str);
+    if raw.is_empty() {
+        return SinceSpec::Inactive;
+    }
+    match parse_since_time(raw) {
+        Some(secs) => SinceSpec::Active(secs),
+        None => SinceSpec::Invalid,
+    }
+}
+
+/// Parses the reference `--since` value forms: RFC3339
+/// (`2006-01-02T15:04:05Z07:00`), a plain UTC date (`2006-01-02`), or a Go
+/// duration (`24h`, `1h30m`, …) subtracted from the current wall clock.
+/// Returns the cutoff in Unix seconds, or `None` when unparseable.
+fn parse_since_time(raw: &str) -> Option<i64> {
+    if let Some(secs) = parse_rfc3339_secs(raw) {
+        return Some(secs);
+    }
+    if let Some(secs) = parse_utc_date_secs(raw) {
+        return Some(secs);
+    }
+    if let Some(dur_secs) = parse_go_duration_secs(raw) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?;
+        return Some(i64::try_from(now.as_secs()).unwrap_or(i64::MAX) - dur_secs);
+    }
+    None
+}
+
+/// Days since the Unix epoch for a civil date (Howard Hinnant's algorithm;
+/// the inverse of [`civil_from_days`]).
+fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let mp = i64::from((m + 9) % 12);
+    let doy = (153 * mp + 2) / 5 + i64::from(d) - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// Parses `YYYY-MM-DD` as UTC midnight (Go `time.Parse("2006-01-02", …)`).
+fn parse_utc_date_secs(s: &str) -> Option<i64> {
+    let b = s.as_bytes();
+    if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
+        return None;
+    }
+    let y: i64 = s.get(0..4)?.parse().ok()?;
+    let m: u32 = s.get(5..7)?.parse().ok()?;
+    let d: u32 = s.get(8..10)?.parse().ok()?;
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    Some(days_from_civil(y, m, d) * 86_400)
+}
+
+/// Parses an RFC3339 timestamp (`YYYY-MM-DDTHH:MM:SS[.frac](Z|±HH:MM)`) to
+/// Unix seconds (fractional seconds truncated, exactly as a seconds-granularity
+/// git comparison observes them).
+fn parse_rfc3339_secs(s: &str) -> Option<i64> {
+    let b = s.as_bytes();
+    if b.len() < 20 || b[10] != b'T' || b[13] != b':' || b[16] != b':' {
+        return None;
+    }
+    let date_secs = parse_utc_date_secs(s.get(0..10)?)?;
+    let hh: i64 = s.get(11..13)?.parse().ok()?;
+    let mm: i64 = s.get(14..16)?.parse().ok()?;
+    let ss: i64 = s.get(17..19)?.parse().ok()?;
+    if hh > 23 || mm > 59 || ss > 60 {
+        return None;
+    }
+    // Skip fractional seconds, then parse the zone designator.
+    let mut i = 19;
+    if b.get(i) == Some(&b'.') {
+        i += 1;
+        let start = i;
+        while i < b.len() && b[i].is_ascii_digit() {
+            i += 1;
+        }
+        if i == start {
+            return None;
+        }
+    }
+    let zone = s.get(i..)?;
+    let offset_secs: i64 = if zone == "Z" || zone == "z" {
+        0
+    } else {
+        let zb = zone.as_bytes();
+        if zb.len() != 6 || (zb[0] != b'+' && zb[0] != b'-') || zb[3] != b':' {
+            return None;
+        }
+        let oh: i64 = zone.get(1..3)?.parse().ok()?;
+        let om: i64 = zone.get(4..6)?.parse().ok()?;
+        let sign = if zb[0] == b'-' { -1 } else { 1 };
+        sign * (oh * 3600 + om * 60)
+    };
+    Some(date_secs + hh * 3600 + mm * 60 + ss - offset_secs)
+}
+
+/// Parses a Go `time.ParseDuration` string (`300s`, `1h30m`, `24h`, …) to
+/// whole seconds (sub-second remainder truncated).
+fn parse_go_duration_secs(s: &str) -> Option<i64> {
+    let mut rest = s;
+    let mut total_ns: f64 = 0.0;
+    let mut any = false;
+    if rest.starts_with('-') || rest.starts_with('+') {
+        return None; // negative/signed durations never select commits meaningfully
+    }
+    while !rest.is_empty() {
+        let num_len = rest
+            .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+            .unwrap_or(rest.len());
+        if num_len == 0 {
+            return None;
+        }
+        let value: f64 = rest.get(0..num_len)?.parse().ok()?;
+        rest = rest.get(num_len..)?;
+        let (unit_ns, unit_len) = if rest.starts_with("ns") {
+            (1.0, 2)
+        } else if rest.starts_with("us") || rest.starts_with("µs") {
+            (1e3, if rest.starts_with("µs") { 3 } else { 2 })
+        } else if rest.starts_with("ms") {
+            (1e6, 2)
+        } else if rest.starts_with('s') {
+            (1e9, 1)
+        } else if rest.starts_with('m') {
+            (6e10, 1)
+        } else if rest.starts_with('h') {
+            (3.6e12, 1)
+        } else {
+            return None;
+        };
+        total_ns += value * unit_ns;
+        rest = rest.get(unit_len..)?;
+        any = true;
+    }
+    if !any {
+        return None;
+    }
+    #[allow(clippy::cast_possible_truncation)] // contractual truncation to seconds
+    Some((total_ns / 1e9) as i64)
+}
+
 /// Replicates the reference implementation `initHistoryPipeline` (the iterator path the real
 /// `run` command uses — NOT `gitlib.LoadCommits`): walks history oldest-first
 /// (`SortTime|SortTopological|SortReverse`) and feeds the analyzer the FIRST
@@ -171,13 +405,70 @@ pub fn effective_first_parent(sub: &clap::ArgMatches) -> bool {
 /// reachable commits, oldest-first (oracle-verified against the live reference binary —
 /// `--limit 20` on hercules yields the repo's first 20 commits, with ascending
 /// composition ticks). `limit <= 0` returns the full oldest-first history.
+///
+/// `since` applies the reference `--since` contract (see [`SinceSpec`]): the
+/// planner counts the commits at/after the cutoff (newest-first walk with the
+/// stop filter), a zero count yields an EMPTY walk (each analyzer's empty
+/// report), and a partial filter aborts (`None` ⇒ empty stdout) because the
+/// reference oldest-first loading iterator stops at the first too-old commit
+/// and under-fills the planned chunk.
 #[must_use]
 pub fn load_history_commit_hashes(
     repo: &cf_gitlib::Repository,
     limit: i64,
     first_parent: bool,
+    since: SinceSpec,
 ) -> Option<Vec<cf_gitlib::Hash>> {
     use cf_gitlib::repository::LogOptions;
+
+    match since {
+        SinceSpec::Invalid => return None,
+        SinceSpec::Active(cutoff) => {
+            let since_time = Some(cf_gitlib::repository::time_from_unix_secs(cutoff));
+            // Planner count: newest-first walk with the reference stop filter.
+            let plan_opts = LogOptions {
+                since: since_time,
+                first_parent,
+                reverse: false,
+            };
+            let mut plan_iter = repo.log(&plan_opts).ok()?;
+            let mut n_since: i64 = 0;
+            while plan_iter.next_commit().is_some() {
+                n_since += 1;
+            }
+            if n_since == 0 {
+                // Zero chunks planned: the run succeeds over an empty walk.
+                return Some(Vec::new());
+            }
+            let expected = if limit > 0 {
+                limit.min(n_since)
+            } else {
+                n_since
+            };
+            // Loading: the reference oldest-first iterator applies the SAME stop
+            // filter, so it ends at the first commit older than the cutoff.
+            let load_opts = LogOptions {
+                since: since_time,
+                first_parent,
+                reverse: true,
+            };
+            let mut iter = repo.log(&load_opts).ok()?;
+            let mut hashes = Vec::new();
+            while (hashes.len() as i64) < expected {
+                match iter.next_commit() {
+                    Some(c) => hashes.push(c.hash()),
+                    None => break,
+                }
+            }
+            if (hashes.len() as i64) < expected {
+                // Under-filled chunk: the reference pipeline aborts with empty stdout
+                // ("expected N commits, got M: EOF").
+                return None;
+            }
+            return Some(hashes);
+        }
+        SinceSpec::Inactive => {}
+    }
     // ORACLE-VERIFIED window selection. The real `run` command uses
     // the reference `initStreamingIterator`, which sets `logOpts.Reverse = true`
     // (oldest-first walk) and then streams the FIRST `commitCount =
@@ -549,6 +840,84 @@ fn overall_score_label(score: f64) -> String {
 /// falls through to the same error path the reference implementation takes).
 #[must_use]
 pub fn static_multi_json(patterns: &[&str], path: &str, per_file: bool) -> Option<Vec<u8>> {
+    let root = static_multi_report_value(patterns, path, per_file)?;
+    let bytes = cf_gojson::Encoder::indented("  ")
+        .with_trailing_newline(true)
+        .encode_to_vec(&root);
+    Some(bytes)
+}
+
+/// The merged multi-static-analyzer `--format text` render (the reference
+/// `FormatText` over ALL selected sections at once): a ≥2-section selection
+/// carries the executive-summary header (`CODE ANALYSIS REPORT` + per-analyzer
+/// score table) followed by each analyzer's section rendered EXACTLY as its
+/// solo `--format text` body — the sections come from the same per-analyzer
+/// TEXT-shaped section values the solo text handlers feed the renderer (NOT
+/// the JSON report values, whose extra `distribution`/`issues` data the
+/// reference text sections for e.g. complexity do not carry).
+#[must_use]
+pub fn static_multi_text(
+    patterns: &[&str],
+    path: &str,
+    policy: &cf_pathpolicy::Options,
+) -> Option<Vec<u8>> {
+    type TextValueFn = fn(&str, &cf_pathpolicy::Options) -> Option<GoValue>;
+    // Registry order (the reference registry / summary-table order).
+    const TEXT_VALUE_BUILDERS: &[(&str, TextValueFn)] = &[
+        ("static/clones", |p, _| {
+            static_clones::clones_report_value(p)
+        }),
+        ("static/complexity", |p, _| {
+            static_complexity::complexity_report_value_summary(p)
+        }),
+        ("static/comments", |p, _| {
+            static_comments::comments_report_value_summary(p)
+        }),
+        ("static/halstead", |p, _| {
+            static_halstead::halstead_report_value_summary(p)
+        }),
+        ("static/cohesion", |p, _| {
+            static_cohesion::cohesion_report_value_summary(p)
+        }),
+        ("static/imports", |p, _| {
+            static_imports::imports_report_value(p)
+        }),
+        (
+            "static/composition",
+            static_json::composition_report_value_opts as TextValueFn,
+        ),
+    ];
+
+    let mut sections: Vec<GoValue> = Vec::new();
+    for &(id, build) in TEXT_VALUE_BUILDERS {
+        let matched = patterns.iter().any(|pat| {
+            if pat.contains(['*', '?', '[']) {
+                go_path_match(pat, id)
+            } else {
+                *pat == id
+            }
+        });
+        if !matched {
+            continue;
+        }
+        let report = build(path, policy)?;
+        sections.extend(extract_sections(&report));
+    }
+    if sections.is_empty() {
+        return None;
+    }
+
+    let mut root = GoMap::new(MapOrigin::Struct);
+    root.push("sections", GoValue::Array(sections));
+    Some(section_render::render_text_report(&GoValue::Map(root)))
+}
+
+/// Builds the ONE merged `renderer.JSONReport` GoValue for a multi-static
+/// selection: sections in registry order, `overall_score` the executive-summary
+/// average of the scored sections. Every output format renders from this same
+/// value (rule: one report value, many encodings).
+#[must_use]
+fn static_multi_report_value(patterns: &[&str], path: &str, per_file: bool) -> Option<GoValue> {
     let mut sections: Vec<GoValue> = Vec::new();
     let mut score_total = 0.0_f64;
     let mut score_count = 0_usize;
@@ -593,10 +962,7 @@ pub fn static_multi_json(patterns: &[&str], path: &str, per_file: bool) -> Optio
     root.push("sections", GoValue::Array(sections));
     root.push("overall_score", GoValue::Float(overall));
 
-    let bytes = cf_gojson::Encoder::indented("  ")
-        .with_trailing_newline(true)
-        .encode_to_vec(&GoValue::Map(root));
-    Some(bytes)
+    Some(GoValue::Map(root))
 }
 
 /// The reference `EnrichWithPerFileData` INITIALIZATION step: under
@@ -1070,18 +1436,26 @@ fn h_static_cohesion(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
 
 fn h_static_composition(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     let path = &ctx.path;
+    // The reference static walk filters files through pathpolicy.Exclude with
+    // the RUN flags (`--include-vendored` / `--include-generated`), so every
+    // encoding of the aggregated report must honor them.
+    let policy = static_path_policy(ctx);
     match format {
-        "json" => static_json::composition_report_flags(path, ctx.matches.get_flag("per-file")),
-        "yaml" => static_json::composition_yaml(path),
+        "json" => static_json::composition_report_opts_flags(
+            path,
+            &policy,
+            ctx.matches.get_flag("per-file"),
+        ),
+        "yaml" => static_json::composition_yaml_opts(path, &policy),
         // The pipeline resolves the `bin` alias to the canonical `binary`
         // (formats::normalize_format) before dispatch, so match that; accept the
         // raw alias too for direct callers.
-        "binary" | "bin" => static_json::composition_bin(path),
+        "binary" | "bin" => static_json::composition_bin_opts(path, &policy),
         "compact" => Some(section_render::render_compact_report(
-            &static_json::composition_report_value(path)?,
+            &static_json::composition_report_value_opts(path, &policy)?,
         )),
         "text" => Some(section_render::render_text_report(
-            &static_json::composition_report_value(path)?,
+            &static_json::composition_report_value_opts(path, &policy)?,
         )),
         _ => None,
     }
@@ -1151,6 +1525,13 @@ fn h_static_comments(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
 }
 
 fn h_history_imports(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
+    // `timeseries+ndjson` (the `--ndjson` modifier) is NOT an encoding of the
+    // report value: the reference implementation streams per-commit lines
+    // through the per-chunk TimeSeriesChunkFlusher (DrainCommitStats), so it
+    // has its own emitter over the same memoized walk.
+    if format == "timeseries+ndjson" {
+        return history::imports_timeseries_ndjson(ctx.matches);
+    }
     // One report value, encoded per format by the shared history serializer
     //. The YAML section header is the reference implementation
     // analyzer Name() (`imports.HistoryAnalyzer.Name` == "ImportsPerDeveloper").
@@ -1234,6 +1615,13 @@ fn h_history_anomaly(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
 }
 
 fn h_history_quality(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
+    // `timeseries+ndjson` (the `--ndjson` modifier) is NOT an encoding of the
+    // report value: the reference implementation streams per-commit lines
+    // through the per-chunk TimeSeriesChunkFlusher (DrainCommitStats), so it
+    // has its own emitter over the same memoized walk.
+    if format == "timeseries+ndjson" {
+        return history::quality_timeseries_ndjson(ctx.matches);
+    }
     // `--head` is handled inside `quality_metrics` (single HEAD-commit window),
     // so every format is the same encoding of one computed value — including the
     // `binary` payload the combined `*` model gathers.
@@ -1248,6 +1636,13 @@ fn h_history_quality(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
 
 fn h_history_sentiment(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     use cf_sentiment::ToGoValue;
+    // `timeseries+ndjson` (the `--ndjson` modifier) is NOT an encoding of the
+    // report value: the reference implementation streams per-commit lines
+    // through the per-chunk TimeSeriesChunkFlusher (DrainCommitStats), so it
+    // has its own emitter over the same memoized walk.
+    if format == "timeseries+ndjson" {
+        return history::sentiment_timeseries_ndjson(ctx.matches);
+    }
     // `--head` is handled inside `sentiment_metrics` (single HEAD-commit window),
     // so every format (including the combined `*` model's `binary`) is one
     // encoding of the same computed value.
@@ -1272,6 +1667,14 @@ fn h_history_file_history(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     // route it through the shared history-metrics serializer so all formats are
     // encodings of THE SAME value. The YAML
     // section header is the analyzer's Name(): `FileHistoryAnalysis`.
+    // `timeseries+ndjson` (the `--ndjson` modifier) is NOT an encoding of the
+    // report value: the reference implementation streams per-commit lines
+    // through the per-chunk TimeSeriesChunkFlusher (DrainCommitStats), so it
+    // has its own emitter over the same walk (`--head` loads the single HEAD
+    // commit inside `file_history_run`, matching the reference head window).
+    if format == "timeseries+ndjson" {
+        return history::file_history_timeseries_ndjson(ctx.matches);
+    }
     let value = history::file_history_report_value(ctx.matches)?;
     serialize_history_metrics(format, "FileHistoryAnalysis", &value, &value)
 }

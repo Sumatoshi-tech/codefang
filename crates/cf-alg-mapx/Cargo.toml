@@ -9,3 +9,6 @@ publish.workspace = true
 description = "Generic map and slice helpers (clone, additive merge, deterministic sorted_keys, sort-and-limit, lookup-set, unique)."
 
 [dependencies]
+# Frozen Go pdqsort: `sort_and_limit` mirrors the reference `mapx.SortAndLimit`
+# (`sort.Slice`), whose unstable tie permutation is part of the output contract.
+cf-gosort = { path = "../cf-gosort" }

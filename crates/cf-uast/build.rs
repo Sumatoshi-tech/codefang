@@ -156,6 +156,203 @@ const GRAMMARS: &[Grammar] = &[
         dir: "tree-sitter-powershell-1.9.5",
         sources: &["parser.c", "scanner.c"],
     },
+    // Groovy (go-sitter-forest groovy@v1.9.4): .groovy/.gradle. Single-file
+    // grammar (parser.c, no external scanner) exporting tree_sitter_groovy().
+    // Gradle build scripts carry comments the comments analyzer counts, so
+    // omitting it under-counts totals on repos with build.gradle files.
+    Grammar {
+        dir: "tree-sitter-groovy-1.9.4",
+        sources: &["parser.c"],
+    },
+    // Java-style .properties files (go-sitter-forest properties@v1.9.2):
+    // parser.c + scanner.c exporting tree_sitter_properties(). Its `#`/`!`
+    // comment lines flow into the comments analyzer's totals (e.g.
+    // gradle.properties in Android projects).
+    Grammar {
+        dir: "tree-sitter-properties-1.9.2",
+        sources: &["parser.c", "scanner.c"],
+    },
+    // The remaining go-sitter-forest grammars the reference binary links,
+    // vendored at the exact pinned revisions (see each grammar's go.mod).
+    // Scanners that #include sibling .c files (ansible's schema.core.c,
+    // crystal's unicode.c) compile those transitively — only parser.c and
+    // scanner.c are listed, mirroring the yaml note above.
+    Grammar {
+        dir: "tree-sitter-ansible-1.9.0",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-c_sharp-1.9.6",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-clojure-1.9.1",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-commonlisp-1.9.1",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-crystal-1.9.29",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-css-1.9.4",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-csv-1.9.0",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-dart-1.9.4",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-dockerfile-1.9.1",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-dotenv-1.9.0",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-elixir-1.9.5",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-elm-1.9.1",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-fish-1.9.2",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-fortran-1.9.13",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-git_config-1.9.3",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-gosum-1.9.0",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-gotmpl-1.9.3",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-gowork-1.9.0",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-graphql-1.9.0",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-haskell-1.9.2",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-hcl-1.9.3",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-helm-1.9.4",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-ini-1.9.1",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-kotlin-1.9.4",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-latex-1.9.2",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-lua-1.9.3",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-make-1.9.1",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-markdown-1.9.5",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-nim-1.9.1",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-nim_format_string-1.9.0",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-php-1.9.5",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-proxima-1.9.2",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-prql-1.9.1",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-psv-1.9.0",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-r-1.9.6",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-rego-1.9.0",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-ruby-1.9.3",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-rust_with_rstml-1.9.1",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-scala-1.9.8",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-sql-1.9.13",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-ssh_config-1.9.2",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-swift-1.9.5",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-tcl-1.9.4",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-zig-1.9.4",
+        sources: &["parser.c"],
+    },
 ];
 
 fn main() {

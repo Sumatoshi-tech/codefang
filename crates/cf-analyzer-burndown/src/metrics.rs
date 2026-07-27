@@ -127,14 +127,20 @@ impl ComputedMetrics {
 
         let mut m = GoMap::new_struct();
         m.push("aggregate", self.aggregate.to_go_value());
+        // Reference: `global_survival` is a `var`-declared append target — an
+        // empty-walk run leaves it nil (JSON `null`, YAML `[]`), never `[]`.
         m.push(
             "global_survival",
-            GoValue::Array(
-                self.global_survival
-                    .iter()
-                    .map(SurvivalData::to_go_value)
-                    .collect(),
-            ),
+            if self.global_survival.is_empty() {
+                GoValue::NilSlice
+            } else {
+                GoValue::Array(
+                    self.global_survival
+                        .iter()
+                        .map(SurvivalData::to_go_value)
+                        .collect(),
+                )
+            },
         );
         m.push("file_survival", nil(&self.file_survival));
         m.push("developer_survival", nil(&self.developer_survival));

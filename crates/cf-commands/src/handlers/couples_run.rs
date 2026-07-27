@@ -129,7 +129,12 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
     let hashes: Vec<cf_gitlib::Hash> = if head_only {
         vec![repo.head().ok()?]
     } else {
-        let v = crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?;
+        let v = crate::handlers::load_history_commit_hashes(
+            &repo,
+            limit,
+            first_parent,
+            crate::handlers::history_since_spec(sub),
+        )?;
         // reference consume order at `--workers 1`: the streaming pipeline (commit
         // streamer + blob/diff/uast prefetch) preserves input order end-to-end,
         // so the couples leaf consumes commits in the oldest-first revwalk order
@@ -372,13 +377,20 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
     //   points at a freed commit and `lastCommit.Tree()` FAILS. `collectCurrentFiles`
     //   takes its fallback branch (return *all* accumulated raw-file keys) and
     //   every `commit.File(name)` in `computeFilesLinesFromCommit` likewise fails,
-    //   so every `FilesLines` entry is 0. We reproduce that observed behavior: keep
-    //   all raw files (no tree reduction) and zero line counts.
+    //   so every `FilesLines` entry is 0. We reproduce that observed behavior: the
+    //   current set is the accumulated raw-file keys (identity for the files map,
+    //   but it still prunes PEOPLE entries for files that never entered the
+    //   coupling map — e.g. delete-only author touches — which feeds the
+    //   people-matrix diagonal and thus `developer_coupling.coupling_strength`)
+    //   and zero line counts.
     let (current_files, files_lines): (Option<HashSet<String>>, BTreeMap<String, i32>) =
         if head_only {
             collect_current_and_lines(&repo, last_commit_hash)
         } else {
-            (None, BTreeMap::new())
+            (
+                Some(agg.raw_files().keys().cloned().collect()),
+                BTreeMap::new(),
+            )
         };
 
     let mut report_data = agg.build_report(current_files.as_ref(), &files_lines);

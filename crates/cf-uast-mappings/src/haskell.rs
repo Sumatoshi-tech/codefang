@@ -76,6 +76,30 @@ pub static HASKELL: LanguageMapping = uast_language! {
             type: TypeAnnotation,
             roles: [Type],
         },
+        // Zero-argument bindings whose right side is a `do` block or lambda
+        // (`main = do ...`, `main = scotty 3000 $ do ...`) are function
+        // definitions in practice; as plain Variables they were invisible to
+        // function detection. The infix variants catch `$`-chained forms.
+        bind_infix_do ("(bind)") => {
+            type: Function,
+            roles: [Function, Declaration],
+            when: ["match.expression.right_operand.type == \"do\""],
+        },
+        bind_infix_lambda ("(bind)") => {
+            type: Function,
+            roles: [Function, Declaration],
+            when: ["match.expression.right_operand.type == \"lambda\""],
+        },
+        bind_do ("(bind)") => {
+            type: Function,
+            roles: [Function, Declaration],
+            when: ["match.expression.type == \"do\""],
+        },
+        bind_lambda ("(bind)") => {
+            type: Function,
+            roles: [Function, Declaration],
+            when: ["match.expression.type == \"lambda\""],
+        },
         bind => {
             type: Variable,
             roles: [Variable, Declaration],

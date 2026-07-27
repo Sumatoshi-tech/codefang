@@ -173,6 +173,12 @@ pub struct LanguageData {
     pub total_contribution: i64,
     /// Per-developer contribution (`dev id` → `added + removed`).
     pub contributors: BTreeMap<i64, i64>,
+    /// Dev ids in first-contribution (insertion) order. This mirrors the order
+    /// the reference implementation inserts into its per-language contributor
+    /// map (the developers slice order: commits descending), which is the
+    /// majority iteration order its runtime yields and therefore the pre-sort
+    /// order the bus-factor tie permutation must start from. Never serialized.
+    pub contributor_order: Vec<i64>,
 }
 
 /// Bus-factor / knowledge-concentration risk for a language.

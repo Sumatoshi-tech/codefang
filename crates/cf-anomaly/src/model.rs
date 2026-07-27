@@ -409,10 +409,20 @@ impl ToGoValue for ComputedMetrics {
     fn to_go_value(&self) -> GoValue {
         let mut m = GoMap::new_struct();
         // The report contract distinguishes an absent list from an empty one:
-        // an empty anomaly set marshals as `null` (no tick was flagged), while
-        // an empty time series — which is always materialized — marshals as
-        // `[]`. Pinned by the differential gate.
-        m.push("anomalies", records_array_or_null(&self.anomalies));
+        // with a non-empty time series, an empty anomaly set marshals as
+        // `null` (the main path's `var`-declared append target: no tick was
+        // flagged), while an EMPTY time series (zero-commit walk, e.g. a
+        // `--since` cutoff past every commit) takes the reference empty-input
+        // early return whose anomaly list is materialized — `[]`. Both cases
+        // oracle-measured; pinned by the differential gate.
+        m.push(
+            "anomalies",
+            if self.anomalies.is_empty() && self.time_series.is_empty() {
+                GoValue::Array(Vec::new())
+            } else {
+                records_array_or_null(&self.anomalies)
+            },
+        );
         m.push("time_series", time_series_array(&self.time_series));
         m.push("aggregate", self.aggregate.to_go_value());
         if !self.external_anomalies.is_empty() {
@@ -573,10 +583,24 @@ mod tests {
         let json = Encoder::marshal().encode_to_string(&cm.to_go_value());
         assert!(!json.contains("external_anomalies"), "got: {json}");
         assert!(!json.contains("external_summaries"), "got: {json}");
-        // With no detections `anomalies` renders as `null`, while the
-        // always-materialized `time_series` renders as `[]` (report contract).
-        assert!(json.contains(r#""anomalies":null"#), "got: {json}");
+        // An entirely empty report (zero-commit walk) takes the reference
+        // empty-input early return: BOTH lists are materialized (`[]`), never
+        // `null` (oracle-measured; the `null` case needs a non-empty
+        // time series — see `anomalies_null_with_nonempty_time_series`).
+        assert!(json.contains(r#""anomalies":[]"#), "got: {json}");
         assert!(json.contains(r#""time_series":[]"#), "got: {json}");
+    }
+
+    #[test]
+    fn anomalies_null_with_nonempty_time_series() {
+        let cm = ComputedMetrics {
+            time_series: vec![TimeSeriesEntry::default()],
+            ..ComputedMetrics::default()
+        };
+        let json = Encoder::marshal().encode_to_string(&cm.to_go_value());
+        // Main path (non-empty time series), zero detections: the reference
+        // `var`-declared append target stays nil => `null`.
+        assert!(json.contains(r#""anomalies":null"#), "got: {json}");
     }
 
     #[test]

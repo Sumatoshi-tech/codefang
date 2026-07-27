@@ -70,14 +70,8 @@ impl Counts {
     }
 }
 
-/// Walks `root_path` and returns the aggregated composition [`Counts`], or
-/// `None` when the path cannot be read.
-fn composition_counts(root_path: &str) -> Option<Counts> {
-    composition_counts_opts(root_path, &Options::default())
-}
-
-/// [`composition_counts`] with explicit path-policy options (the plot path
-/// passes the run flags; the stdout formats keep the defaults).
+/// Walks `root_path` with explicit path-policy options and returns the
+/// aggregated composition [`Counts`], or `None` when the path cannot be read.
 fn composition_counts_opts(root_path: &str, opts: &Options) -> Option<Counts> {
     let root = Path::new(root_path);
     if !root.exists() {
@@ -109,6 +103,23 @@ pub fn composition_report(root_path: &str) -> Option<Vec<u8>> {
     composition_report_flags(root_path, false)
 }
 
+/// [`composition_report_flags`] with explicit path-policy options: the
+/// reference static walk applies `pathpolicy.Exclude` with the RUN flags
+/// (`--include-vendored` / `--include-generated`), so the aggregated counts —
+/// and every encoding derived from them — must honor them too.
+#[must_use]
+pub fn composition_report_opts_flags(
+    root_path: &str,
+    opts: &Options,
+    per_file: bool,
+) -> Option<Vec<u8>> {
+    let report = composition_report_value_opts_flags(root_path, opts, per_file)?;
+    let bytes = Encoder::indented("  ")
+        .with_trailing_newline(true)
+        .encode_to_vec(&report);
+    Some(bytes)
+}
+
 /// [`composition_report`] with the `--per-file` flag applied: `per_file`
 /// enables the reference implementation's section enrichment
 /// (`StaticService.enrichWithPerFileData` → `JSONReport.EnrichWithPerFileData`
@@ -131,6 +142,14 @@ pub fn composition_report_value(root_path: &str) -> Option<GoValue> {
     composition_report_value_flags(root_path, false)
 }
 
+/// [`composition_report_value`] with explicit path-policy options (the text /
+/// compact renders consume the same aggregated report the walk produced under
+/// the run's include flags).
+#[must_use]
+pub fn composition_report_value_opts(root_path: &str, opts: &Options) -> Option<GoValue> {
+    composition_report_value_opts_flags(root_path, opts, false)
+}
+
 /// [`composition_report_value`] with the `--per-file` section enrichment.
 ///
 /// The reference per-file composition entry is DEGENERATE: the retained
@@ -141,7 +160,17 @@ pub fn composition_report_value(root_path: &str) -> Option<GoValue> {
 /// `file_path` varies. Reproduced byte-for-byte.
 #[must_use]
 pub fn composition_report_value_flags(root_path: &str, per_file: bool) -> Option<GoValue> {
-    let counts = composition_counts(root_path)?;
+    composition_report_value_opts_flags(root_path, &Options::default(), per_file)
+}
+
+/// [`composition_report_value_flags`] with explicit path-policy options.
+#[must_use]
+pub fn composition_report_value_opts_flags(
+    root_path: &str,
+    opts: &Options,
+    per_file: bool,
+) -> Option<GoValue> {
+    let counts = composition_counts_opts(root_path, opts)?;
     let file_entries: Option<Vec<GoValue>> = if per_file {
         Some(
             counts
@@ -191,7 +220,13 @@ fn build_file_entry(rel_path: &str) -> GoValue {
 /// (top-level + nested map keys byte-sorted) inside the CFB1 envelope.
 #[must_use]
 pub fn composition_bin(root_path: &str) -> Option<Vec<u8>> {
-    let counts = composition_counts(root_path)?;
+    composition_bin_opts(root_path, &Options::default())
+}
+
+/// [`composition_bin`] with explicit path-policy options.
+#[must_use]
+pub fn composition_bin_opts(root_path: &str, opts: &Options) -> Option<Vec<u8>> {
+    let counts = composition_counts_opts(root_path, opts)?;
     let report = build_raw_report(&counts);
     let bytes = cf_reportutil::encode_binary_envelope(&report)
         .expect("composition payload within CFB1 limit");
@@ -210,7 +245,13 @@ pub fn composition_bin(root_path: &str) -> Option<Vec<u8>> {
 /// via `cf-goyaml::marshal` instead of the CFB1 JSON envelope.
 #[must_use]
 pub fn composition_yaml(root_path: &str) -> Option<Vec<u8>> {
-    let counts = composition_counts(root_path)?;
+    composition_yaml_opts(root_path, &Options::default())
+}
+
+/// [`composition_yaml`] with explicit path-policy options.
+#[must_use]
+pub fn composition_yaml_opts(root_path: &str, opts: &Options) -> Option<Vec<u8>> {
+    let counts = composition_counts_opts(root_path, opts)?;
     let report = build_raw_report(&counts);
     Some(cf_goyaml::marshal(&report))
 }
@@ -249,6 +290,12 @@ fn build_raw_report(counts: &Counts) -> GoValue {
 /// directories are recursed (except `.git`), files are filtered through the
 /// path policy and classified.
 fn walk(dir: &Path, root_path: &str, classifier: &Classifier, opts: &Options, counts: &mut Counts) {
+    // Go parity: filepath.WalkDir visits a FILE root as a single entry, so
+    // `codefang run <analyzer> path/to/file.c` analyzes that one file.
+    if dir.is_file() {
+        visit_file(dir, root_path, classifier, opts, counts);
+        return;
+    }
     let Ok(read) = fs::read_dir(dir) else {
         // Permission / not-exist errors are skipped.
         return;
@@ -259,6 +306,11 @@ fn walk(dir: &Path, root_path: &str, classifier: &Classifier, opts: &Options, co
     entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
+        // SIGINT/SIGTERM: bail out of the walk promptly (durability, not
+        // output-affecting: the run exits 130 before any report is written).
+        if super::run_cancelled() {
+            return;
+        }
         let path = entry.path();
         let file_type = match entry.file_type() {
             Ok(ft) => ft,
@@ -273,21 +325,33 @@ fn walk(dir: &Path, root_path: &str, classifier: &Classifier, opts: &Options, co
             continue;
         }
 
-        // Only regular files participate. `--languages` is empty → all match.
-        let path_str = path.to_string_lossy();
-
-        // pathpolicy.Exclude(path, nil, opts): the raw-file phase passes nil
-        // content, so only path-based vendor/generated heuristics apply.
-        if exclude(&path_str, None, opts) {
-            continue;
-        }
-
-        let header = read_header(&path);
-        let category = classifier.classify(&path_str, &header);
-        counts.total_files += 1;
-        *counts.by_category.entry(category.as_str()).or_insert(0) += 1;
-        counts.files.push(make_relative_path(&path_str, root_path));
+        visit_file(&path, root_path, classifier, opts, counts);
     }
+}
+
+/// Classifies one file entry of the walk (the non-directory branch of the
+/// `filepath.WalkDir` callback): path policy filter, header read, classify.
+fn visit_file(
+    path: &Path,
+    root_path: &str,
+    classifier: &Classifier,
+    opts: &Options,
+    counts: &mut Counts,
+) {
+    // Only regular files participate. `--languages` is empty → all match.
+    let path_str = path.to_string_lossy();
+
+    // pathpolicy.Exclude(path, nil, opts): the raw-file phase passes nil
+    // content, so only path-based vendor/generated heuristics apply.
+    if exclude(&path_str, None, opts) {
+        return;
+    }
+
+    let header = read_header(path);
+    let category = classifier.classify(&path_str, &header);
+    counts.total_files += 1;
+    *counts.by_category.entry(category.as_str()).or_insert(0) += 1;
+    counts.files.push(make_relative_path(&path_str, root_path));
 }
 
 /// The reference `filepath.Rel(rootPath, filePath)` (flat repos → path under

@@ -17,9 +17,13 @@
 # divergences immediately.)
 set -u
 ROOT=/home/dmitriy/sources/codefang
-PKG=./tests/compat/fuzz/
+# The fuzz targets live in their own stdlib-only Go module (the repo root has
+# no go.mod since the Rust rewrite superseded the Go implementation), so run
+# `go test` from inside the module directory. harness.go resolves $ROOT from
+# its own file path, not the cwd.
+PKG=.
 BUDGET="${1:-20}"
-cd "$ROOT" || exit 2
+cd "$ROOT/tests/compat/fuzz" || exit 2
 
 TARGETS=(FuzzParse FuzzMap FuzzQuery FuzzSerializerJSON FuzzSerializerYAML FuzzSerializerCFB1 FuzzComputeAllMetrics)
 [ -n "${FUZZ_ONLY:-}" ] && TARGETS=("$FUZZ_ONLY")

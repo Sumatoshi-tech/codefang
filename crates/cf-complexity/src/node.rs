@@ -179,32 +179,83 @@ impl Node {
     }
 
     /// Visits this node and all descendants in pre-order.
+    ///
+    /// Iterative (explicit stack): the trees this crate walks were built by
+    /// cf-uast on a segmented stack because real sources exceed 10k nesting
+    /// levels, so naive recursion here would SIGSEGV on the 8 MiB main stack.
     pub fn visit_pre_order<F: FnMut(&Node)>(&self, f: &mut F) {
-        f(self);
-        for child in &self.children {
-            child.visit_pre_order(f);
+        let mut stack = vec![self];
+        while let Some(node) = stack.pop() {
+            f(node);
+            stack.extend(node.children.iter().rev());
         }
     }
 
     /// Collects descendants (including `self`) whose type is in `types`, in
-    /// pre-order.
+    /// pre-order. Iterative — see [`Self::visit_pre_order`].
     pub fn find_nodes_by_type<'a>(&'a self, types: &[&str], out: &mut Vec<&'a Node>) {
-        if self.has_any_type(types) {
-            out.push(self);
+        let mut stack = vec![self];
+        while let Some(node) = stack.pop() {
+            if node.has_any_type(types) {
+                out.push(node);
+            }
+            stack.extend(node.children.iter().rev());
         }
-        for child in &self.children {
-            child.find_nodes_by_type(types, out);
+    }
+
+    /// Depth-capped [`find_nodes_by_type`](Self::find_nodes_by_type): matches
+    /// only nodes at depth `<= remaining` below `self` (`self` at depth 0).
+    ///
+    /// This mirrors the reference shared traverser's `maxDepth` behaviour: the
+    /// walk's MATCHING is filtered by depth (deeper nodes are simply never
+    /// matched), so pruning the descent at the cap is output-equivalent.
+    pub fn find_nodes_by_type_capped<'a>(
+        &'a self,
+        types: &[&str],
+        remaining: usize,
+        out: &mut Vec<&'a Node>,
+    ) {
+        let mut stack = vec![(self, remaining)];
+        while let Some((node, rem)) = stack.pop() {
+            if node.has_any_type(types) {
+                out.push(node);
+            }
+            if rem == 0 {
+                continue;
+            }
+            stack.extend(node.children.iter().rev().map(|c| (c, rem - 1)));
         }
     }
 
     /// Collects descendants (including `self`) having any of `roles`, in
     /// pre-order.
     pub fn find_nodes_by_roles<'a>(&'a self, roles: &[&str], out: &mut Vec<&'a Node>) {
-        if self.has_any_role(roles) {
-            out.push(self);
+        let mut stack = vec![self];
+        while let Some(node) = stack.pop() {
+            if node.has_any_role(roles) {
+                out.push(node);
+            }
+            stack.extend(node.children.iter().rev());
         }
-        for child in &self.children {
-            child.find_nodes_by_roles(roles, out);
+    }
+
+    /// Depth-capped [`find_nodes_by_roles`](Self::find_nodes_by_roles): matches
+    /// only nodes at depth `<= remaining` below `self` (`self` at depth 0).
+    pub fn find_nodes_by_roles_capped<'a>(
+        &'a self,
+        roles: &[&str],
+        remaining: usize,
+        out: &mut Vec<&'a Node>,
+    ) {
+        let mut stack = vec![(self, remaining)];
+        while let Some((node, rem)) = stack.pop() {
+            if node.has_any_role(roles) {
+                out.push(node);
+            }
+            if rem == 0 {
+                continue;
+            }
+            stack.extend(node.children.iter().rev().map(|c| (c, rem - 1)));
         }
     }
 }

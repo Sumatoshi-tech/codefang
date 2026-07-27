@@ -1,8 +1,8 @@
 {
   "matrix_cell": {
-    "tier": "smoke",
-    "total_cells": 155,
-    "exercised_cells": 155,
+    "tier": "full",
+    "total_cells": 505,
+    "exercised_cells": 505,
     "untested_cells": 0,
     "percent": 100.0,
     "per_family": {
@@ -22,23 +22,33 @@
         "percent": 100.0
       },
       "static_analyzer": {
+        "total": 147,
+        "exercised": 147,
+        "percent": 100.0
+      },
+      "analyzer_set": {
         "total": 21,
         "exercised": 21,
         "percent": 100.0
       },
-      "analyzer_set": {
-        "total": 7,
-        "exercised": 7,
-        "percent": 100.0
-      },
       "history_analyzer": {
-        "total": 30,
-        "exercised": 30,
+        "total": 210,
+        "exercised": 210,
         "percent": 100.0
       },
       "format_combo": {
-        "total": 1,
-        "exercised": 1,
+        "total": 3,
+        "exercised": 3,
+        "percent": 100.0
+      },
+      "plot": {
+        "total": 19,
+        "exercised": 19,
+        "percent": 100.0
+      },
+      "flag": {
+        "total": 9,
+        "exercised": 9,
         "percent": 100.0
       }
     },
@@ -47,93 +57,132 @@
   },
   "per_language_parse": {
     "languages_total": 12,
-    "probed": false,
+    "probed": true,
     "table": [
       {
         "language": "go",
         "ext": "go",
         "oracle_uast_bytes": 1256674,
+        "go_parse_bytes": 1256674,
+        "rust_parse_bytes": 1256674,
         "go_parses": true,
-        "status": "static(manifest-only;use --probe-parse for live)"
+        "rust_parses": true,
+        "status": "both-parse"
       },
       {
         "language": "python",
         "ext": "py",
         "oracle_uast_bytes": 700431,
+        "go_parse_bytes": 700431,
+        "rust_parse_bytes": 700431,
         "go_parses": true,
-        "status": "static(manifest-only;use --probe-parse for live)"
+        "rust_parses": true,
+        "status": "both-parse"
       },
       {
         "language": "c",
         "ext": "c",
         "oracle_uast_bytes": 142327,
+        "go_parse_bytes": 142327,
+        "rust_parse_bytes": 142327,
         "go_parses": true,
-        "status": "static(manifest-only;use --probe-parse for live)"
+        "rust_parses": true,
+        "status": "both-parse"
       },
       {
         "language": "c-header",
         "ext": "h",
         "oracle_uast_bytes": 19243,
+        "go_parse_bytes": 19243,
+        "rust_parse_bytes": 19243,
         "go_parses": true,
-        "status": "static(manifest-only;use --probe-parse for live)"
+        "rust_parses": true,
+        "status": "both-parse"
       },
       {
         "language": "rust",
         "ext": "rs",
         "oracle_uast_bytes": 125877,
+        "go_parse_bytes": 125877,
+        "rust_parse_bytes": 125877,
         "go_parses": true,
-        "status": "static(manifest-only;use --probe-parse for live)"
+        "rust_parses": true,
+        "status": "both-parse"
       },
       {
         "language": "typescript",
         "ext": "ts",
         "oracle_uast_bytes": 2555406,
+        "go_parse_bytes": 2555406,
+        "rust_parse_bytes": 2555406,
         "go_parses": true,
-        "status": "static(manifest-only;use --probe-parse for live)"
+        "rust_parses": true,
+        "status": "both-parse"
       },
       {
         "language": "tsx",
         "ext": "tsx",
         "oracle_uast_bytes": 244099,
+        "go_parse_bytes": 244099,
+        "rust_parse_bytes": 244099,
         "go_parses": true,
-        "status": "static(manifest-only;use --probe-parse for live)"
+        "rust_parses": true,
+        "status": "both-parse"
       },
       {
         "language": "javascript",
         "ext": "js",
         "oracle_uast_bytes": 54802,
+        "go_parse_bytes": 54802,
+        "rust_parse_bytes": 54802,
         "go_parses": true,
-        "status": "static(manifest-only;use --probe-parse for live)"
+        "rust_parses": true,
+        "status": "both-parse"
       },
       {
         "language": "json",
         "ext": "json",
         "oracle_uast_bytes": 308147,
+        "go_parse_bytes": 308147,
+        "rust_parse_bytes": 308147,
         "go_parses": true,
-        "status": "static(manifest-only;use --probe-parse for live)"
+        "rust_parses": true,
+        "status": "both-parse"
       },
       {
         "language": "yaml",
         "ext": "yml",
         "oracle_uast_bytes": 150552,
+        "go_parse_bytes": 150552,
+        "rust_parse_bytes": 150552,
         "go_parses": true,
-        "status": "static(manifest-only;use --probe-parse for live)"
+        "rust_parses": true,
+        "status": "both-parse"
       },
       {
         "language": "cpp",
         "ext": "cpp",
         "oracle_uast_bytes": 3895930,
+        "go_parse_bytes": 3895930,
+        "rust_parse_bytes": 3895930,
         "go_parses": true,
-        "status": "static(manifest-only;use --probe-parse for live)"
+        "rust_parses": true,
+        "status": "both-parse"
       },
       {
         "language": "shell",
         "ext": "sh",
         "oracle_uast_bytes": 148968,
+        "go_parse_bytes": 148968,
+        "rust_parse_bytes": 148968,
         "go_parses": true,
-        "status": "static(manifest-only;use --probe-parse for live)"
+        "rust_parses": true,
+        "status": "both-parse"
       }
-    ]
+    ],
+    "rust_parse_ok": 12,
+    "percent": 100.0,
+    "gaps": []
   },
   "note": "Coverage measures REACH only; correctness is the oracle's verdict. Untested cells are listed, not hidden."
 }

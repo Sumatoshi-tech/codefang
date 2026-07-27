@@ -92,6 +92,40 @@ pub static CLOJURE: LanguageMapping = uast_language! {
             roles: [Module],
             children: ["anon_fn_lit", "auto_res_mark", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "meta_lit", "nil_lit", "ns_map_lit", "num_lit", "old_meta_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"],
         },
+        // Lisp-style definitions are `list_lit` nodes headed by a defining
+        // symbol; without these conditioned rules `(defn f [x] ...)` lowered
+        // as a bare Call and the analyzers saw zero functions. Conditioned
+        // rules first; the unconditional `list_lit` below is the catch-all.
+        list_defn ("(list_lit)") => {
+            type: Function,
+            roles: [Function, Declaration],
+            when: ["value == \"defn\""],
+        },
+        list_defn_private ("(list_lit)") => {
+            type: Function,
+            roles: [Function, Declaration],
+            when: ["value == \"defn-\""],
+        },
+        list_defmacro ("(list_lit)") => {
+            type: Function,
+            roles: [Function, Declaration],
+            when: ["value == \"defmacro\""],
+        },
+        list_deftest ("(list_lit)") => {
+            type: Function,
+            roles: [Function, Declaration],
+            when: ["value == \"deftest\""],
+        },
+        list_defmethod ("(list_lit)") => {
+            type: Function,
+            roles: [Function, Declaration],
+            when: ["value == \"defmethod\""],
+        },
+        list_fn ("(list_lit)") => {
+            type: Lambda,
+            roles: [Lambda],
+            when: ["value == \"fn\""],
+        },
         list_lit => {
             type: Call,
             roles: [Call],

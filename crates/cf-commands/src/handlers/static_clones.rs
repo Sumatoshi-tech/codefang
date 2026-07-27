@@ -167,6 +167,12 @@ fn aggregate_report_opts(root_path: &str, opts: &Options) -> Option<Report> {
 /// support + path policy, parsed, run through the clones visitor, and folded
 /// into `agg`.
 fn walk(dir: &Path, root_path: &str, parser: &Parser, opts: &Options, agg: &mut Aggregator) {
+    // Go parity: filepath.WalkDir visits a FILE root as a single entry, so
+    // `codefang run <analyzer> path/to/file.c` analyzes that one file.
+    if dir.is_file() {
+        visit_file(dir, root_path, parser, opts, agg);
+        return;
+    }
     let Ok(read) = fs::read_dir(dir) else {
         return;
     };
@@ -175,6 +181,11 @@ fn walk(dir: &Path, root_path: &str, parser: &Parser, opts: &Options, agg: &mut 
     entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
+        // SIGINT/SIGTERM: bail out of the walk promptly (durability, not
+        // output-affecting: the run exits 130 before any report is written).
+        if super::run_cancelled() {
+            return;
+        }
         let path = entry.path();
         let Ok(file_type) = entry.file_type() else {
             continue;
@@ -188,34 +199,42 @@ fn walk(dir: &Path, root_path: &str, parser: &Parser, opts: &Options, agg: &mut 
             continue;
         }
 
-        let path_str = path.to_string_lossy();
-
-        // ShouldSkipFolderNode: must be UAST-supported.
-        if !parser.is_supported(&path_str) {
-            continue;
-        }
-        // matchesLanguageGlobs (empty -> all match), then pathpolicy.Exclude.
-        if exclude(&path_str, None, opts) {
-            continue;
-        }
-
-        let Ok(content) = fs::read(&path) else {
-            continue;
-        };
-        let Ok(uast_root) = parser.parse(&path_str, &content) else {
-            continue;
-        };
-
-        // Single-pass clones visitor: count functions + export signatures.
-        let mut visitor = Visitor::new();
-        uast_root.visit_pre_order(&mut |n: &UastNode| visitor.on_enter(n));
-
-        // _source_file stamp = path relative to the analyzed root, then fold the
-        // stamped per-file signature report into the aggregate.
-        let source = make_relative_path(&path_str, root_path);
-        let report = visitor.get_report_with_source(&source);
-        agg.aggregate(&[(cf_clones::ANALYZER_NAME.to_string(), report)]);
+        visit_file(&path, root_path, parser, opts, agg);
     }
+}
+
+/// Analyzes one file entry of the walk (the non-directory branch of the
+/// `filepath.WalkDir` callback): parser support + path policy filters, parse,
+/// clones visitor, and fold into the aggregate.
+fn visit_file(path: &Path, root_path: &str, parser: &Parser, opts: &Options, agg: &mut Aggregator) {
+    let path_str = path.to_string_lossy();
+
+    // ShouldSkipFolderNode: must be UAST-supported.
+    if !parser.is_supported(&path_str) {
+        return;
+    }
+    // matchesLanguageGlobs (empty -> all match), then pathpolicy.Exclude.
+    if exclude(&path_str, None, opts) {
+        return;
+    }
+
+    let Some(content) = super::read_source_capped(path) else {
+        return;
+    };
+    let Ok(uast_root) = parser.parse(&path_str, &content) else {
+        super::note_skipped_file();
+        return;
+    };
+
+    // Single-pass clones visitor: count functions + export signatures.
+    let mut visitor = Visitor::new();
+    uast_root.visit_pre_order(&mut |n: &UastNode| visitor.on_enter(n));
+
+    // _source_file stamp = path relative to the analyzed root, then fold the
+    // stamped per-file signature report into the aggregate.
+    let source = make_relative_path(&path_str, root_path);
+    let report = visitor.get_report_with_source(&source);
+    agg.aggregate(&[(cf_clones::ANALYZER_NAME.to_string(), report)]);
 }
 
 /// The reference `MakeRelativePath`: `filepath.Rel(rootPath, filePath)`.
@@ -226,6 +245,8 @@ fn make_relative_path(file_path: &str, root_path: &str) -> String {
     let root = Path::new(root_path);
     let file = Path::new(file_path);
     match file.strip_prefix(root) {
+        // filepath.Rel(root, root) == "." (a FILE root stamps ".").
+        Ok(rel) if rel.as_os_str().is_empty() => ".".to_string(),
         Ok(rel) => rel.to_string_lossy().into_owned(),
         Err(_) => file_path.to_string(),
     }

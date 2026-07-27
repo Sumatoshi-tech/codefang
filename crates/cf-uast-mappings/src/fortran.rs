@@ -11,9 +11,14 @@ pub static FORTRAN: LanguageMapping = uast_language! {
         translation_unit => {
             type: File,
         },
+        // A `program ... end program` unit is Fortran's `main()`: an
+        // executable body with its own control flow and complexity. Mapped as
+        // File it was invisible to function detection, leaving the many
+        // program-only example/driver files at zero functions.
         program => {
-            type: File,
+            type: Function,
             token: self,
+            roles: [Function, Declaration],
         },
         program_statement => {
             type: Module,

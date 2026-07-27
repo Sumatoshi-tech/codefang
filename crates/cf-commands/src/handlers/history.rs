@@ -460,7 +460,12 @@ pub(crate) fn anomaly_walk(sub: &clap::ArgMatches) -> Option<AnomalyWalk> {
     let hashes = if sub.get_flag("head") {
         vec![repo.head().ok()?]
     } else {
-        crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?
+        crate::handlers::load_history_commit_hashes(
+            &repo,
+            limit,
+            first_parent,
+            crate::handlers::history_since_spec(sub),
+        )?
     };
 
     let policy = PathPolicyOptions::default();
@@ -490,7 +495,12 @@ pub(crate) fn anomaly_walk(sub: &clap::ArgMatches) -> Option<AnomalyWalk> {
     let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
         let commit = repo.lookup_commit(hash).ok()?;
         let num_parents = commit.num_parents();
-        let is_merge = num_parents > 1;
+        // The reference `Commit.NumParents()` is reported as 1 for a merge under
+        // --first-parent (implied when the selection includes history/burndown):
+        // the simplified walk visits a merge as an ordinary single-parent commit,
+        // so its first-parent diff line stats ARE accumulated. Only a merge seen
+        // by the full walk skips accumulateLineStats.
+        let is_merge = num_parents > 1 && !first_parent;
 
         // Tree diff against the first parent (root → full initial tree), then the
         // shared vendor/generated filter (TreeDiffAnalyzer.filterChanges).
@@ -853,6 +863,11 @@ pub fn quality_metrics(sub: &clap::ArgMatches) -> Option<cf_quality::ComputedMet
 /// stamps).
 #[derive(Clone)]
 pub(crate) struct QualityCommit {
+    /// The commit's position in the ORIGINAL walk window (0-based, counting
+    /// oversized-dropped commits too): the reference runner assigns consume
+    /// positions before the oversized drop suppresses a commit's record, and
+    /// the forked-leaf NDJSON drain order is keyed on this position.
+    pub pos: usize,
     /// Full hex hash.
     pub hash: String,
     /// This commit's per-file quality samples (reference: per-commit `TickQuality`).
@@ -894,7 +909,12 @@ pub(crate) fn quality_walk(sub: &clap::ArgMatches) -> Option<Vec<QualityCommit>>
     let hashes = if sub.get_flag("head") {
         vec![repo.head().ok()?]
     } else {
-        crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?
+        crate::handlers::load_history_commit_hashes(
+            &repo,
+            limit,
+            first_parent,
+            crate::handlers::history_since_spec(sub),
+        )?
     };
 
     let opts = PathPolicyOptions::default();
@@ -903,11 +923,17 @@ pub(crate) fn quality_walk(sub: &clap::ArgMatches) -> Option<Vec<QualityCommit>>
     let mut tick0: Option<i64> = None;
     let mut previous_tick: i64 = 0;
 
+    // Oversized-commit gate: commits whose RAW tree diff exceeds the cap are
+    // silently dropped from history BEFORE any analyzer (reference framework
+    // behaviour; flag `--max-changes-per-commit`, 0 = default 10000).
+    let max_changes = crate::handlers::history::max_changes_per_commit_cap(sub);
+
     // ---- parallel pure-compute stage -----------------------------------------
     // The expensive per-commit work — tree diff + per-file UAST parse + the four
     // component analyzers — is a PURE function of (repo, commit), so run it across
     // all cores. The result is a per-commit `TickQuality` carrying that commit's
-    // per-file samples (empty for a spilled/zero-file commit). The order-dependent
+    // per-file samples (empty for a spilled/zero-file commit) plus the RAW
+    // tree-diff change count for the oversized-commit gate. The order-dependent
     // reduce below (monotonic tick assignment, per-tick committer-time bounds,
     // merge of each commit's samples into its tick) runs UNCHANGED and
     // sequentially over these results. The per-commit body is the SAME
@@ -920,14 +946,28 @@ pub(crate) fn quality_walk(sub: &clap::ArgMatches) -> Option<Vec<QualityCommit>>
         crate::handlers::history::with_uast_parser(|parser| {
             let commit = repo.lookup_commit(hash).ok()?;
             let changes = commit_tree_changes(repo, &commit)?;
+            let raw_change_count = changes.len();
+            // Oversized commits are dropped before any analyzer — no per-file work.
+            if raw_change_count > max_changes {
+                return Some((raw_change_count, cf_quality::TickQuality::default()));
+            }
             let mut cache = super::uast_walk::CommitParseCache::new(repo, parser, opts_ref);
-            Some(quality_commit_product(&changes, &mut cache))
+            Some((
+                raw_change_count,
+                quality_commit_product(&changes, &mut cache),
+            ))
         })
     })?;
 
     // ---- sequential ordered identity/tick stamping ----------------------------
     let mut commits = Vec::with_capacity(hashes.len());
     for (i, hash) in hashes.iter().enumerate() {
+        // Oversized-commit skip: dropped from history before identity/tick
+        // stamping (the reference framework never shows the commit to any
+        // analyzer, core or leaf).
+        if prepared[i].0 > max_changes {
+            continue;
+        }
         let commit = repo.lookup_commit(*hash).ok()?;
         let committer_when = commit.committer().when;
         let when = committer_when.seconds();
@@ -946,8 +986,9 @@ pub(crate) fn quality_walk(sub: &clap::ArgMatches) -> Option<Vec<QualityCommit>>
         previous_tick = tick;
 
         commits.push(QualityCommit {
+            pos: i,
             hash: hash.to_string(),
-            tq: prepared[i].clone(),
+            tq: prepared[i].1.clone(),
             tick,
             author_id,
             when,
@@ -1059,9 +1100,12 @@ pub fn quality_ndjson_records(
     let walk = quality_walk(sub)?;
     Some(
         walk.iter()
-            .enumerate()
-            .map(|(pos, c)| super::history_formats::NdjsonRecord {
-                pos,
+            .map(|c| super::history_formats::NdjsonRecord {
+                // The consume position counts oversized-dropped commits too
+                // (the reference runner numbers positions before the drop
+                // suppresses a record), so the forked-leaf drain order keys on
+                // the ORIGINAL walk position, not the surviving index.
+                pos: c.pos,
                 hash: c.hash.clone(),
                 tick: c.tick,
                 author_id: c.author_id,
@@ -1100,6 +1144,35 @@ pub fn quality_timeseries_contribution(
         per_commit,
         commit_meta,
     })
+}
+
+/// Builds the `run --analyzers history/quality --format timeseries --ndjson`
+/// bytes: one compact JSON line per walked commit (the reference per-chunk
+/// `TimeSeriesChunkFlusher` over `DrainCommitStats`), each line the merged
+/// commit object `{author, hash, quality:{...}, tick, timestamp}` with the
+/// per-commit summary map (`drainQualityCommitData` keys) under `"quality"`.
+/// Same memoized walk as every other quality format.
+pub fn quality_timeseries_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    use cf_gojson::{GoMap, GoValue, MapOrigin};
+
+    let contrib = quality_timeseries_contribution(sub)?;
+    let mut out = Vec::new();
+    for (hash, tick, ts, author) in &contrib.commit_meta {
+        // assembleCommits filters the ordered meta to hashes the analyzer
+        // contributed data for (nil-Data TCs order but never emit).
+        let Some((_, v)) = contrib.per_commit.iter().find(|(h, _)| h == hash) else {
+            continue;
+        };
+        let mut m = GoMap::new(MapOrigin::Map);
+        m.push("hash", GoValue::Str(hash.clone()));
+        m.push("timestamp", GoValue::Str(ts.clone()));
+        m.push("author", GoValue::Str(author.clone()));
+        m.push("tick", GoValue::Int(*tick));
+        m.push("quality", v.clone());
+        out.extend_from_slice(&cf_gojson::marshal(&GoValue::Map(m)));
+        out.push(b'\n');
+    }
+    Some(out)
 }
 
 /// Appends every per-file sample in `src` onto `dst`, preserving order. Used by
@@ -1144,9 +1217,18 @@ fn push_empty_quality_sample(tq: &mut cf_quality::TickQuality) {
 /// Each component appends exactly one value per file (the reference implementation appends unconditionally
 /// on success; the per-file `Analyze` calls here do not error for a parsed root).
 fn accumulate_quality_file(root: &cf_uast::Node, tq: &mut cf_quality::TickQuality) {
+    // The history quality analyzer instantiates its component analyzers with
+    // the shared traverser's `maxDepth = 10` (the static surfaces run
+    // uncapped): only function/comment nodes at depth <= 10 below the file
+    // root are DISCOVERED; per-function analysis over each found subtree is
+    // unchanged. Halstead is unaffected (measured equal against the live
+    // reference binary on depth-pathological trees).
+    const QUALITY_FIND_MAX_DEPTH: usize = 10;
+
     // --- complexity (cf_complexity::Analyzer::analyze over its node model) ---
     let cx_root = uast_to_cx_node(root);
-    let cx = cf_complexity::Analyzer.analyze(Some(&cx_root));
+    let cx = cf_complexity::Analyzer
+        .analyze_with_find_depth(Some(&cx_root), Some(QUALITY_FIND_MAX_DEPTH));
     tq.complexities
         .push(govalue_int(&cx, "total_complexity") as f64);
     tq.cognitives
@@ -1161,7 +1243,9 @@ fn accumulate_quality_file(root: &cf_uast::Node, tq: &mut cf_quality::TickQualit
     tq.delivered_bugs.push(h.delivered_bugs);
 
     // --- comments (cf_comments::Analyzer::analyze) ---
-    match cf_comments::Analyzer::new().analyze(Some(root)) {
+    match cf_comments::Analyzer::new()
+        .analyze_with_find_depth(Some(root), Some(QUALITY_FIND_MAX_DEPTH))
+    {
         Ok(c) => {
             tq.comment_scores.push(govalue_float(&c, "overall_score"));
             tq.doc_coverages
@@ -1174,7 +1258,9 @@ fn accumulate_quality_file(root: &cf_uast::Node, tq: &mut cf_quality::TickQualit
     }
 
     // --- cohesion (cf_cohesion::Analyzer::analyze, the findFunctions path) ---
-    if let Ok(r) = cf_cohesion::Analyzer::new().analyze(root) {
+    if let Ok(r) =
+        cf_cohesion::Analyzer::new().analyze_with_find_depth(root, Some(QUALITY_FIND_MAX_DEPTH))
+    {
         tq.cohesion_scores.push(
             r.get("cohesion_score")
                 .and_then(cf_cohesion::report_value::ReportValue::as_float)
@@ -1368,7 +1454,12 @@ pub(crate) fn sentiment_walk(sub: &clap::ArgMatches) -> Option<Vec<SentimentComm
     let hashes = if sub.get_flag("head") {
         vec![repo.head().ok()?]
     } else {
-        crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?
+        crate::handlers::load_history_commit_hashes(
+            &repo,
+            limit,
+            first_parent,
+            crate::handlers::history_since_spec(sub),
+        )?
     };
 
     let opts = PathPolicyOptions::default();
@@ -1570,6 +1661,39 @@ pub fn sentiment_timeseries_contribution(
         per_commit,
         commit_meta,
     })
+}
+
+/// Builds the `history/sentiment --format timeseries --ndjson` bytes: one
+/// compact JSON line per walked commit (the reference per-chunk
+/// `TimeSeriesChunkFlusher.Flush` → `DrainCommitStats` → `WriteTimeSeriesNDJSON`).
+/// The drained data/meta are exactly the merged-timeseries contribution's
+/// `per_commit`/`commit_meta` (walk order; sentiment contributes an entry for
+/// EVERY consumed commit, so no meta row is filtered out), and each line is the
+/// reference `MergedCommitData.MarshalJSON` flat `map[string]any` — keys sorted
+/// by `encoding/json`: `author`, `hash`, `sentiment`, `tick`, `timestamp` —
+/// with the per-commit `{"comment_count", "sentiment"?}` map under
+/// `"sentiment"`. Same memoized walk as every other sentiment format.
+pub fn sentiment_timeseries_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    use cf_gojson::{GoMap, GoValue, MapOrigin};
+
+    let contrib = sentiment_timeseries_contribution(sub)?;
+    let mut out = Vec::new();
+    for (hash, tick, ts, author) in &contrib.commit_meta {
+        // assembleCommits filters the ordered meta to hashes the analyzer
+        // contributed data for (nil-Data TCs order but never emit).
+        let Some((_, v)) = contrib.per_commit.iter().find(|(h, _)| h == hash) else {
+            continue;
+        };
+        let mut m = GoMap::new(MapOrigin::Map);
+        m.push("hash", GoValue::Str(hash.clone()));
+        m.push("timestamp", GoValue::Str(ts.clone()));
+        m.push("author", GoValue::Str(author.clone()));
+        m.push("tick", GoValue::Int(*tick));
+        m.push("sentiment", v.clone());
+        out.extend_from_slice(&cf_gojson::marshal(&GoValue::Map(m)));
+        out.push(b'\n');
+    }
+    Some(out)
 }
 
 /// Recursively collects UAST nodes whose type is `Comment` into `out`, mirroring
@@ -1802,7 +1926,12 @@ pub(crate) fn imports_walk(sub: &clap::ArgMatches) -> Option<Vec<ImportsCommit>>
     let hashes = if sub.get_flag("head") {
         vec![repo.head().ok()?]
     } else {
-        crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?
+        crate::handlers::load_history_commit_hashes(
+            &repo,
+            limit,
+            first_parent,
+            crate::handlers::history_since_spec(sub),
+        )?
     };
 
     let opts = PathPolicyOptions::default();
@@ -2006,6 +2135,39 @@ pub fn imports_timeseries_contribution(
     })
 }
 
+/// Builds the `history/imports --format timeseries --ndjson` bytes: one compact
+/// JSON line per entry-bearing commit (the reference per-chunk
+/// `TimeSeriesChunkFlusher.Flush` → `DrainCommitStats` → `WriteTimeSeriesNDJSON`).
+/// The drained data/meta are exactly the merged-timeseries contribution's
+/// `per_commit`/`commit_meta` (walk order, same commits as the merged document's
+/// `commits` array), and each line is the reference `MergedCommitData.MarshalJSON`
+/// flat `map[string]any` — keys sorted by `encoding/json`: `author`, `hash`,
+/// `imports-per-dev`, `tick`, `timestamp`. Same single-budget-chunk model as the
+/// merged-timeseries path (a chunk boundary in the reference implementation
+/// would flush earlier commits ahead of later ones regardless of tick).
+pub fn imports_timeseries_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    use cf_gojson::{GoMap, GoValue, MapOrigin};
+
+    let contrib = imports_timeseries_contribution(sub)?;
+    let mut out = Vec::new();
+    for (hash, tick, ts, author) in &contrib.commit_meta {
+        // assembleCommits filters the ordered meta to hashes the analyzer
+        // contributed data for (nil-Data TCs order but never emit).
+        let Some((_, v)) = contrib.per_commit.iter().find(|(h, _)| h == hash) else {
+            continue;
+        };
+        let mut m = GoMap::new(MapOrigin::Map);
+        m.push("hash", GoValue::Str(hash.clone()));
+        m.push("timestamp", GoValue::Str(ts.clone()));
+        m.push("author", GoValue::Str(author.clone()));
+        m.push("tick", GoValue::Int(*tick));
+        m.push("imports-per-dev", v.clone());
+        out.extend_from_slice(&cf_gojson::marshal(&GoValue::Map(m)));
+        out.push(b'\n');
+    }
+    Some(out)
+}
+
 /// Converts the 4-level [`ImportsMap`] into a nested [`cf_imports::ReportValue`]
 /// map, mirroring how the reference implementation stores `map[int]map[string]map[string]map[int]int64`
 /// under `report["imports"]`. Integer keys are rendered as decimal strings (the
@@ -2180,7 +2342,12 @@ pub(crate) fn file_history_run(sub: &clap::ArgMatches) -> Option<FileHistoryRun>
     let revwalk_hashes = if head_only {
         vec![repo.head().ok()?]
     } else {
-        crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?
+        crate::handlers::load_history_commit_hashes(
+            &repo,
+            limit,
+            first_parent,
+            crate::handlers::history_since_spec(sub),
+        )?
     };
 
     // Tick per commit is assigned by the TicksSinceStart CORE analyzer as the
@@ -2763,6 +2930,40 @@ pub fn file_history_timeseries_contribution(
     })
 }
 
+/// Builds the `history/file-history --format timeseries --ndjson` bytes: one
+/// compact JSON line per data-bearing commit (the reference per-chunk
+/// `TimeSeriesChunkFlusher.Flush` → `DrainCommitStats` → `WriteTimeSeriesNDJSON`).
+/// The drained data/meta are exactly the merged-timeseries contribution's
+/// `per_commit`/`commit_meta` (tick-sorted, forked `(pos % W, pos)` drain order
+/// within a tick), and each line is the reference `MergedCommitData.MarshalJSON`
+/// flat `map[string]any` — keys sorted by `encoding/json`: `author`,
+/// `file-history`, `hash`, `tick`, `timestamp`. NOTE: assumes the run fits in a
+/// single budget chunk (same model as the merged-timeseries path; a chunk
+/// boundary in the reference implementation would flush earlier commits ahead
+/// of later ones regardless of tick).
+pub fn file_history_timeseries_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    use cf_gojson::{GoMap, GoValue, MapOrigin};
+
+    let contrib = file_history_timeseries_contribution(sub)?;
+    let mut out = Vec::new();
+    for (hash, tick, ts, author) in &contrib.commit_meta {
+        // assembleCommits filters the ordered meta to hashes an analyzer
+        // contributed data for (nil-Data TCs order but never emit).
+        let Some((_, v)) = contrib.per_commit.iter().find(|(h, _)| h == hash) else {
+            continue;
+        };
+        let mut m = GoMap::new(MapOrigin::Map);
+        m.push("hash", GoValue::Str(hash.clone()));
+        m.push("timestamp", GoValue::Str(ts.clone()));
+        m.push("author", GoValue::Str(author.clone()));
+        m.push("tick", GoValue::Int(*tick));
+        m.push("file-history", v.clone());
+        out.extend_from_slice(&cf_gojson::marshal(&GoValue::Map(m)));
+        out.push(b'\n');
+    }
+    Some(out)
+}
+
 /// Maps a [`cf_composition::category::Category`] to the file-history
 /// [`cf_file_history::Category`] of the same name (both port the identical the reference implementation
 /// `Category` enum).
@@ -3089,7 +3290,12 @@ pub(crate) fn typos_walk(sub: &clap::ArgMatches) -> Option<Vec<TyposCommit>> {
     let hashes = if sub.get_flag("head") {
         vec![repo.head().ok()?]
     } else {
-        crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?
+        crate::handlers::load_history_commit_hashes(
+            &repo,
+            limit,
+            first_parent,
+            crate::handlers::history_since_spec(sub),
+        )?
     };
 
     let parser = cf_uast::Parser::new();
@@ -3140,6 +3346,25 @@ pub(crate) fn typos_walk(sub: &clap::ArgMatches) -> Option<Vec<TyposCommit>> {
     }
 
     Some(commits)
+}
+
+/// The effective `--max-changes-per-commit` cap: 0/unset ⇒ default 10000
+/// (reference: `maxChangesPerCommit`). Commits whose RAW tree diff exceeds
+/// the cap are silently dropped from history BEFORE any analyzer runs — no
+/// identity consumption, no tick assignment, no per-commit record.
+pub(crate) fn max_changes_per_commit_cap(sub: &clap::ArgMatches) -> usize {
+    const DEFAULT_MAX_CHANGES_PER_COMMIT: usize = 10_000;
+    let v = sub
+        .try_get_one::<i64>("max-changes-per-commit")
+        .ok()
+        .flatten()
+        .copied()
+        .unwrap_or(0);
+    if v <= 0 {
+        DEFAULT_MAX_CHANGES_PER_COMMIT
+    } else {
+        v as usize
+    }
 }
 
 /// The effective `--typos-max-distance`: 0/unset ⇒ default 4 (reference:
@@ -3709,7 +3934,12 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
     let hashes = if sub.get_flag("head") {
         vec![repo.head().ok()?]
     } else {
-        crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?
+        crate::handlers::load_history_commit_hashes(
+            &repo,
+            limit,
+            first_parent,
+            crate::handlers::history_since_spec(sub),
+        )?
     };
 
     let policy = PathPolicyOptions::default();
@@ -4121,8 +4351,14 @@ pub fn devs_ndjson_records(
 
     let walk = devs_walk(sub)?;
     let mut records = Vec::new();
+    // Walk position across ALL commits (including nil-Data ones): the merge
+    // with the other sequential leaf (burndown) in `history_ndjson` keys on
+    // the commit's consume position, so a skipped commit must still advance it.
+    let mut walk_pos = 0usize;
     for hashes in walk.commits_by_tick.values() {
         for hex in hashes {
+            let pos = walk_pos;
+            walk_pos += 1;
             let Some(cdd) = walk.commit_dev_data.get(hex) else {
                 continue; // nil-Data TC (empty diff / seen merge): no line.
             };
@@ -4144,10 +4380,10 @@ pub fn devs_ndjson_records(
                 data.insert("languages".to_string(), GoValue::Object(langs));
             }
             let (secs, off) = walk.when_by_hash.get(hex).copied().unwrap_or((0, 0));
-            // devs is `Sequential: true` — emission is plain walk order, so the
-            // position is informational only.
+            // devs is `Sequential: true` — emission is plain walk order; the
+            // position is the commit's consume index in the walk.
             records.push(super::history_formats::NdjsonRecord {
-                pos: records.len(),
+                pos,
                 hash: hex.clone(),
                 tick: walk.tick_by_hash.get(hex).copied().unwrap_or(0),
                 author_id: cdd.author_id,

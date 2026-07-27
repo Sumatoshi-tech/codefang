@@ -1,0 +1,14 @@
+{
+  "first_diff": "first diff @357: go=\"    \\\"value\\\": \\\"4.5\\\"\\n        },\\n  \" rust=\"    \\\"value\\\": \\\"4.0\\\"\\n        },\\n  \"",
+  "go_runs_sha256": [
+    "3b3938b9a77d157bd7892fc0cce909efbb71731fb7ccc552da9642208575c70a",
+    "3b3938b9a77d157bd7892fc0cce909efbb71731fb7ccc552da9642208575c70a",
+    "3b3938b9a77d157bd7892fc0cce909efbb71731fb7ccc552da9642208575c70a"
+  ],
+  "input_sha256": "b345ea0e6cfd0f76ff09e8103dca0e76ee9b09403679062286acc137846ef282",
+  "json_mode": true,
+  "reason": "canonical divergence (go=1557B rust=1557B, variant-fields=0)",
+  "rust_out_sha256": "ba51ed2ea2468cff906e0b63e09a5c762fd361a9c7b0d89449a33037ae0b19a9",
+  "stage": "gojson",
+  "variant_fields": []
+}

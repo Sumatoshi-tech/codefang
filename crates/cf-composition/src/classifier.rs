@@ -179,37 +179,14 @@ mod enry {
 
     /// Path matches a vendoring convention.
     ///
-    /// enry tests the path against its compiled vendor regex table. The
-    /// high-frequency conventions are reproduced here; the full regex list is a
-    /// vendoring follow-up that should reuse `cf-pathfilter::is_vendor`.
+    /// enry tests the path against its compiled vendor regex table; delegate to
+    /// [`cf_pathfilter::is_vendor`], the faithful reproduction of
+    /// `enry.IsVendor` over the full enry v2.1.0 `VendorMatchers` table (an
+    /// earlier hand-rolled prefix subset here missed table entries like
+    /// `.travis.yml` / `.appveyor.yml`, misclassifying them once
+    /// `--include-vendored` lets vendored paths reach the classifier).
     pub fn is_vendor(path: &str) -> bool {
-        const VENDOR_PREFIXES: [&str; 8] = [
-            "vendor/",
-            "node_modules/",
-            "third_party/",
-            "third-party/",
-            "Godeps/",
-            "bower_components/",
-            ".git/",
-            "extern/",
-        ];
-        const VENDOR_SEGMENTS: [&str; 8] = [
-            "/vendor/",
-            "/node_modules/",
-            "/third_party/",
-            "/third-party/",
-            "/Godeps/",
-            "/bower_components/",
-            "/.git/",
-            "/extern/",
-        ];
-        if VENDOR_PREFIXES.iter().any(|p| path.starts_with(p)) {
-            return true;
-        }
-        if VENDOR_SEGMENTS.iter().any(|s| path.contains(s)) {
-            return true;
-        }
-        path == "vendor" || path == "node_modules"
+        cf_pathfilter::is_vendor(path)
     }
 
     /// Path matches a documentation convention — an exact reproduction of

@@ -10,7 +10,10 @@ use cf_uast_mapping::{LanguageMapping, MappingRule, Role, TokenSource, UastType}
 #[rustfmt::skip]
 pub static MARKDOWN_INLINE: LanguageMapping = LanguageMapping {
     name: "markdown_inline",
-    extensions: &[".md", ".markdown"],
+    // No file extensions: this is tree-sitter's injected inline sub-grammar
+    // for Markdown, not a file-level language. Claiming `.md`/`.markdown`
+    // here collided with the real `markdown` mapping in the loader.
+    extensions: &[],
     files: &[],
     rules: &[
         MappingRule {

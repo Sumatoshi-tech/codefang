@@ -239,7 +239,12 @@ fn comments_report_value_mode_flags(
     // reference implementation ranges the retainer map here — run-to-run
     // random; the oracle's measured-variance canonicalization compares the set).
     let file_entries: Option<Vec<GoValue>> = if per_file {
-        Some(agg.per_file.iter().map(build_file_entry).collect())
+        Some(
+            agg.per_file
+                .iter()
+                .map(|pf| build_file_entry(pf, root_path))
+                .collect(),
+        )
     } else {
         None
     };
@@ -263,9 +268,15 @@ fn comments_report_value_mode_flags(
     let score = overall_score;
     let score_label = format_score(score);
 
-    // --- status: NewReportSection reads the aggregate `message`; we emit the
-    // deterministic ThresholdLabeler value (matches the common reference output). ---
-    let status = comment_message(overall_score);
+    // --- status: NewReportSection reads the aggregate `message`. With ZERO
+    // analyzed files the aggregator returns `buildEmptyResult` (message
+    // "No comments found"); otherwise we emit the deterministic
+    // ThresholdLabeler value (matches the common reference output). ---
+    let status = if report_count == 0 {
+        "No comments found".to_string()
+    } else {
+        comment_message(overall_score)
+    };
 
     // --- metrics (reference KeyMetrics order) ---
     let metric = |label: &str, value: String| {
@@ -372,7 +383,7 @@ fn comments_report_value_mode_flags(
 /// the metrics are the per-file scalars, the Documented/Undocumented
 /// distribution covers this file's functions, and the issues are this file's
 /// undocumented functions sorted by name.
-fn build_file_entry(pf: &PerFileComments) -> GoValue {
+fn build_file_entry(pf: &PerFileComments, root_path: &str) -> GoValue {
     let score = pf.overall_score;
     let status = if pf.message.is_empty() {
         "No comment data available".to_string()
@@ -438,7 +449,13 @@ fn build_file_entry(pf: &PerFileComments) -> GoValue {
         .collect();
 
     let mut entry = GoMap::new(MapOrigin::Struct);
-    entry.push("file_path", GoValue::Str(pf.rel.clone()));
+    // The reference retainer keys the entry by `filepath.Rel(root, stamp)` —
+    // a DOUBLE relativization (the stamp is already root-relative). With an
+    // absolute root Rel errors and the stamp passes through unchanged; with a
+    // relative root the key walks back out of it (`Rel("full","a.go")` →
+    // `"../a.go"`). Issue locations below keep the plain stamp.
+    let file_path = go_rel(root_path, &pf.rel).unwrap_or_else(|| pf.rel.clone());
+    entry.push("file_path", GoValue::Str(file_path));
     entry.push("score_label", GoValue::Str(format_score(score)));
     entry.push("status", GoValue::Str(status));
     entry.push("metrics", GoValue::Array(metrics));
@@ -597,12 +614,16 @@ fn comments_aggregate(root_path: &str) -> Option<Aggregated> {
 /// [`comments_aggregate`] with explicit path-policy options (the plot path
 /// passes the run flags; the stdout formats keep the defaults).
 fn comments_aggregate_opts(root_path: &str, opts: &PathPolicyOptions) -> Option<Aggregated> {
+    // The reference static pipeline swallows walk errors: a nonexistent (or
+    // unreadable) root analyzes ZERO files and still emits the empty report
+    // with exit 0 ("static: complete files=0"), so an empty accumulator — not
+    // None — is the parity behavior here.
     let root = Path::new(root_path);
     if !root.exists() {
-        return None;
+        return Some(Aggregated::default());
     }
-
     let parser = Parser::new();
+
     let analyzer = cf_comments::Analyzer::new();
 
     let mut files: Vec<std::path::PathBuf> = Vec::new();
@@ -613,7 +634,7 @@ fn comments_aggregate_opts(root_path: &str, opts: &PathPolicyOptions) -> Option<
     let mut agg = Aggregated::default();
 
     for path in &files {
-        let Ok(content) = fs::read(path) else {
+        let Some(content) = super::read_source_capped(path) else {
             continue;
         };
         let path_str = path.to_string_lossy();
@@ -629,6 +650,7 @@ fn comments_aggregate_opts(root_path: &str, opts: &PathPolicyOptions) -> Option<
         let stamped = make_relative_path(&path_str, root_path);
 
         let Ok(node) = parser.parse(&path_str, &content) else {
+            super::note_skipped_file();
             agg.report_count += 1;
             agg.per_file.push(PerFileComments::empty(stamped));
             continue;
@@ -655,10 +677,21 @@ fn collect_files(
     opts: &PathPolicyOptions,
     out: &mut Vec<std::path::PathBuf>,
 ) {
+    // Go parity: filepath.WalkDir visits a FILE root as a single entry, so
+    // `codefang run <analyzer> path/to/file.c` analyzes that one file.
+    if dir.is_file() {
+        visit_file(dir, parser, opts, out);
+        return;
+    }
     let Ok(read) = fs::read_dir(dir) else {
         return;
     };
     for entry in read.filter_map(Result::ok) {
+        // SIGINT/SIGTERM: bail out of the walk promptly (durability, not
+        // output-affecting: the run exits 130 before any report is written).
+        if super::run_cancelled() {
+            return;
+        }
         let path = entry.path();
         let Ok(file_type) = entry.file_type() else {
             continue;
@@ -670,18 +703,29 @@ fn collect_files(
             collect_files(&path, parser, opts, out);
             continue;
         }
-        let path_str = path.to_string_lossy();
-        // ShouldSkipFolderNode: skip files the parser does not support.
-        if !parser.is_supported(&path_str) {
-            continue;
-        }
-        // matchesLanguageGlobs: --languages empty → all match (no-op).
-        // pathpolicy.Exclude(path, nil, opts).
-        if exclude(&path_str, None, opts) {
-            continue;
-        }
-        out.push(path);
+        visit_file(&path, parser, opts, out);
     }
+}
+
+/// Collects one file entry of the walk (the non-directory branch of the
+/// `filepath.WalkDir` callback): parser support + path policy filters.
+fn visit_file(
+    path: &Path,
+    parser: &Parser,
+    opts: &PathPolicyOptions,
+    out: &mut Vec<std::path::PathBuf>,
+) {
+    let path_str = path.to_string_lossy();
+    // ShouldSkipFolderNode: skip files the parser does not support.
+    if !parser.is_supported(&path_str) {
+        return;
+    }
+    // matchesLanguageGlobs: --languages empty → all match (no-op).
+    // pathpolicy.Exclude(path, nil, opts).
+    if exclude(&path_str, None, opts) {
+        return;
+    }
+    out.push(path.to_path_buf());
 }
 
 /// Folds one per-file report into the cross-file accumulator.
@@ -874,7 +918,14 @@ fn compute_metrics(agg: &Aggregated) -> GoValue {
     aggregate.push("health_score", GoValue::Float(overall_score * 100.0));
     // buildMessage over the overall_score average (the value captured in the
     // golden); ThresholdLabeler: ≥0.8 Excellent, ≥0.6 Good, ≥0.4 Fair, else Poor.
-    aggregate.push("message", GoValue::Str(comment_message(overall_score)));
+    // With ZERO analyzed files the aggregator instead returns `buildEmptyResult`,
+    // whose message is "No comments found".
+    let message = if report_count == 0 {
+        "No comments found".to_string()
+    } else {
+        comment_message(overall_score)
+    };
+    aggregate.push("message", GoValue::Str(message));
 
     // ComputedMetrics struct order: comment_quality, function_documentation,
     // undocumented_functions, aggregate.
@@ -963,8 +1014,35 @@ fn make_relative_path(path: &str, root: &str) -> String {
         if !rest.is_empty() {
             return rest.to_string();
         }
+        // filepath.Rel(root, root) == "." (a FILE root stamps ".").
+        return ".".to_string();
     }
     path.to_string()
+}
+
+/// `filepath.Rel(base, target)` over slash paths — the reference per-file
+/// retainer key is `Rel(root, stamp)` where `stamp` is ALREADY root-relative
+/// (a double relativization). Returns `None` where Go's `Rel` errors (mixed
+/// absolute/relative arguments — i.e. an absolute root with a relative stamp);
+/// the caller then keeps `target`, the reference fallback.
+fn go_rel(base: &str, target: &str) -> Option<String> {
+    if base.starts_with('/') != target.starts_with('/') {
+        return None;
+    }
+    fn clean(p: &str) -> Vec<&str> {
+        p.split('/')
+            .filter(|c| !c.is_empty() && *c != ".")
+            .collect()
+    }
+    let b = clean(base);
+    let t = clean(target);
+    let common = b.iter().zip(t.iter()).take_while(|(x, y)| x == y).count();
+    let mut parts: Vec<&str> = vec![".."; b.len() - common];
+    parts.extend_from_slice(&t[common..]);
+    if parts.is_empty() {
+        return Some(".".to_string());
+    }
+    Some(parts.join("/"))
 }
 
 /// `filepath.Dir(stamped)`: the directory portion, or "." when none.

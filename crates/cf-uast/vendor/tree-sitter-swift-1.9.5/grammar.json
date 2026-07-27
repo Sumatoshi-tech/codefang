@@ -1,0 +1,11 @@
+{
+  "reference": "main",
+  "revision": "ebefe3134fba71f61c1103cbf27047f749f2b587",
+  "grammarSha": "803457bb92904d3fd2e48da525cfc25aa8d7ac83dd309b80f5b4e073466983dc",
+  "language": "swift",
+  "url": "https://github.com/alex-pinkus/tree-sitter-swift",
+  "maintainedBy": "@alex-pinkus",
+  "files": [
+    "scanner.c"
+  ]
+}

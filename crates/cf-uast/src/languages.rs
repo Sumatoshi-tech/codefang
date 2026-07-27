@@ -139,6 +139,54 @@ mod ffi {
         pub fn tree_sitter_gitattributes() -> tree_sitter::Language;
         pub fn tree_sitter_powershell() -> tree_sitter::Language;
         pub fn tree_sitter_markdown_inline() -> tree_sitter::Language;
+        pub fn tree_sitter_groovy() -> tree_sitter::Language;
+        pub fn tree_sitter_properties() -> tree_sitter::Language;
+        pub fn tree_sitter_ansible() -> tree_sitter::Language;
+        pub fn tree_sitter_c_sharp() -> tree_sitter::Language;
+        pub fn tree_sitter_clojure() -> tree_sitter::Language;
+        pub fn tree_sitter_commonlisp() -> tree_sitter::Language;
+        pub fn tree_sitter_crystal() -> tree_sitter::Language;
+        pub fn tree_sitter_css() -> tree_sitter::Language;
+        pub fn tree_sitter_csv() -> tree_sitter::Language;
+        pub fn tree_sitter_dart() -> tree_sitter::Language;
+        pub fn tree_sitter_dockerfile() -> tree_sitter::Language;
+        // dotenv's C entry point is `tree_sitter_env` (the grammar's internal
+        // name is `env`); the Go binding calls the same symbol.
+        pub fn tree_sitter_env() -> tree_sitter::Language;
+        pub fn tree_sitter_elixir() -> tree_sitter::Language;
+        pub fn tree_sitter_elm() -> tree_sitter::Language;
+        pub fn tree_sitter_fish() -> tree_sitter::Language;
+        pub fn tree_sitter_fortran() -> tree_sitter::Language;
+        pub fn tree_sitter_git_config() -> tree_sitter::Language;
+        pub fn tree_sitter_gosum() -> tree_sitter::Language;
+        pub fn tree_sitter_gotmpl() -> tree_sitter::Language;
+        pub fn tree_sitter_gowork() -> tree_sitter::Language;
+        pub fn tree_sitter_graphql() -> tree_sitter::Language;
+        pub fn tree_sitter_haskell() -> tree_sitter::Language;
+        pub fn tree_sitter_hcl() -> tree_sitter::Language;
+        pub fn tree_sitter_helm() -> tree_sitter::Language;
+        pub fn tree_sitter_ini() -> tree_sitter::Language;
+        pub fn tree_sitter_kotlin() -> tree_sitter::Language;
+        pub fn tree_sitter_latex() -> tree_sitter::Language;
+        pub fn tree_sitter_lua() -> tree_sitter::Language;
+        pub fn tree_sitter_make() -> tree_sitter::Language;
+        pub fn tree_sitter_markdown() -> tree_sitter::Language;
+        pub fn tree_sitter_nim() -> tree_sitter::Language;
+        pub fn tree_sitter_nim_format_string() -> tree_sitter::Language;
+        pub fn tree_sitter_php() -> tree_sitter::Language;
+        pub fn tree_sitter_proxima() -> tree_sitter::Language;
+        pub fn tree_sitter_prql() -> tree_sitter::Language;
+        pub fn tree_sitter_psv() -> tree_sitter::Language;
+        pub fn tree_sitter_r() -> tree_sitter::Language;
+        pub fn tree_sitter_rego() -> tree_sitter::Language;
+        pub fn tree_sitter_ruby() -> tree_sitter::Language;
+        pub fn tree_sitter_rust_with_rstml() -> tree_sitter::Language;
+        pub fn tree_sitter_scala() -> tree_sitter::Language;
+        pub fn tree_sitter_sql() -> tree_sitter::Language;
+        pub fn tree_sitter_ssh_config() -> tree_sitter::Language;
+        pub fn tree_sitter_swift() -> tree_sitter::Language;
+        pub fn tree_sitter_tcl() -> tree_sitter::Language;
+        pub fn tree_sitter_zig() -> tree_sitter::Language;
     }
 }
 
@@ -225,6 +273,105 @@ pub fn get_language(name: &str) -> Option<tree_sitter::Language> {
         // (function-free) UAST that contributes to the per-file report count.
         #[allow(unsafe_code)]
         "markdown_inline" => Some(unsafe { ffi::tree_sitter_markdown_inline() }),
+        // Groovy (.groovy/.gradle, go-sitter-forest groovy@v1.9.4) and
+        // java-properties (.properties, properties@v1.9.2): both carry
+        // comment nodes the comments analyzer counts (Gradle build scripts,
+        // gradle.properties), so they must parse for totals to match.
+        #[allow(unsafe_code)]
+        "groovy" => Some(unsafe { ffi::tree_sitter_groovy() }),
+        #[allow(unsafe_code)]
+        "properties" => Some(unsafe { ffi::tree_sitter_properties() }),
+        // The remaining reference-linked grammars, wired identically: each
+        // entry point returns the static `TSLanguage` of the vendored
+        // go-sitter-forest grammar compiled by `build.rs`.
+        #[allow(unsafe_code)]
+        "ansible" => Some(unsafe { ffi::tree_sitter_ansible() }),
+        #[allow(unsafe_code)]
+        "c_sharp" => Some(unsafe { ffi::tree_sitter_c_sharp() }),
+        #[allow(unsafe_code)]
+        "clojure" => Some(unsafe { ffi::tree_sitter_clojure() }),
+        #[allow(unsafe_code)]
+        "commonlisp" => Some(unsafe { ffi::tree_sitter_commonlisp() }),
+        #[allow(unsafe_code)]
+        "crystal" => Some(unsafe { ffi::tree_sitter_crystal() }),
+        #[allow(unsafe_code)]
+        "css" => Some(unsafe { ffi::tree_sitter_css() }),
+        #[allow(unsafe_code)]
+        "csv" => Some(unsafe { ffi::tree_sitter_csv() }),
+        #[allow(unsafe_code)]
+        "dart" => Some(unsafe { ffi::tree_sitter_dart() }),
+        #[allow(unsafe_code)]
+        "dockerfile" => Some(unsafe { ffi::tree_sitter_dockerfile() }),
+        #[allow(unsafe_code)]
+        "dotenv" => Some(unsafe { ffi::tree_sitter_env() }),
+        #[allow(unsafe_code)]
+        "elixir" => Some(unsafe { ffi::tree_sitter_elixir() }),
+        #[allow(unsafe_code)]
+        "elm" => Some(unsafe { ffi::tree_sitter_elm() }),
+        #[allow(unsafe_code)]
+        "fish" => Some(unsafe { ffi::tree_sitter_fish() }),
+        #[allow(unsafe_code)]
+        "fortran" => Some(unsafe { ffi::tree_sitter_fortran() }),
+        #[allow(unsafe_code)]
+        "git_config" => Some(unsafe { ffi::tree_sitter_git_config() }),
+        #[allow(unsafe_code)]
+        "gosum" => Some(unsafe { ffi::tree_sitter_gosum() }),
+        #[allow(unsafe_code)]
+        "gotmpl" => Some(unsafe { ffi::tree_sitter_gotmpl() }),
+        #[allow(unsafe_code)]
+        "gowork" => Some(unsafe { ffi::tree_sitter_gowork() }),
+        #[allow(unsafe_code)]
+        "graphql" => Some(unsafe { ffi::tree_sitter_graphql() }),
+        #[allow(unsafe_code)]
+        "haskell" => Some(unsafe { ffi::tree_sitter_haskell() }),
+        #[allow(unsafe_code)]
+        "hcl" => Some(unsafe { ffi::tree_sitter_hcl() }),
+        #[allow(unsafe_code)]
+        "helm" => Some(unsafe { ffi::tree_sitter_helm() }),
+        #[allow(unsafe_code)]
+        "ini" => Some(unsafe { ffi::tree_sitter_ini() }),
+        #[allow(unsafe_code)]
+        "kotlin" => Some(unsafe { ffi::tree_sitter_kotlin() }),
+        #[allow(unsafe_code)]
+        "latex" => Some(unsafe { ffi::tree_sitter_latex() }),
+        #[allow(unsafe_code)]
+        "lua" => Some(unsafe { ffi::tree_sitter_lua() }),
+        #[allow(unsafe_code)]
+        "make" => Some(unsafe { ffi::tree_sitter_make() }),
+        #[allow(unsafe_code)]
+        "markdown" => Some(unsafe { ffi::tree_sitter_markdown() }),
+        #[allow(unsafe_code)]
+        "nim" => Some(unsafe { ffi::tree_sitter_nim() }),
+        #[allow(unsafe_code)]
+        "nim_format_string" => Some(unsafe { ffi::tree_sitter_nim_format_string() }),
+        #[allow(unsafe_code)]
+        "php" => Some(unsafe { ffi::tree_sitter_php() }),
+        #[allow(unsafe_code)]
+        "proxima" => Some(unsafe { ffi::tree_sitter_proxima() }),
+        #[allow(unsafe_code)]
+        "prql" => Some(unsafe { ffi::tree_sitter_prql() }),
+        #[allow(unsafe_code)]
+        "psv" => Some(unsafe { ffi::tree_sitter_psv() }),
+        #[allow(unsafe_code)]
+        "r" => Some(unsafe { ffi::tree_sitter_r() }),
+        #[allow(unsafe_code)]
+        "rego" => Some(unsafe { ffi::tree_sitter_rego() }),
+        #[allow(unsafe_code)]
+        "ruby" => Some(unsafe { ffi::tree_sitter_ruby() }),
+        #[allow(unsafe_code)]
+        "rust_with_rstml" => Some(unsafe { ffi::tree_sitter_rust_with_rstml() }),
+        #[allow(unsafe_code)]
+        "scala" => Some(unsafe { ffi::tree_sitter_scala() }),
+        #[allow(unsafe_code)]
+        "sql" => Some(unsafe { ffi::tree_sitter_sql() }),
+        #[allow(unsafe_code)]
+        "ssh_config" => Some(unsafe { ffi::tree_sitter_ssh_config() }),
+        #[allow(unsafe_code)]
+        "swift" => Some(unsafe { ffi::tree_sitter_swift() }),
+        #[allow(unsafe_code)]
+        "tcl" => Some(unsafe { ffi::tree_sitter_tcl() }),
+        #[allow(unsafe_code)]
+        "zig" => Some(unsafe { ffi::tree_sitter_zig() }),
         _ => None,
     }
 }

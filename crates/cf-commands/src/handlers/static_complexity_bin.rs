@@ -59,11 +59,12 @@ pub fn complexity_report_bin(root_path: &str) -> Option<Vec<u8>> {
     let mut max_complexity = 0i64;
 
     for path in &files {
-        let Ok(content) = fs::read(path) else {
+        let Some(content) = super::read_source_capped(path) else {
             continue;
         };
         let path_str = path.to_string_lossy();
         let Ok(tree) = parser.parse(&path_str, &content) else {
+            super::note_skipped_file();
             continue;
         };
         let cx = convert(&tree);
@@ -126,6 +127,12 @@ pub fn complexity_report_bin(root_path: &str) -> Option<Vec<u8>> {
 /// `streamFiles`): directories are recursed (skipping `.git`); files are kept
 /// when the parser supports them and they survive `pathpolicy.Exclude`.
 fn walk(dir: &Path, parser: &Parser, opts: &PathPolicyOptions, out: &mut Vec<std::path::PathBuf>) {
+    // Go parity: filepath.WalkDir visits a FILE root as a single entry, so
+    // `codefang run <analyzer> path/to/file.c` analyzes that one file.
+    if dir.is_file() {
+        visit_file(dir, parser, opts, out);
+        return;
+    }
     let Ok(read) = fs::read_dir(dir) else {
         return;
     };
@@ -133,6 +140,11 @@ fn walk(dir: &Path, parser: &Parser, opts: &PathPolicyOptions, out: &mut Vec<std
     entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
+        // SIGINT/SIGTERM: bail out of the walk promptly (durability, not
+        // output-affecting: the run exits 130 before any report is written).
+        if super::run_cancelled() {
+            return;
+        }
         let path = entry.path();
         let Ok(file_type) = entry.file_type() else {
             continue;
@@ -144,22 +156,38 @@ fn walk(dir: &Path, parser: &Parser, opts: &PathPolicyOptions, out: &mut Vec<std
             walk(&path, parser, opts, out);
             continue;
         }
-        let path_str = path.to_string_lossy();
-        if !parser.is_supported(&path_str) {
-            continue;
-        }
-        if cf_pathpolicy::exclude(&path_str, None, opts) {
-            continue;
-        }
-        out.push(path);
+        visit_file(&path, parser, opts, out);
     }
+}
+
+/// Collects one file entry of the walk (the non-directory branch of the
+/// `filepath.WalkDir` callback): parser support + path policy filters.
+fn visit_file(
+    path: &Path,
+    parser: &Parser,
+    opts: &PathPolicyOptions,
+    out: &mut Vec<std::path::PathBuf>,
+) {
+    let path_str = path.to_string_lossy();
+    if !parser.is_supported(&path_str) {
+        return;
+    }
+    if cf_pathpolicy::exclude(&path_str, None, opts) {
+        return;
+    }
+    out.push(path.to_path_buf());
 }
 
 /// Computes the stamped `source_file` (relative to `root`) and its `directory`
 /// (`filepath.Dir(rel)`), mirroring `MakeRelativePath` + `filepath.Dir`.
 fn relative_parts(path: &Path, root: &Path) -> (String, String) {
     let rel = path.strip_prefix(root).unwrap_or(path);
-    let source_file = rel.to_string_lossy().to_string();
+    let source_file = if rel.as_os_str().is_empty() {
+        // filepath.Rel(root, root) == "." (a FILE root stamps ".").
+        ".".to_string()
+    } else {
+        rel.to_string_lossy().to_string()
+    };
     let directory = rel.parent().map_or_else(
         || ".".to_string(),
         |p| {

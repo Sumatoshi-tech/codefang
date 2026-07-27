@@ -110,18 +110,30 @@ impl ComputedMetrics {
                     .collect(),
             ),
         );
+        // Reference asymmetry: `node_hotness` is built with `make(..., 0, n)`
+        // (never nil ⇒ `[]` even when empty), while `node_coupling` and
+        // `hotspot_nodes` are `var`-declared append targets — zero appends
+        // leave them nil, which encodes as JSON `null` / YAML `[]`.
         root.push(
             "node_coupling",
-            GoValue::Array(
-                self.node_coupling
-                    .iter()
-                    .map(node_coupling_to_value)
-                    .collect(),
-            ),
+            if self.node_coupling.is_empty() {
+                GoValue::NilSlice
+            } else {
+                GoValue::Array(
+                    self.node_coupling
+                        .iter()
+                        .map(node_coupling_to_value)
+                        .collect(),
+                )
+            },
         );
         root.push(
             "hotspot_nodes",
-            GoValue::Array(self.hotspot_nodes.iter().map(hotspot_to_value).collect()),
+            if self.hotspot_nodes.is_empty() {
+                GoValue::NilSlice
+            } else {
+                GoValue::Array(self.hotspot_nodes.iter().map(hotspot_to_value).collect())
+            },
         );
         root.push("aggregate", aggregate_to_value(&self.aggregate));
 
@@ -147,7 +159,7 @@ mod tests {
         let bytes = marshal(&m.to_go_value());
         assert_eq!(
             bytes,
-            br#"{"node_hotness":[],"node_coupling":[],"hotspot_nodes":[],"aggregate":{"total_nodes":0,"total_changes":0,"total_couplings":0,"avg_changes_per_node":0,"avg_coupling_strength":0,"hot_nodes":0}}"#
+            br#"{"node_hotness":[],"node_coupling":null,"hotspot_nodes":null,"aggregate":{"total_nodes":0,"total_changes":0,"total_couplings":0,"avg_changes_per_node":0,"avg_coupling_strength":0,"hot_nodes":0}}"#
         );
     }
 

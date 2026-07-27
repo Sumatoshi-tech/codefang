@@ -25,6 +25,10 @@ use crate::lowering::{resolve_rules, Lowering, ResolvedRule};
 use crate::types::{LanguageParser, ParseError};
 
 /// The bit-array length for the extension bloom filter.
+/// Per-file tree-sitter parse watchdog (30s). See the comment at the call
+/// site in [`LoadedParser::parse`].
+const PARSE_TIMEOUT_MICROS: u64 = 30_000_000;
+
 const BLOOM_SIZE: usize = 512;
 
 /// The number of bits per word in the bloom bit-array.
@@ -206,8 +210,10 @@ struct InitState {
     resolved: Vec<ResolvedRule>,
     #[allow(dead_code)]
     lang_info: LanguageInfo,
-    /// First-occurrence-wins rule index keyed by node type.
+    /// First-occurrence-wins rule index keyed by rule name (inheritance).
     rule_index: HashMap<String, usize>,
+    /// Pattern-root-type → candidate rule indices in declaration order.
+    rule_dispatch: HashMap<String, Vec<usize>>,
     /// The tree-sitter language, looked up via [`crate::languages::get_language`].
     /// `None` means no grammar is vendored for this language yet.
     ts_language: Option<tree_sitter::Language>,
@@ -261,6 +267,17 @@ impl LazyDslParser {
                 rule_index.entry(r.name.clone()).or_insert(i);
             }
 
+            // Dispatch table keyed by each rule's PATTERN root node type
+            // (fallback: rule name), candidates in declaration order — this
+            // is what lets several conditioned rules share one node type
+            // (see `Lowering::find_mapping_rule`).
+            let mut rule_dispatch: HashMap<String, Vec<usize>> =
+                HashMap::with_capacity(rules.len());
+            for (i, r) in rules.iter().enumerate() {
+                let key = crate::lowering::pattern_root_type(&r.pattern).unwrap_or(&r.name);
+                rule_dispatch.entry(key.to_string()).or_default().push(i);
+            }
+
             let ts_language = crate::languages::get_language(&self.mapping.language);
             let pattern_matcher = ts_language
                 .as_ref()
@@ -276,6 +293,7 @@ impl LazyDslParser {
                 resolved,
                 lang_info,
                 rule_index,
+                rule_dispatch,
                 ts_language,
                 pattern_matcher,
                 language: self.mapping.language.clone(),
@@ -307,6 +325,13 @@ impl LanguageParser for LazyDslParser {
         ts_parser
             .set_language(lang)
             .map_err(|e| ParseError::Other(format!("dsl parser: set language: {e}")))?;
+        // Watchdog against pathological inputs: without a timeout a
+        // degenerate parse hangs the process forever (SIGKILL-only). 30s is
+        // orders of magnitude above any legitimate single-file parse; on
+        // expiry `parse` returns None and the file is skipped like any other
+        // parse failure.
+        #[allow(deprecated)]
+        ts_parser.set_timeout_micros(PARSE_TIMEOUT_MICROS);
 
         let tree = ts_parser
             .parse(content, None)
@@ -315,7 +340,7 @@ impl LanguageParser for LazyDslParser {
         let lowering = Lowering::new(
             content,
             &state.resolved,
-            &state.rule_index,
+            &state.rule_dispatch,
             pattern_matcher,
             &state.language,
             false,

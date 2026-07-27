@@ -6,7 +6,11 @@ use cf_uast_mapping::{uast_language, LanguageMapping};
 /// Mapping table for the `nim_format_string` language.
 pub static NIM_FORMAT_STRING: LanguageMapping = uast_language! {
     name: "nim_format_string",
-    extensions: [".nim"],
+    // No file extensions: this is tree-sitter's injected sub-grammar for Nim
+    // format strings, not a file-level language. Claiming `.nim` here hijacked
+    // the extension from the real `nim` mapping (loader collision), which
+    // zeroed function detection for every Nim file.
+    extensions: [],
     rules: {
         double_curlies => {
             type: Synthetic,

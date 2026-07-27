@@ -378,6 +378,7 @@ fn leaf_ndjson(id: &str, ctx: &RunContext) -> Option<Vec<NdjsonRecord>> {
         "history/shotness" => super::shotness_run::shotness_ndjson_records(sub),
         "history/couples" => super::couples_run::couples_ndjson_records(sub),
         "history/file-history" => super::history::file_history_ndjson_records(sub),
+        "history/burndown" => super::burndown_ndjson::burndown_ndjson_records(sub),
         _ => None,
     }
 }
@@ -408,29 +409,77 @@ pub fn leaf_flag(id: &str) -> Option<&'static str> {
 pub fn history_ndjson(ctx: &RunContext, ids: &[String]) -> HistoryFormatResult {
     use cf_gojson::{GoMap, MapOrigin};
 
+    // Emit model (oracle-verified against the live reference binary): the
+    // SEQUENTIAL leaves (burndown, devs — `Sequential: true`) write their TC
+    // line for each commit DURING the walk, so with several sequential leaves
+    // selected their lines interleave per commit in selection order
+    // (`burndown,devs` → b,d,b,d,…; `devs,burndown` → d,b,d,b,…). The FORKED
+    // leaves drain worker-by-worker after their fork completes, so their lines
+    // follow the sequential stream (each forked leaf's records stably
+    // reordered by `(pos % W, pos)`). The relative order of DIFFERENT forked
+    // leaves is Go-scheduler-dependent (measured Go-nondeterministic); we emit
+    // them in selection order, which is inside the reference's own observed
+    // variance.
+    let serialize = |out: &mut Vec<u8>, flag: &str, r: NdjsonRecord| {
+        let mut m = GoMap::new(MapOrigin::Struct);
+        m.push("hash", GoValue::Str(r.hash));
+        m.push("tick", GoValue::Int(r.tick));
+        m.push("author_id", GoValue::Int(r.author_id));
+        m.push(
+            "timestamp",
+            GoValue::Str(super::format_rfc3339_offset(r.time_secs, r.tz_offset_min)),
+        );
+        m.push("analyzer", GoValue::Str(flag.to_string()));
+        m.push("data", r.data);
+        out.extend_from_slice(&cf_gojson::marshal(&GoValue::Map(m)));
+        out.push(b'\n');
+    };
+
     // The co-selected heavy leaves share ONE memoized UAST walk: the first
     // leaf's records compute it, the rest re-read it.
     let mut out = Vec::new();
+
+    // Sequential leaves: gather each leaf's walk-ordered records, then merge
+    // them per commit position (selection order breaks ties within a commit —
+    // the first-selected sequential leaf's line for a commit precedes the
+    // second's, matching the reference per-commit consume loop).
+    let mut seq_streams: Vec<(
+        &'static str,
+        std::iter::Peekable<std::vec::IntoIter<NdjsonRecord>>,
+    )> = Vec::new();
     for id in ids {
+        if leaf_forked(id) {
+            continue;
+        }
+        let flag = leaf_flag(id)?;
+        seq_streams.push((flag, leaf_ndjson(id, ctx)?.into_iter().peekable()));
+    }
+    loop {
+        let mut best: Option<(usize, usize)> = None; // (stream index, pos)
+        for (i, (_, it)) in seq_streams.iter_mut().enumerate() {
+            if let Some(head) = it.peek() {
+                if best.map_or(true, |(_, bp)| head.pos < bp) {
+                    best = Some((i, head.pos));
+                }
+            }
+        }
+        let Some((i, _)) = best else { break };
+        let (flag, it) = &mut seq_streams[i];
+        let head = it.next().expect("peeked head exists");
+        serialize(&mut out, flag, head);
+    }
+
+    // Forked leaves: each leaf's records after its worker-drain reorder.
+    for id in ids {
+        if !leaf_forked(id) {
+            continue;
+        }
         let flag = leaf_flag(id)?;
         let mut records = leaf_ndjson(id, ctx)?;
-        if leaf_forked(id) {
-            let w = super::leaf_worker_count();
-            records.sort_by_key(|r| (r.pos % w, r.pos));
-        }
+        let w = super::leaf_worker_count();
+        records.sort_by_key(|r| (r.pos % w, r.pos));
         for r in records {
-            let mut m = GoMap::new(MapOrigin::Struct);
-            m.push("hash", GoValue::Str(r.hash));
-            m.push("tick", GoValue::Int(r.tick));
-            m.push("author_id", GoValue::Int(r.author_id));
-            m.push(
-                "timestamp",
-                GoValue::Str(super::format_rfc3339_offset(r.time_secs, r.tz_offset_min)),
-            );
-            m.push("analyzer", GoValue::Str(flag.to_string()));
-            m.push("data", r.data);
-            out.extend_from_slice(&cf_gojson::marshal(&GoValue::Map(m)));
-            out.push(b'\n');
+            serialize(&mut out, flag, r);
         }
     }
     Some(Ok(out))

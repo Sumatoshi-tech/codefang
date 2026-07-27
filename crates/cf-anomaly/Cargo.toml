@@ -23,6 +23,10 @@ cf-alg-stats = { path = "../cf-alg-stats" }
 # the SAME GoValue tree through cf-goyaml once that crate lands; the report
 # types expose `to_go_value()` for both paths.
 cf-gojson = { path = "../cf-gojson" }
+# Bit-exact port of Go's sort.Slice (pdqsort). The anomaly lists are sorted
+# with an unstable sort in the reference binary, so tie order on equal
+# Z-scores is part of the report contract and must match exactly.
+cf-gosort = { path = "../cf-gosort" }
 
 [lints.clippy]
 pedantic = "warn"

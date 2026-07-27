@@ -46,6 +46,21 @@ pub(crate) fn collect_functions_via_visitor<N: Node>(
 }
 
 fn walk<N: Node>(analyzer: &Analyzer, n: &N, stack: &mut Vec<Ctx>, functions: &mut Vec<Function>) {
+    // Depth-bounded only by the UAST's nesting, which generated sources push
+    // past 10k levels. The reference runtime grows its stacks automatically;
+    // `maybe_grow` gives this preorder walk the same growable-stack semantics
+    // without touching traversal order (64 KiB red zone, 4 MiB chunks).
+    stacker::maybe_grow(64 * 1024, 4 * 1024 * 1024, || {
+        walk_inner(analyzer, n, stack, functions);
+    });
+}
+
+fn walk_inner<N: Node>(
+    analyzer: &Analyzer,
+    n: &N,
+    stack: &mut Vec<Ctx>,
+    functions: &mut Vec<Function>,
+) {
     // On enter.
     let is_fn = analyzer.is_visitor_function(n);
     if is_fn {
