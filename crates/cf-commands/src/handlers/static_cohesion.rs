@@ -179,6 +179,12 @@ fn walk(
     analyzer: &Analyzer,
     agg: &mut Aggregated,
 ) {
+    // Go parity: filepath.WalkDir visits a FILE root as a single entry, so
+    // `codefang run <analyzer> path/to/file.c` analyzes that one file.
+    if dir.is_file() {
+        visit_file(dir, root_path, parser, opts, analyzer, agg);
+        return;
+    }
     let Ok(read) = fs::read_dir(dir) else {
         return;
     };
@@ -186,6 +192,11 @@ fn walk(
     entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
+        // SIGINT/SIGTERM: bail out of the walk promptly (durability, not
+        // output-affecting: the run exits 130 before any report is written).
+        if super::run_cancelled() {
+            return;
+        }
         let path = entry.path();
         let Ok(file_type) = entry.file_type() else {
             continue;
@@ -198,30 +209,45 @@ fn walk(
             continue;
         }
 
-        let path_str = path.to_string_lossy();
-        if !parser.is_supported(&path_str) {
-            continue;
-        }
-        if exclude(&path_str, None, opts) {
-            continue;
-        }
-        let Ok(content) = fs::read(&path) else {
-            continue;
-        };
-        let Ok(uast_root) = parser.parse(&path_str, &content) else {
-            continue;
-        };
-
-        // Per-file report via the visitor path (what the static factory uses).
-        let report = analyzer.analyze_visitor(&uast_root);
-
-        // Every parsed file contributes one report to the averages divisor.
-        agg.report_count += 1;
-
-        let stamped = make_relative_path(&path_str, root_path);
-        accumulate(agg, &report, &stamped);
-        retain_per_file(agg, &report, &stamped);
+        visit_file(&path, root_path, parser, opts, analyzer, agg);
     }
+}
+
+/// Analyzes one file entry of the walk (the non-directory branch of the
+/// `filepath.WalkDir` callback): parser support + path policy filters, parse,
+/// per-file report, and fold into the aggregate.
+fn visit_file(
+    path: &Path,
+    root_path: &str,
+    parser: &Parser,
+    opts: &Options,
+    analyzer: &Analyzer,
+    agg: &mut Aggregated,
+) {
+    let path_str = path.to_string_lossy();
+    if !parser.is_supported(&path_str) {
+        return;
+    }
+    if exclude(&path_str, None, opts) {
+        return;
+    }
+    let Some(content) = super::read_source_capped(path) else {
+        return;
+    };
+    let Ok(uast_root) = parser.parse(&path_str, &content) else {
+        super::note_skipped_file();
+        return;
+    };
+
+    // Per-file report via the visitor path (what the static factory uses).
+    let report = analyzer.analyze_visitor(&uast_root);
+
+    // Every parsed file contributes one report to the averages divisor.
+    agg.report_count += 1;
+
+    let stamped = make_relative_path(&path_str, root_path);
+    accumulate(agg, &report, &stamped);
+    retain_per_file(agg, &report, &stamped);
 }
 
 /// Folds one per-file report into the aggregate (the reference `MetricsProcessor.ProcessReport`
@@ -347,6 +373,8 @@ fn make_relative_path(file_path: &str, root_path: &str) -> String {
         return file_path.to_string();
     }
     match Path::new(file_path).strip_prefix(Path::new(root_path)) {
+        // filepath.Rel(root, root) == "." (a FILE root stamps ".").
+        Ok(rel) if rel.as_os_str().is_empty() => ".".to_string(),
         Ok(rel) => rel.to_string_lossy().into_owned(),
         Err(_) => file_path.to_string(),
     }

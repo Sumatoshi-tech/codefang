@@ -1,0 +1,3 @@
+go test fuzz v1
+string("go")
+[]byte("package main\n\nimport \"fmt\"\n\nfunc classify(n int) strb\xe7\xa4\xd5ѐ5Sing {\n\tif n < 0 {\n\t\treturn \"neg\"\n\t} else if n == 0 {\n\t\treturn \"zero\"\n\t}\n\tfor i := 0; i < n; i++ {\n\t\tif i%2 == 0 && i > 4 {\n\t\t\tfmt.Println(i)\n\t\t}\n\t}\n\tswitch n {\n\tcase 1, 2, 3:\n\t\treturn \"small\"\n\tdefault:\n\t\treturn \"big\"\n\t}\n}\n\nfunc main() { fmt.Println(classify(7)) }\n")

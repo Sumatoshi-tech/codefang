@@ -16,7 +16,7 @@ import (
 // valid source they stay close enough to the grammar to exercise deep stages.
 
 func corpusFilesDir() string {
-	return filepath.Join(repoRoot(), "rust", "tests", "compat", "corpus", "files")
+	return filepath.Join(repoRoot(), "tests", "compat", "corpus", "files")
 }
 
 // seedFile holds a seed input with the file extension that drives language

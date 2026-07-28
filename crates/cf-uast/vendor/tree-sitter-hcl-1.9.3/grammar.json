@@ -1,0 +1,11 @@
+{
+  "reference": "main",
+  "revision": "fad991865fee927dd1de5e172fb3f08ac674d914",
+  "grammarSha": "e9634a9a3fb572c72e879d9a7addb66a621be138c85530fa8a6f147bcd7b699c",
+  "language": "hcl",
+  "url": "https://github.com/tree-sitter-grammars/tree-sitter-hcl",
+  "maintainedBy": "@MichaHoffmann",
+  "files": [
+    "scanner.c"
+  ]
+}

@@ -224,6 +224,19 @@ impl<'repo> CommitIter<'repo> {
         }
     }
 
+    /// Builds an already-exhausted iterator (yields no commits).
+    ///
+    /// Used for shallow repositories, where the reference binary's libgit2
+    /// (1.5.0, pre-shallow-support) fails the revwalk and the pipeline treats
+    /// the history as empty.
+    pub(crate) fn empty(repo: &'repo Repository) -> Self {
+        CommitIter {
+            walk: None,
+            repo,
+            since: None,
+        }
+    }
+
     /// Returns the next commit, or `None` at end of iteration.
     ///
     /// Frees the walk once exhausted or filtered out.

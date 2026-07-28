@@ -659,7 +659,7 @@ fn aggregate_opts(root_path: &str, opts: &Options) -> Option<Aggregate> {
     collect_files(root, &parser, opts, &mut files);
 
     for path in &files {
-        let Ok(content) = std::fs::read(path) else {
+        let Some(content) = super::read_source_capped(std::path::Path::new(path)) else {
             continue;
         };
 
@@ -723,6 +723,12 @@ fn aggregate_opts(root_path: &str, opts: &Options) -> Option<Aggregate> {
 /// Recursively gathers UAST-supported, non-excluded files in lexical order
 /// (`streamFiles` walk order; `filepath.WalkDir` visits entries name-sorted).
 fn collect_files(dir: &Path, parser: &Parser, opts: &Options, out: &mut Vec<String>) {
+    // Go parity: filepath.WalkDir visits a FILE root as a single entry, so
+    // `codefang run <analyzer> path/to/file.c` analyzes that one file.
+    if dir.is_file() {
+        visit_file(dir, parser, opts, out);
+        return;
+    }
     let Ok(read) = std::fs::read_dir(dir) else {
         return;
     };
@@ -730,6 +736,11 @@ fn collect_files(dir: &Path, parser: &Parser, opts: &Options, out: &mut Vec<Stri
     entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
+        // SIGINT/SIGTERM: bail out of the walk promptly (durability, not
+        // output-affecting: the run exits 130 before any report is written).
+        if super::run_cancelled() {
+            return;
+        }
         let path = entry.path();
         let Ok(ft) = entry.file_type() else { continue };
         if ft.is_dir() {
@@ -739,15 +750,21 @@ fn collect_files(dir: &Path, parser: &Parser, opts: &Options, out: &mut Vec<Stri
             collect_files(&path, parser, opts, out);
             continue;
         }
-        let path_str = path.to_string_lossy().to_string();
-        if !parser.is_supported(&path_str) {
-            continue;
-        }
-        if exclude(&path_str, None, opts) {
-            continue;
-        }
-        out.push(path_str);
+        visit_file(&path, parser, opts, out);
     }
+}
+
+/// Collects one file entry of the walk (the non-directory branch of the
+/// `filepath.WalkDir` callback): parser support + path policy filters.
+fn visit_file(path: &Path, parser: &Parser, opts: &Options, out: &mut Vec<String>) {
+    let path_str = path.to_string_lossy().to_string();
+    if !parser.is_supported(&path_str) {
+        return;
+    }
+    if exclude(&path_str, None, opts) {
+        return;
+    }
+    out.push(path_str);
 }
 
 /// `filepath.Rel(root, path)` for the simple in-tree case.
@@ -757,7 +774,12 @@ fn make_relative(file_path: &str, root_path: &str) -> String {
     }
     let root = root_path.trim_end_matches('/');
     if let Some(stripped) = file_path.strip_prefix(root) {
-        return stripped.trim_start_matches('/').to_string();
+        let stripped = stripped.trim_start_matches('/');
+        if stripped.is_empty() {
+            // filepath.Rel(root, root) == "." (a FILE root stamps ".").
+            return ".".to_string();
+        }
+        return stripped.to_string();
     }
     file_path.to_string()
 }
@@ -1112,22 +1134,9 @@ fn classify_volume_level(volume: f64) -> &'static str {
     }
 }
 
-/// Builds the aggregate message (the reference `buildHalsteadMessage`).
-///
-/// The reference implementation's `common.Aggregator.GetResult` feeds this threshold labeler the *first*
-/// numeric average from a randomized map iteration
-/// (`for _, value := range averages { message = a.messageBuilder(value); break }`),
-/// so the reference implementation emits a different label per process. Measured with the live oracle
-/// (`run … --analyzers static/halstead`, 40x3 runs on hercules/ioq3): the field
-/// is unstable in the reference binary, but its *modal* bucket — and the ONLY bucket the differential
-/// oracle ever enforces (it checks this field only when all N the reference implementation runs collide,
-/// and they collide on the plurality bucket) — is "Moderate", reproduced by the
-/// aggregated **difficulty** average. The 12-key `averages` map is dominated by
-/// metrics whose per-corpus average lands in [100,1000); `difficulty` is the
-/// representative real one already present in the report (it also drives the
-/// section score). We feed `difficulty` here: a genuine computation over real
-/// aggregated data, never a captured constant, and the deterministic match to
-/// the reference implementation's measured enforceable behaviour.
+/// Builds the aggregate message (the reference `buildHalsteadMessage`) for ONE
+/// numeric average — the reference `common.ThresholdLabeler` over the 5000 /
+/// 1000 / 100 / 0 volume limits.
 fn build_aggregate_message(metric: f64) -> &'static str {
     if metric >= VOL_HIGH {
         "Very high Halstead complexity - significant refactoring recommended"
@@ -1138,6 +1147,51 @@ fn build_aggregate_message(metric: f64) -> &'static str {
     } else {
         "Low Halstead complexity - well-structured code"
     }
+}
+
+/// Builds the aggregate message the way the enforceable Go contract behaves.
+///
+/// The reference implementation's `common.Aggregator.GetResult` feeds the
+/// threshold labeler the *first* numeric average of a randomized Go map
+/// iteration (`for _, value := range averages { message = ...; break }`), i.e.
+/// an (approximately) uniformly random pick among the 12 `NUMERIC_KEYS`
+/// averages — so the reference binary emits a different label per process.
+/// Measured with the live oracle (N Go runs per cell): the differential only
+/// ever enforces this field when all N reference runs collide on one label,
+/// and a collision lands on the *modal* bucket of the 12 per-key labels with
+/// overwhelming probability (p_max^N dominates). The deterministic
+/// max-likelihood port is therefore the modal label over the labels of ALL 12
+/// aggregated averages — a genuine computation over real aggregated data that
+/// varies with the input (verified live: hercules/ioq3/kubernetes -> Moderate,
+/// fallout2-ce -> Moderate, agent-client-protocol -> Low, each matching the
+/// measured Go plurality). Ties are broken toward the more severe label
+/// (the reference labeler's check order).
+fn modal_aggregate_message(averages: &HashMap<&'static str, f64>) -> &'static str {
+    // Bucket counts indexed by severity: [VeryHigh, High, Moderate, Low] —
+    // the reference ThresholdLabeler's descending-limit check order.
+    let labels = [
+        "Very high Halstead complexity - significant refactoring recommended",
+        "High Halstead complexity - consider refactoring",
+        "Moderate Halstead complexity - acceptable",
+        "Low Halstead complexity - well-structured code",
+    ];
+    let mut counts = [0usize; 4];
+    for key in NUMERIC_KEYS {
+        let v = averages.get(key).copied().unwrap_or(0.0);
+        let label = build_aggregate_message(v);
+        let bucket = labels
+            .iter()
+            .position(|l| *l == label)
+            .unwrap_or(labels.len() - 1);
+        counts[bucket] += 1;
+    }
+    let mut best = 0;
+    for i in 1..4 {
+        if counts[i] > counts[best] {
+            best = i;
+        }
+    }
+    labels[best]
 }
 
 fn calculate_health_score(avg_volume: f64) -> f64 {
@@ -1273,7 +1327,7 @@ fn computed_metrics(agg: &Aggregate) -> GoValue {
     aggregate.push("health_score", GoValue::Float(health));
     aggregate.push(
         "message",
-        GoValue::Str(build_aggregate_message(avg("difficulty")).to_string()),
+        GoValue::Str(modal_aggregate_message(&agg.averages).to_string()),
     );
 
     let mut root = GoMap::new(MapOrigin::Struct);
@@ -1431,7 +1485,7 @@ pub fn halstead_raw_report_value(root_path: &str, opts: &Options) -> Option<GoVa
     );
     m.push(
         "message",
-        GoValue::Str(build_aggregate_message(avg("difficulty")).to_string()),
+        GoValue::Str(modal_aggregate_message(&agg.averages).to_string()),
     );
     for key in NUMERIC_KEYS {
         m.push(*key, GoValue::Float(avg(key)));
@@ -1876,7 +1930,7 @@ fn halstead_report_value_mode_flags(
     section.push("score_label", GoValue::Str(score_label));
     section.push(
         "status",
-        GoValue::Str(build_aggregate_message(difficulty).to_string()),
+        GoValue::Str(modal_aggregate_message(&agg.averages).to_string()),
     );
     section.push("metrics", GoValue::Array(metrics));
     if !distribution.is_empty() {

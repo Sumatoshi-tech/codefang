@@ -55,7 +55,7 @@
       "label": "history/devs@kube",
       "verdict": "PASS",
       "go_grows": "6455->24450",
-      "rust_grows": "6455->24471"
+      "rust_grows": "6455->24450"
     },
     {
       "property": "grow-limit",
@@ -77,21 +77,21 @@
       "label": "history/typos@kube",
       "verdict": "PASS",
       "go_grows": "138->5952",
-      "rust_grows": "138->6082"
+      "rust_grows": "138->6155"
     },
     {
       "property": "grow-limit",
       "label": "history/couples@kube",
       "verdict": "PASS",
       "go_grows": "1047972->1380105",
-      "rust_grows": "1049727->1361905"
+      "rust_grows": "1047972->1380105"
     },
     {
       "property": "grow-limit",
       "label": "history/shotness@kube",
       "verdict": "PASS",
-      "go_grows": "194->3498357",
-      "rust_grows": "190->1329608"
+      "go_grows": "194->3710756",
+      "rust_grows": "194->8900266"
     },
     {
       "property": "determinism",
@@ -146,8 +146,8 @@
       "property": "non-empty",
       "label": "history/shotness@hercules",
       "verdict": "PASS",
-      "go_len": 388339,
-      "rust_len": 375599
+      "go_len": 386144,
+      "rust_len": 389345
     },
     {
       "property": "non-empty",
@@ -202,7 +202,7 @@
       "property": "non-empty",
       "label": "static/halstead@hercules",
       "verdict": "PASS",
-      "go_len": 340739,
+      "go_len": 340765,
       "rust_len": 340739
     },
     {

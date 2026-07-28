@@ -3,22 +3,22 @@
   "scope": "representative-analyzers(cf-gojson,cf-goyaml,cf-complexity,cf-halstead,cf-comments,cf-imports,cf-composition,cf-cohesion,cf-clones,cf-devs,cf-burndown-core,cf-couples,cf-shotness)",
   "scope_kind": "subset",
   "branch_coverage_available": false,
-  "elapsed_s": 2.7,
+  "elapsed_s": 3.4,
   "totals": {
     "lines": {
-      "covered": 11411,
-      "count": 15662,
-      "percent": 72.85787255778317
+      "covered": 12442,
+      "count": 19129,
+      "percent": 65.04260546813738
     },
     "regions": {
-      "covered": 19963,
-      "count": 27203,
-      "percent": 73.38528838731023
+      "covered": 20952,
+      "count": 31021,
+      "percent": 67.54134296121983
     },
     "functions": {
-      "covered": 1365,
-      "count": 1800,
-      "percent": 75.83333333333333
+      "covered": 1437,
+      "count": 2039,
+      "percent": 70.4757233938205
     },
     "branches": {
       "covered": null,

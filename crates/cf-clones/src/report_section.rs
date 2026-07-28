@@ -180,8 +180,13 @@ impl ReportSection {
         if pairs.is_empty() {
             return Vec::new();
         }
-        // Sort by similarity descending, then truncate to the limit.
-        pairs.sort_by(|a, b| b.similarity.total_cmp(&a.similarity));
+        // Sort by similarity descending with the reference's exact unstable
+        // pdqsort (`mapx.SortAndLimit` -> `sort.Slice` with `clonePairLess`:
+        // `a.Similarity > b.Similarity`, no tie-break), then truncate to the
+        // limit. On the already-sorted stored list this is an identity
+        // permutation, so the report's pair order flows through unchanged —
+        // which is the observable contract of the terminal output.
+        cf_gosort::go_sort_slice(&mut pairs, |a, b| a.similarity > b.similarity);
         if limit > 0 && pairs.len() > limit {
             pairs.truncate(limit);
         }
@@ -253,9 +258,10 @@ pub fn report_section_json_value(report: &Report) -> GoValue {
     // distribution (omitempty: omitted entirely when empty)
     let dist = section.distribution();
 
-    // issues: all pairs sorted by similarity descending, lowercase severity.
+    // issues: all pairs sorted by similarity descending with the reference's
+    // exact unstable pdqsort (see `clone_issues`), lowercase severity.
     let mut pairs = extract_clone_pairs(report);
-    pairs.sort_by(|a, b| b.similarity.total_cmp(&a.similarity));
+    cf_gosort::go_sort_slice(&mut pairs, |a, b| a.similarity > b.similarity);
     let issues = GoValue::Array(
         pairs
             .into_iter()

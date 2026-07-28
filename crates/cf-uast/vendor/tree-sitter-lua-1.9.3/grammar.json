@@ -1,0 +1,11 @@
+{
+  "reference": "main",
+  "revision": "e5e406935ff3e36529545955e2972646ed97f9e2",
+  "grammarSha": "d32301fa7f61085341fcf66611402c37cb4f56dd45c085332c171eaaba3c3bfe",
+  "language": "lua",
+  "url": "https://github.com/tree-sitter-grammars/tree-sitter-lua",
+  "maintainedBy": "@MunifTanjim",
+  "files": [
+    "scanner.c"
+  ]
+}

@@ -236,6 +236,9 @@ pub fn compute_languages(developers: &[DeveloperData]) -> Vec<LanguageData> {
             ld.total_lines += lang_entry.added;
             let contribution = lang_entry.added + lang_entry.removed;
             ld.total_contribution += contribution;
+            if !ld.contributors.contains_key(&dev.id) {
+                ld.contributor_order.push(dev.id);
+            }
             *ld.contributors.entry(dev.id).or_default() += contribution;
         }
     }
@@ -270,13 +273,18 @@ pub fn compute_bus_factor(input: &BusFactorInput, opts: &MetricOptions) -> Vec<B
 
         // (id, lines) sorted descending by lines via the unstable pdqsort port
         // (reference-implementation behavior, pinned by the differential gate).
-        // The contributor input order is the BTreeMap id-ascending order
-        // (deterministic; this only affects the order of equal-line
-        // contributors, where the reference binary is itself nondeterministic).
+        // The contributor input order is the first-contribution insertion order
+        // (developers slice order, commits descending): the reference binary
+        // iterates its contributor map, whose measured majority order is
+        // insertion order, so equal-line contributors keep that relative order
+        // after the unstable sort. (The reference runtime occasionally rotates
+        // the iteration start; that residue is measured as GO-VARIANT by the
+        // oracle. Matching the majority permutation keeps the differential
+        // stable.)
         let mut contribs: Vec<(i64, i64)> = ld
-            .contributors
+            .contributor_order
             .iter()
-            .map(|(&id, &lines)| (id, lines))
+            .map(|&id| (id, ld.contributors[&id]))
             .collect();
         cf_gosort::go_sort_slice(&mut contribs, |a, b| a.1 > b.1);
 

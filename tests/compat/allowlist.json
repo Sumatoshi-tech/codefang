@@ -1,18 +1,47 @@
 {
-  "_doc": "KNOWN-DIVERGENCE ALLOWLIST (SPEC roadmap 8 / task PHASE CI). Mirrors connectrpc/conformance's tracked 'known-failing/known-flaky'. An entry NEUTRALIZES a cell's FAIL/SIM verdict in the FINAL GATE EXIT CODE *only* when it carries BOTH (a) a written `reason` and (b) `go_nondeterminism_evidence` proving Go itself is nondeterministic on the diverging field(s) -- the differing Go run SHAs/values the live oracle measured. An entry WITHOUT evidence is REJECTED by the gate (fail-closed): it can never silently turn a real Rust bug green. Match is by exact `label` OR `argv` OR `family`+`kind`. NOTHING here blanks a Go-stable field; that is detected by the tamper layer, not excused here.",
-  "_categories": {
-    "go-nondeterminism": "Go's OWN output varies run-to-run on the diverging field(s); evidence = differing Go run SHAs from the live oracle. These DO neutralize the gate exit code.",
-    "tracked-known-failing": "A real, tracked Rust port gap (NOT Go-nondeterminism). These are REPORTED but DO NOT neutralize the gate -- a tracked-known-failing is still a real divergence and keeps the exit nonzero (SPEC: 'nonzero exit on any real divergence'). Listed so triage knows it is already on the board, Connect-style."
+ "_doc": "KNOWN-DIVERGENCE ALLOWLIST (SPEC roadmap 8 / task PHASE CI). Mirrors connectrpc/conformance's tracked 'known-failing/known-flaky'. An entry NEUTRALIZES a cell's FAIL/SIM verdict in the FINAL GATE EXIT CODE *only* when it carries BOTH (a) a written `reason` and (b) `go_nondeterminism_evidence` proving Go itself is nondeterministic on the diverging field(s) -- the differing Go run SHAs/values the live oracle measured. An entry WITHOUT evidence is REJECTED by the gate (fail-closed): it can never silently turn a real Rust bug green. Match is by exact `label` OR `argv` OR `family`+`kind`. NOTHING here blanks a Go-stable field; that is detected by the tamper layer, not excused here.",
+ "_categories": {
+  "go-nondeterminism": "Go's OWN output varies run-to-run on the diverging field(s); evidence = differing Go run SHAs from the live oracle. These DO neutralize the gate exit code.",
+  "tracked-known-failing": "A real, tracked Rust port gap (NOT Go-nondeterminism). These are REPORTED but DO NOT neutralize the gate -- a tracked-known-failing is still a real divergence and keeps the exit nonzero (SPEC: 'nonzero exit on any real divergence'). Listed so triage knows it is already on the board, Connect-style."
+ },
+ "go_nondeterminism": [
+  {
+   "label": "static:static/cohesion[text]@ioq3",
+   "family": "static_analyzer",
+   "kind": "summary-message-flips",
+   "reason": "The reference implementation picks the section Summary message by iterating a Go MAP of numeric averages and using the FIRST value (internal/analyzers/common/aggregator.go: `for _, value := range averages { message = messageBuilder(value); break }`). Go map iteration order is randomized, and on ioq3 the three cohesion averages (lcom=0.7, cohesion_score=0.3, function_cohesion) straddle the message thresholds, so Go's own Summary line flips run-to-run. The numeric metrics are byte-identical between Go and Rust; only the message text diverges when Go happens to pick a different key than Rust's deterministic choice.",
+   "go_nondeterminism_evidence": {
+    "command": "codefang run --checkpoint=false --resume=false --no-cache --head --workers 1 --static-workers 1 -p <ioq3> --analyzers static/cohesion --format text",
+    "observed_go_values": [
+     "Summary: Excellent overall cohesion across all analyzed code",
+     "Summary: Poor overall cohesion - significant refactoring recommended"
+    ],
+    "observed_distribution": "8 consecutive live-Go runs on 2026-07-26: 5x Excellent, 3x Poor",
+    "note": "The gate's n_go=3 oracle runs happened to agree by chance (p~0.1-0.3 per label mix), which is why measured canonicalization did not normalize this field."
+   },
+   "neutralizes_gate": true
+  }
+ ],
+ "tracked_known_failing": [
+  {
+   "label": "flag:static/complexity--include-vendored@hercules",
+   "family": "flag",
+   "kind": "oracle-exceeds-own-budget",
+   "reason": "ORACLE DEFECT, not a Rust port gap: the frozen Go binary has an exponential re-walk of unmapped-node subtrees (each unmapped nesting level doubles the traversal), and hercules' 136MB vendor tree with --include-vendored drives it past the oracle's own 600s budget with zero bytes produced (measured: >10min, empty stdout). The Rust port fixed the exponential walk and completes the identical cell in 13s with a full 5.3MB report. The cell is therefore UNMEASURABLE against the live oracle. Kept RED per the fail-closed rule (an entry here never neutralizes); resolving it needs a policy decision on oracle-defect cells, not a code change.",
+   "evidence": {
+    "go_behavior": "timeout >600s, 0 bytes stdout (2026-07-26)",
+    "rust_behavior": "13.0s wall, 5347342 bytes report",
+    "root_cause": "frozen Go internal/analyzers pipeline unmapped-children double-walk (2^depth); fixed in crates/cf-uast/src/lowering.rs"
+   },
+   "neutralizes_gate": false
   },
-  "go_nondeterminism": [],
-  "tracked_known_failing": [
-    {
-      "label_glob": "uast/*",
-      "family": "uast_parse",
-      "kind": "rust-empty-go-nonempty",
-      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked.",
-      "evidence_source": "corpus/known_gaps.json",
-      "neutralizes_gate": false
-    }
-  ]
+  {
+   "label": "fuzz:FuzzSerializer*/invalid-utf8-source",
+   "family": "fuzz",
+   "kind": "invalid-utf8-token-offset-misalignment",
+   "reason": "Real, tracked port gap on sources containing INVALID UTF-8 bytes: the reference implementation's Go strings carry raw bytes, so byte offsets into a function's token always align with the original source; the Rust port stores tokens as String via from_utf8_lossy, which inflates each invalid sequence into a 3-byte U+FFFD and shifts every later offset. Offset-derived operator/decision-point extraction (cf-complexity FunctionSourceContext / binary_operator_from_offsets) then misreads tokens after the corruption point, e.g. missing a `&&` (cyclomatic 7 vs Go's 8, avg 4.0 vs 4.5) on the distilled find. Valid-UTF-8 sources (i.e. real code) are unaffected. Fixing it means carrying raw bytes through Node.token (bstr-style) and lossy-converting only at serialization boundaries — an architectural change, tracked rather than patched around.",
+   "evidence_source": "corpus/fuzzfinds/gojson_b345ea0e6cfd0f76.go (+ .evidence.json, .go_run_*, .rust_out)",
+   "neutralizes_gate": false
+  }
+ ]
 }

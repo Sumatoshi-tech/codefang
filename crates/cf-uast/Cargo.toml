@@ -43,6 +43,12 @@ tree-sitter = { workspace = true }
 # Ergonomic error derives for ParseError (Display strings unchanged; they are
 # part of the CLI contract).
 thiserror = "1"
+# stacker — on-demand stack growth for the recursive lowering walk. The
+# reference runtime grows goroutine stacks automatically, so deeply nested
+# sources (~10k levels) lower fine there; a fixed OS stack overflows instead.
+# `maybe_grow` reproduces the growable-stack semantics without changing the
+# traversal order or any output byte.
+stacker = "0.1.24"
 
 [build-dependencies]
 # Compiles the vendored grammar C sources (vendor/tree-sitter-<lang>/parser.c).

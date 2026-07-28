@@ -282,7 +282,15 @@ pub fn find_clone_pairs(
         // discovery order deterministic, so the stored pair SET and ORDER are
         // reproducible run-to-run (the compat harness canonicalizes the
         // reference's nondeterminism away, but requires our determinism).
-        candidates.sort_unstable();
+        //
+        // The order is DESCENDING by name: any fixed order is an equally
+        // faithful determinization of the reference's random map iteration,
+        // and the descending choice makes the frozen-pdqsort output land on
+        // the reference's modal (most-probable) permutation on large
+        // clone-heavy inputs — measured by Monte-Carlo simulation of the
+        // reference's per-entry candidate shuffles through the same pdqsort
+        // (ascending order lands on a low-probability outlier instead).
+        candidates.sort_unstable_by(|a, b| b.cmp(a));
 
         for candidate_id in candidates {
             if candidate_id == entry.name {
@@ -308,20 +316,18 @@ pub fn find_clone_pairs(
         }
     }
 
-    // The reference sorts pairs by similarity descending with an UNSTABLE
-    // sort, so equal-similarity pairs keep whatever (randomized) discovery
-    // order they had — the list is order-nondeterministic there, which the
-    // compat harness canonicalizes by sorting. To be deterministic on our side
-    // we give equal-similarity pairs a stable tie-break on the qualified
-    // names, so two identical runs are byte-identical (the harness requires
-    // our determinism). The membership of the list still matches the
-    // reference; only the within-tier order is pinned.
-    result.pairs.sort_by(|a, b| {
-        b.similarity
-            .total_cmp(&a.similarity)
-            .then_with(|| a.func_a.cmp(&b.func_a))
-            .then_with(|| a.func_b.cmp(&b.func_b))
-    });
+    // The reference sorts pairs by similarity descending with Go's UNSTABLE
+    // `sort.Slice` (frozen pdqsort) and NO tie-break — the resulting
+    // within-tie permutation of the discovery order is part of the observable
+    // output contract (the terminal `text` report exposes the first pairs of
+    // this list verbatim). Reproduce the exact algorithm over our
+    // deterministic discovery order: `cf_gosort::go_sort_slice` is the
+    // bit-faithful port of that pdqsort, and the comparator mirrors the
+    // reference's `a.Similarity > b.Similarity`. Because our discovery order
+    // is deterministic (sorted candidates), two identical runs remain
+    // byte-identical, while the permutation now matches the reference's
+    // stable emergent ordering on its deterministic discovery core.
+    cf_gosort::go_sort_slice(&mut result.pairs, |a, b| a.similarity > b.similarity);
 
     result
 }

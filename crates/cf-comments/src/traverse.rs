@@ -11,24 +11,44 @@ use cf_uast_node::Node;
 /// node type is one of `types`, in document (pre-order, children-in-order)
 /// order.
 ///
-/// Note on depth: the reference traverser nominally caps its walk at depth 10,
-/// but its depth counter operates on a walk stack whose effective depth never
-/// prunes real function / comment nodes; applying a literal depth-10 cap on
-/// this tree (which nests differently) drops nodes the reference keeps. The
-/// unbounded pre-order walk reproduces the reference node set byte-for-byte
-/// (pinned by the differential gate).
+/// Note on depth: the STATIC comments surface runs the reference traverser
+/// uncapped (`maxDepth <= 0` disables the limit), so this unbounded walk
+/// reproduces the static node set byte-for-byte. The HISTORY `quality`
+/// analyzer's comments instance runs with `maxDepth = 10` — use
+/// [`find_nodes_by_type_capped`] there (measured against the live reference
+/// binary: nodes at depth <= 10 from the root, root at depth 0, are matched;
+/// deeper nodes are never matched).
 pub fn find_nodes_by_type<'a>(root: &'a Node, types: &[&str]) -> Vec<&'a Node> {
     let mut out = Vec::new();
-    walk(root, types, &mut out);
+    walk(root, types, None, &mut out);
     out
 }
 
-fn walk<'a>(n: &'a Node, types: &[&str], out: &mut Vec<&'a Node>) {
+/// Depth-capped [`find_nodes_by_type`]: matches only nodes at depth
+/// `<= max_depth` below `root` (`root` at depth 0). The reference traverser
+/// filters MATCHES by depth (it still descends), so pruning the walk at the
+/// cap is output-equivalent.
+pub fn find_nodes_by_type_capped<'a>(
+    root: &'a Node,
+    types: &[&str],
+    max_depth: usize,
+) -> Vec<&'a Node> {
+    let mut out = Vec::new();
+    walk(root, types, Some(max_depth), &mut out);
+    out
+}
+
+fn walk<'a>(n: &'a Node, types: &[&str], remaining: Option<usize>, out: &mut Vec<&'a Node>) {
     if types.contains(&n.node_type.as_str()) {
         out.push(n);
     }
+    let child_remaining = match remaining {
+        Some(0) => return,
+        Some(r) => Some(r - 1),
+        None => None,
+    };
     for child in &n.children {
-        walk(child, types, out);
+        walk(child, types, child_remaining, out);
     }
 }
 

@@ -133,11 +133,28 @@ impl Analyzer {
     /// [`GoValue`].
     #[must_use]
     pub fn analyze(&self, root: Option<&Node>) -> GoValue {
+        self.analyze_with_find_depth(root, None)
+    }
+
+    /// [`analyze`](Self::analyze) with the reference shared traverser's
+    /// `maxDepth` applied to the FUNCTION DISCOVERY walk only: with
+    /// `Some(cap)`, only function nodes at depth `<= cap` below the root
+    /// (root at depth 0) are found; per-function metric computation over each
+    /// found function's whole subtree is unchanged.
+    ///
+    /// The history `quality` analyzer instantiates its components with
+    /// `maxDepth = 10` (the static surfaces run uncapped).
+    #[must_use]
+    pub fn analyze_with_find_depth(
+        &self,
+        root: Option<&Node>,
+        find_depth: Option<usize>,
+    ) -> GoValue {
         let Some(root) = root else {
             return build_empty_result("No AST provided");
         };
 
-        let functions = find_functions(root);
+        let functions = find_functions_capped(root, find_depth);
         if functions.is_empty() {
             return build_empty_result("No functions found");
         }
@@ -277,10 +294,24 @@ fn build_result(
 /// in a stable pre-order is equivalent; the final order is fixed by
 /// [`calculate_all_function_metrics`].
 fn find_functions(root: &Node) -> Vec<&Node> {
+    find_functions_capped(root, None)
+}
+
+/// [`find_functions`] with the optional discovery depth cap (see
+/// [`Analyzer::analyze_with_find_depth`]).
+fn find_functions_capped(root: &Node, find_depth: Option<usize>) -> Vec<&Node> {
     let mut by_type: Vec<&Node> = Vec::new();
-    root.find_nodes_by_type(&[uast::FUNCTION, uast::METHOD], &mut by_type);
     let mut by_role: Vec<&Node> = Vec::new();
-    root.find_nodes_by_roles(&[node::role::FUNCTION], &mut by_role);
+    match find_depth {
+        Some(cap) => {
+            root.find_nodes_by_type_capped(&[uast::FUNCTION, uast::METHOD], cap, &mut by_type);
+            root.find_nodes_by_roles_capped(&[node::role::FUNCTION], cap, &mut by_role);
+        }
+        None => {
+            root.find_nodes_by_type(&[uast::FUNCTION, uast::METHOD], &mut by_type);
+            root.find_nodes_by_roles(&[node::role::FUNCTION], &mut by_role);
+        }
+    }
 
     let mut seen: Vec<*const Node> = Vec::new();
     let mut functions: Vec<&Node> = Vec::new();
@@ -472,8 +503,35 @@ fn calculate_cognitive_complexity(fn_node: &Node) -> i64 {
     complexity
 }
 
+/// Recursion depth tracks source nesting, which on real inputs exceeds 10k
+/// levels (cf-uast builds these trees on a segmented stack for that reason) —
+/// so every level grows the stack on demand instead of trusting the fixed
+/// 8 MiB main stack.
 #[allow(clippy::too_many_arguments)]
 fn walk_node(
+    curr: &Node,
+    parent: &Node,
+    child_idx: usize,
+    nesting: i64,
+    ctx: &FunctionSourceContext,
+    function_name: &str,
+    complexity: &mut i64,
+) {
+    stacker::maybe_grow(64 * 1024, 16 * 1024 * 1024, || {
+        walk_node_inner(
+            curr,
+            parent,
+            child_idx,
+            nesting,
+            ctx,
+            function_name,
+            complexity,
+        );
+    });
+}
+
+#[allow(clippy::too_many_arguments)]
+fn walk_node_inner(
     curr: &Node,
     parent: &Node,
     child_idx: usize,
@@ -608,7 +666,19 @@ fn add_logical_sequence_complexity(expr: &Node, ctx: &FunctionSourceContext, com
     }
 }
 
+/// Stack-guarded like [`walk_node`]: expression chains (`a && b && c && ...`)
+/// nest one level per operator in generated sources.
 fn collect_logical_operators(
+    curr: &Node,
+    ctx: &FunctionSourceContext,
+    operators: &mut Vec<String>,
+) {
+    stacker::maybe_grow(64 * 1024, 16 * 1024 * 1024, || {
+        collect_logical_operators_inner(curr, ctx, operators);
+    });
+}
+
+fn collect_logical_operators_inner(
     curr: &Node,
     ctx: &FunctionSourceContext,
     operators: &mut Vec<String>,

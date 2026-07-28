@@ -33,9 +33,15 @@ use std::collections::BTreeMap;
 #[must_use]
 pub fn computed_metrics_to_value(m: &ComputedMetrics) -> GoValue {
     let mut obj = GoMap::new_struct();
+    // Reference: `file_coupling` is a `var`-declared append target — an
+    // empty-walk run leaves it nil (JSON `null`, YAML `[]`), never `[]`.
     obj.push(
         "file_coupling",
-        GoValue::Array(m.file_coupling.iter().map(file_coupling_to_value).collect()),
+        if m.file_coupling.is_empty() {
+            GoValue::NilSlice
+        } else {
+            GoValue::Array(m.file_coupling.iter().map(file_coupling_to_value).collect())
+        },
     );
     obj.push(
         "developer_coupling",

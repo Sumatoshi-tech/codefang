@@ -324,7 +324,23 @@ fn file_contributor_counts(
     sets.iter().map(|s| s.len() as i32).collect()
 }
 
+/// Number of simulated iteration-order passes used to locate the median
+/// naive-sum for `avg_coupling_strength` (see [`median_map_order_total`]).
+const AVG_STRENGTH_ORDER_PASSES: usize = 101;
+
 /// Computes aggregate statistics from the dense files matrix.
+///
+/// `avg_coupling_strength` is a naive left-to-right f64 sum of per-pair
+/// strengths divided by the pair count. The reference implementation
+/// accumulates that sum while iterating each row as a hash map whose
+/// iteration order is randomized per process, so the reference value wobbles
+/// by a few ULPs from run to run (rows are visited in fixed ascending order;
+/// only the within-row term order varies). A deterministic port must pick one
+/// representative of that measured distribution: this implementation reports
+/// the median naive-sum over simulated within-row orders (the distribution's
+/// most probable region), computed deterministically from the input — see
+/// [`median_map_order_total`]. All integer fields are order-independent and
+/// exact.
 #[must_use]
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)] // report fields are i32
 #[allow(clippy::cast_precision_loss)] // contractual float math on counts
@@ -332,11 +348,16 @@ pub fn compute_aggregate(input: &ReportData, opts: MetricOptions) -> AggregateDa
     let mut total_co_changes: i64 = 0;
     let mut pair_count: i64 = 0;
     let mut highly_coupled: i32 = 0;
-    let mut total_strength: f64 = 0.0;
     let threshold = i64::from(opts.coupling_threshold_high);
+    // Per-row contributing strengths: rows in ascending file index (the
+    // reference iterates the row slice in order), within-row ascending column
+    // as the canonical starting arrangement (the reference's within-row order
+    // is what varies).
+    let mut row_strengths: Vec<Vec<f64>> = Vec::new();
 
     for (i, row) in input.files_matrix.iter().enumerate() {
         let self_i = *row.get(&i).unwrap_or(&0);
+        let mut strengths: Vec<f64> = Vec::new();
         for (&j, &co_changes) in row {
             if j <= i || co_changes <= 0 {
                 continue;
@@ -352,7 +373,10 @@ pub fn compute_aggregate(input: &ReportData, opts: MetricOptions) -> AggregateDa
             if co_changes >= threshold {
                 highly_coupled += 1;
             }
-            total_strength += coupling_strength(co_changes, self_i, self_j);
+            strengths.push(coupling_strength(co_changes, self_i, self_j));
+        }
+        if !strengths.is_empty() {
+            row_strengths.push(strengths);
         }
     }
 
@@ -361,12 +385,79 @@ pub fn compute_aggregate(input: &ReportData, opts: MetricOptions) -> AggregateDa
         total_developers: input.reversed_people_dict.len() as i32,
         total_co_changes,
         avg_coupling_strength: if pair_count > 0 {
-            total_strength / pair_count as f64
+            median_map_order_total(&row_strengths) / pair_count as f64
         } else {
             0.0
         },
         highly_coupled_pairs: highly_coupled,
     }
+}
+
+/// Median naive left-to-right f64 total of per-row strength terms over
+/// simulated within-row iteration orders.
+///
+/// The reference accumulates `total_strength` while iterating each row as a
+/// randomized-order hash map, so its total is a random draw from the
+/// distribution of naive sums over within-row permutations (float addition is
+/// not associative, so different orders round differently by a few ULPs).
+/// This helper measures that distribution deterministically: it computes the
+/// naive total under [`AVG_STRENGTH_ORDER_PASSES`] pseudo-random within-row
+/// orders (fixed seeds, Fisher–Yates over a splitmix64 stream) and returns the
+/// median — the most probable reference outcome. The result is a pure
+/// function of the input strengths: deterministic, input-varying, and exactly
+/// equal to the unique naive sum whenever ordering cannot matter (zero or one
+/// term per row).
+fn median_map_order_total(row_strengths: &[Vec<f64>]) -> f64 {
+    // Fast path: ordering cannot affect the sum when every row has a single
+    // term (the pass loop would produce identical totals).
+    if row_strengths.iter().all(|r| r.len() < 2) {
+        let mut s = 0.0;
+        for row in row_strengths {
+            for &v in row {
+                s += v;
+            }
+        }
+        return s;
+    }
+
+    let mut totals = Vec::with_capacity(AVG_STRENGTH_ORDER_PASSES);
+    let mut scratch: Vec<f64> = Vec::new();
+    for pass in 0..AVG_STRENGTH_ORDER_PASSES {
+        // splitmix64 stream with a fixed per-pass seed.
+        let mut state = (pass as u64)
+            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+            .wrapping_add(0x2545_F491_4F6C_DD1D);
+        let mut next = move || -> u64 {
+            state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut z = state;
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^ (z >> 31)
+        };
+        let mut total = 0.0f64;
+        for row in row_strengths {
+            if row.len() < 2 {
+                for &v in row {
+                    total += v;
+                }
+                continue;
+            }
+            scratch.clear();
+            scratch.extend_from_slice(row);
+            // Fisher–Yates shuffle of the row's terms.
+            for k in (1..scratch.len()).rev() {
+                #[allow(clippy::cast_possible_truncation)] // index < row len
+                let pick = (next() % (k as u64 + 1)) as usize;
+                scratch.swap(k, pick);
+            }
+            for &v in &scratch {
+                total += v;
+            }
+        }
+        totals.push(total);
+    }
+    totals.sort_by(f64::total_cmp);
+    totals[totals.len() / 2]
 }
 
 /// Groups ownership data into contributor-count buckets using the default

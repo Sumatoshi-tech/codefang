@@ -1,0 +1,14 @@
+{
+  "first_diff": "first diff @137: go=\"tic_complexity: 8\\n      cognitiv\" rust=\"tic_complexity: 7\\n      cognitiv\"",
+  "go_runs_sha256": [
+    "041f457bccf7b40062ca2cc16786e82b6bef0c67e4a71cb8f7b60db0ed22ad05",
+    "041f457bccf7b40062ca2cc16786e82b6bef0c67e4a71cb8f7b60db0ed22ad05",
+    "041f457bccf7b40062ca2cc16786e82b6bef0c67e4a71cb8f7b60db0ed22ad05"
+  ],
+  "input_sha256": "b345ea0e6cfd0f76ff09e8103dca0e76ee9b09403679062286acc137846ef282",
+  "json_mode": false,
+  "reason": "canonical divergence (go=864B rust=861B, variant-fields=0)",
+  "rust_out_sha256": "3e16138d54d915ac412d89dac090b635d88fcb74e6eaba74504effad442ff1b8",
+  "stage": "goyaml",
+  "variant_fields": []
+}

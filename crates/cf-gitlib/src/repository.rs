@@ -26,6 +26,14 @@ pub struct LogOptions {
     pub reverse: bool,
 }
 
+/// Builds the [`LogOptions::since`] cutoff from Unix seconds. The comparison
+/// in the log iterator is instant-based, so the zone offset carries no
+/// filtering meaning and is fixed at 0.
+#[must_use]
+pub fn time_from_unix_secs(secs: i64) -> git2::Time {
+    git2::Time::new(secs, 0)
+}
+
 /// Applies process-global libgit2 performance options, once.
 ///
 /// **`strict_hash_verification(false)`** — by default libgit2 re-hashes every
@@ -157,6 +165,17 @@ impl Repository {
     ///
     /// Returns revwalk/HEAD errors on failure.
     pub fn log(&self, opts: &LogOptions) -> Result<CommitIter<'_>> {
+        // Shallow-clone parity with the reference binary: it links libgit2 1.5.0,
+        // which predates shallow-clone support, so its revwalk preparation hits the
+        // grafted commit's missing parent objects and fails on the first next().
+        // The reference pipeline swallows that as an empty walk ("planning chunks
+        // ... commits=0 chunks=0") and every history analyzer emits its empty
+        // report. Our libgit2 honors `.git/shallow` and would happily walk the
+        // truncated history, so replicate the reference behavior: a shallow
+        // repository yields an already-exhausted commit iterator.
+        if self.repo.is_shallow() {
+            return Ok(CommitIter::empty(self));
+        }
         let mut walk = self.repo.revwalk().map_err(GitError::CreateRevwalk)?;
 
         let head = self.repo.head().map_err(GitError::GetHead)?;

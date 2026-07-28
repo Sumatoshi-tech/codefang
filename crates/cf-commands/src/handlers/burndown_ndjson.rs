@@ -63,7 +63,12 @@ pub fn burndown_timeseries_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     // follows only the first parent of merge commits (simplify_first_parent).
     // The window is the `limit` NEWEST commits processed oldest-first (reference:
     // `gitlib.loadHistoryCommits`), NOT the `limit` oldest.
-    let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, true)?;
+    let hashes = crate::handlers::load_history_commit_hashes(
+        &repo,
+        limit,
+        true,
+        crate::handlers::history_since_spec(sub),
+    )?;
 
     let opts = PathPolicyOptions::default();
     let sink: DeltaSink = Rc::new(RefCell::new(Vec::new()));
@@ -141,7 +146,12 @@ pub fn burndown_timeseries_contribution(
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
 
     // Burndown forces --first-parent, exactly as the sibling paths.
-    let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, true)?;
+    let hashes = crate::handlers::load_history_commit_hashes(
+        &repo,
+        limit,
+        true,
+        crate::handlers::history_since_spec(sub),
+    )?;
 
     let opts = PathPolicyOptions::default();
     let sink: DeltaSink = Rc::new(RefCell::new(Vec::new()));
@@ -234,6 +244,36 @@ pub fn burndown_timeseries_contribution(
 /// maps, exactly as `json.Marshal` of those structs. All bytes route through
 /// `cf-gojson`.
 pub fn burndown_record_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    let records = burndown_ndjson_records(sub)?;
+    let mut out: Vec<u8> = Vec::new();
+    for r in records {
+        // NDJSONLine: json.Marshal of a struct → field-declaration order
+        // (hash, tick, author_id, timestamp, analyzer, data).
+        let mut line = GoMap::new(MapOrigin::Struct);
+        line.insert("hash", GoValue::Str(r.hash));
+        line.insert("tick", GoValue::Int(r.tick));
+        line.insert("author_id", GoValue::Int(r.author_id));
+        line.insert(
+            "timestamp",
+            GoValue::Str(format_rfc3339_offset(r.time_secs, r.tz_offset_min)),
+        );
+        line.insert("analyzer", GoValue::Str("burndown".to_string()));
+        line.insert("data", r.data);
+        out.extend_from_slice(&cf_gojson::marshal(&GoValue::Map(line)));
+        out.push(b'\n');
+    }
+    Some(out)
+}
+
+/// The per-commit burndown ndjson records (`CommitResult` payloads), the
+/// [`burndown_record_ndjson`] walk factored to the shared
+/// [`crate::handlers::history_formats::NdjsonRecord`] shape so the centralized
+/// multi-analyzer `--format ndjson` history path (`history_ndjson`) can
+/// interleave burndown with the other sequential leaf (devs) per commit,
+/// exactly as the reference streaming sink emits them.
+pub fn burndown_ndjson_records(
+    sub: &clap::ArgMatches,
+) -> Option<Vec<crate::handlers::history_formats::NdjsonRecord>> {
     let path = run_repo_path(sub);
     let repo = cf_gitlib::Repository::open(&path).ok()?;
 
@@ -241,7 +281,12 @@ pub fn burndown_record_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 
     // Window: `limit` NEWEST commits oldest-first, first-parent (reference:
     // `gitlib.loadHistoryCommits`; burndown forces --first-parent).
-    let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, true)?;
+    let hashes = crate::handlers::load_history_commit_hashes(
+        &repo,
+        limit,
+        true,
+        crate::handlers::history_since_spec(sub),
+    )?;
 
     let opts = PathPolicyOptions::default();
     let sink: DeltaSink = Rc::new(RefCell::new(Vec::new()));
@@ -251,9 +296,9 @@ pub fn burndown_record_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let mut previous_tick: i64 = 0;
     let mut identity = LooseIdentity::default();
 
-    let mut out: Vec<u8> = Vec::new();
+    let mut records: Vec<crate::handlers::history_formats::NdjsonRecord> = Vec::new();
 
-    for hash in &hashes {
+    for (pos, hash) in hashes.iter().enumerate() {
         let commit = repo.lookup_commit(*hash).ok()?;
         let new_tree = commit.tree().ok()?;
 
@@ -293,24 +338,18 @@ pub fn burndown_record_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         data.insert("LinesAdded", GoValue::Int(added));
         data.insert("LinesRemoved", GoValue::Int(removed));
 
-        let timestamp =
-            format_rfc3339_offset(committer.when.seconds(), committer.when.offset_minutes());
-
-        // NDJSONLine: json.Marshal of a struct → field-declaration order
-        // (hash, tick, author_id, timestamp, analyzer, data).
-        let mut line = GoMap::new(MapOrigin::Struct);
-        line.insert("hash", GoValue::Str(hash.to_string()));
-        line.insert("tick", GoValue::Int(tick));
-        line.insert("author_id", GoValue::Int(author_id));
-        line.insert("timestamp", GoValue::Str(timestamp));
-        line.insert("analyzer", GoValue::Str("burndown".to_string()));
-        line.insert("data", GoValue::Map(data));
-
-        out.extend_from_slice(&cf_gojson::marshal(&GoValue::Map(line)));
-        out.push(b'\n');
+        records.push(crate::handlers::history_formats::NdjsonRecord {
+            pos,
+            hash: hash.to_string(),
+            tick,
+            author_id,
+            time_secs: committer.when.seconds(),
+            tz_offset_min: committer.when.offset_minutes(),
+            data: GoValue::Map(data),
+        });
     }
 
-    Some(out)
+    Some(records)
 }
 
 /// `history/burndown --format json` over the general history pipeline (streaming,
@@ -396,7 +435,12 @@ pub fn burndown_run_aggregate(sub: &clap::ArgMatches) -> Option<BurndownRunAggre
 
     // Window: `limit` NEWEST commits oldest-first, first-parent (reference:
     // `gitlib.loadHistoryCommits`; burndown forces --first-parent).
-    let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, true)?;
+    let hashes = crate::handlers::load_history_commit_hashes(
+        &repo,
+        limit,
+        true,
+        crate::handlers::history_since_spec(sub),
+    )?;
 
     let opts = PathPolicyOptions::default();
     let sink: DeltaSink = Rc::new(RefCell::new(Vec::new()));
@@ -782,17 +826,56 @@ fn apply_modification(
 
     // applyDiffs: drive File::update from the line diff via the diffApplier
     // pending/flush logic. The file may move to change.To.Name (here From == To).
-    let diffs = cf_godiff::line_diff(&blob_from.data, &blob_to.data, true);
+    //
+    // The runtime history pipeline (the reference diff pipeline →
+    // `cf_batch_diff_blobs` → `git_diff_blobs`) computes the line diff with
+    // libgit2's Myers xdiff, NOT diffmatchpatch — `FileDiffAnalyzer.Consume`
+    // takes the pre-computed `ac.FileDiffs` when the runtime pipeline provides
+    // them, and the streaming `run` command always does. The dmp engine only
+    // runs as the `fileDiffFromGoDiff` fallback on a libgit2 error. The two
+    // engines align edit boundaries differently (xdiff shift heuristics vs.
+    // dmp semantic-lossless cleanup), which changes per-line tick attribution
+    // in the survival treap, so burndown must consume the SAME libgit2 op
+    // stream as the reference.
+    let diffs = compute_line_diff(repo, change, &blob_from, &blob_to, old_lines);
     let mut file = tracked.remove(&change.from.name).unwrap();
     apply_diffs(&mut file, &diffs, tick);
     tracked.insert(change.to.name.clone(), file);
+}
+
+/// The line-diff op stream the reference runtime pipeline feeds burndown: libgit2
+/// `git_diff_blobs` line ops (`diff_blob_line_ops`, the `cf_batch_diff_blobs`
+/// port), falling back to the diffmatchpatch engine (`fileDiffFromGoDiff`) only
+/// when libgit2 errors — mirroring `DiffPipeline.processDiffResponse`.
+fn compute_line_diff(
+    repo: &cf_gitlib::Repository,
+    change: &Change,
+    blob_from: &CachedBlob,
+    blob_to: &CachedBlob,
+    old_lines: i64,
+) -> Vec<(Op, i64)> {
+    use cf_gitlib::diff::{diff_blob_line_ops, LineOp};
+    match diff_blob_line_ops(repo.native(), change.from.hash, change.to.hash, old_lines) {
+        Ok(ops) => ops
+            .iter()
+            .map(|op| match *op {
+                LineOp::Equal(n) => (Op::Equal, n),
+                LineOp::Insert(n) => (Op::Insert, n),
+                LineOp::Delete(n) => (Op::Delete, n),
+            })
+            .collect(),
+        Err(_) => cf_godiff::line_diff(&blob_from.data, &blob_to.data, true)
+            .iter()
+            .map(|s| (s.op, s.lines.len() as i64))
+            .collect(),
+    }
 }
 
 /// Port of burndown's `diffApplier` (`applyDiffs`): walks the line diff and
 /// issues `File::update(packValue=tick, position, insLen, delLen)` calls. A
 /// pending delete merges with a following insert into a single replace; equal
 /// runs flush any pending delete and advance the position.
-fn apply_diffs(file: &mut File, diffs: &[cf_godiff::Segment], tick: i64) {
+fn apply_diffs(file: &mut File, diffs: &[(Op, i64)], tick: i64) {
     let mut position: i64 = 0;
     // pending mirrors the reference implementation's `pending diffmatchpatch.Diff` (its op + line length).
     // An empty pending is represented by `None`.
@@ -811,9 +894,8 @@ fn apply_diffs(file: &mut File, diffs: &[cf_godiff::Segment], tick: i64) {
         }
     }
 
-    for seg in diffs {
-        let len = seg.lines.len() as i64;
-        match seg.op {
+    for &(op, len) in diffs {
+        match op {
             Op::Equal => {
                 flush(file, &mut pending, &mut position, tick);
                 position += len;

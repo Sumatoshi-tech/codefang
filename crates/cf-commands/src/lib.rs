@@ -173,6 +173,8 @@ where
         }
     };
 
+    install_signal_handlers();
+
     match matches.subcommand() {
         Some(("version", _)) => {
             print!("{}", cf_version::codefang_version_line());
@@ -195,6 +197,47 @@ where
 /// are clap-vs-cobra cosmetic (Layer-D informational), but a real generator (not
 /// a help stub) is required so the command behaves like the reference implementation's. With no shell
 /// subcommand cobra prints the completion command's help (rc 0).
+/// Installs SIGINT/SIGTERM handlers for cooperative cancellation: the first
+/// signal sets the shared cancel flag (the static folder walks poll it and
+/// bail out), a second signal falls through to the default disposition and
+/// kills the process — the standard double-Ctrl-C escape hatch. Without this
+/// the walks are uninterruptible computation and a signal simply dies
+/// mid-run with the default handler, which is indistinguishable from a hang
+/// when stdout is redirected.
+fn install_signal_handlers() {
+    for sig in [signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM] {
+        let flag = std::sync::Arc::clone(handlers::cancel_flag());
+        // Order matters: conditional-default first, so it only fires once the
+        // flag from the plain register (below) is already set.
+        let _ = signal_hook::flag::register_conditional_default(sig, std::sync::Arc::clone(&flag));
+        let _ = signal_hook::flag::register(sig, flag);
+    }
+}
+
+/// Exit code for a run interrupted by SIGINT/SIGTERM (128 + SIGINT), matching
+/// the shell convention for signal death.
+const EXIT_INTERRUPTED: i32 = 130;
+
+/// Writes report bytes to stdout. A closed downstream pipe
+/// (`codefang run ... | head`) is not a bug: the Go reference dies silently
+/// of SIGPIPE (exit 128+13); Rust ignores SIGPIPE and surfaces `EPIPE`
+/// instead, so mirror the reference exit rather than panicking mid-report.
+fn write_stdout_or_exit(bytes: &[u8]) {
+    use std::io::Write as _;
+    // An interrupted run must not emit a truncated report that looks
+    // complete: surface the interruption and exit with the signal convention.
+    if handlers::run_cancelled() {
+        eprintln!("Error: interrupted");
+        std::process::exit(EXIT_INTERRUPTED);
+    }
+    if let Err(e) = std::io::stdout().write_all(bytes) {
+        if e.kind() == std::io::ErrorKind::BrokenPipe {
+            std::process::exit(141);
+        }
+        panic!("write stdout: {e}");
+    }
+}
+
 fn completion_subcommand(sub: &clap::ArgMatches) -> i32 {
     use clap_complete::Shell;
 
@@ -244,6 +287,13 @@ impl Drop for RunProgress {
     fn drop(&mut self) {
         if self.silent {
             return;
+        }
+        // Surface silent per-file skips (unreadable / oversized / parse
+        // failure): without this line a permissions failure across half the
+        // tree yields a plausible-looking but incomplete report.
+        let skipped = handlers::skipped_file_count();
+        if skipped > 0 {
+            eprintln!("progress: skipped {skipped} unreadable/oversized/unparseable files");
         }
         let d = self.start.elapsed();
         let ms = d.as_millis();
@@ -367,7 +417,7 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
             .all(|a| handlers::is_static_id_or_glob(a))
     {
         if let Some(bytes) = handlers::static_multi_bin(&analyzer_strs, &ctx.path) {
-            std::io::stdout().write_all(&bytes).expect("write stdout");
+            write_stdout_or_exit(&bytes);
             return 0;
         }
     }
@@ -379,17 +429,27 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
     // of the scored sections. A single static analyzer keeps its own one-section
     // document (the per-id pipeline below); a selection that also matches a
     // history analyzer (e.g. `*`) uses the UnifiedModel path, not this merge.
-    if raw_format == "json"
+    if (raw_format == "json" || raw_format == "text")
         && !analyzer_strs.is_empty()
         && analyzer_strs
             .iter()
             .all(|a| handlers::is_static_id_or_glob(a))
         && handlers::static_json_selects_multiple(&analyzer_strs)
     {
-        if let Some(bytes) =
+        let bytes = if raw_format == "json" {
             handlers::static_multi_json(&analyzer_strs, &ctx.path, ctx.matches.get_flag("per-file"))
-        {
-            std::io::stdout().write_all(&bytes).expect("write stdout");
+        } else {
+            // Multi-static text renders all selected sections through ONE
+            // FormatText call (the reference), so the ≥2-section executive
+            // summary header is emitted before the per-analyzer bodies.
+            handlers::static_multi_text(
+                &analyzer_strs,
+                &ctx.path,
+                &handlers::static_path_policy(&ctx),
+            )
+        };
+        if let Some(bytes) = bytes {
+            write_stdout_or_exit(&bytes);
             return 0;
         }
     }
@@ -411,7 +471,7 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
         if let Some(bytes) =
             handlers::render_combined(&ctx, &combined_static, &combined_history, &raw_format)
         {
-            std::io::stdout().write_all(&bytes).expect("write stdout");
+            write_stdout_or_exit(&bytes);
             return 0;
         }
     }
@@ -475,15 +535,13 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
         };
         match special {
             Some(Ok(bytes)) => {
-                std::io::stdout().write_all(&bytes).expect("write stdout");
+                write_stdout_or_exit(&bytes);
                 return 0;
             }
             Some(Err(fail)) => {
                 // The reference implementation streams the partial bytes to stdout BEFORE the serializer
                 // fails; cobra then prints `Error: <msg>` to stderr and exits 1.
-                std::io::stdout()
-                    .write_all(&fail.partial)
-                    .expect("write stdout");
+                write_stdout_or_exit(&fail.partial);
                 eprintln!("Error: {}", fail.message);
                 return 1;
             }
@@ -493,9 +551,8 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
 
     match pipeline::run_pipeline(&registry, &ctx, &resolved_ids) {
         Ok(outputs) => {
-            let mut out = std::io::stdout();
             for phase in &outputs {
-                out.write_all(&phase.bytes).expect("write stdout");
+                write_stdout_or_exit(&phase.bytes);
             }
             0
         }

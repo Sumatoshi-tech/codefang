@@ -1,7 +1,7 @@
 {
   "tier": "smoke",
   "tally": {
-    "PASS": 83,
+    "PASS": 102,
     "FAIL": 0,
     "SIM": 0,
     "EXPECTED_EMPTY": 72,

@@ -3,8 +3,8 @@
   "matrix_hash": "8ba463ca1f96dd5cd99e5627c438f392baf1479d2561caa52687d1d95768dd05",
   "total_cells": 174,
   "tally": {
-    "PASS": 101,
-    "FAIL": 1,
+    "PASS": 102,
+    "FAIL": 0,
     "SIM": 0,
     "EXPECTED_EMPTY": 72
   },
@@ -16,7 +16,7 @@
         "parse",
         "--format",
         "json",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/44740f6a69ae1eb14a52794bc2543aebf0612d8319ae3c20ea124211c6297fbc.go"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/44740f6a69ae1eb14a52794bc2543aebf0612d8319ae3c20ea124211c6297fbc.go"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -29,7 +29,7 @@
         "parse",
         "--format",
         "compact",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/44740f6a69ae1eb14a52794bc2543aebf0612d8319ae3c20ea124211c6297fbc.go"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/44740f6a69ae1eb14a52794bc2543aebf0612d8319ae3c20ea124211c6297fbc.go"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -42,7 +42,7 @@
         "parse",
         "--format",
         "tree",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/44740f6a69ae1eb14a52794bc2543aebf0612d8319ae3c20ea124211c6297fbc.go"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/44740f6a69ae1eb14a52794bc2543aebf0612d8319ae3c20ea124211c6297fbc.go"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -57,7 +57,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/44740f6a69ae1eb14a52794bc2543aebf0612d8319ae3c20ea124211c6297fbc.go"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/44740f6a69ae1eb14a52794bc2543aebf0612d8319ae3c20ea124211c6297fbc.go"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -72,7 +72,7 @@
         "--format",
         "text",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/44740f6a69ae1eb14a52794bc2543aebf0612d8319ae3c20ea124211c6297fbc.go"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/44740f6a69ae1eb14a52794bc2543aebf0612d8319ae3c20ea124211c6297fbc.go"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -88,7 +88,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/44740f6a69ae1eb14a52794bc2543aebf0612d8319ae3c20ea124211c6297fbc.go"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/44740f6a69ae1eb14a52794bc2543aebf0612d8319ae3c20ea124211c6297fbc.go"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -104,7 +104,7 @@
         "--format",
         "compact",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/44740f6a69ae1eb14a52794bc2543aebf0612d8319ae3c20ea124211c6297fbc.go"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/44740f6a69ae1eb14a52794bc2543aebf0612d8319ae3c20ea124211c6297fbc.go"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -120,7 +120,7 @@
         "--format",
         "count",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/44740f6a69ae1eb14a52794bc2543aebf0612d8319ae3c20ea124211c6297fbc.go"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/44740f6a69ae1eb14a52794bc2543aebf0612d8319ae3c20ea124211c6297fbc.go"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -134,7 +134,7 @@
         "parse",
         "--format",
         "json",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -147,7 +147,7 @@
         "parse",
         "--format",
         "compact",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -160,7 +160,7 @@
         "parse",
         "--format",
         "tree",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -175,7 +175,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -190,7 +190,7 @@
         "--format",
         "text",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -206,7 +206,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -222,7 +222,7 @@
         "--format",
         "compact",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -238,7 +238,7 @@
         "--format",
         "count",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -252,7 +252,7 @@
         "parse",
         "--format",
         "json",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -265,7 +265,7 @@
         "parse",
         "--format",
         "compact",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -278,7 +278,7 @@
         "parse",
         "--format",
         "tree",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -293,7 +293,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -308,7 +308,7 @@
         "--format",
         "text",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -324,7 +324,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -340,7 +340,7 @@
         "--format",
         "compact",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -356,7 +356,7 @@
         "--format",
         "count",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -370,7 +370,7 @@
         "parse",
         "--format",
         "json",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -383,7 +383,7 @@
         "parse",
         "--format",
         "compact",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -396,7 +396,7 @@
         "parse",
         "--format",
         "tree",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -411,7 +411,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -426,7 +426,7 @@
         "--format",
         "text",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -442,7 +442,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -458,7 +458,7 @@
         "--format",
         "compact",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -474,7 +474,7 @@
         "--format",
         "count",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -488,7 +488,7 @@
         "parse",
         "--format",
         "json",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -501,7 +501,7 @@
         "parse",
         "--format",
         "compact",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -514,7 +514,7 @@
         "parse",
         "--format",
         "tree",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -529,7 +529,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -544,7 +544,7 @@
         "--format",
         "text",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -560,7 +560,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -576,7 +576,7 @@
         "--format",
         "compact",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -592,7 +592,7 @@
         "--format",
         "count",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -606,7 +606,7 @@
         "parse",
         "--format",
         "json",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -619,7 +619,7 @@
         "parse",
         "--format",
         "compact",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -632,7 +632,7 @@
         "parse",
         "--format",
         "tree",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -647,7 +647,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -662,7 +662,7 @@
         "--format",
         "text",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -678,7 +678,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -694,7 +694,7 @@
         "--format",
         "compact",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -710,7 +710,7 @@
         "--format",
         "count",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -724,7 +724,7 @@
         "parse",
         "--format",
         "json",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -737,7 +737,7 @@
         "parse",
         "--format",
         "compact",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -750,7 +750,7 @@
         "parse",
         "--format",
         "tree",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -765,7 +765,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -780,7 +780,7 @@
         "--format",
         "text",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -796,7 +796,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -812,7 +812,7 @@
         "--format",
         "compact",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -828,7 +828,7 @@
         "--format",
         "count",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -842,7 +842,7 @@
         "parse",
         "--format",
         "json",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -855,7 +855,7 @@
         "parse",
         "--format",
         "compact",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -868,7 +868,7 @@
         "parse",
         "--format",
         "tree",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -883,7 +883,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -898,7 +898,7 @@
         "--format",
         "text",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -914,7 +914,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -930,7 +930,7 @@
         "--format",
         "compact",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -946,7 +946,7 @@
         "--format",
         "count",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -960,7 +960,7 @@
         "parse",
         "--format",
         "json",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -973,7 +973,7 @@
         "parse",
         "--format",
         "compact",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -986,7 +986,7 @@
         "parse",
         "--format",
         "tree",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -1001,7 +1001,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -1016,7 +1016,7 @@
         "--format",
         "text",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -1032,7 +1032,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -1048,7 +1048,7 @@
         "--format",
         "compact",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -1064,7 +1064,7 @@
         "--format",
         "count",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -1078,7 +1078,7 @@
         "parse",
         "--format",
         "json",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -1091,7 +1091,7 @@
         "parse",
         "--format",
         "compact",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -1104,7 +1104,7 @@
         "parse",
         "--format",
         "tree",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -1119,7 +1119,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -1134,7 +1134,7 @@
         "--format",
         "text",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -1150,7 +1150,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -1166,7 +1166,7 @@
         "--format",
         "compact",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -1182,7 +1182,7 @@
         "--format",
         "count",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -1196,7 +1196,7 @@
         "parse",
         "--format",
         "json",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -1209,7 +1209,7 @@
         "parse",
         "--format",
         "compact",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -1222,7 +1222,7 @@
         "parse",
         "--format",
         "tree",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -1237,7 +1237,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -1252,7 +1252,7 @@
         "--format",
         "text",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -1268,7 +1268,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -1284,7 +1284,7 @@
         "--format",
         "compact",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -1300,7 +1300,7 @@
         "--format",
         "count",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -1314,7 +1314,7 @@
         "parse",
         "--format",
         "json",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -1327,7 +1327,7 @@
         "parse",
         "--format",
         "compact",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -1340,7 +1340,7 @@
         "parse",
         "--format",
         "tree",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh"
       ],
       "family": "uast_parse",
       "tier": "smoke",
@@ -1355,7 +1355,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -1370,7 +1370,7 @@
         "--format",
         "text",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh"
       ],
       "family": "uast_analyze",
       "tier": "smoke",
@@ -1386,7 +1386,7 @@
         "--format",
         "json",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -1402,7 +1402,7 @@
         "--format",
         "compact",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -1418,7 +1418,7 @@
         "--format",
         "count",
         "-i",
-        "/home/dmitriy/sources/codefang/rust/tests/compat/corpus/files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh"
+        "/home/dmitriy/sources/codefang/tests/compat/corpus/files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh"
       ],
       "family": "uast_query",
       "tier": "smoke",
@@ -1722,7 +1722,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/cohesion[bin]@hercules",

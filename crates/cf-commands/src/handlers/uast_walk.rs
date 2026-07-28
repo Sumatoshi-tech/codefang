@@ -206,7 +206,9 @@ struct WalkKey {
     head: bool,
     limit: i64,
     first_parent: bool,
+    since: crate::handlers::SinceSpec,
     max_distance: i64,
+    max_changes: usize,
     selection: UastSelection,
 }
 
@@ -217,7 +219,9 @@ impl WalkKey {
             head: sub.get_flag("head"),
             limit: sub.get_one::<i64>("limit").copied().unwrap_or(0),
             first_parent: effective_first_parent(sub),
+            since: crate::handlers::history_since_spec(sub),
             max_distance: history::typos_max_distance(sub),
+            max_changes: history::max_changes_per_commit_cap(sub),
             selection,
         }
     }
@@ -315,6 +319,8 @@ pub(crate) fn shared_shotness_walk(sub: &clap::ArgMatches) -> Option<Option<Vec<
 /// exact value the analyzer's direct walk computes per commit.
 #[derive(Default)]
 struct SharedCommitProduct {
+    /// RAW (pre-filter) tree-diff change count, for the oversized-commit gate.
+    raw_change_count: usize,
     quality: Option<cf_quality::TickQuality>,
     sentiment: Option<Option<Vec<String>>>,
     imports: Option<Vec<cf_imports::history::ImportEntry>>,
@@ -340,10 +346,14 @@ fn compute_shared_walks(sel: UastSelection, key: &WalkKey) -> Option<SharedWalks
     let hashes = if key.head {
         vec![repo.head().ok()?]
     } else {
-        load_history_commit_hashes(&repo, key.limit, key.first_parent)?
+        load_history_commit_hashes(&repo, key.limit, key.first_parent, key.since)?
     };
 
     let max_distance = key.max_distance;
+    // Oversized-commit gate: commits whose RAW tree diff exceeds the cap are
+    // silently dropped from history BEFORE any analyzer (reference framework
+    // behaviour; flag `--max-changes-per-commit`, 0 = default 10000).
+    let max_changes = key.max_changes;
     let opts = PathPolicyOptions::default();
     let opts_ref = &opts;
 
@@ -356,8 +366,16 @@ fn compute_shared_walks(sel: UastSelection, key: &WalkKey) -> Option<SharedWalks
         history::with_uast_parser(|parser| {
             let commit = repo.lookup_commit(hash).ok()?;
             let changes = history::commit_tree_changes(repo, &commit)?;
+            let mut product = SharedCommitProduct {
+                raw_change_count: changes.len(),
+                ..SharedCommitProduct::default()
+            };
+            // Oversized commits are dropped before any analyzer — no per-file
+            // work; the reduce below removes them from the walk entirely.
+            if product.raw_change_count > max_changes {
+                return Some(product);
+            }
             let mut cache = CommitParseCache::new(repo, parser, opts_ref);
-            let mut product = SharedCommitProduct::default();
             if sel.quality {
                 product.quality = Some(history::quality_commit_product(&changes, &mut cache));
             }
@@ -389,9 +407,28 @@ fn compute_shared_walks(sel: UastSelection, key: &WalkKey) -> Option<SharedWalks
         })
     })?;
 
+    // Oversized-commit skip: dropped from history before identity/tick
+    // stamping (the reference framework never shows the commit to any
+    // analyzer, core or leaf), exactly like each direct walk's gate. The
+    // ORIGINAL walk position of each surviving commit is preserved: the
+    // reference runner numbers consume positions before the drop suppresses a
+    // record, and the forked-leaf NDJSON drain order keys on that position.
+    let mut kept_pos: Vec<usize> = Vec::new();
+    let (hashes, prepared): (Vec<_>, Vec<_>) = hashes
+        .into_iter()
+        .zip(prepared)
+        .enumerate()
+        .filter(|(_, (_, p))| p.raw_change_count <= max_changes)
+        .map(|(i, hp)| {
+            kept_pos.push(i);
+            hp
+        })
+        .unzip();
+
     // ---- sequential ordered identity/tick stamping ----------------------------
     // Identical across the five walks, so computed once here.
     struct Stamp {
+        pos: usize,
         hash_str: String,
         tick: i64,
         author_id: i64,
@@ -403,7 +440,7 @@ fn compute_shared_walks(sel: UastSelection, key: &WalkKey) -> Option<SharedWalks
     let mut tick0: Option<i64> = None;
     let mut previous_tick: i64 = 0;
     let mut stamps: Vec<Stamp> = Vec::with_capacity(hashes.len());
-    for hash in &hashes {
+    for (j, hash) in hashes.iter().enumerate() {
         let commit = repo.lookup_commit(*hash).ok()?;
         let committer_when = commit.committer().when;
         let when = committer_when.seconds();
@@ -421,6 +458,7 @@ fn compute_shared_walks(sel: UastSelection, key: &WalkKey) -> Option<SharedWalks
         previous_tick = tick;
 
         stamps.push(Stamp {
+            pos: kept_pos[j],
             hash_str: hash.to_string(),
             tick,
             author_id,
@@ -448,6 +486,7 @@ fn compute_shared_walks(sel: UastSelection, key: &WalkKey) -> Option<SharedWalks
     }
 
     let quality = assemble(sel.quality, &stamps, &prepared, |s, p| QualityCommit {
+        pos: s.pos,
         hash: s.hash_str.clone(),
         tq: p
             .quality

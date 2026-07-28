@@ -1,0 +1,74 @@
+{
+  "overall_score_label": "6/10",
+  "sections": [
+    {
+      "title": "COMPLEXITY",
+      "score_label": "6/10",
+      "status": "Fair complexity - some functions could be simplified",
+      "metrics": [
+        {
+          "label": "Total Functions",
+          "value": "2"
+        },
+        {
+          "label": "Avg Complexity",
+          "value": "4.0"
+        },
+        {
+          "label": "Max Complexity",
+          "value": "7"
+        },
+        {
+          "label": "Total Complexity",
+          "value": "8"
+        },
+        {
+          "label": "Cognitive Total",
+          "value": "8"
+        },
+        {
+          "label": "Decision Points",
+          "value": "6"
+        }
+      ],
+      "distribution": [
+        {
+          "label": "Simple (1-5)",
+          "percent": 0.5,
+          "count": 1
+        },
+        {
+          "label": "Moderate (6-10)",
+          "percent": 0.5,
+          "count": 1
+        },
+        {
+          "label": "Complex (11-20)",
+          "percent": 0,
+          "count": 0
+        },
+        {
+          "label": "Very Complex (\u003e20)",
+          "percent": 0,
+          "count": 0
+        }
+      ],
+      "issues": [
+        {
+          "name": "classify",
+          "location": "input.go",
+          "value": "CC=7 | Cog=8 | Nest=2",
+          "severity": "fair"
+        },
+        {
+          "name": "main",
+          "location": "input.go",
+          "value": "CC=1 | Cog=0 | Nest=0",
+          "severity": "good"
+        }
+      ],
+      "score": 0.6
+    }
+  ],
+  "overall_score": 0.6
+}

@@ -87,9 +87,15 @@ impl Default for Config {
     }
 }
 
-/// Formats a `0..1` score as an `"N/10"` label (`{:.0}` rounding).
+/// Formats a `0..1` score as an `"N/10"` label.
+///
+/// Rounding is the reference `terminal.FormatScore`'s `math.Round` — half
+/// AWAY from zero (an exact 4.5 renders `5/10`), NOT `{:.0}`/`%.0f`
+/// banker's rounding (which would render `4/10` and diverges from the live
+/// reference on the multi-analyzer executive summary, whose 2-section
+/// average lands exactly on .5).
 pub fn format_score(score: f64) -> String {
-    format!("{:.0}/10", score * SCORE_SCALE)
+    format!("{}/10", (score * SCORE_SCALE).round() as i64)
 }
 
 /// Pads a string with spaces on the right to reach the given width, measured
@@ -182,7 +188,8 @@ pub fn format_score_bar(score: f64, bar_width: usize) -> String {
     let filled = clamp_filled(score, bar_width);
     let empty = bar_width - filled;
     let bar = format!("{}{}", BAR_FILLED.repeat(filled), BAR_EMPTY.repeat(empty));
-    format!("[{}] {:.0}/10", bar, score * SCORE_SCALE)
+    // Same `math.Round` half-away-from-zero semantics as [`format_score`].
+    format!("[{}] {}/10", bar, (score * SCORE_SCALE).round() as i64)
 }
 
 /// Renders a labeled percentage bar.

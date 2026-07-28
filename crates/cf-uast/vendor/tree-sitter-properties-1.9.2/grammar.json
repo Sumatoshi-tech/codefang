@@ -1,0 +1,11 @@
+{
+  "reference": "master",
+  "revision": "579b62f5ad8d96c2bb331f07d1408c92767531d9",
+  "grammarSha": "69a915a16c476e2ab896680ad163c5f8f345f5830fdd4296653ea90473837fc1",
+  "language": "properties",
+  "url": "https://github.com/tree-sitter-grammars/tree-sitter-properties",
+  "maintainedBy": "@ObserverOfTime",
+  "files": [
+    "scanner.c"
+  ]
+}

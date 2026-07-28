@@ -569,6 +569,21 @@ pub static TYPESCRIPT: LanguageMapping = uast_language! {
             roles: [Member],
             children: ["computed_property_name", "number", "private_property_identifier", "property_identifier", "string", "type_annotation"],
         },
+        // Class-property functions (`handleClick = () => {...}`) are methods
+        // in every practical sense; as plain Fields they were invisible to
+        // function detection.
+        public_field_definition_arrow ("(public_field_definition)") => {
+            type: Method,
+            roles: [Function, Declaration, Member],
+            children: ["computed_property_name", "decorator", "expression", "number", "private_property_identifier", "property_identifier", "string", "type_annotation"],
+            when: ["value.type == \"arrow_function\""],
+        },
+        public_field_definition_funcexpr ("(public_field_definition)") => {
+            type: Method,
+            roles: [Function, Declaration, Member],
+            children: ["computed_property_name", "decorator", "expression", "number", "private_property_identifier", "property_identifier", "string", "type_annotation"],
+            when: ["value.type == \"function_expression\""],
+        },
         public_field_definition => {
             type: Field,
             roles: [Member],
@@ -747,6 +762,23 @@ pub static TYPESCRIPT: LanguageMapping = uast_language! {
             type: Variable,
             token: self,
             roles: [Variable, Declaration],
+        },
+        // `const f = () => {...}` / `const f = function() {...}` is the
+        // dominant modern definition style; without these conditioned rules
+        // such declarators lowered as plain Variables and the analyzers
+        // missed most real-world functions. Conditioned first; the
+        // unconditional `variable_declarator` below is the catch-all.
+        variable_declarator_arrow ("(variable_declarator)") => {
+            type: Function,
+            roles: [Function, Declaration],
+            children: ["array_pattern", "expression", "identifier", "object_pattern", "type_annotation"],
+            when: ["value.type == \"arrow_function\""],
+        },
+        variable_declarator_funcexpr ("(variable_declarator)") => {
+            type: Function,
+            roles: [Function, Declaration],
+            children: ["array_pattern", "expression", "identifier", "object_pattern", "type_annotation"],
+            when: ["value.type == \"function_expression\""],
         },
         variable_declarator => {
             type: Variable,

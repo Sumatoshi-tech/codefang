@@ -54,6 +54,23 @@ pub(crate) struct ResolvedRule {
 /// Each non-empty pattern is compiled via `matcher`; a pattern that fails to
 /// compile (or an absent matcher) yields `None`, matching the lazy path's
 /// observable fall-through.
+/// Extracts the root tree-sitter node type from an S-expression pattern:
+/// `"(call)"` → `call`, `"(function_declaration name: (identifier) @name)"` →
+/// `function_declaration`. `None` for an empty/malformed pattern (the caller
+/// falls back to the rule name).
+pub(crate) fn pattern_root_type(pattern: &str) -> Option<&str> {
+    let inner = pattern.trim().strip_prefix('(')?;
+    let end = inner
+        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .unwrap_or(inner.len());
+    let root = &inner[..end];
+    if root.is_empty() {
+        None
+    } else {
+        Some(root)
+    }
+}
+
 pub(crate) fn resolve_rules(
     rules: &[Rule],
     rule_index: &HashMap<String, usize>,
@@ -133,8 +150,14 @@ pub struct Lowering<'a> {
     /// Pre-resolved rules (inheritance merged, pattern compiled) — borrowed,
     /// never cloned per node.
     rules: &'a [ResolvedRule],
-    /// First-occurrence-wins rule index keyed by tree-sitter node type.
-    rule_index: &'a HashMap<String, usize>,
+    /// Dispatch table keyed by the rule's PATTERN root node type (falling
+    /// back to the rule name), holding every candidate rule in declaration
+    /// order. Enables several rules per tree-sitter node type differentiated
+    /// by `when:` conditions (e.g. Elixir `call` → `def`/`defp`/generic):
+    /// the first rule whose conditions pass wins; an unconditional rule is
+    /// the catch-all. For the legacy corpus (one unconditional rule per node
+    /// type) this reduces to exactly the old single-lookup behavior.
+    rule_dispatch: &'a HashMap<String, Vec<usize>>,
     /// Compiled-pattern matcher for the language. Used only to run an
     /// already-compiled `@capture` query against a node; pattern *compilation*
     /// happens once at init, not per node.
@@ -147,7 +170,7 @@ impl<'a> Lowering<'a> {
     pub(crate) const fn new(
         source: &'a [u8],
         rules: &'a [ResolvedRule],
-        rule_index: &'a HashMap<String, usize>,
+        rule_dispatch: &'a HashMap<String, Vec<usize>>,
         pattern_matcher: &'a PatternMatcher,
         language: &'a str,
         include_unmapped: bool,
@@ -155,7 +178,7 @@ impl<'a> Lowering<'a> {
         Lowering {
             source,
             rules,
-            rule_index,
+            rule_dispatch,
             pattern_matcher,
             language,
             include_unmapped,
@@ -190,13 +213,46 @@ impl<'a> Lowering<'a> {
     }
 
     /// Lowers one tree-sitter node (and its subtree) to a canonical node.
+    ///
+    /// The recursion depth is bounded only by the parse tree's nesting depth,
+    /// which real-world generated sources push past 10k levels — deeper than a
+    /// fixed OS thread stack. The reference runtime's growable stacks absorb
+    /// that; here `stacker::maybe_grow` segments the stack on demand (64 KiB
+    /// red zone, 16 MiB growth chunks) so the walk — and therefore the output
+    /// bytes — stay identical while never overflowing.
     fn to_canonical_node(&self, root: TsNode<'_>, parent_context: &str) -> Option<Node> {
+        stacker::maybe_grow(64 * 1024, 16 * 1024 * 1024, || {
+            self.to_canonical_node_inner(root, parent_context)
+        })
+    }
+
+    fn to_canonical_node_inner(&self, root: TsNode<'_>, parent_context: &str) -> Option<Node> {
         let node_type = self.node_type(root);
-        let mapping_rule = self.find_mapping_rule(node_type);
+        let mapping_rule = self.find_mapping_rule(root, node_type);
 
-        let children = self.process_children(root, mapping_rule);
+        let Some(resolved) = mapping_rule else {
+            // Unmapped node: walk the children ONCE, with the frozen
+            // unmapped-walk semantics (cursor at >= CURSOR_THRESHOLD
+            // children — alias smearing preserved). The previous shape ran
+            // `process_children` over the subtree and then re-walked the same
+            // subtree in `create_unmapped_node`, doubling the work at every
+            // unmapped nesting level (2^depth blowup on deeply nested
+            // unmapped chains). `should_skip_node` is vacuously false without
+            // a rule, and `should_skip_empty_file` only fires on empty
+            // sources where both walks agree on zero children, so this
+            // restructure is output-identical.
+            let mapped_children = self.process_unmapped_children(root, parent_context);
 
-        if self.should_skip_node(root, mapping_rule) {
+            if self.should_skip_empty_file(node_type, &mapped_children) {
+                return None;
+            }
+
+            return self.finish_unmapped_node(root, node_type, mapped_children);
+        };
+
+        let children = self.process_children(root, Some(resolved));
+
+        if self.should_skip_node(root, Some(resolved)) {
             return None;
         }
 
@@ -204,18 +260,24 @@ impl<'a> Lowering<'a> {
             return None;
         }
 
-        match mapping_rule {
-            Some(resolved) => Some(self.create_mapped_node(root, resolved, children)),
-            None => self.create_unmapped_node(root, parent_context, node_type),
-        }
+        Some(self.create_mapped_node(root, resolved, children))
     }
 
-    /// Looks up the node type's pre-resolved mapping rule. Returns a borrow
-    /// into the init-time resolution table — no clone, no inheritance merge,
-    /// no pattern compile per node.
-    fn find_mapping_rule(&self, node_type: &str) -> Option<&'a ResolvedRule> {
-        let idx = *self.rule_index.get(node_type)?;
-        Some(&self.rules[idx])
+    /// Selects the node's mapping rule: iterates the node type's candidate
+    /// rules in declaration order and returns the first whose `when:`
+    /// conditions pass (an unconditional rule always passes — the catch-all).
+    /// Returns a borrow into the init-time resolution table — no clone, no
+    /// inheritance merge, no pattern compile per node.
+    fn find_mapping_rule(&self, root: TsNode<'_>, node_type: &str) -> Option<&'a ResolvedRule> {
+        let idxs = self.rule_dispatch.get(node_type)?;
+        for &idx in idxs {
+            let resolved = &self.rules[idx];
+            if resolved.rule.conditions.is_empty() || self.evaluate_conditions(root, Some(resolved))
+            {
+                return Some(resolved);
+            }
+        }
+        None
     }
 
     /// Visits named children in order, skipping those excluded by their own
@@ -280,7 +342,7 @@ impl<'a> Lowering<'a> {
     /// Resolves a `@capture` reference: query captures first, then a field
     /// with that name, then a descendant of that type.
     fn extract_capture_text(&self, root: TsNode<'_>, capture_name: &str) -> String {
-        let mapping_rule = self.find_mapping_rule(self.node_type(root));
+        let mapping_rule = self.find_mapping_rule(root, self.node_type(root));
         if let Some(captures) = self.match_pattern(root, mapping_rule) {
             if let Some(val) = captures.get(capture_name) {
                 return val.clone();
@@ -360,6 +422,18 @@ impl<'a> Lowering<'a> {
             }
         }
 
+        // Dotted field paths navigate nested structure:
+        // `value.type == "arrow_function"` resolves the `value` field/child
+        // and compares its NODE TYPE; a non-`type` terminal segment compares
+        // the resolved node's text. Segments resolve via `child_by_field_name`
+        // first, then the first named child of that node type.
+        if field.contains('.') {
+            return match self.resolve_field_path(root, field) {
+                Some(resolved) => compare(&resolved, val),
+                None => false,
+            };
+        }
+
         if let Some(field_node) = root.child_by_field_name(field) {
             return compare(&self.extract_node_text(field_node), val);
         }
@@ -381,6 +455,44 @@ impl<'a> Lowering<'a> {
         false
     }
 
+    /// Resolves a dotted condition path against `root` and returns the value
+    /// to compare: the resolved node's alias-aware type for a terminal
+    /// `.type` segment, its source text otherwise. `None` when any segment
+    /// fails to resolve (the condition is then false).
+    fn resolve_field_path(&self, root: TsNode<'_>, path: &str) -> Option<String> {
+        let mut segments: Vec<&str> = path.split('.').collect();
+        let terminal_is_type = segments.last() == Some(&"type");
+        if terminal_is_type {
+            segments.pop();
+        }
+
+        let mut node = root;
+        for seg in &segments {
+            node = self.resolve_path_segment(node, seg)?;
+        }
+
+        if terminal_is_type {
+            return Some(self.node_type(node).to_string());
+        }
+        Some(self.extract_node_text(node))
+    }
+
+    /// One dotted-path step: a field named `seg` on `node`, else `node`'s
+    /// first named child whose type is `seg`.
+    fn resolve_path_segment<'t>(&self, node: TsNode<'t>, seg: &str) -> Option<TsNode<'t>> {
+        if let Some(by_field) = node.child_by_field_name(seg) {
+            return Some(by_field);
+        }
+        let count = node.named_child_count();
+        for idx in 0..count {
+            let child = node.named_child(idx)?;
+            if self.node_type(child) == seg {
+                return Some(child);
+            }
+        }
+        None
+    }
+
     // ---- inclusion / exclusion ------------------------------------------------
 
     /// A mapped node whose conditions fail is skipped.
@@ -396,7 +508,10 @@ impl<'a> Lowering<'a> {
         if mapping_rule.is_none() {
             return false;
         }
-        let child_rule = self.find_mapping_rule(self.node_type(child));
+        // Dispatch already evaluates conditions: a child whose candidate
+        // rules all fail their conditions resolves to "no rule" and lowers as
+        // unmapped instead of being dropped.
+        let child_rule = self.find_mapping_rule(child, self.node_type(child));
         if child_rule.is_none() {
             return false;
         }
@@ -620,15 +735,14 @@ impl<'a> Lowering<'a> {
 
     // ---- unmapped node construction ---------------------------------------------
 
-    /// Builds the result for a tree-sitter node with no mapping rule.
-    fn create_unmapped_node(
+    /// Builds the result for a tree-sitter node with no mapping rule, from
+    /// children already collected by [`Self::process_unmapped_children`].
+    fn finish_unmapped_node(
         &self,
         root: TsNode<'_>,
-        parent_context: &str,
         node_type: &str,
+        mapped_children: Vec<Node>,
     ) -> Option<Node> {
-        let mapped_children = self.process_unmapped_children(root, parent_context);
-
         if self.include_unmapped {
             return Some(self.create_include_unmapped_node(root, node_type, mapped_children));
         }

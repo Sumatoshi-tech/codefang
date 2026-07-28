@@ -17,6 +17,9 @@ cf-goyaml = { workspace = true }
 # configuration-file predicate byte-for-byte instead of a hand-rolled
 # extension list.
 cf-langpath = { path = "../cf-langpath" }
+# enry v2.1.0 vendor regex table (`enry.IsVendor` reproduction) — drives the
+# vendor predicate byte-for-byte instead of a hand-rolled prefix subset.
+cf-pathfilter = { path = "../cf-pathfilter" }
 
 [dev-dependencies]
 serde_json = { workspace = true }

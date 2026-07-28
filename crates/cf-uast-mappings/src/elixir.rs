@@ -123,6 +123,36 @@ pub static ELIXIR: LanguageMapping = uast_language! {
             token: self,
             roles: [Literal],
         },
+        // Elixir defines functions/modules via `call` nodes (`def foo do`,
+        // `defmodule M do`); without these conditioned rules every definition
+        // lowered as a bare Call and the analyzers saw zero functions.
+        // Declaration order matters: conditioned rules first, the
+        // unconditional `call` rule below is the catch-all.
+        call_def ("(call)") => {
+            type: Function,
+            roles: [Function, Declaration],
+            when: ["target == \"def\""],
+        },
+        call_defp ("(call)") => {
+            type: Function,
+            roles: [Function, Declaration],
+            when: ["target == \"defp\""],
+        },
+        call_defmacro ("(call)") => {
+            type: Function,
+            roles: [Function, Declaration],
+            when: ["target == \"defmacro\""],
+        },
+        call_defmacrop ("(call)") => {
+            type: Function,
+            roles: [Function, Declaration],
+            when: ["target == \"defmacrop\""],
+        },
+        call_defmodule ("(call)") => {
+            type: Class,
+            roles: [Class, Declaration],
+            when: ["target == \"defmodule\""],
+        },
         call => {
             type: Call,
             token: self,

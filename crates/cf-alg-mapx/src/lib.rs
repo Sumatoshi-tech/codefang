@@ -288,7 +288,9 @@ where
 /// mutated.
 ///
 /// `less(a, b)` returns `true` when `a` should sort before `b`. The sort is
-/// stable.
+/// **unstable** — it reproduces the reference `sort.Slice` (frozen pdqsort)
+/// permutation bit-for-bit, including its tie handling, because report
+/// surfaces expose the exact output order of equal elements.
 ///
 /// # Examples
 ///
@@ -304,22 +306,15 @@ where
 /// assert_eq!(all, Some(vec![3, 2, 1]));
 /// ```
 #[must_use]
-pub fn sort_and_limit<T, F>(items: Option<&[T]>, mut less: F, limit: i64) -> Option<Vec<T>>
+pub fn sort_and_limit<T, F>(items: Option<&[T]>, less: F, limit: i64) -> Option<Vec<T>>
 where
     T: Clone,
     F: FnMut(&T, &T) -> bool,
 {
     let items = items?;
     let mut sorted: Vec<T> = items.to_vec();
-    sorted.sort_by(|a, b| {
-        if less(a, b) {
-            std::cmp::Ordering::Less
-        } else if less(b, a) {
-            std::cmp::Ordering::Greater
-        } else {
-            std::cmp::Ordering::Equal
-        }
-    });
+    let less = std::cell::RefCell::new(less);
+    cf_gosort::go_sort_slice(&mut sorted, |a, b| (less.borrow_mut())(a, b));
     if limit > 0 && sorted.len() as i64 > limit {
         sorted.truncate(limit as usize);
     }

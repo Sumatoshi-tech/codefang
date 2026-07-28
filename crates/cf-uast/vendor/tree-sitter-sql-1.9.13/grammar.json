@@ -1,0 +1,11 @@
+{
+  "reference": "main",
+  "revision": "0bb6d4fb695b3ce355588dca398edae41b90c44c",
+  "grammarSha": "ad0ba7e45cfcb281ae53d11d5118362151a1193f4c367c17b675665592ddecaa",
+  "language": "sql",
+  "url": "https://github.com/DerekStride/tree-sitter-sql",
+  "maintainedBy": "@DerekStride",
+  "files": [
+    "scanner.c"
+  ]
+}

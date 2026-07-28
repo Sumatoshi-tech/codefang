@@ -1,10 +1,10 @@
 {
   "tier": "full",
-  "matrix_hash": "94130a05066db2a4477e07f206566abea72731e992802f8e0f1f2ace88c80a4b",
-  "total_cells": 486,
+  "matrix_hash": "8ba463ca1f96dd5cd99e5627c438f392baf1479d2561caa52687d1d95768dd05",
+  "total_cells": 505,
   "tally": {
-    "PASS": 333,
-    "FAIL": 8,
+    "PASS": 359,
+    "FAIL": 1,
     "SIM": 0,
     "EXPECTED_EMPTY": 145
   },
@@ -3423,7 +3423,7 @@
       ],
       "family": "static_analyzer",
       "tier": "full",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/cohesion[ndjson]@ioq3",
@@ -4004,7 +4004,7 @@
       ],
       "family": "static_analyzer",
       "tier": "full",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/clones[ndjson]@kubernetes",
@@ -5053,7 +5053,7 @@
       ],
       "family": "analyzer_set",
       "tier": "full",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static-set:static/*[json]@kubernetes",
@@ -5143,7 +5143,7 @@
       ],
       "family": "history_analyzer",
       "tier": "full",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/sentiment[yaml]@hercules/lim50",
@@ -6771,7 +6771,7 @@
       ],
       "family": "history_analyzer",
       "tier": "full",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/sentiment[ndjson]@ioq3/lim50",
@@ -9265,7 +9265,7 @@
       ],
       "family": "history_analyzer",
       "tier": "full",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/couples[yaml]@kubernetes/lim50",
@@ -9820,6 +9820,423 @@
       "verdict": "PASS"
     },
     {
+      "label": "plot:static/clones@hercules",
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/clones",
+        "--format",
+        "plot"
+      ],
+      "family": "plot",
+      "tier": "full",
+      "verdict": "PASS"
+    },
+    {
+      "label": "plot:static/complexity@hercules",
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/complexity",
+        "--format",
+        "plot"
+      ],
+      "family": "plot",
+      "tier": "full",
+      "verdict": "PASS"
+    },
+    {
+      "label": "plot:static/comments@hercules",
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/comments",
+        "--format",
+        "plot"
+      ],
+      "family": "plot",
+      "tier": "full",
+      "verdict": "PASS"
+    },
+    {
+      "label": "plot:static/halstead@hercules",
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/halstead",
+        "--format",
+        "plot"
+      ],
+      "family": "plot",
+      "tier": "full",
+      "verdict": "PASS"
+    },
+    {
+      "label": "plot:static/cohesion@hercules",
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/cohesion",
+        "--format",
+        "plot"
+      ],
+      "family": "plot",
+      "tier": "full",
+      "verdict": "PASS"
+    },
+    {
+      "label": "plot:static/imports@hercules",
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/imports",
+        "--format",
+        "plot"
+      ],
+      "family": "plot",
+      "tier": "full",
+      "verdict": "PASS"
+    },
+    {
+      "label": "plot:static/composition@hercules",
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/composition",
+        "--format",
+        "plot"
+      ],
+      "family": "plot",
+      "tier": "full",
+      "verdict": "PASS"
+    },
+    {
+      "label": "plot:history/sentiment@hercules/lim50",
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/sentiment",
+        "--format",
+        "plot",
+        "--limit",
+        "50",
+        "/home/dmitriy/sources/hercules"
+      ],
+      "family": "plot",
+      "tier": "full",
+      "verdict": "PASS"
+    },
+    {
+      "label": "plot:history/shotness@hercules/lim50",
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/shotness",
+        "--format",
+        "plot",
+        "--limit",
+        "50",
+        "/home/dmitriy/sources/hercules"
+      ],
+      "family": "plot",
+      "tier": "full",
+      "verdict": "PASS"
+    },
+    {
+      "label": "plot:history/typos@hercules/lim50",
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/typos",
+        "--format",
+        "plot",
+        "--limit",
+        "50",
+        "/home/dmitriy/sources/hercules"
+      ],
+      "family": "plot",
+      "tier": "full",
+      "verdict": "PASS"
+    },
+    {
+      "label": "plot:history/anomaly@hercules/lim50",
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/anomaly",
+        "--format",
+        "plot",
+        "--limit",
+        "50",
+        "/home/dmitriy/sources/hercules"
+      ],
+      "family": "plot",
+      "tier": "full",
+      "verdict": "PASS"
+    },
+    {
+      "label": "plot:history/burndown@hercules/lim50",
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/burndown",
+        "--format",
+        "plot",
+        "--limit",
+        "50",
+        "/home/dmitriy/sources/hercules"
+      ],
+      "family": "plot",
+      "tier": "full",
+      "verdict": "PASS"
+    },
+    {
+      "label": "plot:history/imports@hercules/lim50",
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/imports",
+        "--format",
+        "plot",
+        "--limit",
+        "50",
+        "/home/dmitriy/sources/hercules"
+      ],
+      "family": "plot",
+      "tier": "full",
+      "verdict": "PASS"
+    },
+    {
+      "label": "plot:history/quality@hercules/lim50",
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/quality",
+        "--format",
+        "plot",
+        "--limit",
+        "50",
+        "/home/dmitriy/sources/hercules"
+      ],
+      "family": "plot",
+      "tier": "full",
+      "verdict": "PASS"
+    },
+    {
+      "label": "plot:history/couples@hercules/lim50",
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/couples",
+        "--format",
+        "plot",
+        "--limit",
+        "50",
+        "/home/dmitriy/sources/hercules"
+      ],
+      "family": "plot",
+      "tier": "full",
+      "verdict": "PASS"
+    },
+    {
+      "label": "plot:history/devs@hercules/lim50",
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/devs",
+        "--format",
+        "plot",
+        "--limit",
+        "50",
+        "/home/dmitriy/sources/hercules"
+      ],
+      "family": "plot",
+      "tier": "full",
+      "verdict": "PASS"
+    },
+    {
+      "label": "plot:history/file-history@hercules/lim50",
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/file-history",
+        "--format",
+        "plot",
+        "--limit",
+        "50",
+        "/home/dmitriy/sources/hercules"
+      ],
+      "family": "plot",
+      "tier": "full",
+      "verdict": "PASS"
+    },
+    {
+      "label": "plot:static/*@hercules",
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/*",
+        "--format",
+        "plot"
+      ],
+      "family": "plot",
+      "tier": "full",
+      "verdict": "PASS"
+    },
+    {
+      "label": "plot:*@hercules",
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "*",
+        "--format",
+        "plot"
+      ],
+      "family": "plot",
+      "tier": "full",
+      "verdict": "PASS"
+    },
+    {
       "label": "flag:history/devs--head@hercules",
       "argv": [
         "run",
@@ -9860,7 +10277,7 @@
       ],
       "family": "flag",
       "tier": "full",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "flag:history/devs--first-parent@hercules",

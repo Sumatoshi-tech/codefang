@@ -90,6 +90,16 @@ pub static LUA: LanguageMapping = uast_language! {
             type: List,
             children: ["attribute", "identifier", "variable"],
         },
+        // `M.foo = function(...) end` — the standard Lua module-function
+        // idiom; as a plain Assignment it was invisible to function
+        // detection.
+        assignment_function ("(assignment_statement)") => {
+            type: Function,
+            token: self,
+            roles: [Function, Declaration],
+            children: ["expression_list", "variable_list"],
+            when: ["expression_list.value.type == \"function_definition\""],
+        },
         assignment_statement => {
             type: Assignment,
             token: self,
@@ -116,6 +126,14 @@ pub static LUA: LanguageMapping = uast_language! {
             token: self,
             roles: [Literal],
             children: ["field"],
+        },
+        // Table-field functions (`{ foo = function() ... end }`) are how Lua
+        // modules and specs define most behavior.
+        field_function ("(field)") => {
+            type: Function,
+            roles: [Function, Declaration],
+            children: ["expression", "identifier"],
+            when: ["value.type == \"function_definition\""],
         },
         field => {
             type: KeyValue,

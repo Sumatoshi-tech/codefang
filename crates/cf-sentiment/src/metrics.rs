@@ -356,10 +356,10 @@ pub fn compute_aggregate(input: &ReportData, opts: MetricOptions) -> AggregateDa
         return agg;
     }
 
-    let mut total_sentiment = 0.0_f32;
+    let mut tick_sentiments: Vec<f32> = Vec::with_capacity(input.emotions_by_tick.len());
 
     for (&tick, &sentiment) in &input.emotions_by_tick {
-        total_sentiment += sentiment;
+        tick_sentiments.push(sentiment);
 
         if sentiment >= opts.positive_threshold as f32 {
             agg.positive_ticks += 1;
@@ -377,9 +377,74 @@ pub fn compute_aggregate(input: &ReportData, opts: MetricOptions) -> AggregateDa
         }
     }
 
-    agg.average_sentiment = total_sentiment / agg.total_ticks as f32;
+    agg.average_sentiment = modal_f32_mean(&tick_sentiments);
 
     agg
+}
+
+/// Modal float32 mean over summation orders.
+///
+/// Go computes the aggregate average by iterating `emotionsByTick` (a Go map,
+/// randomized iteration order) and accumulating in `float32`; the resulting
+/// value therefore varies by a few ULPs from run to run with a strongly modal
+/// distribution (the most likely rounding outcome dominates). A deterministic
+/// port cannot reproduce randomized iteration, so we compute the SAME
+/// quantity — the f32 sum-then-divide of the same values — under a
+/// deterministically sampled set of permutations and return the modal result,
+/// i.e. the value the Go binary is most likely to print. Ties break toward the
+/// smaller bit pattern so the result is fully deterministic.
+fn modal_f32_mean(values: &[f32]) -> f32 {
+    const SAMPLES: usize = 201;
+
+    let n = values.len();
+    if n == 0 {
+        return 0.0;
+    }
+    let count = n as f32;
+
+    // Cheap exit: if ascending and descending index-order sums agree, the sum
+    // is order-insensitive at f32 precision and sampling is unnecessary.
+    let fwd: f32 = values.iter().fold(0.0_f32, |s, &v| s + v);
+    let rev: f32 = values.iter().rev().fold(0.0_f32, |s, &v| s + v);
+    if fwd.to_bits() == rev.to_bits() {
+        return fwd / count;
+    }
+
+    // Deterministic xorshift64* PRNG with a fixed seed: the output depends only
+    // on the input values, never on wall clock or address-space randomness.
+    let mut state: u64 = 0x9E37_79B9_7F4A_7C15;
+    let mut next = move || {
+        state ^= state >> 12;
+        state ^= state << 25;
+        state ^= state >> 27;
+        state.wrapping_mul(0x2545_F491_4F6C_DD1D)
+    };
+
+    let mut perm: Vec<f32> = values.to_vec();
+    let mut tallies: Vec<(u32, u32)> = Vec::new(); // (f32 bits, count)
+
+    for _ in 0..SAMPLES {
+        // Fisher-Yates shuffle.
+        for i in (1..n).rev() {
+            #[allow(clippy::cast_possible_truncation)]
+            let j = (next() % (i as u64 + 1)) as usize;
+            perm.swap(i, j);
+        }
+        let sum: f32 = perm.iter().fold(0.0_f32, |s, &v| s + v);
+        let bits = (sum / count).to_bits();
+        match tallies.iter_mut().find(|(b, _)| *b == bits) {
+            Some(entry) => entry.1 += 1,
+            None => tallies.push((bits, 1)),
+        }
+    }
+
+    // Modal value; ties break toward the smaller bit pattern.
+    let (bits, _) = tallies
+        .iter()
+        .copied()
+        .max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(&a.0)))
+        .unwrap_or((0, 0));
+    f32::from_bits(bits)
 }
 
 #[cfg(test)]
