@@ -37,15 +37,15 @@
 
 use std::path::Path;
 
+use super::StaticFilter;
 use cf_gojson::{GoMap, GoValue, MapOrigin};
-use cf_pathpolicy::{exclude, Options};
 use cf_uast::{Node as UastNode, Parser};
 
 /// Builds the `static/imports --format yaml` report bytes for `root_path`.
 /// Returns `None` when the path does not exist (the caller falls through to the
 /// blocked-dependency sentinel).
-pub fn imports_report_yaml(root_path: &str) -> Option<Vec<u8>> {
-    let report = aggregate_report_value(root_path)?;
+pub fn imports_report_yaml(root_path: &str, filter: &StaticFilter) -> Option<Vec<u8>> {
+    let report = aggregate_report_value(root_path, filter)?;
     let metrics =
         cf_imports::compute_all_metrics(&report).expect("compute_all_metrics is infallible");
     Some(cf_goyaml::marshal(&metrics.to_go_value_yaml()))
@@ -55,8 +55,8 @@ pub fn imports_report_yaml(root_path: &str) -> Option<Vec<u8>> {
 ///
 /// Same aggregate report + [`cf_imports::compute_all_metrics`] as the yaml
 /// sibling, but wrapped in a CFB1 envelope (`reportutil.EncodeBinaryEnvelope`).
-pub fn imports_report_bin(root_path: &str) -> Option<Vec<u8>> {
-    let report = aggregate_report_value(root_path)?;
+pub fn imports_report_bin(root_path: &str, filter: &StaticFilter) -> Option<Vec<u8>> {
+    let report = aggregate_report_value(root_path, filter)?;
     let metrics =
         cf_imports::compute_all_metrics(&report).expect("compute_all_metrics is infallible");
     Some(
@@ -67,8 +67,11 @@ pub fn imports_report_bin(root_path: &str) -> Option<Vec<u8>> {
 
 /// Aggregates into the `cf_imports::ReportValue` aggregator report (the
 /// `imports.Aggregator.GetResult` shape) consumed by `compute_all_metrics`.
-fn aggregate_report_value(root_path: &str) -> Option<cf_imports::ReportValue> {
-    let (all_imports, total_files) = walk_and_count(root_path)?;
+fn aggregate_report_value(
+    root_path: &str,
+    filter: &StaticFilter,
+) -> Option<cf_imports::ReportValue> {
+    let (all_imports, total_files) = walk_and_count_opts(root_path, filter, None)?;
     let imports: Vec<cf_imports::ReportValue> = all_imports
         .keys()
         .map(|k| cf_imports::ReportValue::Str(k.clone()))
@@ -101,7 +104,7 @@ fn aggregate_report_value(root_path: &str) -> Option<cf_imports::ReportValue> {
 /// ordering: count descending, ties broken by the aggregator's sorted import
 /// keys (the same set the reference implementation emits, just stably ordered).
 pub fn imports_report_json(root_path: &str) -> Option<Vec<u8>> {
-    imports_report_json_flags(root_path, false)
+    imports_report_json_flags(root_path, &StaticFilter::default(), false)
 }
 
 /// [`imports_report_json`] with the `--per-file` flag applied: `per_file`
@@ -110,8 +113,12 @@ pub fn imports_report_json(root_path: &str) -> Option<Vec<u8>> {
 /// over the `PerFileRetainer` snapshots — one `JSONFileEntry` per ANALYZED
 /// file, import-free files included, keyed into the section's `files` array).
 #[must_use]
-pub fn imports_report_json_flags(root_path: &str, per_file: bool) -> Option<Vec<u8>> {
-    let root = imports_report_value_flags(root_path, per_file)?;
+pub fn imports_report_json_flags(
+    root_path: &str,
+    filter: &StaticFilter,
+    per_file: bool,
+) -> Option<Vec<u8>> {
+    let root = imports_report_value_flags(root_path, filter, per_file)?;
     Some(
         cf_gojson::Encoder::indented("  ")
             .with_trailing_newline(true)
@@ -124,18 +131,19 @@ pub fn imports_report_json_flags(root_path: &str, per_file: bool) -> Option<Vec<
 /// static-JSON merge. `None` when the path cannot be walked.
 #[must_use]
 pub fn imports_report_value(root_path: &str) -> Option<GoValue> {
-    imports_report_value_flags(root_path, false)
+    imports_report_value_flags(root_path, &StaticFilter::default(), false)
 }
 
 /// [`imports_report_value`] with the `--per-file` section enrichment.
 #[must_use]
-pub fn imports_report_value_flags(root_path: &str, per_file: bool) -> Option<GoValue> {
+pub fn imports_report_value_flags(
+    root_path: &str,
+    filter: &StaticFilter,
+    per_file: bool,
+) -> Option<GoValue> {
     let mut per_file_data: Vec<(String, Vec<String>)> = Vec::new();
-    let (all_imports, total_files) = walk_and_count_opts(
-        root_path,
-        &Options::default(),
-        per_file.then_some(&mut per_file_data),
-    )?;
+    let (all_imports, total_files) =
+        walk_and_count_opts(root_path, filter, per_file.then_some(&mut per_file_data))?;
     let count = all_imports.len() as i64;
 
     // --- status / score (info-only) ---
@@ -269,8 +277,8 @@ fn build_file_entry(rel_path: &str, imports: &[String]) -> GoValue {
 /// * `import_counts`: import path → file-occurrence count.
 /// * `count`: unique import count; `total_files`: every analyzed file.
 #[must_use]
-pub fn imports_raw_report_value(root_path: &str, opts: &Options) -> Option<GoValue> {
-    let (all_imports, total_files) = walk_and_count_opts(root_path, opts, None)?;
+pub fn imports_raw_report_value(root_path: &str, filter: &StaticFilter) -> Option<GoValue> {
+    let (all_imports, total_files) = walk_and_count_opts(root_path, filter, None)?;
 
     let imports: Vec<GoValue> = all_imports
         .keys()
@@ -302,18 +310,14 @@ fn build_status_message(count: i64) -> String {
 /// imports, and folds them into a cross-file `import path -> file count` map
 /// alongside the total analyzed-file count. Returns `None` when the path is
 /// missing. Mirrors the per-file analyze + `imports.Aggregator` accumulation.
-fn walk_and_count(root_path: &str) -> Option<(std::collections::BTreeMap<String, i64>, i64)> {
-    walk_and_count_opts(root_path, &Options::default(), None)
-}
-
-/// [`walk_and_count`] with explicit path-policy options (the plot path passes
-/// the run flags; the stdout formats keep the defaults). When `per_file_out`
+/// `filter` carries the run-level walk filter (`--languages` + the path
+/// policy) applied to every walked file. When `per_file_out`
 /// is set, each analyzed file's deduplicated import list is also pushed as
 /// `(relative path, imports)` in walk order — the reference `PerFileRetainer`
 /// snapshot the `--per-file` section enrichment consumes.
 fn walk_and_count_opts(
     root_path: &str,
-    opts: &Options,
+    filter: &StaticFilter,
     mut per_file_out: Option<&mut Vec<(String, Vec<String>)>>,
 ) -> Option<(std::collections::BTreeMap<String, i64>, i64)> {
     let root = Path::new(root_path);
@@ -324,7 +328,7 @@ fn walk_and_count_opts(
     let parser = Parser::new();
 
     let mut files: Vec<String> = Vec::new();
-    collect_files(root, &parser, opts, &mut files);
+    collect_files(root, &parser, filter, &mut files);
     files.sort();
 
     // The reference aggregator increments total_files for every analyzed file and sums
@@ -375,7 +379,7 @@ fn make_relative_path(file_path: &str, root_path: &str) -> String {
 /// Recursively collects UAST-supported, non-excluded regular files under `dir`
 /// (lexical order; `.git` skipped). Mirrors `streamFiles` /
 /// `ShouldSkipFolderNode`.
-fn collect_files(dir: &Path, parser: &Parser, opts: &Options, out: &mut Vec<String>) {
+fn collect_files(dir: &Path, parser: &Parser, filter: &StaticFilter, out: &mut Vec<String>) {
     let Ok(read) = std::fs::read_dir(dir) else {
         return;
     };
@@ -389,14 +393,14 @@ fn collect_files(dir: &Path, parser: &Parser, opts: &Options, out: &mut Vec<Stri
             if super::should_skip_walk_dir(&entry.path(), &entry.file_name()) {
                 continue;
             }
-            collect_files(&path, parser, opts, out);
+            collect_files(&path, parser, filter, out);
             continue;
         }
         let path_str = path.to_string_lossy().to_string();
         if !parser.is_supported(&path_str) {
             continue;
         }
-        if exclude(&path_str, None, opts) {
+        if filter.skips(&path_str) {
             continue;
         }
         out.push(path_str);
@@ -539,7 +543,9 @@ mod per_file_tests {
     #[test]
     fn per_file_flag_emits_files_entries() {
         let dir = fixture();
-        let bytes = imports_report_json_flags(dir.path().to_str().unwrap(), true).unwrap();
+        let bytes =
+            imports_report_json_flags(dir.path().to_str().unwrap(), &StaticFilter::default(), true)
+                .unwrap();
         let json = String::from_utf8(bytes).unwrap();
         // The section gains a `files` array with one JSONFileEntry per
         // ANALYZED file (import-free files included).
@@ -567,7 +573,12 @@ mod per_file_tests {
     #[test]
     fn no_per_file_flag_omits_files() {
         let dir = fixture();
-        let bytes = imports_report_json_flags(dir.path().to_str().unwrap(), false).unwrap();
+        let bytes = imports_report_json_flags(
+            dir.path().to_str().unwrap(),
+            &StaticFilter::default(),
+            false,
+        )
+        .unwrap();
         let json = String::from_utf8(bytes).unwrap();
         assert!(
             !json.contains("\"files\""),

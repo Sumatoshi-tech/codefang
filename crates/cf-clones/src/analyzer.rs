@@ -257,9 +257,14 @@ pub fn compute_metrics_from_report(report: &Report) -> ComputedMetrics {
 
 /// Extracts the clone pairs from a report (handling the array-of-maps shape
 /// produced by [`Analyzer::build_report`]).
-fn extract_clone_pairs(report: &Report) -> Vec<ClonePair> {
+///
+/// `None` when the report carries no `clone_pairs` list (the reference
+/// `extractClonePairs` returns a `nil` slice → `null`); `Some` — possibly
+/// empty — when the key holds a list (the reference builds a non-nil slice
+/// via `make([]ClonePair, 0, …)` → `[]`).
+fn extract_clone_pairs(report: &Report) -> Option<Vec<ClonePair>> {
     let Some(GoValue::Array(items)) = cf_reportutil::get(report, KEY_CLONE_PAIRS) else {
-        return Vec::new();
+        return None;
     };
 
     let mut pairs = Vec::with_capacity(items.len());
@@ -268,7 +273,7 @@ fn extract_clone_pairs(report: &Report) -> Vec<ClonePair> {
             pairs.push(clone_pair_from_map(m));
         }
     }
-    pairs
+    Some(pairs)
 }
 
 /// Extracts a [`ClonePair`] from a map value.
@@ -386,9 +391,10 @@ mod tests {
         assert!((cf_reportutil::get_float64(&report, KEY_CLONE_RATIO) - 1.0).abs() < 1e-12);
 
         let metrics = compute_metrics_from_report(&report);
-        assert_eq!(metrics.clone_pairs.len(), 1);
-        assert_eq!(metrics.clone_pairs[0].clone_type, "Type-1");
-        assert!((metrics.clone_pairs[0].similarity - 1.0).abs() < 1e-9);
+        let pairs = metrics.clone_pairs.as_deref().expect("pairs list present");
+        assert_eq!(pairs.len(), 1);
+        assert_eq!(pairs[0].clone_type, "Type-1");
+        assert!((pairs[0].similarity - 1.0).abs() < 1e-9);
     }
 
     #[test]

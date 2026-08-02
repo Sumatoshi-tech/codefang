@@ -42,6 +42,18 @@
    "reason": "Real, tracked port gap on sources containing INVALID UTF-8 bytes: the reference implementation's Go strings carry raw bytes, so byte offsets into a function's token always align with the original source; the Rust port stores tokens as String via from_utf8_lossy, which inflates each invalid sequence into a 3-byte U+FFFD and shifts every later offset. Offset-derived operator/decision-point extraction (cf-complexity FunctionSourceContext / binary_operator_from_offsets) then misreads tokens after the corruption point, e.g. missing a `&&` (cyclomatic 7 vs Go's 8, avg 4.0 vs 4.5) on the distilled find. Valid-UTF-8 sources (i.e. real code) are unaffected. Fixing it means carrying raw bytes through Node.token (bstr-style) and lossy-converting only at serialization boundaries — an architectural change, tracked rather than patched around.",
    "evidence_source": "corpus/fuzzfinds/gojson_b345ea0e6cfd0f76.go (+ .evidence.json, .go_run_*, .rust_out)",
    "neutralizes_gate": false
+  },
+  {
+   "label": "flag:history/devs--languages:Go@hercules",
+   "family": "flag",
+   "kind": "flag-not-implemented",
+   "reason": "REAL Rust port gap (tracked): the history phase ignores --languages entirely. The reference TreeDiffAnalyzer.checkLanguage filters each change by enry language detection (basename first, blob-content fallback) against the canonical language set before attribution, so Go's history/devs --languages:Go reports only Go-file activity (total_commits=7, tick=1 on this cell) while Rust attributes ALL files (total_commits=1, tick=0). Fixing requires porting checkLanguage (cf-langpath language_by_path/_with_content) and threading the language set into every history change-filter site (~10 sites: history.rs x6, burndown_ndjson.rs, couples_run.rs, uast_walk.rs x2). The static-phase --languages filter IS implemented and oracle-verified; this entry covers the history phase only. Kept RED per the fail-closed rule.",
+   "evidence": {
+    "oracle_cell": "flag:history/devs--languages:Go@hercules (added 2026-07-28 flag-axis extension)",
+    "diverging_fields": "$.activity[0].tick go=1 rust=0; total_commits go=7 rust=1; start/end_time shifted",
+    "go_reference": "internal/analyzers/plumbing/tree_diff.go shouldIncludeChange -> checkLanguage (commit b99c300~1)"
+   },
+   "neutralizes_gate": false
   }
  ]
 }

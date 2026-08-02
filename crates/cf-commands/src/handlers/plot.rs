@@ -24,7 +24,7 @@ use cf_plotpage::{MultiPageRenderer, PageMeta, Theme};
 use crate::handlers::plot_sections::{self, SectionsFn};
 use crate::handlers::{
     static_clones, static_cohesion, static_comments, static_complexity, static_halstead,
-    static_imports, static_json, static_path_policy,
+    static_imports, static_json,
 };
 use crate::pipeline::RunContext;
 
@@ -56,31 +56,31 @@ pub struct PlotAnalyzer {
 }
 
 fn clones_raw(ctx: &RunContext) -> Option<GoValue> {
-    static_clones::clones_raw_report_value(&ctx.path, &static_path_policy(ctx))
+    static_clones::clones_raw_report_value(&ctx.path, &super::static_filter(ctx).ok()?)
 }
 
 fn complexity_raw(ctx: &RunContext) -> Option<GoValue> {
-    static_complexity::complexity_raw_report_value(&ctx.path, &static_path_policy(ctx))
+    static_complexity::complexity_raw_report_value(&ctx.path, &super::static_filter(ctx).ok()?)
 }
 
 fn comments_raw(ctx: &RunContext) -> Option<GoValue> {
-    static_comments::comments_raw_report_value(&ctx.path, &static_path_policy(ctx))
+    static_comments::comments_raw_report_value(&ctx.path, &super::static_filter(ctx).ok()?)
 }
 
 fn halstead_raw(ctx: &RunContext) -> Option<GoValue> {
-    static_halstead::halstead_raw_report_value(&ctx.path, &static_path_policy(ctx))
+    static_halstead::halstead_raw_report_value(&ctx.path, &super::static_filter(ctx).ok()?)
 }
 
 fn cohesion_raw(ctx: &RunContext) -> Option<GoValue> {
-    static_cohesion::cohesion_raw_report_value(&ctx.path, &static_path_policy(ctx))
+    static_cohesion::cohesion_raw_report_value(&ctx.path, &super::static_filter(ctx).ok()?)
 }
 
 fn imports_raw(ctx: &RunContext) -> Option<GoValue> {
-    static_imports::imports_raw_report_value(&ctx.path, &static_path_policy(ctx))
+    static_imports::imports_raw_report_value(&ctx.path, &super::static_filter(ctx).ok()?)
 }
 
 fn composition_raw(ctx: &RunContext) -> Option<GoValue> {
-    static_json::composition_raw_report_value(&ctx.path, &static_path_policy(ctx))
+    static_json::composition_raw_report_value(&ctx.path, &super::static_filter(ctx).ok()?)
 }
 
 /// The plot-capable static analyzers in registry order (reference:

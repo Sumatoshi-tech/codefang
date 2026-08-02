@@ -47,8 +47,8 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use super::StaticFilter;
 use cf_gojson::{GoMap, GoValue, MapOrigin};
-use cf_pathpolicy::{exclude, Options};
 use cf_uast::{Node, Parser};
 
 /// Threshold above which CMS sketches are populated (`cmsTokenThreshold`). The
@@ -627,13 +627,7 @@ struct PerFileHalstead {
 
 /// Walks `root` (lexical order, `.git` skipped, vendor/generated excluded),
 /// parses each supported file, and aggregates the Halstead reports.
-fn aggregate(root_path: &str) -> Option<Aggregate> {
-    aggregate_opts(root_path, &Options::default())
-}
-
-/// [`aggregate`] with explicit path-policy options (the plot path passes the
-/// run flags; the stdout formats keep the defaults).
-fn aggregate_opts(root_path: &str, opts: &Options) -> Option<Aggregate> {
+fn aggregate_opts(root_path: &str, filter: &StaticFilter) -> Option<Aggregate> {
     let root = Path::new(root_path);
     if !root.exists() {
         return None;
@@ -656,7 +650,7 @@ fn aggregate_opts(root_path: &str, opts: &Options) -> Option<Aggregate> {
     let mut file_reports: Vec<PerFileHalstead> = Vec::new();
 
     let mut files: Vec<String> = Vec::new();
-    collect_files(root, &parser, opts, &mut files);
+    collect_files(root, &parser, filter, &mut files);
 
     for path in &files {
         let Some(content) = super::read_source_capped(std::path::Path::new(path)) else {
@@ -722,11 +716,11 @@ fn aggregate_opts(root_path: &str, opts: &Options) -> Option<Aggregate> {
 
 /// Recursively gathers UAST-supported, non-excluded files in lexical order
 /// (`streamFiles` walk order; `filepath.WalkDir` visits entries name-sorted).
-fn collect_files(dir: &Path, parser: &Parser, opts: &Options, out: &mut Vec<String>) {
+fn collect_files(dir: &Path, parser: &Parser, filter: &StaticFilter, out: &mut Vec<String>) {
     // Go parity: filepath.WalkDir visits a FILE root as a single entry, so
     // `codefang run <analyzer> path/to/file.c` analyzes that one file.
     if dir.is_file() {
-        visit_file(dir, parser, opts, out);
+        visit_file(dir, parser, filter, out);
         return;
     }
     let Ok(read) = std::fs::read_dir(dir) else {
@@ -747,21 +741,21 @@ fn collect_files(dir: &Path, parser: &Parser, opts: &Options, out: &mut Vec<Stri
             if super::should_skip_walk_dir(&entry.path(), &entry.file_name()) {
                 continue;
             }
-            collect_files(&path, parser, opts, out);
+            collect_files(&path, parser, filter, out);
             continue;
         }
-        visit_file(&path, parser, opts, out);
+        visit_file(&path, parser, filter, out);
     }
 }
 
 /// Collects one file entry of the walk (the non-directory branch of the
 /// `filepath.WalkDir` callback): parser support + path policy filters.
-fn visit_file(path: &Path, parser: &Parser, opts: &Options, out: &mut Vec<String>) {
+fn visit_file(path: &Path, parser: &Parser, filter: &StaticFilter, out: &mut Vec<String>) {
     let path_str = path.to_string_lossy().to_string();
     if !parser.is_supported(&path_str) {
         return;
     }
-    if exclude(&path_str, None, opts) {
+    if filter.skips(&path_str) {
         return;
     }
     out.push(path_str);
@@ -1451,11 +1445,11 @@ fn raw_function_item(f: &FunctionMetrics) -> GoValue {
 /// With no parsed files the reference implementation returns `buildEmptyHalsteadResult` instead (14
 /// keys, no `analyzer_name`/`functions`).
 #[must_use]
-pub fn halstead_raw_report_value(root_path: &str, opts: &Options) -> Option<GoValue> {
+pub fn halstead_raw_report_value(root_path: &str, filter: &StaticFilter) -> Option<GoValue> {
     if !Path::new(root_path).exists() {
         return None;
     }
-    let Some(agg) = aggregate_opts(root_path, opts) else {
+    let Some(agg) = aggregate_opts(root_path, filter) else {
         // Folder exists but no parsed files: the aggregator's empty result.
         let mut m = GoMap::new(MapOrigin::Map);
         m.push("total_functions", GoValue::Int(0));
@@ -1496,8 +1490,8 @@ pub fn halstead_raw_report_value(root_path: &str, opts: &Options) -> Option<GoVa
 /// Builds the `static/halstead --format bin` report bytes for `root_path`, or
 /// `None` when the folder cannot be walked / no file produces a report.
 #[must_use]
-pub fn halstead_bin_report(root_path: &str) -> Option<Vec<u8>> {
-    let agg = aggregate(root_path)?;
+pub fn halstead_bin_report(root_path: &str, filter: &StaticFilter) -> Option<Vec<u8>> {
+    let agg = aggregate_opts(root_path, filter)?;
     let metrics = computed_metrics(&agg);
     cf_reportutil::encode_binary_envelope(&metrics).ok()
 }
@@ -1510,8 +1504,8 @@ pub fn halstead_bin_report(root_path: &str) -> Option<Vec<u8>> {
 /// (no CFB1 envelope), so this reuses [`computed_metrics`] and serializes it via
 /// cf-goyaml.
 #[must_use]
-pub fn halstead_yaml_report(root_path: &str) -> Option<Vec<u8>> {
-    let agg = aggregate(root_path)?;
+pub fn halstead_yaml_report(root_path: &str, filter: &StaticFilter) -> Option<Vec<u8>> {
+    let agg = aggregate_opts(root_path, filter)?;
     let metrics = computed_metrics(&agg);
     Some(cf_goyaml::marshal(&metrics))
 }
@@ -1748,7 +1742,7 @@ fn build_file_entry(f: &PerFileHalstead, functions: &[FunctionMetrics]) -> GoVal
 /// `root_path`, or `None` when the folder cannot be walked.
 #[must_use]
 pub fn halstead_json_report(root_path: &str) -> Option<Vec<u8>> {
-    halstead_json_report_flags(root_path, false)
+    halstead_json_report_flags(root_path, &StaticFilter::default(), false)
 }
 
 /// [`halstead_json_report`] with the `--per-file` flag applied: `per_file`
@@ -1757,8 +1751,12 @@ pub fn halstead_json_report(root_path: &str) -> Option<Vec<u8>> {
 /// over the `PerFileRetainer` snapshots — one `JSONFileEntry` per ANALYZED
 /// file, function-free files included, keyed into the section's `files` array).
 #[must_use]
-pub fn halstead_json_report_flags(root_path: &str, per_file: bool) -> Option<Vec<u8>> {
-    let root = halstead_report_value_flags(root_path, per_file)?;
+pub fn halstead_json_report_flags(
+    root_path: &str,
+    filter: &StaticFilter,
+    per_file: bool,
+) -> Option<Vec<u8>> {
+    let root = halstead_report_value_flags(root_path, filter, per_file)?;
     Some(
         cf_gojson::Encoder::indented("  ")
             .with_trailing_newline(true)
@@ -1771,13 +1769,17 @@ pub fn halstead_json_report_flags(root_path: &str, per_file: bool) -> Option<Vec
 /// merge. `None` when the path cannot be walked.
 #[must_use]
 pub fn halstead_report_value(root_path: &str) -> Option<GoValue> {
-    halstead_report_value_mode(root_path, false)
+    halstead_report_value_mode(root_path, &StaticFilter::default(), false)
 }
 
 /// [`halstead_report_value`] with the `--per-file` section enrichment.
 #[must_use]
-pub fn halstead_report_value_flags(root_path: &str, per_file: bool) -> Option<GoValue> {
-    halstead_report_value_mode_flags(root_path, false, per_file)
+pub fn halstead_report_value_flags(
+    root_path: &str,
+    filter: &StaticFilter,
+    per_file: bool,
+) -> Option<GoValue> {
+    halstead_report_value_mode_flags(root_path, filter, false, per_file)
 }
 
 /// Builds the `static/halstead` section tree in the reference implementation's `AggregationModeSummaryOnly`
@@ -1785,20 +1787,25 @@ pub fn halstead_report_value_flags(root_path: &str, per_file: bool) -> Option<Go
 /// the per-function volume distribution and the top-issues list are absent while
 /// the averaged scalar Key Metrics are unchanged.
 #[must_use]
-pub fn halstead_report_value_summary(root_path: &str) -> Option<GoValue> {
-    halstead_report_value_mode(root_path, true)
+pub fn halstead_report_value_summary(root_path: &str, filter: &StaticFilter) -> Option<GoValue> {
+    halstead_report_value_mode(root_path, filter, true)
 }
 
-fn halstead_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoValue> {
-    halstead_report_value_mode_flags(root_path, summary_only, false)
+fn halstead_report_value_mode(
+    root_path: &str,
+    filter: &StaticFilter,
+    summary_only: bool,
+) -> Option<GoValue> {
+    halstead_report_value_mode_flags(root_path, filter, summary_only, false)
 }
 
 fn halstead_report_value_mode_flags(
     root_path: &str,
+    filter: &StaticFilter,
     summary_only: bool,
     per_file: bool,
 ) -> Option<GoValue> {
-    let mut agg = aggregate(root_path)?;
+    let mut agg = aggregate_opts(root_path, filter)?;
 
     // --per-file: one JSONFileEntry per ANALYZED file, in walk order (the
     // reference implementation ranges the retainer map here — run-to-run
@@ -1977,7 +1984,12 @@ mod per_file_tests {
     #[test]
     fn per_file_flag_emits_files_entries() {
         let dir = fixture();
-        let bytes = halstead_json_report_flags(dir.path().to_str().unwrap(), true).unwrap();
+        let bytes = halstead_json_report_flags(
+            dir.path().to_str().unwrap(),
+            &StaticFilter::default(),
+            true,
+        )
+        .unwrap();
         let json = String::from_utf8(bytes).unwrap();
         assert!(json.contains("\"files\""), "files key missing:\n{json}");
         assert!(
@@ -1999,7 +2011,12 @@ mod per_file_tests {
     #[test]
     fn no_per_file_flag_omits_files() {
         let dir = fixture();
-        let bytes = halstead_json_report_flags(dir.path().to_str().unwrap(), false).unwrap();
+        let bytes = halstead_json_report_flags(
+            dir.path().to_str().unwrap(),
+            &StaticFilter::default(),
+            false,
+        )
+        .unwrap();
         let json = String::from_utf8(bytes).unwrap();
         assert!(
             !json.contains("\"files\""),

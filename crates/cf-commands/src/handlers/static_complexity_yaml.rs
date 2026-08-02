@@ -38,7 +38,7 @@ use cf_complexity::node::{Node as CNode, Positions as CPos};
 use cf_complexity::{Analyzer, FunctionMetrics};
 use cf_gojson::{GoMap, GoValue, MapOrigin};
 use cf_goyaml::marshal;
-use cf_pathpolicy::{exclude, Options};
+
 use cf_uast::Parser;
 use cf_uast_node::Node as UNode;
 
@@ -71,7 +71,7 @@ struct FunctionData {
 /// Returns `None` when the path does not exist (caller falls through to the
 /// blocked-dependency sentinel).
 #[must_use]
-pub fn complexity_report_yaml(root_path: &str) -> Option<Vec<u8>> {
+pub fn complexity_report_yaml(root_path: &str, filter: &super::StaticFilter) -> Option<Vec<u8>> {
     let root = Path::new(root_path);
     if !root.exists() {
         return None;
@@ -90,6 +90,7 @@ pub fn complexity_report_yaml(root_path: &str) -> Option<Vec<u8>> {
         root,
         root_path,
         &parser,
+        filter,
         &analyzer,
         &mut functions,
         &mut total_functions,
@@ -123,6 +124,7 @@ fn walk(
     dir: &Path,
     root_path: &str,
     parser: &Parser,
+    filter: &super::StaticFilter,
     analyzer: &Analyzer,
     functions: &mut Vec<FunctionData>,
     total_functions: &mut i64,
@@ -137,6 +139,7 @@ fn walk(
             dir,
             root_path,
             parser,
+            filter,
             analyzer,
             functions,
             total_functions,
@@ -168,6 +171,7 @@ fn walk(
                 &path,
                 root_path,
                 parser,
+                filter,
                 analyzer,
                 functions,
                 total_functions,
@@ -182,6 +186,7 @@ fn walk(
             &path,
             root_path,
             parser,
+            filter,
             analyzer,
             functions,
             total_functions,
@@ -200,6 +205,7 @@ fn visit_file(
     path: &Path,
     root_path: &str,
     parser: &Parser,
+    filter: &super::StaticFilter,
     analyzer: &Analyzer,
     functions: &mut Vec<FunctionData>,
     total_functions: &mut i64,
@@ -215,7 +221,7 @@ fn visit_file(
     // exactly as the reference static `streamFiles` filter does (without this, the
     // walk over a repo with a `vendor/` tree pulls in thousands of extra
     // functions and the report diverges from the reference output).
-    if exclude(&path_str, None, &Options::default()) {
+    if filter.skips(&path_str) {
         return;
     }
     let Some(content) = super::read_source_capped(path) else {

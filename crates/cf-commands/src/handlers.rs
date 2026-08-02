@@ -717,7 +717,7 @@ pub fn history_glob_matches(pat: &str) -> bool {
 /// `FormatPerAnalyzer(FormatBinary)`). Returns `None` if any selected analyzer
 /// is not ported (clones/cohesion) or any folder walk fails.
 #[must_use]
-pub fn static_multi_bin(patterns: &[&str], path: &str) -> Option<Vec<u8>> {
+pub fn static_multi_bin(patterns: &[&str], path: &str, filter: &StaticFilter) -> Option<Vec<u8>> {
     let mut selected: Vec<(&str, bool)> = Vec::new();
     for &(id, ported) in STATIC_BIN_ANALYZERS {
         let matched = patterns.iter().any(|pat| {
@@ -739,7 +739,7 @@ pub fn static_multi_bin(patterns: &[&str], path: &str) -> Option<Vec<u8>> {
         if !ported {
             return None;
         }
-        let env = static_single_bin(id, path)?;
+        let env = static_single_bin(id, path, filter)?;
         out.extend_from_slice(&env);
     }
     Some(out)
@@ -764,8 +764,10 @@ pub fn static_multi_bin(patterns: &[&str], path: &str) -> Option<Vec<u8>> {
 /// feeds the serializer. The `bool` is the run's `--per-file` flag: every
 /// builder owns its section's `files` enrichment (the reference
 /// `EnrichWithPerFileData` gives EVERY section at least an empty `files` array
-/// under the flag, so no post-processing happens in the merge).
-type ReportValueFn = fn(&str, bool) -> Option<GoValue>;
+/// under the flag, so no post-processing happens in the merge). The
+/// [`StaticFilter`] is the run's shared walk filter (`--languages` + path
+/// policy), applied by every builder's folder walk.
+type ReportValueFn = fn(&str, &StaticFilter, bool) -> Option<GoValue>;
 
 use cf_gojson::{GoMap, GoValue, MapOrigin};
 
@@ -839,8 +841,13 @@ fn overall_score_label(score: f64) -> String {
 /// selected or any selected analyzer cannot produce a report (the caller then
 /// falls through to the same error path the reference implementation takes).
 #[must_use]
-pub fn static_multi_json(patterns: &[&str], path: &str, per_file: bool) -> Option<Vec<u8>> {
-    let root = static_multi_report_value(patterns, path, per_file)?;
+pub fn static_multi_json(
+    patterns: &[&str],
+    path: &str,
+    filter: &StaticFilter,
+    per_file: bool,
+) -> Option<Vec<u8>> {
+    let root = static_multi_report_value(patterns, path, filter, per_file)?;
     let bytes = cf_gojson::Encoder::indented("  ")
         .with_trailing_newline(true)
         .encode_to_vec(&root);
@@ -856,31 +863,31 @@ pub fn static_multi_json(patterns: &[&str], path: &str, per_file: bool) -> Optio
 /// the JSON report values, whose extra `distribution`/`issues` data the
 /// reference text sections for e.g. complexity do not carry).
 #[must_use]
-pub fn static_multi_text(
-    patterns: &[&str],
-    path: &str,
-    policy: &cf_pathpolicy::Options,
-) -> Option<Vec<u8>> {
-    type TextValueFn = fn(&str, &cf_pathpolicy::Options) -> Option<GoValue>;
+pub fn static_multi_text(patterns: &[&str], path: &str, filter: &StaticFilter) -> Option<Vec<u8>> {
+    type TextValueFn = fn(&str, &StaticFilter) -> Option<GoValue>;
     // Registry order (the reference registry / summary-table order).
     const TEXT_VALUE_BUILDERS: &[(&str, TextValueFn)] = &[
-        ("static/clones", |p, _| {
-            static_clones::clones_report_value(p)
+        ("static/clones", |p, f| {
+            static_clones::clones_report_value_flags(p, f, false)
         }),
-        ("static/complexity", |p, _| {
-            static_complexity::complexity_report_value_summary(p)
-        }),
-        ("static/comments", |p, _| {
-            static_comments::comments_report_value_summary(p)
-        }),
-        ("static/halstead", |p, _| {
-            static_halstead::halstead_report_value_summary(p)
-        }),
-        ("static/cohesion", |p, _| {
-            static_cohesion::cohesion_report_value_summary(p)
-        }),
-        ("static/imports", |p, _| {
-            static_imports::imports_report_value(p)
+        (
+            "static/complexity",
+            static_complexity::complexity_report_value_summary,
+        ),
+        (
+            "static/comments",
+            static_comments::comments_report_value_summary,
+        ),
+        (
+            "static/halstead",
+            static_halstead::halstead_report_value_summary,
+        ),
+        (
+            "static/cohesion",
+            static_cohesion::cohesion_report_value_summary,
+        ),
+        ("static/imports", |p, f| {
+            static_imports::imports_report_value_flags(p, f, false)
         }),
         (
             "static/composition",
@@ -900,7 +907,7 @@ pub fn static_multi_text(
         if !matched {
             continue;
         }
-        let report = build(path, policy)?;
+        let report = build(path, filter)?;
         sections.extend(extract_sections(&report));
     }
     if sections.is_empty() {
@@ -917,7 +924,12 @@ pub fn static_multi_text(
 /// average of the scored sections. Every output format renders from this same
 /// value (rule: one report value, many encodings).
 #[must_use]
-fn static_multi_report_value(patterns: &[&str], path: &str, per_file: bool) -> Option<GoValue> {
+fn static_multi_report_value(
+    patterns: &[&str],
+    path: &str,
+    filter: &StaticFilter,
+    per_file: bool,
+) -> Option<GoValue> {
     let mut sections: Vec<GoValue> = Vec::new();
     let mut score_total = 0.0_f64;
     let mut score_count = 0_usize;
@@ -933,7 +945,7 @@ fn static_multi_report_value(patterns: &[&str], path: &str, per_file: bool) -> O
         if !matched {
             continue;
         }
-        let report = build(path, per_file)?;
+        let report = build(path, filter, per_file)?;
         for section in extract_sections(&report) {
             let s = section_score(&section);
             if s >= 0.0 {
@@ -1034,15 +1046,15 @@ pub fn static_json_selects_multiple(patterns: &[&str]) -> bool {
 
 /// Produces a single static analyzer's CFB1 bin envelope.
 #[must_use]
-pub fn static_single_bin(id: &str, path: &str) -> Option<Vec<u8>> {
+pub fn static_single_bin(id: &str, path: &str, filter: &StaticFilter) -> Option<Vec<u8>> {
     match id {
-        "static/clones" => static_clones::clones_report_bin(path),
-        "static/complexity" => static_complexity_bin::complexity_report_bin(path),
-        "static/comments" => static_comments::comments_report_bin(path),
-        "static/halstead" => static_halstead::halstead_bin_report(path),
-        "static/cohesion" => static_cohesion::cohesion_report_bin(path),
-        "static/imports" => static_imports::imports_report_bin(path),
-        "static/composition" => static_json::composition_bin(path),
+        "static/clones" => static_clones::clones_report_bin(path, filter),
+        "static/complexity" => static_complexity_bin::complexity_report_bin(path, filter),
+        "static/comments" => static_comments::comments_report_bin(path, filter),
+        "static/halstead" => static_halstead::halstead_bin_report(path, filter),
+        "static/cohesion" => static_cohesion::cohesion_report_bin(path, filter),
+        "static/imports" => static_imports::imports_report_bin(path, filter),
+        "static/composition" => static_json::composition_bin_opts(path, filter),
         _ => None,
     }
 }
@@ -1363,16 +1375,19 @@ fn match_class(pat: &[u8], ch: u8) -> (bool, &[u8]) {
 
 fn h_static_clones(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     let path = &ctx.path;
+    let filter = static_filter(ctx).ok()?;
     // `format` is the resolved/normalized value: `--format bin` arrives here as
     // `"binary"` (the reference `ValidateFormat` maps the `bin` alias to `binary`); accept
     // both spellings for robustness.
     match format {
-        "json" => static_clones::clones_report_json_flags(path, ctx.matches.get_flag("per-file")),
-        "yaml" => static_clones::clones_report_yaml(path),
-        "binary" | "bin" => static_clones::clones_report_bin(path),
-        "compact" => static_clones::clones_report_compact(path),
+        "json" => {
+            static_clones::clones_report_json_flags(path, &filter, ctx.matches.get_flag("per-file"))
+        }
+        "yaml" => static_clones::clones_report_yaml(path, &filter),
+        "binary" | "bin" => static_clones::clones_report_bin(path, &filter),
+        "compact" => static_clones::clones_report_compact(path, &filter),
         "text" => Some(section_render::render_text_report(
-            &static_clones::clones_report_value(path)?,
+            &static_clones::clones_report_value_flags(path, &filter, false)?,
         )),
         _ => None,
     }
@@ -1389,25 +1404,105 @@ pub(crate) fn static_path_policy(ctx: &RunContext) -> cf_pathpolicy::Options {
     }
 }
 
+/// The static-phase file filter shared by EVERY output format of every static
+/// analyzer, mirroring the reference `StaticService` walk callback:
+///
+/// 1. `matchesLanguageGlobs(path, svc.LanguageGlobs)` — the `--languages`
+///    restriction, fnmatch globs over the file BASENAME (built from the flag
+///    via `langpath.Globs`; `None` ⇔ empty/`all` → no restriction);
+/// 2. `pathpolicy.Exclude(path, nil, svc.PathPolicy)` — the
+///    `--include-vendored` / `--include-generated` policy.
+#[derive(Debug, Clone, Default)]
+pub struct StaticFilter {
+    /// Vendor / generated exclusion policy (`pathPolicyFromFlags`).
+    pub policy: cf_pathpolicy::Options,
+    /// Basename globs from `--languages`; `None` disables the filter
+    /// (the reference `LanguageGlobs == nil`).
+    pub language_globs: Option<Vec<String>>,
+}
+
+impl StaticFilter {
+    /// Filter with the given path policy and no language restriction (the
+    /// pre-`--languages` behavior; used by legacy no-flag wrappers).
+    #[must_use]
+    pub fn from_policy(policy: cf_pathpolicy::Options) -> Self {
+        StaticFilter {
+            policy,
+            language_globs: None,
+        }
+    }
+
+    /// Reports whether the walk must skip `path` — the reference walk callback's
+    /// `!matchesLanguageGlobs(...) || pathpolicy.Exclude(...)`.
+    #[must_use]
+    pub fn skips(&self, path: &str) -> bool {
+        if let Some(globs) = &self.language_globs {
+            // filepath.Base: the final path element.
+            let base = path.rsplit('/').next().unwrap_or(path);
+            if !globs.iter().any(|g| go_path_match(g, base)) {
+                return true;
+            }
+        }
+        cf_pathpolicy::exclude(path, None, &self.policy)
+    }
+}
+
+/// Builds the [`StaticFilter`] from the run flags: the path policy
+/// (`static_path_policy`) plus the `--languages` globs (the reference
+/// `applyStaticLanguageFilter` → `langpath.Globs`).
+///
+/// # Errors
+///
+/// Returns the reference error message (`static --languages: unknown language:
+/// "<token>"`) when a `--languages` token resolves to no Linguist language.
+pub(crate) fn static_filter(ctx: &RunContext) -> Result<StaticFilter, String> {
+    let policy = static_path_policy(ctx);
+    let mut tokens: Vec<String> = ctx
+        .matches
+        .get_many::<String>("languages")
+        .map(|vals| vals.cloned().collect())
+        .unwrap_or_default();
+    // `--languages ""` parity: cobra's GetStringSlice runs the raw value
+    // through encoding/csv, and csv.Read on an empty string yields an EMPTY
+    // slice (no filter) — while clap's value_delimiter yields one empty
+    // token, which would error as an unknown language. A value like ",Go"
+    // still carries a non-empty token alongside the empty one and errors on
+    // the empty token in BOTH implementations, so only the all-empty case
+    // collapses.
+    if tokens.iter().all(String::is_empty) {
+        tokens.clear();
+    }
+    let globs = cf_langpath::globs(&tokens).map_err(|e| format!("static --languages: {e}"))?;
+    Ok(StaticFilter {
+        policy,
+        language_globs: if globs.wants_all {
+            None
+        } else {
+            Some(globs.globs)
+        },
+    })
+}
+
 fn h_static_complexity(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     let path = &ctx.path;
     // `format` is the resolved/normalized format from `resolve_formats`, where the
     // `bin` CLI alias has already been normalized to `binary` (formats.rs
     // `normalize_format`). Match the normalized name so `--format bin` dispatches
     // to the CFB1 envelope builder rather than falling through to `None`.
+    let filter = static_filter(ctx).ok()?;
     match format {
         "json" => static_complexity::complexity_report_flags(
             path,
-            &static_path_policy(ctx),
+            &filter,
             ctx.matches.get_flag("per-file"),
         ),
-        "yaml" => static_complexity_yaml::complexity_report_yaml(path),
-        "binary" | "bin" => static_complexity_bin::complexity_report_bin(path),
+        "yaml" => static_complexity_yaml::complexity_report_yaml(path, &filter),
+        "binary" | "bin" => static_complexity_bin::complexity_report_bin(path, &filter),
         "compact" => Some(section_render::render_compact_report(
-            &static_complexity::complexity_report_value_summary(path)?,
+            &static_complexity::complexity_report_value_summary(path, &filter)?,
         )),
         "text" => Some(section_render::render_text_report(
-            &static_complexity::complexity_report_value_summary(path)?,
+            &static_complexity::complexity_report_value_summary(path, &filter)?,
         )),
         _ => None,
     }
@@ -1418,17 +1513,20 @@ fn h_static_cohesion(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     // `format` is the resolved/normalized format from `resolve_formats`, where the
     // `bin` CLI alias has already been normalized to `binary` (formats.rs
     // `normalize_format`). Match the normalized name (accept the raw alias too).
+    let filter = static_filter(ctx).ok()?;
     match format {
-        "json" => {
-            static_cohesion::cohesion_report_json_flags(path, ctx.matches.get_flag("per-file"))
-        }
-        "yaml" => static_cohesion::cohesion_report_yaml(path),
-        "binary" | "bin" => static_cohesion::cohesion_report_bin(path),
+        "json" => static_cohesion::cohesion_report_json_flags(
+            path,
+            &filter,
+            ctx.matches.get_flag("per-file"),
+        ),
+        "yaml" => static_cohesion::cohesion_report_yaml(path, &filter),
+        "binary" | "bin" => static_cohesion::cohesion_report_bin(path, &filter),
         "compact" => Some(section_render::render_compact_report(
-            &static_cohesion::cohesion_report_value_summary(path)?,
+            &static_cohesion::cohesion_report_value_summary(path, &filter)?,
         )),
         "text" => Some(section_render::render_text_report(
-            &static_cohesion::cohesion_report_value_summary(path)?,
+            &static_cohesion::cohesion_report_value_summary(path, &filter)?,
         )),
         _ => None,
     }
@@ -1436,26 +1534,27 @@ fn h_static_cohesion(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
 
 fn h_static_composition(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     let path = &ctx.path;
-    // The reference static walk filters files through pathpolicy.Exclude with
-    // the RUN flags (`--include-vendored` / `--include-generated`), so every
-    // encoding of the aggregated report must honor them.
-    let policy = static_path_policy(ctx);
+    // The reference static walk filters files through the language globs +
+    // pathpolicy.Exclude with the RUN flags (`--languages`,
+    // `--include-vendored` / `--include-generated`), so every encoding of the
+    // aggregated report must honor them.
+    let filter = static_filter(ctx).ok()?;
     match format {
         "json" => static_json::composition_report_opts_flags(
             path,
-            &policy,
+            &filter,
             ctx.matches.get_flag("per-file"),
         ),
-        "yaml" => static_json::composition_yaml_opts(path, &policy),
+        "yaml" => static_json::composition_yaml_opts(path, &filter),
         // The pipeline resolves the `bin` alias to the canonical `binary`
         // (formats::normalize_format) before dispatch, so match that; accept the
         // raw alias too for direct callers.
-        "binary" | "bin" => static_json::composition_bin_opts(path, &policy),
+        "binary" | "bin" => static_json::composition_bin_opts(path, &filter),
         "compact" => Some(section_render::render_compact_report(
-            &static_json::composition_report_value_opts(path, &policy)?,
+            &static_json::composition_report_value_opts(path, &filter)?,
         )),
         "text" => Some(section_render::render_text_report(
-            &static_json::composition_report_value_opts(path, &policy)?,
+            &static_json::composition_report_value_opts(path, &filter)?,
         )),
         _ => None,
     }
@@ -1467,17 +1566,20 @@ fn h_static_halstead(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     // `bin` CLI alias has already been normalized to `binary` (formats.rs
     // `normalize_format`). Match the normalized name so `--format bin` dispatches
     // to the CFB1 envelope builder rather than falling through to `None`.
+    let filter = static_filter(ctx).ok()?;
     match format {
-        "json" => {
-            static_halstead::halstead_json_report_flags(path, ctx.matches.get_flag("per-file"))
-        }
-        "yaml" => static_halstead::halstead_yaml_report(path),
-        "binary" => static_halstead::halstead_bin_report(path),
+        "json" => static_halstead::halstead_json_report_flags(
+            path,
+            &filter,
+            ctx.matches.get_flag("per-file"),
+        ),
+        "yaml" => static_halstead::halstead_yaml_report(path, &filter),
+        "binary" => static_halstead::halstead_bin_report(path, &filter),
         "compact" => Some(section_render::render_compact_report(
-            &static_halstead::halstead_report_value_summary(path)?,
+            &static_halstead::halstead_report_value_summary(path, &filter)?,
         )),
         "text" => Some(section_render::render_text_report(
-            &static_halstead::halstead_report_value_summary(path)?,
+            &static_halstead::halstead_report_value_summary(path, &filter)?,
         )),
         _ => None,
     }
@@ -1489,15 +1591,20 @@ fn h_static_imports(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     // `bin` CLI alias has already been normalized to `binary` (formats.rs
     // `normalize_format`). Match the normalized name so `--format bin` dispatches
     // to the CFB1 envelope builder rather than falling through to `None`.
+    let filter = static_filter(ctx).ok()?;
     match format {
-        "json" => static_imports::imports_report_json_flags(path, ctx.matches.get_flag("per-file")),
-        "yaml" => static_imports::imports_report_yaml(path),
-        "binary" => static_imports::imports_report_bin(path),
+        "json" => static_imports::imports_report_json_flags(
+            path,
+            &filter,
+            ctx.matches.get_flag("per-file"),
+        ),
+        "yaml" => static_imports::imports_report_yaml(path, &filter),
+        "binary" => static_imports::imports_report_bin(path, &filter),
         "compact" => Some(section_render::render_compact_report(
-            &static_imports::imports_report_value(path)?,
+            &static_imports::imports_report_value_flags(path, &filter, false)?,
         )),
         "text" => Some(section_render::render_text_report(
-            &static_imports::imports_report_value(path)?,
+            &static_imports::imports_report_value_flags(path, &filter, false)?,
         )),
         _ => None,
     }
@@ -1505,20 +1612,23 @@ fn h_static_imports(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
 
 fn h_static_comments(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     let path = &ctx.path;
+    let filter = static_filter(ctx).ok()?;
     match format {
-        "json" => {
-            static_comments::comments_report_json_flags(path, ctx.matches.get_flag("per-file"))
-        }
-        "yaml" => static_comments::comments_report_yaml(path),
+        "json" => static_comments::comments_report_json_flags(
+            path,
+            &filter,
+            ctx.matches.get_flag("per-file"),
+        ),
+        "yaml" => static_comments::comments_report_yaml(path, &filter),
         // The pipeline resolves the `bin` alias to the canonical `binary`
         // (formats::normalize_format) before dispatch, so match that; accept the
         // raw alias too for direct callers.
-        "binary" | "bin" => static_comments::comments_report_bin(path),
+        "binary" | "bin" => static_comments::comments_report_bin(path, &filter),
         "compact" => Some(section_render::render_compact_report(
-            &static_comments::comments_report_value_summary(path)?,
+            &static_comments::comments_report_value_summary(path, &filter)?,
         )),
         "text" => Some(section_render::render_text_report(
-            &static_comments::comments_report_value_summary(path)?,
+            &static_comments::comments_report_value_summary(path, &filter)?,
         )),
         _ => None,
     }
@@ -1758,6 +1868,127 @@ pub fn default_registry() -> Registry {
 }
 
 #[cfg(test)]
+mod static_filter_tests {
+    use super::*;
+
+    /// Fully permissive path policy, isolating the language-glob leg of the
+    /// filter from the vendored/generated policy leg.
+    fn permissive_policy() -> cf_pathpolicy::Options {
+        cf_pathpolicy::Options {
+            include_vendored: true,
+            include_generated: true,
+            ..cf_pathpolicy::Options::default()
+        }
+    }
+
+    /// Parses `run` args through the REAL command tree and builds the shared
+    /// walk filter exactly as the dispatchers do (`static_filter(ctx)`).
+    fn filter_for(args: &[&str]) -> Result<StaticFilter, String> {
+        let argv: Vec<&str> = ["codefang", "run"]
+            .iter()
+            .chain(args.iter())
+            .copied()
+            .chain(std::iter::once("."))
+            .collect();
+        let matches = crate::build_codefang_command()
+            .try_get_matches_from(argv)
+            .expect("run args parse");
+        let sub = matches
+            .subcommand_matches("run")
+            .expect("run subcommand matches");
+        let ctx = RunContext::from_matches(sub);
+        static_filter(&ctx)
+    }
+
+    #[test]
+    fn skips_matches_language_globs_on_basename() {
+        // The reference matchesLanguageGlobs runs fnmatch over filepath.Base,
+        // so a `*.go` glob must match a NESTED path's basename.
+        let filter = StaticFilter {
+            policy: permissive_policy(),
+            language_globs: Some(vec!["*.go".to_string()]),
+        };
+        assert!(!filter.skips("src/pkg/deep/file.go"));
+        assert!(filter.skips("src/pkg/deep/file.py"));
+    }
+
+    #[test]
+    fn skips_language_filter_applies_before_path_policy() {
+        // A language-mismatched path is skipped even under the fully
+        // permissive policy: the glob leg decides first, independent of the
+        // vendored/generated leg.
+        let filter = StaticFilter {
+            policy: permissive_policy(),
+            language_globs: Some(vec!["*.py".to_string()]),
+        };
+        assert!(filter.skips("vendor/dep.go"));
+        // A language-matched path still falls through to the path policy:
+        // vendor is excluded under the DEFAULT policy despite the glob match.
+        let filter = StaticFilter {
+            policy: cf_pathpolicy::Options::default(),
+            language_globs: Some(vec!["*.go".to_string()]),
+        };
+        assert!(filter.skips("vendor/dep.go"));
+    }
+
+    #[test]
+    fn skips_none_globs_means_no_language_restriction() {
+        // `LanguageGlobs == nil` (flag absent / `all`): only the path policy
+        // decides.
+        let filter = StaticFilter {
+            policy: permissive_policy(),
+            language_globs: None,
+        };
+        assert!(!filter.skips("a.py"));
+        assert!(!filter.skips("vendor/dep.go"));
+    }
+
+    #[test]
+    fn skips_empty_globs_matches_nothing() {
+        // An empty glob VECTOR (as opposed to `None`) restricts to the empty
+        // language set: every path is skipped.
+        let filter = StaticFilter {
+            policy: permissive_policy(),
+            language_globs: Some(Vec::new()),
+        };
+        assert!(filter.skips("a.go"));
+        assert!(filter.skips("a.py"));
+    }
+
+    #[test]
+    fn static_filter_parses_languages_into_basename_globs() {
+        let filter = filter_for(&["--languages", "Go"]).expect("Go resolves");
+        let globs = filter
+            .language_globs
+            .expect("--languages Go must restrict the walk");
+        assert!(
+            globs.iter().any(|g| g == "*.go"),
+            "Go must contribute the *.go basename glob, got {globs:?}"
+        );
+    }
+
+    #[test]
+    fn static_filter_all_token_disables_the_restriction() {
+        // The `all` sentinel (langpath wants_all) maps to `None` — the same
+        // no-restriction state as an absent flag.
+        let filter = filter_for(&["--languages", "all"]).expect("all resolves");
+        assert!(filter.language_globs.is_none());
+        let filter = filter_for(&[]).expect("absent flag resolves");
+        assert!(filter.language_globs.is_none());
+    }
+
+    #[test]
+    fn static_filter_unknown_language_token_errors() {
+        let err = filter_for(&["--languages", "NotALang"])
+            .expect_err("unresolvable token must abort the run");
+        assert!(
+            err.contains("unknown language"),
+            "error must carry the CLI contract wording, got {err:?}"
+        );
+    }
+}
+
+#[cfg(test)]
 mod per_file_multi_tests {
     use super::*;
 
@@ -1777,7 +2008,13 @@ mod per_file_multi_tests {
     #[test]
     fn per_file_flag_enriches_every_merged_section() {
         let dir = fixture();
-        let bytes = static_multi_json(&["static/*"], dir.path().to_str().unwrap(), true).unwrap();
+        let bytes = static_multi_json(
+            &["static/*"],
+            dir.path().to_str().unwrap(),
+            &StaticFilter::default(),
+            true,
+        )
+        .unwrap();
         let json = String::from_utf8(bytes).unwrap();
         // Every merged section gets a files key — the retaining analyzers with
         // real entries, clones with the initialized empty array.
@@ -1796,11 +2033,168 @@ mod per_file_multi_tests {
     #[test]
     fn no_per_file_flag_omits_files_in_merge() {
         let dir = fixture();
-        let bytes = static_multi_json(&["static/*"], dir.path().to_str().unwrap(), false).unwrap();
+        let bytes = static_multi_json(
+            &["static/*"],
+            dir.path().to_str().unwrap(),
+            &StaticFilter::default(),
+            false,
+        )
+        .unwrap();
         let json = String::from_utf8(bytes).unwrap();
         assert!(
             !json.contains("\"files\""),
             "files key must be omitted:\n{json}"
         );
+    }
+}
+
+#[cfg(test)]
+mod dispatch_flag_tests {
+    //! Walk-filter flags exercised through the REAL registry dispatch
+    //! (`default_registry().lookup(id).run`), NOT by calling the report
+    //! builders with a hand-made filter. This is the layer the original
+    //! regression lived in: `h_static_*` built the filter for the json arm but
+    //! passed a default filter on the text/compact arms — a bug the
+    //! builder-level tests cannot see.
+
+    use super::*;
+
+    /// Fixture where the walk-filter flags change every total: one plain Go
+    /// function, one generated-path Go function, one vendored Go function, one
+    /// Python function.
+    fn fixture() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("a.go"),
+            "package main\n\nfunc plain(a int) int {\n\tif a > 0 {\n\t\treturn a\n\t}\n\treturn -a\n}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("gen.pb.go"),
+            "package main\n\nfunc gen(a int) int {\n\tif a > 0 {\n\t\treturn a\n\t}\n\treturn -a\n}\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("vendor/dep")).unwrap();
+        std::fs::write(
+            dir.path().join("vendor/dep/d.go"),
+            "package dep\n\nfunc vendored(a int) int {\n\tif a > 0 {\n\t\treturn a\n\t}\n\treturn -a\n}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("b.py"),
+            "def py_fn(a):\n    if a > 0:\n        return a\n    return -a\n",
+        )
+        .unwrap();
+        dir
+    }
+
+    /// Runs `codefang run --analyzers <id> --format <format> <extra..> <root>`
+    /// through the real argv parse + registry handler, returning the rendered
+    /// bytes — the exact dispatch path the CLI takes.
+    fn dispatch(id: &str, format: &str, extra: &[&str], root: &std::path::Path) -> Vec<u8> {
+        let root = root.to_str().unwrap();
+        let mut argv = vec!["codefang", "run", "--analyzers", id, "--format", format];
+        argv.extend_from_slice(extra);
+        argv.push(root);
+        let matches = crate::build_codefang_command()
+            .try_get_matches_from(argv)
+            .expect("run args parse");
+        let sub = matches.subcommand_matches("run").expect("run subcommand");
+        let ctx = RunContext::from_matches(sub);
+        let registry = default_registry();
+        let entry = registry.lookup(id).expect("analyzer registered");
+        (entry.run)(&ctx, format).expect("handler produced a report")
+    }
+
+    /// Extracts the numeric "Total Functions" figure from a rendered text
+    /// report.
+    fn text_total_functions(bytes: &[u8]) -> i64 {
+        let text = String::from_utf8_lossy(bytes);
+        let line = text
+            .lines()
+            .find(|l| l.contains("Total Functions"))
+            .unwrap_or_else(|| panic!("no Total Functions line in:\n{text}"));
+        let rest = line.split("Total Functions").nth(1).unwrap();
+        rest.split_whitespace()
+            .next()
+            .and_then(|w| w.parse().ok())
+            .unwrap_or_else(|| panic!("unparseable Total Functions line: {line}"))
+    }
+
+    #[test]
+    fn text_dispatch_applies_include_flags() {
+        let dir = fixture();
+        for id in ["static/complexity", "static/halstead"] {
+            let default_total = text_total_functions(&dispatch(id, "text", &[], dir.path()));
+            let permissive_total = text_total_functions(&dispatch(
+                id,
+                "text",
+                &["--include-generated", "--include-vendored"],
+                dir.path(),
+            ));
+            // Default policy: a.go + b.py = 2; permissive adds gen.pb.go +
+            // vendor/dep/d.go = 4. `>` (not the exact figures) is the
+            // regression guard: the flags must REACH the text-format walk.
+            assert!(
+                permissive_total > default_total,
+                "{id}: text dispatch dropped the include flags \
+                 (default={default_total}, permissive={permissive_total})"
+            );
+        }
+    }
+
+    #[test]
+    fn text_dispatch_applies_language_filter() {
+        let dir = fixture();
+        let py_total = text_total_functions(&dispatch(
+            "static/complexity",
+            "text",
+            &[
+                "--include-generated",
+                "--include-vendored",
+                "--languages",
+                "Python",
+            ],
+            dir.path(),
+        ));
+        assert_eq!(
+            py_total, 1,
+            "text dispatch must restrict the walk to the one Python function"
+        );
+    }
+
+    #[test]
+    fn compact_dispatch_applies_language_filter() {
+        let dir = fixture();
+        // Ruby matches no fixture file, so the compact render must collapse to
+        // the empty-report section — byte-different from the unfiltered one.
+        // Under a dispatch that drops the filter both renders are identical.
+        let unfiltered = dispatch("static/complexity", "compact", &[], dir.path());
+        let ruby_only = dispatch(
+            "static/complexity",
+            "compact",
+            &["--languages", "Ruby"],
+            dir.path(),
+        );
+        assert_ne!(
+            unfiltered, ruby_only,
+            "compact dispatch dropped --languages (both renders identical)"
+        );
+    }
+
+    #[test]
+    fn empty_languages_value_means_no_filter() {
+        // `--languages ""` parity with the reference CLI: cobra's csv reader
+        // yields an empty slice for an explicit empty value, so the run
+        // proceeds unfiltered instead of failing on an unknown "" language.
+        let dir = fixture();
+        let empty = text_total_functions(&dispatch(
+            "static/complexity",
+            "text",
+            &["--languages", ""],
+            dir.path(),
+        ));
+        let absent = text_total_functions(&dispatch("static/complexity", "text", &[], dir.path()));
+        assert_eq!(empty, absent, "--languages \"\" must behave as no filter");
     }
 }

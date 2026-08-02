@@ -40,10 +40,10 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
+use super::StaticFilter;
 use cf_cohesion::report_value::{Report, ReportValue};
 use cf_cohesion::Analyzer;
 use cf_gojson::{Encoder, GoMap, GoValue, MapOrigin};
-use cf_pathpolicy::{exclude, Options};
 use cf_uast::Parser;
 
 // --- Section rendering constants ---
@@ -152,13 +152,7 @@ impl Aggregated {
 
 /// Walks `root_path`, runs the cohesion visitor per file, and aggregates, or
 /// `None` when the path cannot be read.
-fn aggregate(root_path: &str) -> Option<Aggregated> {
-    aggregate_opts(root_path, &Options::default())
-}
-
-/// [`aggregate`] with explicit path-policy options (the plot path passes the
-/// run flags; the stdout formats keep the defaults).
-fn aggregate_opts(root_path: &str, opts: &Options) -> Option<Aggregated> {
+fn aggregate_opts(root_path: &str, filter: &StaticFilter) -> Option<Aggregated> {
     let root = Path::new(root_path);
     if !root.exists() {
         return None;
@@ -166,7 +160,7 @@ fn aggregate_opts(root_path: &str, opts: &Options) -> Option<Aggregated> {
     let parser = Parser::new();
     let analyzer = Analyzer::new();
     let mut agg = Aggregated::default();
-    walk(root, root_path, &parser, opts, &analyzer, &mut agg);
+    walk(root, root_path, &parser, filter, &analyzer, &mut agg);
     Some(agg)
 }
 
@@ -175,14 +169,14 @@ fn walk(
     dir: &Path,
     root_path: &str,
     parser: &Parser,
-    opts: &Options,
+    filter: &StaticFilter,
     analyzer: &Analyzer,
     agg: &mut Aggregated,
 ) {
     // Go parity: filepath.WalkDir visits a FILE root as a single entry, so
     // `codefang run <analyzer> path/to/file.c` analyzes that one file.
     if dir.is_file() {
-        visit_file(dir, root_path, parser, opts, analyzer, agg);
+        visit_file(dir, root_path, parser, filter, analyzer, agg);
         return;
     }
     let Ok(read) = fs::read_dir(dir) else {
@@ -205,11 +199,11 @@ fn walk(
             if super::should_skip_walk_dir(&entry.path(), &entry.file_name()) {
                 continue;
             }
-            walk(&path, root_path, parser, opts, analyzer, agg);
+            walk(&path, root_path, parser, filter, analyzer, agg);
             continue;
         }
 
-        visit_file(&path, root_path, parser, opts, analyzer, agg);
+        visit_file(&path, root_path, parser, filter, analyzer, agg);
     }
 }
 
@@ -220,7 +214,7 @@ fn visit_file(
     path: &Path,
     root_path: &str,
     parser: &Parser,
-    opts: &Options,
+    filter: &StaticFilter,
     analyzer: &Analyzer,
     agg: &mut Aggregated,
 ) {
@@ -228,7 +222,7 @@ fn visit_file(
     if !parser.is_supported(&path_str) {
         return;
     }
-    if exclude(&path_str, None, opts) {
+    if filter.skips(&path_str) {
         return;
     }
     let Some(content) = super::read_source_capped(path) else {
@@ -386,7 +380,7 @@ fn make_relative_path(file_path: &str, root_path: &str) -> String {
 /// path cannot be read.
 #[must_use]
 pub fn cohesion_report_json(root_path: &str) -> Option<Vec<u8>> {
-    cohesion_report_json_flags(root_path, false)
+    cohesion_report_json_flags(root_path, &StaticFilter::default(), false)
 }
 
 /// [`cohesion_report_json`] with the `--per-file` flag applied: `per_file`
@@ -395,8 +389,12 @@ pub fn cohesion_report_json(root_path: &str) -> Option<Vec<u8>> {
 /// over the `PerFileRetainer` snapshots — one `JSONFileEntry` per ANALYZED
 /// file, function-free files included, keyed into the section's `files` array).
 #[must_use]
-pub fn cohesion_report_json_flags(root_path: &str, per_file: bool) -> Option<Vec<u8>> {
-    let report = cohesion_report_value_flags(root_path, per_file)?;
+pub fn cohesion_report_json_flags(
+    root_path: &str,
+    filter: &StaticFilter,
+    per_file: bool,
+) -> Option<Vec<u8>> {
+    let report = cohesion_report_value_flags(root_path, filter, per_file)?;
     let bytes = Encoder::indented("  ")
         .with_trailing_newline(true)
         .encode_to_vec(&report);
@@ -408,13 +406,17 @@ pub fn cohesion_report_json_flags(root_path: &str, per_file: bool) -> Option<Vec
 /// static-JSON merge. `None` when the path cannot be walked.
 #[must_use]
 pub fn cohesion_report_value(root_path: &str) -> Option<GoValue> {
-    cohesion_report_value_flags(root_path, false)
+    cohesion_report_value_flags(root_path, &StaticFilter::default(), false)
 }
 
 /// [`cohesion_report_value`] with the `--per-file` section enrichment.
 #[must_use]
-pub fn cohesion_report_value_flags(root_path: &str, per_file: bool) -> Option<GoValue> {
-    let agg = aggregate(root_path)?;
+pub fn cohesion_report_value_flags(
+    root_path: &str,
+    filter: &StaticFilter,
+    per_file: bool,
+) -> Option<GoValue> {
+    let agg = aggregate_opts(root_path, filter)?;
     // --per-file: one JSONFileEntry per ANALYZED file, in walk order (the
     // reference implementation ranges the retainer map here — run-to-run
     // random; the oracle's measured-variance canonicalization compares the set).
@@ -431,8 +433,8 @@ pub fn cohesion_report_value_flags(root_path: &str, per_file: bool) -> Option<Go
 /// the distribution + issues sections (both derived from the collected functions)
 /// are absent while the averaged scalar metrics are unchanged.
 #[must_use]
-pub fn cohesion_report_value_summary(root_path: &str) -> Option<GoValue> {
-    let mut agg = aggregate(root_path)?;
+pub fn cohesion_report_value_summary(root_path: &str, filter: &StaticFilter) -> Option<GoValue> {
+    let mut agg = aggregate_opts(root_path, filter)?;
     agg.functions.clear();
     Some(build_json_report(&agg, None))
 }
@@ -456,8 +458,8 @@ pub fn cohesion_report_value_summary(root_path: &str) -> Option<GoValue> {
 /// With no parsed files the reference implementation returns `createEmptyResult` instead (5 keys, no
 /// `analyzer_name`/`functions`).
 #[must_use]
-pub fn cohesion_raw_report_value(root_path: &str, opts: &Options) -> Option<GoValue> {
-    let agg = aggregate_opts(root_path, opts)?;
+pub fn cohesion_raw_report_value(root_path: &str, filter: &StaticFilter) -> Option<GoValue> {
+    let agg = aggregate_opts(root_path, filter)?;
 
     if agg.report_count == 0 {
         let mut m = GoMap::new(MapOrigin::Map);
@@ -761,8 +763,8 @@ fn aggregated_report(agg: &Aggregated) -> Report {
 /// tree of the struct (declaration-order fields, `omitempty`, byte-sorted map
 /// keys for `distribution`).
 #[must_use]
-pub fn cohesion_report_yaml(root_path: &str) -> Option<Vec<u8>> {
-    let agg = aggregate(root_path)?;
+pub fn cohesion_report_yaml(root_path: &str, filter: &StaticFilter) -> Option<Vec<u8>> {
+    let agg = aggregate_opts(root_path, filter)?;
     let report = aggregated_report(&agg);
     let metrics = cf_cohesion::metrics::compute_all_metrics(&report);
     Some(cf_goyaml::marshal(&computed_metrics_go_value(&metrics)))
@@ -774,8 +776,8 @@ pub fn cohesion_report_yaml(root_path: &str) -> Option<Vec<u8>> {
 /// = `"CFB1"` + u32-LE len + compact `json.Marshal(*ComputedMetrics)`. Routed
 /// through `cf-reportutil` over the same `cf-gojson::GoValue` tree.
 #[must_use]
-pub fn cohesion_report_bin(root_path: &str) -> Option<Vec<u8>> {
-    let agg = aggregate(root_path)?;
+pub fn cohesion_report_bin(root_path: &str, filter: &StaticFilter) -> Option<Vec<u8>> {
+    let agg = aggregate_opts(root_path, filter)?;
     let report = aggregated_report(&agg);
     let metrics = cf_cohesion::metrics::compute_all_metrics(&report);
     cf_reportutil::encode_binary_envelope(&computed_metrics_go_value(&metrics)).ok()
@@ -925,7 +927,12 @@ mod per_file_tests {
     #[test]
     fn per_file_flag_emits_files_entries() {
         let dir = fixture();
-        let bytes = cohesion_report_json_flags(dir.path().to_str().unwrap(), true).unwrap();
+        let bytes = cohesion_report_json_flags(
+            dir.path().to_str().unwrap(),
+            &StaticFilter::default(),
+            true,
+        )
+        .unwrap();
         let json = String::from_utf8(bytes).unwrap();
         assert!(json.contains("\"files\""), "files key missing:\n{json}");
         assert!(
@@ -947,7 +954,12 @@ mod per_file_tests {
     #[test]
     fn no_per_file_flag_omits_files() {
         let dir = fixture();
-        let bytes = cohesion_report_json_flags(dir.path().to_str().unwrap(), false).unwrap();
+        let bytes = cohesion_report_json_flags(
+            dir.path().to_str().unwrap(),
+            &StaticFilter::default(),
+            false,
+        )
+        .unwrap();
         let json = String::from_utf8(bytes).unwrap();
         assert!(
             !json.contains("\"files\""),

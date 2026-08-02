@@ -359,6 +359,23 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
         &formats::normalize_format(&raw_format),
     );
 
+    // The shared static-phase walk filter (--languages + --include-vendored /
+    // --include-generated). An unresolvable --languages token fails the run
+    // up front with the reference error (`applyStaticLanguageFilter`:
+    // `static --languages: unknown language: "<token>"`, exit 1) whenever the
+    // selection includes a static analyzer.
+    let static_filter = match handlers::static_filter(&ctx) {
+        Ok(filter) => filter,
+        Err(msg) => {
+            if _prog_static.is_empty() {
+                handlers::StaticFilter::default()
+            } else {
+                eprintln!("Error: {msg}");
+                return 1;
+            }
+        }
+    };
+
     // --format plot routes to the multi-page HTML renderer (the reference implementation: the
     // static/history phases each call validatePlotFlags then the plot
     // executor). The --output precheck fires for ANY plot selection (the exact
@@ -416,7 +433,7 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
             .iter()
             .all(|a| handlers::is_static_id_or_glob(a))
     {
-        if let Some(bytes) = handlers::static_multi_bin(&analyzer_strs, &ctx.path) {
+        if let Some(bytes) = handlers::static_multi_bin(&analyzer_strs, &ctx.path, &static_filter) {
             write_stdout_or_exit(&bytes);
             return 0;
         }
@@ -437,16 +454,17 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
         && handlers::static_json_selects_multiple(&analyzer_strs)
     {
         let bytes = if raw_format == "json" {
-            handlers::static_multi_json(&analyzer_strs, &ctx.path, ctx.matches.get_flag("per-file"))
+            handlers::static_multi_json(
+                &analyzer_strs,
+                &ctx.path,
+                &static_filter,
+                ctx.matches.get_flag("per-file"),
+            )
         } else {
             // Multi-static text renders all selected sections through ONE
             // FormatText call (the reference), so the ≥2-section executive
             // summary header is emitted before the per-analyzer bodies.
-            handlers::static_multi_text(
-                &analyzer_strs,
-                &ctx.path,
-                &handlers::static_path_policy(&ctx),
-            )
+            handlers::static_multi_text(&analyzer_strs, &ctx.path, &static_filter)
         };
         if let Some(bytes) = bytes {
             write_stdout_or_exit(&bytes);

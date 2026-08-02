@@ -143,22 +143,72 @@ def expand(tier="smoke"):
                 sbase + ["-p", rp, "--analyzers", setspec, "--format", "plot"],
                 "plot")
 
-    # ---- 5) KEY-FLAG axis (full tier only): each flag is one cell ----
+    # ---- 5) KEY-FLAG axis: each flag x analyzer x format is one cell ----
+    # A real regression shipped because flag cells ran ONLY --format json on
+    # ONLY static/complexity (+ history/devs): --include-generated/-vendored
+    # were silently ignored by other formats/analyzers. The sub-loops below
+    # deliberately overlap (e.g. static/complexity[json] appears in the legacy
+    # loop AND the format sweep); identical argv is emitted exactly once.
+    seen_flag = set()
+
+    def add_flag(label, argv):
+        key = tuple(argv)
+        if key in seen_flag:
+            return
+        seen_flag.add(key)
+        add(label, argv, "flag")
+
+    def split_flag(flag):
+        # "--languages:Go,Python" -> ("--languages", ["--languages",
+        # "Go,Python"]): split on the FIRST ':' only; the value keeps commas.
+        name, _, val = flag.partition(":")
+        return name, [name] + ([val] if val else [])
+
     if tcfg.get("include_flags"):
         rp = repo_path(corpus, tcfg["repos"][0])
+        # 5a) history flags on history/devs (original pattern, kept verbatim)
         for flag in m["flags"]["history"]:
-            name, _, val = flag.partition(":")
-            extra = [name] + ([val] if val else [])
-            add(f"flag:history/devs{flag}@{tcfg['repos'][0]}",
-                rbase + ["--analyzers", "history/devs", "--format", "json"]
-                + extra + ([] if name == "--head" else ["--limit", lim]) + [rp],
-                "flag")
+            name, extra = split_flag(flag)
+            add_flag(f"flag:history/devs{flag}@{tcfg['repos'][0]}",
+                     rbase + ["--analyzers", "history/devs", "--format", "json"]
+                     + extra + ([] if name == "--head" else ["--limit", lim])
+                     + [rp])
+        # 5b) original static flag cells (kept verbatim: complexity, json)
         for flag in m["flags"]["static"]:
-            name, _, val = flag.partition(":")
-            extra = [name] + ([val] if val else [])
-            add(f"flag:static/complexity{flag}@{tcfg['repos'][0]}",
-                sbase + ["-p", rp, "--analyzers", "static/complexity",
-                         "--format", "json"] + extra, "flag")
+            name, extra = split_flag(flag)
+            add_flag(f"flag:static/complexity{flag}@{tcfg['repos'][0]}",
+                     sbase + ["-p", rp, "--analyzers", "static/complexity",
+                              "--format", "json"] + extra)
+        # 5c) every static flag x FORMAT sweep on the static pair — a flag
+        # honored by json but ignored by text/yaml is its own regression class.
+        for flag in m["flags"]["static"]:
+            name, extra = split_flag(flag)
+            for an in ("static/complexity", "static/halstead"):
+                for fmt in ("json", "text", "yaml"):
+                    add_flag(f"flag:{an}{flag}[{fmt}]@{tcfg['repos'][0]}",
+                             sbase + ["-p", rp, "--analyzers", an,
+                                      "--format", fmt] + extra)
+        # 5d) filter flags x EVERY static analyzer — a flag wired into one
+        # analyzer's file walk but not the others' is invisible to 5b/5c.
+        for flag in ("--include-generated", "--languages:Go"):
+            name, extra = split_flag(flag)
+            for an in m["analyzers"]["static"]:
+                for fmt in ("json", "text"):
+                    add_flag(f"flag:{an}{flag}[{fmt}]@{tcfg['repos'][0]}",
+                             sbase + ["-p", rp, "--analyzers", an,
+                                      "--format", fmt] + extra)
+    elif tcfg.get("include_static_flags"):
+        # smoke slice of 5d: filter flags on the static pair, json+text only.
+        # Static cells on the smoke repo need no revwalk, so this stays fast;
+        # the full tier keeps the whole flag axis above.
+        rp = repo_path(corpus, tcfg["repos"][0])
+        for flag in ("--include-generated", "--languages:Go"):
+            name, extra = split_flag(flag)
+            for an in ("static/complexity", "static/halstead"):
+                for fmt in ("json", "text"):
+                    add_flag(f"flag:{an}{flag}[{fmt}]@{tcfg['repos'][0]}",
+                             sbase + ["-p", rp, "--analyzers", an,
+                                      "--format", fmt] + extra)
 
     return cells
 
