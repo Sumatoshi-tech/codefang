@@ -210,6 +210,9 @@ struct WalkKey {
     max_distance: i64,
     max_changes: usize,
     selection: UastSelection,
+    /// The TreeDiff-level change filter (policy + `--languages`): part of the
+    /// key because it changes the walk outputs.
+    filter: crate::handlers::HistoryFilter,
 }
 
 impl WalkKey {
@@ -223,6 +226,7 @@ impl WalkKey {
             max_distance: history::typos_max_distance(sub),
             max_changes: history::max_changes_per_commit_cap(sub),
             selection,
+            filter: crate::handlers::history_filter(sub).unwrap_or_default(),
         }
     }
 }
@@ -362,12 +366,13 @@ fn compute_shared_walks(sel: UastSelection, key: &WalkKey) -> Option<SharedWalks
     // cache, then each selected analyzer's per-commit product function — the
     // same functions the direct walks call.
     let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    let filter_ref = &key.filter;
     let prepared = history::parallel_prepare(path, &hashes, workers, move |repo, hash| {
         history::with_uast_parser(|parser| {
             let commit = repo.lookup_commit(hash).ok()?;
-            let changes = history::commit_tree_changes(repo, &commit)?;
+            let raw_changes = history::commit_tree_changes(repo, &commit)?;
             let mut product = SharedCommitProduct {
-                raw_change_count: changes.len(),
+                raw_change_count: raw_changes.len(),
                 ..SharedCommitProduct::default()
             };
             // Oversized commits are dropped before any analyzer — no per-file
@@ -375,6 +380,10 @@ fn compute_shared_walks(sel: UastSelection, key: &WalkKey) -> Option<SharedWalks
             if product.raw_change_count > max_changes {
                 return Some(product);
             }
+            // TreeDiffAnalyzer.filterChanges (policy + --languages); the reduce
+            // and every per-commit product below consume only these changes.
+            let mut changes = raw_changes;
+            filter_ref.retain_changes(repo, &mut changes);
             let mut cache = CommitParseCache::new(repo, parser, opts_ref);
             if sel.quality {
                 product.quality = Some(history::quality_commit_product(&changes, &mut cache));

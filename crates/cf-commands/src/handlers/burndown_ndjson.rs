@@ -36,7 +36,6 @@ use cf_gitlib::blob::CachedBlob;
 use cf_gitlib::changes::{initial_tree_changes, tree_diff, Change, ChangeAction};
 use cf_godiff::Op;
 use cf_gojson::value::{GoMap, GoValue, MapOrigin};
-use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
@@ -70,7 +69,7 @@ pub fn burndown_timeseries_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         crate::handlers::history_since_spec(sub),
     )?;
 
-    let opts = PathPolicyOptions::default();
+    let filter = crate::handlers::history_filter(sub).unwrap_or_default();
     let sink: DeltaSink = Rc::new(RefCell::new(Vec::new()));
     // Persistent burndown state: per-path line-survival treaps (shard.filesByID).
     let mut tracked: HashMap<String, File> = HashMap::new();
@@ -104,7 +103,15 @@ pub fn burndown_timeseries_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         let is_merge = num_parents > 1;
 
         sink.borrow_mut().clear();
-        process_commit_changes(&repo, &changes, &opts, &mut tracked, &sink, tick, is_merge);
+        process_commit_changes(
+            &repo,
+            &changes,
+            &filter,
+            &mut tracked,
+            &sink,
+            tick,
+            is_merge,
+        );
         let (added, removed) = commit_line_stats(&sink.borrow(), tick);
 
         // burndown ExtractCommitTimeSeries map: sorted keys lines_added,
@@ -153,7 +160,7 @@ pub fn burndown_timeseries_contribution(
         crate::handlers::history_since_spec(sub),
     )?;
 
-    let opts = PathPolicyOptions::default();
+    let filter = crate::handlers::history_filter(sub).unwrap_or_default();
     let sink: DeltaSink = Rc::new(RefCell::new(Vec::new()));
     let mut tracked: HashMap<String, File> = HashMap::new();
 
@@ -185,7 +192,15 @@ pub fn burndown_timeseries_contribution(
         let is_merge = num_parents > 1;
 
         sink.borrow_mut().clear();
-        process_commit_changes(&repo, &changes, &opts, &mut tracked, &sink, tick, is_merge);
+        process_commit_changes(
+            &repo,
+            &changes,
+            &filter,
+            &mut tracked,
+            &sink,
+            tick,
+            is_merge,
+        );
         let (added, removed) = commit_line_stats(&sink.borrow(), tick);
 
         let mut entry = GoMap::new_map();
@@ -288,7 +303,7 @@ pub fn burndown_ndjson_records(
         crate::handlers::history_since_spec(sub),
     )?;
 
-    let opts = PathPolicyOptions::default();
+    let filter = crate::handlers::history_filter(sub).unwrap_or_default();
     let sink: DeltaSink = Rc::new(RefCell::new(Vec::new()));
     let mut tracked: HashMap<String, File> = HashMap::new();
 
@@ -324,7 +339,15 @@ pub fn burndown_ndjson_records(
         let is_merge = num_parents > 1;
 
         sink.borrow_mut().clear();
-        process_commit_changes(&repo, &changes, &opts, &mut tracked, &sink, tick, is_merge);
+        process_commit_changes(
+            &repo,
+            &changes,
+            &filter,
+            &mut tracked,
+            &sink,
+            tick,
+            is_merge,
+        );
         let (global, added, removed) = commit_sparse_stats(&sink.borrow(), tick);
 
         // CommitResult struct (struct-declaration field order, GlobalDeltas full
@@ -442,17 +465,19 @@ pub fn burndown_run_aggregate(sub: &clap::ArgMatches) -> Option<BurndownRunAggre
         crate::handlers::history_since_spec(sub),
     )?;
 
-    let opts = PathPolicyOptions::default();
+    let filter = crate::handlers::history_filter(sub).unwrap_or_default();
     let sink: DeltaSink = Rc::new(RefCell::new(Vec::new()));
     let mut tracked: HashMap<String, File> = HashMap::new();
 
     let mut tick0: Option<i64> = None;
     let mut previous_tick: i64 = 0;
 
-    // Accumulated global sparse history (Aggregator.globalHistory) and the
-    // maximum tick seen (Aggregator.lastTick → findLastTick).
+    // Accumulated global sparse history (Aggregator.globalHistory); the last
+    // tick is derived from its KEY ticks after the walk (reference
+    // `findLastTick`: max curTick present in the merged GlobalHistory — ticks
+    // where deltas were RECORDED, so commits with zero surviving changes do
+    // not extend the window).
     let mut global_history: cf_analyzer_burndown::SparseHistory = std::collections::BTreeMap::new();
-    let mut last_tick: i64 = 0;
     // Aggregator endTime: the max TC timestamp (committer time) seen.
     let mut end_time_secs: i64 = 0;
 
@@ -478,7 +503,15 @@ pub fn burndown_run_aggregate(sub: &clap::ArgMatches) -> Option<BurndownRunAggre
         let is_merge = num_parents > 1;
 
         sink.borrow_mut().clear();
-        process_commit_changes(&repo, &changes, &opts, &mut tracked, &sink, tick, is_merge);
+        process_commit_changes(
+            &repo,
+            &changes,
+            &filter,
+            &mut tracked,
+            &sink,
+            tick,
+            is_merge,
+        );
         let (global, _added, _removed) = commit_sparse_stats(&sink.borrow(), tick);
 
         // Aggregator.Add: MergeNestedAdditive(globalHistory, cr.GlobalDeltas).
@@ -489,17 +522,14 @@ pub fn burndown_run_aggregate(sub: &clap::ArgMatches) -> Option<BurndownRunAggre
             }
         }
 
-        if tick > last_tick {
-            last_tick = tick;
-        }
-
         if when > end_time_secs {
             end_time_secs = when;
         }
     }
 
-    // ticksToReport: findLastTick scans the merged GlobalHistory tick keys, so
-    // lastTick is the max curTick present (which equals the running max).
+    // ticksToReport: findLastTick scans the merged GlobalHistory tick keys
+    // (zero when nothing was recorded), NOT the max walked commit tick.
+    let last_tick = global_history.keys().next_back().copied().unwrap_or(0);
     let dense = cf_analyzer_burndown::group_sparse_history(
         &global_history,
         sampling,
@@ -690,20 +720,20 @@ fn make_updater(sink: &DeltaSink) -> Vec<Updater> {
 fn process_commit_changes(
     repo: &cf_gitlib::Repository,
     changes: &[Change],
-    opts: &PathPolicyOptions,
+    filter: &crate::handlers::HistoryFilter,
     tracked: &mut HashMap<String, File>,
     sink: &DeltaSink,
     tick: i64,
     is_merge: bool,
 ) {
     for change in changes {
-        // TreeDiff.filterChanges: exclude by the change's name (To for
-        // insert/modify, From for delete) via the shared path policy.
-        let filter_name = match change.action {
-            ChangeAction::Delete => &change.from.name,
-            _ => &change.to.name,
+        // TreeDiff.filterChanges: path policy, then the --languages check, by
+        // the change's (name, hash) (To for insert/modify, From for delete).
+        let (filter_name, filter_hash) = match change.action {
+            ChangeAction::Delete => (&change.from.name, change.from.hash),
+            _ => (&change.to.name, change.to.hash),
         };
-        if exclude(filter_name, None, opts) {
+        if !filter.includes_change(repo, filter_name, filter_hash) {
             continue;
         }
 

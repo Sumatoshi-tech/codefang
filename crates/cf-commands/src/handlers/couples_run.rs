@@ -19,7 +19,6 @@ use cf_couples::aggregator::Aggregator;
 use cf_couples::tc::{CommitData, RenamePair};
 use cf_couples::{compute_all_metrics, report};
 use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
-use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 use std::collections::{BTreeMap, HashSet};
 
 /// Expected unique file count for the seen-files Bloom filter.
@@ -147,7 +146,7 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
         crate::handlers::pipeline_consume_order(v)
     };
 
-    let opts = PathPolicyOptions::default();
+    let change_filter = crate::handlers::history_filter(sub).unwrap_or_default();
     // Loose identity detection (run streaming never preloads a people dict).
     // Identity is a CORE (plumbing) analyzer: it runs sequentially on the main
     // goroutine in oldest-first order BEFORE the leaf workers, and the resolved
@@ -213,7 +212,7 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
     }
     let compute_workers =
         std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
-    let opts_ref = &opts;
+    let filter_ref = &change_filter;
     let prepared = crate::handlers::history::parallel_prepare(
         &path,
         &hashes,
@@ -233,19 +232,10 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
                 initial_tree_changes(repo, Some(&new_tree)).ok()?
             };
 
-            // TreeDiffAnalyzer.shouldIncludeChange: path-policy exclusion (no blob
-            // content, no language filter for the default all-languages case).
-            let changes: Vec<cf_gitlib::changes::Change> = raw_changes
-                .into_iter()
-                .filter(|c| {
-                    let name = if c.action == ChangeAction::Delete {
-                        &c.from.name
-                    } else {
-                        &c.to.name
-                    };
-                    !exclude(name, None, opts_ref)
-                })
-                .collect();
+            // TreeDiffAnalyzer.shouldIncludeChange: path-policy exclusion, then
+            // the --languages check (no-op for the default all-languages case).
+            let mut changes = raw_changes;
+            filter_ref.retain_changes(repo, &mut changes);
 
             let cw = commit.committer().when;
             Some(CouplesPrepared {

@@ -376,6 +376,25 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
         }
     };
 
+    // The shared history-phase change filter (the --languages set wired into
+    // the reference TreeDiff analyzer; the include-* flags are inert there).
+    // An unresolvable --languages token fails the run up
+    // front with the reference error (`failed to configure TreeDiff: tree-diff
+    // pathspec: unknown language: "<token>"`, exit 1) whenever the selection
+    // includes a history analyzer. The reference validates the static filter
+    // first, so this check stays BELOW the static one (mixed-selection order).
+    let _history_filter = match handlers::history_filter(sub) {
+        Ok(filter) => filter,
+        Err(msg) => {
+            if _prog_history.is_empty() {
+                handlers::HistoryFilter::default()
+            } else {
+                eprintln!("Error: {msg}");
+                return 1;
+            }
+        }
+    };
+
     // --format plot routes to the multi-page HTML renderer (the reference implementation: the
     // static/history phases each call validatePlotFlags then the plot
     // executor). The --output precheck fires for ANY plot selection (the exact

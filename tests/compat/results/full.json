@@ -3,8 +3,8 @@
   "matrix_hash": "b07d1222dbf646ec6128aff7f628173f811c0da46ff441e290ba7d3afa766a5c",
   "total_cells": 63,
   "tally": {
-    "PASS": 54,
-    "FAIL": 8,
+    "PASS": 56,
+    "FAIL": 6,
     "SIM": 0,
     "EXPECTED_EMPTY": 1
   },
@@ -163,7 +163,7 @@
       ],
       "family": "flag",
       "tier": "full",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "flag:static/complexity--per-file@hercules",
@@ -1310,7 +1310,7 @@
       ],
       "family": "flag",
       "tier": "full",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "flag:static/clones--languages:Go[text]@hercules",

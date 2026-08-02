@@ -58,8 +58,14 @@ def _match(entry, rec):
     if "argv" in entry and entry["argv"] == rec.get("argv"):
         return True
     if "family" in entry and "kind" in entry:
+        # NOTE: a result record normally has no `kind` (it is an allowlist-only
+        # tag), so defaulting the record's kind to the entry's own kind would
+        # make this a tautology (`entry["kind"] == entry["kind"]`) and let a
+        # family-pinned entry swallow every FAIL in that family. Require the
+        # record to carry a matching `kind` explicitly; records without one do
+        # not match here and fall through to exact-label/argv matching.
         if rec.get("family") == entry["family"] and \
-           rec.get("kind", entry["kind"]) == entry["kind"]:
+           rec.get("kind") == entry["kind"]:
             return True
     return False
 

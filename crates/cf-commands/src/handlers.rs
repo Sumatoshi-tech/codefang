@@ -1457,21 +1457,7 @@ impl StaticFilter {
 /// "<token>"`) when a `--languages` token resolves to no Linguist language.
 pub(crate) fn static_filter(ctx: &RunContext) -> Result<StaticFilter, String> {
     let policy = static_path_policy(ctx);
-    let mut tokens: Vec<String> = ctx
-        .matches
-        .get_many::<String>("languages")
-        .map(|vals| vals.cloned().collect())
-        .unwrap_or_default();
-    // `--languages ""` parity: cobra's GetStringSlice runs the raw value
-    // through encoding/csv, and csv.Read on an empty string yields an EMPTY
-    // slice (no filter) — while clap's value_delimiter yields one empty
-    // token, which would error as an unknown language. A value like ",Go"
-    // still carries a non-empty token alongside the empty one and errors on
-    // the empty token in BOTH implementations, so only the all-empty case
-    // collapses.
-    if tokens.iter().all(String::is_empty) {
-        tokens.clear();
-    }
+    let tokens = language_tokens(ctx.matches);
     let globs = cf_langpath::globs(&tokens).map_err(|e| format!("static --languages: {e}"))?;
     Ok(StaticFilter {
         policy,
@@ -1479,6 +1465,198 @@ pub(crate) fn static_filter(ctx: &RunContext) -> Result<StaticFilter, String> {
             None
         } else {
             Some(globs.globs)
+        },
+    })
+}
+
+/// The history-phase change filter shared by EVERY history analyzer,
+/// mirroring the reference `TreeDiffAnalyzer.shouldIncludeChange`:
+///
+/// 1. `pathpolicy.Exclude(name, nil, t.PathPolicy)` — vendor / generated
+///    exclusion, ALWAYS with the DEFAULT options: although the reference run
+///    command wires `rc.buildPathPolicy()` into `TreeDiff.PathPolicy`, the
+///    `--include-vendored` / `--include-generated` flags are empirically
+///    INERT for the history run (oracle-verified: `.gitignore` + vendor-tree
+///    changes on hercules/kubernetes produce byte-identical output with and
+///    without the flags — the flag channel never reaches the pipeline);
+/// 2. `t.checkLanguage(name, hash)` — the `--languages` restriction (enry
+///    language detection on the BASENAME, with a blob-content fallback when
+///    the path alone is undetermined), applied only when the set restricts
+///    (the reference `!t.Languages[allLanguages]` gate).
+///
+/// The reference blacklist (`--blacklisted-prefixes`) and whitelist
+/// (`--whitelist` regex) are not exposed on `codefang run`, so this struct
+/// has no corresponding legs.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct HistoryFilter {
+    /// Vendor / generated exclusion policy — always the default (see the
+    /// struct doc: the reference history run ignores the include flags).
+    pub policy: cf_pathpolicy::Options,
+    /// Lowercased canonical Linguist names from `--languages`; `None` disables
+    /// the filter (flag absent / the `all` token — the reference
+    /// `Languages[allLanguages]`). An EMPTY set restricts everything away
+    /// (the reference `--languages ""` → an empty `Languages` map, so every
+    /// change's detected language misses the set).
+    pub languages: Option<std::collections::BTreeSet<String>>,
+}
+
+impl HistoryFilter {
+    /// Filter with the given path policy and no language restriction.
+    #[must_use]
+    pub fn from_policy(policy: cf_pathpolicy::Options) -> Self {
+        HistoryFilter {
+            policy,
+            languages: None,
+        }
+    }
+
+    /// Reports whether one tree-diff change survives
+    /// `shouldIncludeChange`. `name`/`hash` are the `changeNameHash` pair the
+    /// caller derived (Delete → `from`, otherwise `to`).
+    ///
+    /// Language detection (`checkLanguage` parity): enry on the basename with
+    /// NO content first; only when that yields no language is the blob looked
+    /// up and enry re-run over its contents. An undetermined language
+    /// excludes the change.
+    #[must_use]
+    pub fn includes_change(
+        &self,
+        repo: &cf_gitlib::Repository,
+        name: &str,
+        hash: cf_gitlib::hash::Hash,
+    ) -> bool {
+        // shouldIncludeChange step 1: shared vendor / generated policy.
+        if cf_pathpolicy::exclude(name, None, &self.policy) {
+            return false;
+        }
+
+        // step 2: `!t.Languages[allLanguages]` → checkLanguage.
+        let Some(languages) = &self.languages else {
+            return true;
+        };
+        // path.Base(fileName).
+        let base = name.rsplit('/').next().unwrap_or(name);
+        let mut lang = cf_langpath::language_by_path(base);
+        if lang.is_none() {
+            // Content detection: LookupBlob failure (incl. a zero hash) and an
+            // EMPTY blob both leave the language undetermined, exactly as the
+            // reference `len(contents) > 0` guard does.
+            if let Ok(blob) = cf_gitlib::blob::CachedBlob::from_repo(repo, hash) {
+                if !blob.data.is_empty() {
+                    lang = cf_langpath::language_by_path_with_content(base, &blob.data);
+                }
+            }
+        }
+        lang.is_some_and(|l| languages.contains(l.to_lowercase().as_str()))
+    }
+
+    /// Retains only the changes `shouldIncludeChange` admits, deriving the
+    /// `changeNameHash` pair per change (Delete → `from`, otherwise `to`).
+    pub fn retain_changes(
+        &self,
+        repo: &cf_gitlib::Repository,
+        changes: &mut Vec<cf_gitlib::changes::Change>,
+    ) {
+        changes.retain(|c| {
+            let (name, hash) = if matches!(c.action, cf_gitlib::changes::ChangeAction::Delete) {
+                (&c.from.name, c.from.hash)
+            } else {
+                (&c.to.name, c.to.hash)
+            };
+            self.includes_change(repo, name, hash)
+        });
+    }
+}
+
+/// Reads the `--languages` flag, applying the STATIC-phase collapse-to-empty
+/// parity rule.
+///
+/// cobra's `GetStringSlice` runs the raw value through encoding/csv, and
+/// csv.Read on an empty string yields an EMPTY slice (no filter) — while
+/// clap's value_delimiter yields one empty token, which would error as an
+/// unknown language. A value like ",Go" still carries a non-empty token
+/// alongside the empty one and errors on the empty token in BOTH
+/// implementations, so only the all-empty case collapses. (The HISTORY phase
+/// does NOT use this helper: for TreeDiff the explicit empty value configures
+/// an EMPTY language set — restrict-everything — not no-filter.)
+fn language_tokens(sub: &clap::ArgMatches) -> Vec<String> {
+    let mut tokens: Vec<String> = sub
+        .get_many::<String>("languages")
+        .map(|vals| vals.cloned().collect())
+        .unwrap_or_default();
+    if tokens.iter().all(String::is_empty) {
+        tokens.clear();
+    }
+    tokens
+}
+
+/// The canonical lowercase language set for the validated `tokens`, or `None`
+/// when the tokens do not restrict (empty / `all` — `wants_all`).
+fn language_token_set(tokens: &[String]) -> Option<std::collections::BTreeSet<String>> {
+    if tokens.is_empty() {
+        return None;
+    }
+    let mut set = std::collections::BTreeSet::new();
+    for raw in tokens {
+        let token = raw.trim();
+        if token.eq_ignore_ascii_case("all") {
+            // The reference `t.Languages[allLanguages] = true` disables the
+            // filter even alongside other tokens.
+            return None;
+        }
+        // globs() validated every token before this is called.
+        let canonical = cf_langpath::canonical_language(token).expect("tokens pre-validated");
+        set.insert(canonical.to_lowercase());
+    }
+    Some(set)
+}
+
+/// Builds the [`HistoryFilter`] from the run flags: the DEFAULT path policy
+/// (the reference history run ignores `--include-vendored` /
+/// `--include-generated` — empirically byte-verified on hercules/kubernetes;
+/// see the [`HistoryFilter`] docs) plus the `--languages` canonical-name set
+/// (the reference `TreeDiffAnalyzer.Configure` → `applyLanguageConfig` →
+/// `langpath.Globs`).
+///
+/// Differences from the static [`static_filter`] semantics (both oracle-
+/// verified): the flag being ABSENT means no restriction, while an explicit
+/// EMPTY value (`--languages ""`) restricts everything away — cobra's csv
+/// read of `""` yields an empty slice, so the reference `Languages` map is
+/// configured EMPTY (no `all` key) and `checkLanguage` rejects every change.
+///
+/// # Errors
+///
+/// Returns the reference error message (`failed to configure TreeDiff:
+/// tree-diff pathspec: unknown language: "<token>"`) when a `--languages`
+/// token resolves to no Linguist language.
+pub(crate) fn history_filter(sub: &clap::ArgMatches) -> Result<HistoryFilter, String> {
+    let policy = cf_pathpolicy::Options::default();
+    let Some(vals) = sub.get_many::<String>("languages") else {
+        // Flag absent: Languages == {"all"} → no restriction.
+        return Ok(HistoryFilter {
+            policy,
+            languages: None,
+        });
+    };
+    let tokens: Vec<String> = vals.cloned().collect();
+    if tokens.iter().all(String::is_empty) {
+        // Explicit empty value: cobra csv.Read("") → EMPTY slice → the config
+        // EXISTS with no tokens → Languages = {} (no `all`) → every change's
+        // detected language misses the set. clap yields one empty token here,
+        // so construct the empty-set restriction explicitly.
+        return Ok(HistoryFilter {
+            policy,
+            languages: Some(std::collections::BTreeSet::new()),
+        });
+    }
+    let globs = cf_langpath::globs(&tokens)
+        .map_err(|e| format!("failed to configure TreeDiff: tree-diff pathspec: {e}"))?;
+    Ok(HistoryFilter {
+        policy,
+        languages: if globs.wants_all {
+            None
+        } else {
+            language_token_set(&tokens)
         },
     })
 }
@@ -2196,5 +2374,297 @@ mod dispatch_flag_tests {
         ));
         let absent = text_total_functions(&dispatch("static/complexity", "text", &[], dir.path()));
         assert_eq!(empty, absent, "--languages \"\" must behave as no filter");
+    }
+}
+
+#[cfg(test)]
+mod history_filter_tests {
+    //! The history-phase `--languages` filter (TreeDiffAnalyzer
+    //! `shouldIncludeChange` → `checkLanguage`) — exercised both at the
+    //! filter level on a real multi-language git fixture and through the REAL
+    //! registry dispatch (the bug this guards: history walks consumed
+    //! `--languages` NOWHERE, and the error path silently succeeded).
+
+    use super::*;
+
+    /// A two-commit repo exercising every leg of the filter: a Go file
+    /// (insert + modify), a Python file (insert + delete — the delete-side
+    /// name leg), an EXTENSIONLESS script whose language is detectable only
+    /// from blob content (the `checkLanguage` content fallback), a
+    /// vendor-classified dotfile (the always-default policy leg), and a
+    /// Markdown doc (neither set member).
+    fn history_fixture() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let repo = git2::Repository::init(dir.path()).expect("git init");
+        let sig = git2::Signature::new(
+            "Dev One",
+            "dev@example.com",
+            &git2::Time::new(1_700_000_000, 0),
+        )
+        .expect("signature");
+        let commit = |message: &str, files: &[(&str, Option<&str>)]| {
+            let mut index = repo.index().expect("index");
+            for (path, content) in files {
+                match content {
+                    Some(text) => {
+                        std::fs::write(dir.path().join(path), text).expect("write");
+                        index
+                            .add_path(std::path::Path::new(path))
+                            .expect("add_path");
+                    }
+                    None => index
+                        .remove_path(std::path::Path::new(path))
+                        .expect("remove_path"),
+                }
+            }
+            index.write().expect("index write");
+            let tree_oid = index.write_tree().expect("write tree");
+            let tree = repo.find_tree(tree_oid).expect("find tree");
+            let parents: Vec<git2::Commit> = repo
+                .head()
+                .ok()
+                .and_then(|h| h.peel_to_commit().ok())
+                .into_iter()
+                .collect();
+            let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
+            repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parent_refs)
+                .expect("commit");
+        };
+        // main.go: 5 lines; app.py: 2; deploy (extensionless python): 2;
+        // .gitignore (vendor-classified): 2; README.md: 1.
+        commit(
+            "init",
+            &[
+                (
+                    "main.go",
+                    Some("package main\n\nfunc main() {\n\tprintln(\"hi\")\n}\n"),
+                ),
+                ("app.py", Some("#!/usr/bin/env python3\nprint('x')\n")),
+                ("deploy", Some("#!/usr/bin/env python3\nprint('d')\n")),
+                (".gitignore", Some("target/\nbuild/\n")),
+                ("README.md", Some("# docs\n")),
+            ],
+        );
+        // main.go grows by one line; app.py is deleted.
+        commit(
+            "second",
+            &[
+                (
+                    "main.go",
+                    Some("package main\n\nfunc main() {\n\tprintln(\"hi\")\n\tprintln(\"x\")\n}\n"),
+                ),
+                ("app.py", None),
+            ],
+        );
+        dir
+    }
+
+    /// Parses `codefang run <args...> <any-path>` into run matches and builds
+    /// the history filter from them (flag layer).
+    fn filter_from_run_args(args: &[&str]) -> Result<HistoryFilter, String> {
+        let mut argv = vec!["codefang", "run"];
+        argv.extend_from_slice(args);
+        argv.push(".");
+        let matches = crate::build_codefang_command()
+            .try_get_matches_from(argv)
+            .expect("run args parse");
+        let sub = matches.subcommand_matches("run").expect("run subcommand");
+        history_filter(sub)
+    }
+
+    #[test]
+    fn absent_languages_flag_means_no_restriction() {
+        let filter = filter_from_run_args(&[]).expect("no flags parses");
+        assert_eq!(filter.languages, None);
+    }
+
+    #[test]
+    fn languages_all_means_no_restriction() {
+        let filter = filter_from_run_args(&["--languages", "all"]).expect("parses");
+        assert_eq!(filter.languages, None);
+    }
+
+    #[test]
+    fn languages_tokens_canonicalize_to_lowercase_set() {
+        let filter = filter_from_run_args(&["--languages", "Go,python"]).expect("parses");
+        let set = filter.languages.expect("restricts");
+        assert_eq!(
+            set.into_iter().collect::<Vec<_>>(),
+            vec!["go".to_string(), "python".to_string()]
+        );
+    }
+
+    #[test]
+    fn explicit_empty_languages_restricts_everything() {
+        // The reference: cobra csv.Read("") → EMPTY slice → TreeDiff.Configure
+        // runs with a present-but-empty token list → Languages = {} (no
+        // "all") → checkLanguage rejects every change. NOT no-filter (that is
+        // the STATIC phase's semantics for the same flag value).
+        let filter = filter_from_run_args(&["--languages", ""]).expect("parses");
+        let set = filter.languages.expect("empty set still restricts");
+        assert!(set.is_empty());
+    }
+
+    #[test]
+    fn unknown_language_errors_with_tree_diff_message() {
+        let err =
+            filter_from_run_args(&["--languages", "notalang"]).expect_err("unknown token errors");
+        assert_eq!(
+            err,
+            r#"failed to configure TreeDiff: tree-diff pathspec: unknown language: "notalang""#
+        );
+    }
+
+    /// Walks the fixture and returns the retained change (name, action-debug)
+    /// pairs under `filter` — the exact `retain_changes` path every history
+    /// walk shares.
+    fn retained_names(
+        dir: &std::path::Path,
+        filter: &HistoryFilter,
+    ) -> Vec<(String, cf_gitlib::changes::ChangeAction)> {
+        let repo = cf_gitlib::Repository::open(dir.to_str().unwrap()).expect("open");
+        let hashes = crate::handlers::load_history_commit_hashes(
+            &repo,
+            0,
+            false,
+            crate::handlers::SinceSpec::Inactive,
+        )
+        .expect("history");
+        let mut out = Vec::new();
+        for hash in hashes {
+            let commit = repo.lookup_commit(hash).expect("commit");
+            let mut changes =
+                crate::handlers::history::commit_tree_changes(&repo, &commit).expect("diff");
+            filter.retain_changes(&repo, &mut changes);
+            out.extend(changes.into_iter().map(|c| {
+                let name = if matches!(c.action, cf_gitlib::changes::ChangeAction::Delete) {
+                    c.from.name
+                } else {
+                    c.to.name
+                };
+                (name, c.action)
+            }));
+        }
+        out
+    }
+
+    #[test]
+    fn language_filter_keeps_matching_paths_and_vendor_policy_holds() {
+        let dir = history_fixture();
+        let filter = filter_from_run_args(&["--languages", "Go"]).expect("parses");
+        let retained = retained_names(dir.path(), &filter);
+        // Two main.go changes survive; the Python files, README.md, and the
+        // vendor-classified .gitignore do NOT (policy is ALWAYS the default —
+        // the reference history run never exposes the include flags).
+        assert_eq!(
+            retained,
+            vec![
+                (
+                    "main.go".to_string(),
+                    cf_gitlib::changes::ChangeAction::Insert
+                ),
+                (
+                    "main.go".to_string(),
+                    cf_gitlib::changes::ChangeAction::Modify
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn language_filter_uses_blob_content_for_extensionless_files() {
+        let dir = history_fixture();
+        let filter = filter_from_run_args(&["--languages", "Python"]).expect("parses");
+        let retained = retained_names(dir.path(), &filter);
+        let names: Vec<&str> = retained.iter().map(|(n, _)| n.as_str()).collect();
+        // app.py by extension; `deploy` by SHEBANG content detection (the
+        // reference GetLanguage(basename, nil) → blob-content fallback leg);
+        // the app.py delete keeps the FROM-side name (changeNameHash).
+        assert_eq!(names, vec!["app.py", "deploy", "app.py"]);
+        assert!(matches!(
+            retained[2].1,
+            cf_gitlib::changes::ChangeAction::Delete
+        ));
+    }
+
+    #[test]
+    fn empty_language_set_retains_nothing() {
+        let dir = history_fixture();
+        let filter = filter_from_run_args(&["--languages", ""]).expect("parses");
+        assert!(retained_names(dir.path(), &filter).is_empty());
+    }
+
+    /// Runs `codefang run --analyzers <id> --format json <extra..> <root>`
+    /// through the real argv parse + registry handler (same harness as
+    /// `dispatch_flag_tests`), returning the parsed json aggregate.
+    fn dispatch_aggregate(id: &str, extra: &[&str], root: &std::path::Path, key: &str) -> i64 {
+        let root = root.to_str().unwrap();
+        let mut argv = vec!["codefang", "run", "--analyzers", id, "--format", "json"];
+        argv.extend_from_slice(extra);
+        argv.push(root);
+        let matches = crate::build_codefang_command()
+            .try_get_matches_from(argv)
+            .expect("run args parse");
+        let sub = matches.subcommand_matches("run").expect("run subcommand");
+        let ctx = RunContext::from_matches(sub);
+        let registry = default_registry();
+        let entry = registry.lookup(id).expect("analyzer registered");
+        let bytes = (entry.run)(&ctx, "json").expect("handler produced a report");
+        let json = String::from_utf8(bytes).expect("utf8");
+        let agg = format!(r#""aggregate":{{"#);
+        let pos = json.find(&agg).expect("aggregate object");
+        let from = &json[pos + agg.len()..];
+        let needle = format!(r#""{key}":"#);
+        let kpos = from.find(&needle).expect("aggregate key");
+        let rest = &from[kpos + needle.len()..];
+        rest[..rest.find([',', '}']).expect("value end")]
+            .parse()
+            .expect("integer value")
+    }
+
+    #[test]
+    fn dispatch_history_devs_applies_language_filter() {
+        // The exact regression class of the static fix, on the history side:
+        // dispatch through the registry, not the filter helpers — if a walk
+        // silently lost the filter, totals would equal the unfiltered run.
+        let dir = history_fixture();
+        let root = dir.path();
+
+        let added_go = dispatch_aggregate(
+            "history/devs",
+            &["--languages", "Go"],
+            root,
+            "total_lines_added",
+        );
+        // main.go insert (+5) + modify (+1); everything else filtered away.
+        assert_eq!(added_go, 6);
+
+        let (added_py, removed_py) = (
+            dispatch_aggregate(
+                "history/devs",
+                &["--languages", "Python"],
+                root,
+                "total_lines_added",
+            ),
+            dispatch_aggregate(
+                "history/devs",
+                &["--languages", "Python"],
+                root,
+                "total_lines_removed",
+            ),
+        );
+        // app.py (+2) + deploy (+2, content-detected); delete contributes −2.
+        assert_eq!((added_py, removed_py), (4, 2));
+
+        let all_added = dispatch_aggregate("history/devs", &[], root, "total_lines_added");
+        // Unfiltered: 6 (Go) + 2 (app.py) + 2 (deploy) + 1 (README.md);
+        // .gitignore is vendor-classified and excluded even unfiltered.
+        assert_eq!(all_added, 11);
+
+        // The TreeDiff restrict-everything case: no commit survives, so devs
+        // attributes zero commits (reference-observed empty devs report).
+        let empty_commits =
+            dispatch_aggregate("history/devs", &["--languages", ""], root, "total_commits");
+        assert_eq!(empty_commits, 0);
     }
 }

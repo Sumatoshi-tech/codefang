@@ -36,7 +36,6 @@ pub fn burndown_head_metrics(
     use cf_analyzer_burndown::metrics::{AggregateData, SurvivalData};
     use cf_gitlib::blob::CachedBlob;
     use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
-    use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 
     let path = run_repo_path(sub);
     let repo = cf_gitlib::Repository::open(&path).ok()?;
@@ -53,7 +52,7 @@ pub fn burndown_head_metrics(
         initial_tree_changes(&repo, Some(&new_tree)).ok()?
     };
 
-    let opts = PathPolicyOptions::default();
+    let filter = super::history_filter(sub).unwrap_or_default();
     let mut total_lines: i64 = 0;
     for change in &changes {
         // handleInsertion uses To.Name; every surviving non-deletion change is
@@ -61,7 +60,7 @@ pub fn burndown_head_metrics(
         if matches!(change.action, ChangeAction::Delete) || change.to.hash.is_zero() {
             continue;
         }
-        if exclude(&change.to.name, None, &opts) {
+        if !filter.includes_change(&repo, &change.to.name, change.to.hash) {
             continue;
         }
         let Ok(blob) = CachedBlob::from_repo(&repo, change.to.hash) else {
@@ -116,7 +115,6 @@ pub fn burndown_head_timeseries(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     use cf_gitlib::blob::CachedBlob;
     use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
     use cf_gojson::value::{GoMap, GoValue};
-    use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 
     let path = run_repo_path(sub);
     let repo = cf_gitlib::Repository::open(&path).ok()?;
@@ -132,13 +130,13 @@ pub fn burndown_head_timeseries(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         initial_tree_changes(&repo, Some(&new_tree)).ok()?
     };
 
-    let opts = PathPolicyOptions::default();
+    let filter = super::history_filter(sub).unwrap_or_default();
     let mut total_lines: i64 = 0;
     for change in &changes {
         if matches!(change.action, ChangeAction::Delete) || change.to.hash.is_zero() {
             continue;
         }
-        if exclude(&change.to.name, None, &opts) {
+        if !filter.includes_change(&repo, &change.to.name, change.to.hash) {
             continue;
         }
         let Ok(blob) = CachedBlob::from_repo(&repo, change.to.hash) else {
@@ -225,7 +223,6 @@ pub fn anomaly_head_report(sub: &clap::ArgMatches) -> Option<cf_anomaly::model::
     use cf_anomaly::model::CommitAnomalyData;
     use cf_gitlib::blob::CachedBlob;
     use cf_gitlib::changes::{tree_diff, ChangeAction};
-    use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 
     let path = run_repo_path(sub);
     let repo = cf_gitlib::Repository::open(&path).ok()?;
@@ -251,20 +248,20 @@ pub fn anomaly_head_report(sub: &clap::ArgMatches) -> Option<cf_anomaly::model::
     let old_tree = parent.tree().ok()?;
     let changes = tree_diff(&repo, Some(&old_tree), Some(&new_tree)).ok()?;
 
-    let opts = PathPolicyOptions::default();
+    let filter = super::history_filter(sub).unwrap_or_default();
     let mut files_changed: i64 = 0;
     let mut languages: BTreeMap<String, i64> = BTreeMap::new();
     let mut lines_added: i64 = 0;
     let mut lines_removed: i64 = 0;
     for change in &changes {
-        // changeNameHash: Delete → From.Name, otherwise To.Name.
-        let name = if matches!(change.action, ChangeAction::Delete) {
-            &change.from.name
+        // changeNameHash: Delete → From.Name/Hash, otherwise To.
+        let (name, change_hash) = if matches!(change.action, ChangeAction::Delete) {
+            (&change.from.name, change.from.hash)
         } else {
-            &change.to.name
+            (&change.to.name, change.to.hash)
         };
-        // filterChanges: pathpolicy.Exclude(name, nil, opts) (content nil).
-        if exclude(name, None, &opts) {
+        // filterChanges: path policy, then the --languages check.
+        if !filter.includes_change(&repo, name, change_hash) {
             continue;
         }
         files_changed += 1;
@@ -446,7 +443,6 @@ pub(crate) fn anomaly_walk(sub: &clap::ArgMatches) -> Option<AnomalyWalk> {
     use cf_anomaly::model::CommitAnomalyData;
     use cf_gitlib::blob::CachedBlob;
     use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
-    use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 
     let path = run_repo_path(sub);
     let repo = cf_gitlib::Repository::open(&path).ok()?;
@@ -468,7 +464,7 @@ pub(crate) fn anomaly_walk(sub: &clap::ArgMatches) -> Option<AnomalyWalk> {
         )?
     };
 
-    let policy = PathPolicyOptions::default();
+    let change_filter = super::history_filter(sub).unwrap_or_default();
     let mut identity = IdentityDetector::new();
 
     let mut commit_metrics: BTreeMap<String, CommitAnomalyData> = BTreeMap::new();
@@ -491,7 +487,7 @@ pub(crate) fn anomaly_walk(sub: &clap::ArgMatches) -> Option<AnomalyWalk> {
         data: CommitAnomalyData,
     }
     let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
-    let policy_ref = &policy;
+    let filter_ref = &change_filter;
     let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
         let commit = repo.lookup_commit(hash).ok()?;
         let num_parents = commit.num_parents();
@@ -503,25 +499,16 @@ pub(crate) fn anomaly_walk(sub: &clap::ArgMatches) -> Option<AnomalyWalk> {
         let is_merge = num_parents > 1 && !first_parent;
 
         // Tree diff against the first parent (root → full initial tree), then the
-        // shared vendor/generated filter (TreeDiffAnalyzer.filterChanges).
+        // shared vendor/generated/languages filter (TreeDiffAnalyzer.filterChanges).
         let new_tree = commit.tree().ok()?;
-        let raw_changes = if num_parents > 0 {
+        let mut changes = if num_parents > 0 {
             let parent = commit.parent(0).ok()?;
             let old_tree = parent.tree().ok()?;
             tree_diff(repo, Some(&old_tree), Some(&new_tree)).ok()?
         } else {
             initial_tree_changes(repo, Some(&new_tree)).ok()?
         };
-        let changes: Vec<_> = raw_changes
-            .into_iter()
-            .filter(|change| {
-                let name = match change.action {
-                    ChangeAction::Delete => &change.from.name,
-                    _ => &change.to.name,
-                };
-                !exclude(name, None, policy_ref)
-            })
-            .collect();
+        filter_ref.retain_changes(repo, &mut changes);
 
         // anomaly.Consume: FilesChanged = len(changes); Files = each change's
         // To.Name (unconditionally, like the reference implementation's append).
@@ -917,7 +904,12 @@ pub(crate) fn quality_walk(sub: &clap::ArgMatches) -> Option<Vec<QualityCommit>>
         )?
     };
 
+    // `opts` drives the UAST parse gate only — the reference UASTChanges
+    // pathfilter gate (always-on vendor/generated detection), NOT the
+    // flag-controlled policy. The TreeDiff-level filter (policy + --languages)
+    // is applied to the changes below.
     let opts = PathPolicyOptions::default();
+    let change_filter = super::history_filter(sub).unwrap_or_default();
     let mut identity = IdentityDetector::new();
 
     let mut tick0: Option<i64> = None;
@@ -940,17 +932,21 @@ pub(crate) fn quality_walk(sub: &clap::ArgMatches) -> Option<Vec<QualityCommit>>
     // `quality_commit_product` the shared multi-analyzer walk calls.
     let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
     let opts_ref = &opts;
+    let filter_ref = &change_filter;
     let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
         // Per-thread UAST parser, reused across this thread's commits (tree-sitter
         // parsers are not thread-safe, so never shared across threads).
         crate::handlers::history::with_uast_parser(|parser| {
             let commit = repo.lookup_commit(hash).ok()?;
-            let changes = commit_tree_changes(repo, &commit)?;
-            let raw_change_count = changes.len();
+            let raw_changes = commit_tree_changes(repo, &commit)?;
+            let raw_change_count = raw_changes.len();
             // Oversized commits are dropped before any analyzer — no per-file work.
             if raw_change_count > max_changes {
                 return Some((raw_change_count, cf_quality::TickQuality::default()));
             }
+            // TreeDiffAnalyzer.filterChanges (policy + --languages).
+            let mut changes = raw_changes;
+            filter_ref.retain_changes(repo, &mut changes);
             let mut cache = super::uast_walk::CommitParseCache::new(repo, parser, opts_ref);
             Some((
                 raw_change_count,
@@ -1462,7 +1458,10 @@ pub(crate) fn sentiment_walk(sub: &clap::ArgMatches) -> Option<Vec<SentimentComm
         )?
     };
 
+    // `opts` drives the UAST parse gate only (the reference always-on
+    // pathfilter); the TreeDiff-level filter is applied to the changes below.
     let opts = PathPolicyOptions::default();
+    let change_filter = super::history_filter(sub).unwrap_or_default();
     let mut identity = IdentityDetector::new();
 
     let mut tick0: Option<i64> = None;
@@ -1480,12 +1479,15 @@ pub(crate) fn sentiment_walk(sub: &clap::ArgMatches) -> Option<Vec<SentimentComm
     // `sentiment_commit_product` the shared multi-analyzer walk calls.
     let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
     let opts_ref = &opts;
+    let filter_ref = &change_filter;
     let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
         // Per-thread UAST parser, reused across this thread's commits (tree-sitter
         // parsers are not thread-safe, so never shared across threads).
         crate::handlers::history::with_uast_parser(|parser| {
             let commit = repo.lookup_commit(hash).ok()?;
-            let changes = commit_tree_changes(repo, &commit)?;
+            let mut changes = commit_tree_changes(repo, &commit)?;
+            // TreeDiffAnalyzer.filterChanges (policy + --languages).
+            filter_ref.retain_changes(repo, &mut changes);
             let mut cache = super::uast_walk::CommitParseCache::new(repo, parser, opts_ref);
             Some(sentiment_commit_product(&changes, &mut cache))
         })
@@ -1934,7 +1936,10 @@ pub(crate) fn imports_walk(sub: &clap::ArgMatches) -> Option<Vec<ImportsCommit>>
         )?
     };
 
+    // `opts` drives the UAST parse gate only (the reference always-on
+    // pathfilter); the TreeDiff-level filter is applied to the changes below.
     let opts = PathPolicyOptions::default();
+    let change_filter = super::history_filter(sub).unwrap_or_default();
     // Loose identity detection (run streaming never preloads a people dict).
     let mut identity = IdentityDetector::new();
 
@@ -1952,12 +1957,15 @@ pub(crate) fn imports_walk(sub: &clap::ArgMatches) -> Option<Vec<ImportsCommit>>
     // multi-analyzer walk calls.
     let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
     let opts_ref = &opts;
+    let filter_ref = &change_filter;
     let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
         // Per-thread UAST parser, reused across this thread's commits (tree-sitter
         // parsers are not thread-safe, so never shared across threads).
         crate::handlers::history::with_uast_parser(|parser| {
             let commit = repo.lookup_commit(hash).ok()?;
-            let changes = commit_tree_changes(repo, &commit)?;
+            let mut changes = commit_tree_changes(repo, &commit)?;
+            // TreeDiffAnalyzer.filterChanges (policy + --languages).
+            filter_ref.retain_changes(repo, &mut changes);
             let mut cache = super::uast_walk::CommitParseCache::new(repo, parser, opts_ref);
             Some(imports_commit_product(&changes, &mut cache))
         })
@@ -2325,7 +2333,6 @@ pub(crate) fn file_history_run(sub: &clap::ArgMatches) -> Option<FileHistoryRun>
     };
     use cf_gitlib::blob::CachedBlob;
     use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
-    use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 
     let path = run_repo_path(sub);
     let repo = cf_gitlib::Repository::open(&path).ok()?;
@@ -2387,7 +2394,7 @@ pub(crate) fn file_history_run(sub: &clap::ArgMatches) -> Option<FileHistoryRun>
         crate::handlers::pipeline_consume_order(revwalk_hashes)
     };
 
-    let policy = PathPolicyOptions::default();
+    let change_filter = super::history_filter(sub).unwrap_or_default();
     let mut identity = IdentityDetector::new();
 
     // file-history's final report is built from the AGGREGATOR (per-commit TCs),
@@ -2470,7 +2477,7 @@ pub(crate) fn file_history_run(sub: &clap::ArgMatches) -> Option<FileHistoryRun>
         category_counts: CategoryCounts,
     }
     let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
-    let policy_ref = &policy;
+    let filter_ref = &change_filter;
     let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
         let classifier = Classifier::new();
         let commit = repo.lookup_commit(hash).ok()?;
@@ -2490,17 +2497,9 @@ pub(crate) fn file_history_run(sub: &clap::ArgMatches) -> Option<FileHistoryRun>
             None => initial_tree_changes(repo, Some(&new_tree)).ok()?,
         };
 
-        // filterChanges: drop vendor/generated paths (content=nil).
-        let changes: Vec<cf_gitlib::changes::Change> = raw_changes
-            .into_iter()
-            .filter(|change| {
-                let name = match change.action {
-                    ChangeAction::Delete => &change.from.name,
-                    _ => &change.to.name,
-                };
-                !exclude(name, None, policy_ref)
-            })
-            .collect();
+        // filterChanges: path policy, then the --languages check.
+        let mut changes = raw_changes;
+        filter_ref.retain_changes(repo, &mut changes);
 
         // aggregateLineStats (skipped for merge commits): per-change line stats.
         let mut line_stats: Vec<(String, LineStats)> = Vec::new();
@@ -3299,7 +3298,10 @@ pub(crate) fn typos_walk(sub: &clap::ArgMatches) -> Option<Vec<TyposCommit>> {
     };
 
     let parser = cf_uast::Parser::new();
+    // `opts` drives the UAST parse gate only (the reference always-on
+    // pathfilter); the TreeDiff-level filter is applied to the changes below.
     let opts = PathPolicyOptions::default();
+    let change_filter = super::history_filter(sub).unwrap_or_default();
     let mut lctx = LevenshteinContext::new();
     let mut identity = IdentityDetector::new();
 
@@ -3335,9 +3337,11 @@ pub(crate) fn typos_walk(sub: &clap::ArgMatches) -> Option<Vec<TyposCommit>> {
             offset_min: committer_when.offset_minutes(),
         };
 
-        // Tree diff against the first parent (root → full initial tree), then
-        // the SAME per-commit product body the shared multi-analyzer walk calls.
-        let changes = commit_tree_changes(&repo, &commit)?;
+        // Tree diff against the first parent (root → full initial tree), the
+        // TreeDiffAnalyzer filter, then the SAME per-commit product body the
+        // shared multi-analyzer walk calls.
+        let mut changes = commit_tree_changes(&repo, &commit)?;
+        change_filter.retain_changes(&repo, &mut changes);
         let mut cache = super::uast_walk::CommitParseCache::new(&repo, &parser, &opts);
         entry.typos =
             typos_commit_product(&repo, *hash, &changes, max_distance, &mut lctx, &mut cache);
@@ -3917,7 +3921,6 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
     use cf_gitlib::blob::CachedBlob;
     use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
     use cf_gitlib::worker::Worker;
-    use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 
     // Reference: maxChangesPerCommit = 10000 (raw tree-diff cap).
     const MAX_CHANGES_PER_COMMIT: usize = 10_000;
@@ -3942,7 +3945,7 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
         )?
     };
 
-    let policy = PathPolicyOptions::default();
+    let change_filter = super::history_filter(sub).unwrap_or_default();
     let mut identity = IdentityDetector::new();
 
     // ---- parallel pure-compute stage -----------------------------------------
@@ -3962,7 +3965,7 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
         attributions: Vec<(String, cf_devs::LineStats)>,
     }
     let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
-    let policy_ref = &policy;
+    let filter_ref = &change_filter;
     let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
         let commit = repo.lookup_commit(hash).ok()?;
         let num_parents = commit.num_parents();
@@ -3985,16 +3988,8 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
                 attributions: Vec::new(),
             });
         }
-        let changes: Vec<_> = raw_changes
-            .into_iter()
-            .filter(|change| {
-                let name = match change.action {
-                    ChangeAction::Delete => &change.from.name,
-                    _ => &change.to.name,
-                };
-                !exclude(name, None, policy_ref)
-            })
-            .collect();
+        let mut changes = raw_changes;
+        filter_ref.retain_changes(repo, &mut changes);
         let filtered_count = changes.len();
         let mut attributions: Vec<(String, cf_devs::LineStats)> = Vec::new();
         // Line stats are accumulated only for non-merge commits.

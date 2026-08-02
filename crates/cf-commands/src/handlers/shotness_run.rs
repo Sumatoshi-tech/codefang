@@ -153,7 +153,10 @@ pub(crate) fn shotness_walk(sub: &clap::ArgMatches) -> Option<Vec<ShotnessCommit
     };
 
     let parser = cf_uast::Parser::new();
+    // `opts` drives the UAST parse gate only (the reference always-on
+    // pathfilter); the TreeDiff-level filter is applied to the changes below.
     let opts = PathPolicyOptions::default();
+    let change_filter = crate::handlers::history_filter(sub).unwrap_or_default();
     let mut identity = IdentityDetector::new();
 
     // Cumulative analyzer state + merge dedup (sequential, walk order).
@@ -199,7 +202,9 @@ pub(crate) fn shotness_walk(sub: &clap::ArgMatches) -> Option<Vec<ShotnessCommit
         // Tree diff against the first parent (root → full initial tree), then
         // the SAME per-commit parse/extract/diff product the shared
         // multi-analyzer walk computes, fed to the sequential state machine.
-        let changes = crate::handlers::history::commit_tree_changes(&repo, &commit)?;
+        let mut changes = crate::handlers::history::commit_tree_changes(&repo, &commit)?;
+        // TreeDiffAnalyzer.filterChanges (policy + --languages).
+        change_filter.retain_changes(&repo, &mut changes);
         let mut cache = crate::handlers::uast_walk::CommitParseCache::new(&repo, &parser, &opts);
         let products = shotness_commit_product(&changes, &mut cache);
         entry.touched = reducer.consume(&products);
