@@ -113,3 +113,7 @@ cf-mcp = { path = "../cf-mcp", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
+# Test fixtures build tiny multi-language git repositories in memory-backed
+# tempdirs (history-filter oracle tests) — write access comes straight from
+# git2, the same libgit2 vendoring cf-gitlib is pinned to.
+git2 = { workspace = true }

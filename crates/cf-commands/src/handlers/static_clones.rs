@@ -40,12 +40,12 @@
 use std::fs;
 use std::path::Path;
 
+use super::StaticFilter;
 use cf_analyze::Report;
 use cf_clones::aggregator::Aggregator;
 use cf_clones::report_section::report_section_json_value;
 use cf_clones::Visitor;
 use cf_gojson::Encoder;
-use cf_pathpolicy::{exclude, Options};
 use cf_uast::Parser;
 use cf_uast_node::Node as UastNode;
 
@@ -54,7 +54,7 @@ use cf_uast_node::Node as UastNode;
 /// `None` when the path cannot be read.
 #[must_use]
 pub fn clones_report_json(root_path: &str) -> Option<Vec<u8>> {
-    clones_report_json_flags(root_path, false)
+    clones_report_json_flags(root_path, &StaticFilter::default(), false)
 }
 
 /// [`clones_report_json`] with the `--per-file` flag applied. The clones
@@ -63,8 +63,12 @@ pub fn clones_report_json(root_path: &str) -> Option<Vec<u8>> {
 /// EVERY section with an EMPTY `files` array under `--per-file` — so the flag
 /// adds `files: []` to the clones section, exactly as the reference emits.
 #[must_use]
-pub fn clones_report_json_flags(root_path: &str, per_file: bool) -> Option<Vec<u8>> {
-    let value = clones_report_value_flags(root_path, per_file)?;
+pub fn clones_report_json_flags(
+    root_path: &str,
+    filter: &StaticFilter,
+    per_file: bool,
+) -> Option<Vec<u8>> {
+    let value = clones_report_value_flags(root_path, filter, per_file)?;
     // Reference: json.NewEncoder(w).SetIndent("", "  ").Encode(report) -> two-space
     // indent + one trailing newline.
     let bytes = Encoder::indented("  ")
@@ -78,14 +82,18 @@ pub fn clones_report_json_flags(root_path: &str, per_file: bool) -> Option<Vec<u
 /// static-JSON merge. `None` when the path cannot be walked.
 #[must_use]
 pub fn clones_report_value(root_path: &str) -> Option<cf_gojson::GoValue> {
-    clones_report_value_flags(root_path, false)
+    clones_report_value_flags(root_path, &StaticFilter::default(), false)
 }
 
 /// [`clones_report_value`] with the `--per-file` section enrichment (an empty
 /// `files` array — see [`clones_report_json_flags`]).
 #[must_use]
-pub fn clones_report_value_flags(root_path: &str, per_file: bool) -> Option<cf_gojson::GoValue> {
-    let report = aggregate_report(root_path)?;
+pub fn clones_report_value_flags(
+    root_path: &str,
+    filter: &StaticFilter,
+    per_file: bool,
+) -> Option<cf_gojson::GoValue> {
+    let report = aggregate_report_opts(root_path, filter)?;
     let value = report_section_json_value(&report);
     if per_file {
         Some(super::ensure_sections_files_key(value))
@@ -98,8 +106,8 @@ pub fn clones_report_value_flags(root_path: &str, per_file: bool) -> Option<cf_g
 /// (`FormatPerAnalyzer(YAML)` -> `yaml.Marshal(computeMetricsFromReport)`), or
 /// `None` when the path cannot be read.
 #[must_use]
-pub fn clones_report_yaml(root_path: &str) -> Option<Vec<u8>> {
-    let report = aggregate_report(root_path)?;
+pub fn clones_report_yaml(root_path: &str, filter: &StaticFilter) -> Option<Vec<u8>> {
+    let report = aggregate_report_opts(root_path, filter)?;
     let metrics = cf_clones::Analyzer::new().computed_metrics(&report);
     Some(cf_goyaml::marshal(&metrics.to_go_value()))
 }
@@ -108,8 +116,8 @@ pub fn clones_report_yaml(root_path: &str) -> Option<Vec<u8>> {
 /// (`FormatPerAnalyzer(Binary)` -> CFB1 envelope of `computeMetricsFromReport`),
 /// or `None` when the path cannot be read.
 #[must_use]
-pub fn clones_report_bin(root_path: &str) -> Option<Vec<u8>> {
-    let report = aggregate_report(root_path)?;
+pub fn clones_report_bin(root_path: &str, filter: &StaticFilter) -> Option<Vec<u8>> {
+    let report = aggregate_report_opts(root_path, filter)?;
     let metrics = cf_clones::Analyzer::new().computed_metrics(&report);
     cf_reportutil::encode_binary_envelope(&metrics.to_go_value()).ok()
 }
@@ -120,35 +128,32 @@ pub fn clones_report_bin(root_path: &str) -> Option<Vec<u8>> {
 /// This is the only fully deterministic in the reference binary terminal format for clones — it shows
 /// only the title/score-bar/message, never the order-nondeterministic pair list.
 #[must_use]
-pub fn clones_report_compact(root_path: &str) -> Option<Vec<u8>> {
-    let report = aggregate_report(root_path)?;
+pub fn clones_report_compact(root_path: &str, filter: &StaticFilter) -> Option<Vec<u8>> {
+    let report = aggregate_report_opts(root_path, filter)?;
     Some(cf_clones::report_section::report_section_compact(&report))
 }
 
 /// Builds the AGGREGATED RAW `analyze.Report` GoValue for `static/clones` —
 /// the value the reference `clones.Aggregator.GetResult()` returns after the
 /// folder walk, which is what `--format plot` consumes and what
-/// `writeReportJSON` serializes into `report.json`. `opts` carries the run's
+/// `writeReportJSON` serializes into `report.json`. `filter` carries the run’s
 /// path-policy flags. The stored `clone_pairs` ORDER is nondeterministic in the reference binary
 /// (LSH candidate iteration); the differential oracle measures and
 /// canonicalizes it — the pair multiset and every scalar are deterministic.
 #[must_use]
-pub fn clones_raw_report_value(root_path: &str, opts: &Options) -> Option<cf_gojson::GoValue> {
+pub fn clones_raw_report_value(
+    root_path: &str,
+    filter: &StaticFilter,
+) -> Option<cf_gojson::GoValue> {
     Some(cf_gojson::GoValue::Map(aggregate_report_opts(
-        root_path, opts,
+        root_path, filter,
     )?))
 }
 
 /// Walks `root_path`, runs the clones visitor per file, and folds the per-file
 /// signature reports into the cross-file aggregate report value. Returns `None`
 /// when the root path does not exist (reference: would surface a walk error).
-fn aggregate_report(root_path: &str) -> Option<Report> {
-    aggregate_report_opts(root_path, &Options::default())
-}
-
-/// [`aggregate_report`] with explicit path-policy options (the plot path passes
-/// the run flags; the stdout formats keep the defaults).
-fn aggregate_report_opts(root_path: &str, opts: &Options) -> Option<Report> {
+fn aggregate_report_opts(root_path: &str, filter: &StaticFilter) -> Option<Report> {
     let root = Path::new(root_path);
     if !root.exists() {
         return None;
@@ -157,7 +162,7 @@ fn aggregate_report_opts(root_path: &str, opts: &Options) -> Option<Report> {
     let parser = Parser::new();
     let mut agg = Aggregator::new();
 
-    walk(root, root_path, &parser, opts, &mut agg);
+    walk(root, root_path, &parser, filter, &mut agg);
 
     Some(agg.get_result())
 }
@@ -166,11 +171,11 @@ fn aggregate_report_opts(root_path: &str, opts: &Options) -> Option<Report> {
 /// directories are recursed (except `.git`), files are filtered through parser
 /// support + path policy, parsed, run through the clones visitor, and folded
 /// into `agg`.
-fn walk(dir: &Path, root_path: &str, parser: &Parser, opts: &Options, agg: &mut Aggregator) {
+fn walk(dir: &Path, root_path: &str, parser: &Parser, filter: &StaticFilter, agg: &mut Aggregator) {
     // Go parity: filepath.WalkDir visits a FILE root as a single entry, so
     // `codefang run <analyzer> path/to/file.c` analyzes that one file.
     if dir.is_file() {
-        visit_file(dir, root_path, parser, opts, agg);
+        visit_file(dir, root_path, parser, filter, agg);
         return;
     }
     let Ok(read) = fs::read_dir(dir) else {
@@ -195,26 +200,32 @@ fn walk(dir: &Path, root_path: &str, parser: &Parser, opts: &Options, agg: &mut 
             if super::should_skip_walk_dir(&entry.path(), &entry.file_name()) {
                 continue;
             }
-            walk(&path, root_path, parser, opts, agg);
+            walk(&path, root_path, parser, filter, agg);
             continue;
         }
 
-        visit_file(&path, root_path, parser, opts, agg);
+        visit_file(&path, root_path, parser, filter, agg);
     }
 }
 
 /// Analyzes one file entry of the walk (the non-directory branch of the
 /// `filepath.WalkDir` callback): parser support + path policy filters, parse,
 /// clones visitor, and fold into the aggregate.
-fn visit_file(path: &Path, root_path: &str, parser: &Parser, opts: &Options, agg: &mut Aggregator) {
+fn visit_file(
+    path: &Path,
+    root_path: &str,
+    parser: &Parser,
+    filter: &StaticFilter,
+    agg: &mut Aggregator,
+) {
     let path_str = path.to_string_lossy();
 
     // ShouldSkipFolderNode: must be UAST-supported.
     if !parser.is_supported(&path_str) {
         return;
     }
-    // matchesLanguageGlobs (empty -> all match), then pathpolicy.Exclude.
-    if exclude(&path_str, None, opts) {
+    // matchesLanguageGlobs, then pathpolicy.Exclude (StaticFilter::skips).
+    if filter.skips(&path_str) {
         return;
     }
 
@@ -269,7 +280,9 @@ mod per_file_tests {
     #[test]
     fn per_file_flag_emits_empty_files_array() {
         let dir = fixture();
-        let bytes = clones_report_json_flags(dir.path().to_str().unwrap(), true).unwrap();
+        let bytes =
+            clones_report_json_flags(dir.path().to_str().unwrap(), &StaticFilter::default(), true)
+                .unwrap();
         let json = String::from_utf8(bytes).unwrap();
         // Clones retains no per-file data, but the enrichment still initializes
         // the section with an EMPTY files array (present, not omitted).
@@ -282,7 +295,12 @@ mod per_file_tests {
     #[test]
     fn no_per_file_flag_omits_files() {
         let dir = fixture();
-        let bytes = clones_report_json_flags(dir.path().to_str().unwrap(), false).unwrap();
+        let bytes = clones_report_json_flags(
+            dir.path().to_str().unwrap(),
+            &StaticFilter::default(),
+            false,
+        )
+        .unwrap();
         let json = String::from_utf8(bytes).unwrap();
         assert!(
             !json.contains("\"files\""),

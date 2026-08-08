@@ -39,9 +39,10 @@ use std::path::Path;
 use cf_complexity::node::{Node as CxNode, Positions as CxPositions};
 use cf_complexity::{Analyzer, FunctionMetrics};
 use cf_gojson::{Encoder, GoMap, GoValue, MapOrigin};
-use cf_pathpolicy::{exclude, Options};
 use cf_uast::Parser;
 use cf_uast_node::Node as UastNode;
+
+use super::StaticFilter;
 
 // --- Section rendering constants ---
 
@@ -109,19 +110,24 @@ pub(crate) struct FnRecord {
 /// caller then falls through to the blocked-dependency sentinel).
 #[must_use]
 pub fn complexity_report(root_path: &str) -> Option<Vec<u8>> {
-    complexity_report_flags(root_path, &Options::default(), false)
+    complexity_report_flags(root_path, &StaticFilter::default(), false)
 }
 
 /// `static/complexity --format json` with the run-level static flags applied:
-/// `opts` carries `--include-vendored` / `--include-generated` (the shared
-/// path-policy options the reference implementation builds in the reference `pathPolicyFromFlags`), and
+/// `filter` carries `--languages` + `--include-vendored` / `--include-generated`
+/// (the shared walk filter the reference implementation builds in `pathPolicyFromFlags` /
+/// `applyStaticLanguageFilter`), and
 /// `per_file` enables the reference implementation's `--per-file` section enrichment
 /// (`StaticService.enrichWithPerFileData` → `JSONReport.EnrichWithPerFileData`:
 /// one `JSONFileEntry` per ANALYZED file — function-free files included — keyed
 /// into the section's `files` array).
 #[must_use]
-pub fn complexity_report_flags(root_path: &str, opts: &Options, per_file: bool) -> Option<Vec<u8>> {
-    let report = complexity_report_value_opts(root_path, false, opts, per_file)?;
+pub fn complexity_report_flags(
+    root_path: &str,
+    filter: &StaticFilter,
+    per_file: bool,
+) -> Option<Vec<u8>> {
+    let report = complexity_report_value_opts(root_path, false, filter, per_file)?;
     let bytes = Encoder::indented("  ")
         .with_trailing_newline(true)
         .encode_to_vec(&report);
@@ -133,14 +139,19 @@ pub fn complexity_report_flags(root_path: &str, opts: &Options, per_file: bool) 
 /// static-JSON merge. `None` when the path cannot be walked.
 #[must_use]
 pub fn complexity_report_value(root_path: &str) -> Option<GoValue> {
-    complexity_report_value_opts(root_path, false, &Options::default(), false)
+    complexity_report_value_opts(root_path, false, &StaticFilter::default(), false)
 }
 
-/// [`complexity_report_value`] with the `--per-file` section enrichment (the
-/// multi-analyzer static-JSON merge threads the run flag through this).
+/// [`complexity_report_value`] with the run-level walk filter and the
+/// `--per-file` section enrichment (the multi-analyzer static-JSON merge
+/// threads the run flags through this).
 #[must_use]
-pub fn complexity_report_value_flags(root_path: &str, per_file: bool) -> Option<GoValue> {
-    complexity_report_value_opts(root_path, false, &Options::default(), per_file)
+pub fn complexity_report_value_flags(
+    root_path: &str,
+    filter: &StaticFilter,
+    per_file: bool,
+) -> Option<GoValue> {
+    complexity_report_value_opts(root_path, false, filter, per_file)
 }
 
 /// Builds the `static/complexity` section tree in the reference implementation's `AggregationModeSummaryOnly`
@@ -150,14 +161,14 @@ pub fn complexity_report_value_flags(root_path: &str, per_file: bool) -> Option<
 /// (computed by the always-on `MetricsProcessor`) are unchanged. mirrors the reference implementation
 /// `ResolveAggregationMode(FormatText|FormatCompact) -> SummaryOnly`.
 #[must_use]
-pub fn complexity_report_value_summary(root_path: &str) -> Option<GoValue> {
-    complexity_report_value_opts(root_path, true, &Options::default(), false)
+pub fn complexity_report_value_summary(root_path: &str, filter: &StaticFilter) -> Option<GoValue> {
+    complexity_report_value_opts(root_path, true, filter, false)
 }
 
 fn complexity_report_value_opts(
     root_path: &str,
     summary_only: bool,
-    opts: &Options,
+    filter: &StaticFilter,
     per_file: bool,
 ) -> Option<GoValue> {
     let root = Path::new(root_path);
@@ -187,7 +198,7 @@ fn complexity_report_value_opts(
         root,
         root_path,
         &parser,
-        opts,
+        filter,
         &analyzer,
         &mut total_functions,
         &mut total_complexity,
@@ -284,7 +295,7 @@ fn complexity_report_value_opts(
 /// With no parsed files the reference base aggregator returns
 /// `buildEmptyComplexityResult` instead (5 keys, no `analyzer_name`).
 #[must_use]
-pub fn complexity_raw_report_value(root_path: &str, opts: &Options) -> Option<GoValue> {
+pub fn complexity_raw_report_value(root_path: &str, filter: &StaticFilter) -> Option<GoValue> {
     let root = Path::new(root_path);
     if !root.exists() {
         return None;
@@ -307,7 +318,7 @@ pub fn complexity_raw_report_value(root_path: &str, opts: &Options) -> Option<Go
         root,
         root_path,
         &parser,
-        opts,
+        filter,
         &analyzer,
         &mut total_functions,
         &mut total_complexity,
@@ -550,7 +561,7 @@ fn walk(
     dir: &Path,
     root_path: &str,
     parser: &Parser,
-    opts: &Options,
+    filter: &StaticFilter,
     analyzer: &Analyzer,
     total_functions: &mut i64,
     total_complexity: &mut i64,
@@ -569,7 +580,7 @@ fn walk(
             dir,
             root_path,
             parser,
-            opts,
+            filter,
             analyzer,
             total_functions,
             total_complexity,
@@ -609,7 +620,7 @@ fn walk(
                 &path,
                 root_path,
                 parser,
-                opts,
+                filter,
                 analyzer,
                 total_functions,
                 total_complexity,
@@ -628,7 +639,7 @@ fn walk(
             &path,
             root_path,
             parser,
-            opts,
+            filter,
             analyzer,
             total_functions,
             total_complexity,
@@ -651,7 +662,7 @@ fn visit_file(
     path: &Path,
     root_path: &str,
     parser: &Parser,
-    opts: &Options,
+    filter: &StaticFilter,
     analyzer: &Analyzer,
     total_functions: &mut i64,
     total_complexity: &mut i64,
@@ -671,7 +682,7 @@ fn visit_file(
             return;
         }
         // matchesLanguageGlobs (empty → all match), then pathpolicy.Exclude.
-        if exclude(&path_str, None, opts) {
+        if filter.skips(&path_str) {
             return;
         }
 

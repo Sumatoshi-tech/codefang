@@ -421,6 +421,7 @@ dependencies = [
  "cf-version",
  "clap",
  "clap_complete",
+ "git2",
  "signal-hook",
  "stacker",
  "tempfile",

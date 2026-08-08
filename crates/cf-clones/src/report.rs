@@ -145,7 +145,12 @@ pub struct ComputedMetrics {
     /// `None` omits the key entirely (`omitempty` on an absent map).
     pub clone_type_dist: Option<CloneTypeCounts>,
     /// The detected clone pairs (`clone_pairs`).
-    pub clone_pairs: Vec<ClonePair>,
+    ///
+    /// `None` mirrors a Go `nil` slice (the report carried no `clone_pairs`
+    /// key — e.g. the analyzer's empty result) and renders `null`; `Some`
+    /// mirrors the non-nil slice the aggregator extraction builds
+    /// (`make([]ClonePair, 0, …)`), so an empty walk result renders `[]`.
+    pub clone_pairs: Option<Vec<ClonePair>>,
     /// Human-readable summary (`message`).
     pub message: String,
 }
@@ -154,8 +159,10 @@ impl ComputedMetrics {
     /// Builds the struct-origin [`GoValue`] tree for this metrics struct
     /// (report-format contract): fields emit in declaration order,
     /// `clone_type_distribution` is omitted when `None` (`omitempty`), and
-    /// `clone_pairs` emits `null` for an empty slice (the contract's rendering
-    /// of an absent list without `omitempty`).
+    /// `clone_pairs` — which has no `omitempty` — renders a Go `nil` slice
+    /// (`None`) as `null` and a non-nil slice (`Some`) as a JSON array, so the
+    /// aggregator's empty-but-present list renders `[]` exactly as the
+    /// reference binary emits it.
     #[must_use]
     pub fn to_go_value(&self) -> GoValue {
         let mut m = GoMap::new_struct();
@@ -166,19 +173,12 @@ impl ComputedMetrics {
             // omitempty: a present map is emitted even if all counts are zero.
             m.push("clone_type_distribution", clone_type_dist_map(counts));
         }
-        // `clone_pairs` has no omitempty: an empty list renders as `null`.
-        if self.clone_pairs.is_empty() {
-            m.push("clone_pairs", GoValue::Null);
-        } else {
-            m.push(
+        match &self.clone_pairs {
+            None => m.push("clone_pairs", GoValue::Null),
+            Some(pairs) => m.push(
                 "clone_pairs",
-                GoValue::Array(
-                    self.clone_pairs
-                        .iter()
-                        .map(ClonePair::to_go_value)
-                        .collect(),
-                ),
-            );
+                GoValue::Array(pairs.iter().map(ClonePair::to_go_value).collect()),
+            ),
         }
         m.push("message", GoValue::Str(self.message.clone()));
         GoValue::Object(m)
@@ -251,7 +251,7 @@ mod tests {
             total_clone_pairs: 0,
             clone_ratio: 0.0,
             clone_type_dist: None,
-            clone_pairs: Vec::new(),
+            clone_pairs: None,
             message: "No code clones detected".into(),
         };
         let json = Encoder::marshal().encode_to_string(&cm.to_go_value());
@@ -272,12 +272,12 @@ mod tests {
                 type2: 1,
                 type3: 0,
             }),
-            clone_pairs: vec![ClonePair {
+            clone_pairs: Some(vec![ClonePair {
                 func_a: "A".into(),
                 func_b: "B".into(),
                 similarity: 0.9,
                 clone_type: CLONE_TYPE2.into(),
-            }],
+            }]),
             message: "Low duplication - few clone pairs detected".into(),
         };
         let json = Encoder::marshal().encode_to_string(&cm.to_go_value());

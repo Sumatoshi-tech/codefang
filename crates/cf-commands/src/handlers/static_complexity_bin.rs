@@ -31,7 +31,6 @@ use std::path::Path;
 use cf_complexity::node::{Node as CxNode, Positions as CxPos};
 use cf_complexity::report::{computed_metrics, FunctionInput, ReportScalars};
 use cf_complexity::Analyzer;
-use cf_pathpolicy::Options as PathPolicyOptions;
 use cf_uast::Parser;
 use cf_uast_node::Node as UNode;
 
@@ -39,7 +38,7 @@ use cf_uast_node::Node as UNode;
 /// `None` when the path does not exist (the caller falls through to the
 /// blocked-dependency sentinel).
 #[must_use]
-pub fn complexity_report_bin(root_path: &str) -> Option<Vec<u8>> {
+pub fn complexity_report_bin(root_path: &str, filter: &super::StaticFilter) -> Option<Vec<u8>> {
     let root = Path::new(root_path);
     if !root.exists() {
         return None;
@@ -47,10 +46,9 @@ pub fn complexity_report_bin(root_path: &str) -> Option<Vec<u8>> {
 
     let parser = Parser::new();
     let analyzer = Analyzer;
-    let opts = PathPolicyOptions::default();
 
     let mut files: Vec<std::path::PathBuf> = Vec::new();
-    walk(root, &parser, &opts, &mut files);
+    walk(root, &parser, filter, &mut files);
 
     let mut inputs: Vec<FunctionInput> = Vec::new();
     let mut total_functions = 0i64;
@@ -126,11 +124,16 @@ pub fn complexity_report_bin(root_path: &str) -> Option<Vec<u8>> {
 /// Recursively walks `dir` in lexical order (mirroring `filepath.WalkDir` +
 /// `streamFiles`): directories are recursed (skipping `.git`); files are kept
 /// when the parser supports them and they survive `pathpolicy.Exclude`.
-fn walk(dir: &Path, parser: &Parser, opts: &PathPolicyOptions, out: &mut Vec<std::path::PathBuf>) {
+fn walk(
+    dir: &Path,
+    parser: &Parser,
+    filter: &super::StaticFilter,
+    out: &mut Vec<std::path::PathBuf>,
+) {
     // Go parity: filepath.WalkDir visits a FILE root as a single entry, so
     // `codefang run <analyzer> path/to/file.c` analyzes that one file.
     if dir.is_file() {
-        visit_file(dir, parser, opts, out);
+        visit_file(dir, parser, filter, out);
         return;
     }
     let Ok(read) = fs::read_dir(dir) else {
@@ -153,10 +156,10 @@ fn walk(dir: &Path, parser: &Parser, opts: &PathPolicyOptions, out: &mut Vec<std
             if super::should_skip_walk_dir(&entry.path(), &entry.file_name()) {
                 continue;
             }
-            walk(&path, parser, opts, out);
+            walk(&path, parser, filter, out);
             continue;
         }
-        visit_file(&path, parser, opts, out);
+        visit_file(&path, parser, filter, out);
     }
 }
 
@@ -165,14 +168,14 @@ fn walk(dir: &Path, parser: &Parser, opts: &PathPolicyOptions, out: &mut Vec<std
 fn visit_file(
     path: &Path,
     parser: &Parser,
-    opts: &PathPolicyOptions,
+    filter: &super::StaticFilter,
     out: &mut Vec<std::path::PathBuf>,
 ) {
     let path_str = path.to_string_lossy();
     if !parser.is_supported(&path_str) {
         return;
     }
-    if cf_pathpolicy::exclude(&path_str, None, opts) {
+    if filter.skips(&path_str) {
         return;
     }
     out.push(path.to_path_buf());

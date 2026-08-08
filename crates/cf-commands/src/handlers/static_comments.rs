@@ -38,8 +38,8 @@
 use std::fs;
 use std::path::Path;
 
+use super::StaticFilter;
 use cf_gojson::{GoMap, GoValue, MapOrigin};
-use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 use cf_uast::Parser;
 
 /// One collected comment item (post-stamp): the full the reference implementation
@@ -142,8 +142,8 @@ impl PerFileComments {
 /// `None` when the path cannot be read (the caller then falls through to the
 /// blocked-dependency sentinel).
 #[must_use]
-pub fn comments_report_yaml(root_path: &str) -> Option<Vec<u8>> {
-    let metrics = comments_metrics(root_path)?;
+pub fn comments_report_yaml(root_path: &str, filter: &StaticFilter) -> Option<Vec<u8>> {
+    let metrics = comments_metrics(root_path, filter)?;
     Some(cf_goyaml::marshal(&metrics))
 }
 
@@ -157,8 +157,8 @@ pub fn comments_report_yaml(root_path: &str) -> Option<Vec<u8>> {
 /// (`reportutil.EncodeBinaryEnvelope`: magic `CFB1` + little-endian u32 payload
 /// length + compact `encoding/json` payload) instead of cf-goyaml.
 #[must_use]
-pub fn comments_report_bin(root_path: &str) -> Option<Vec<u8>> {
-    let metrics = comments_metrics(root_path)?;
+pub fn comments_report_bin(root_path: &str, filter: &StaticFilter) -> Option<Vec<u8>> {
+    let metrics = comments_metrics(root_path, filter)?;
     Some(
         cf_reportutil::encode_binary_envelope(&metrics)
             .expect("comments metrics never exceed the CFB1 length cap"),
@@ -181,7 +181,7 @@ pub fn comments_report_bin(root_path: &str) -> Option<Vec<u8>> {
 /// issue list is sorted by name (file-walk order within equal names).
 #[must_use]
 pub fn comments_report_json(root_path: &str) -> Option<Vec<u8>> {
-    comments_report_json_flags(root_path, false)
+    comments_report_json_flags(root_path, &StaticFilter::default(), false)
 }
 
 /// [`comments_report_json`] with the `--per-file` flag applied: `per_file`
@@ -190,8 +190,12 @@ pub fn comments_report_json(root_path: &str) -> Option<Vec<u8>> {
 /// over the `PerFileRetainer` snapshots — one `JSONFileEntry` per ANALYZED
 /// file, comment-free files included, keyed into the section's `files` array).
 #[must_use]
-pub fn comments_report_json_flags(root_path: &str, per_file: bool) -> Option<Vec<u8>> {
-    let root = comments_report_value_flags(root_path, per_file)?;
+pub fn comments_report_json_flags(
+    root_path: &str,
+    filter: &StaticFilter,
+    per_file: bool,
+) -> Option<Vec<u8>> {
+    let root = comments_report_value_flags(root_path, filter, per_file)?;
     Some(
         cf_gojson::Encoder::indented("  ")
             .with_trailing_newline(true)
@@ -204,13 +208,17 @@ pub fn comments_report_json_flags(root_path: &str, per_file: bool) -> Option<Vec
 /// static-JSON merge. `None` when the path cannot be walked.
 #[must_use]
 pub fn comments_report_value(root_path: &str) -> Option<GoValue> {
-    comments_report_value_flags(root_path, false)
+    comments_report_value_flags(root_path, &StaticFilter::default(), false)
 }
 
 /// [`comments_report_value`] with the `--per-file` section enrichment.
 #[must_use]
-pub fn comments_report_value_flags(root_path: &str, per_file: bool) -> Option<GoValue> {
-    comments_report_value_mode_flags(root_path, false, per_file)
+pub fn comments_report_value_flags(
+    root_path: &str,
+    filter: &StaticFilter,
+    per_file: bool,
+) -> Option<GoValue> {
+    comments_report_value_mode_flags(root_path, filter, false, per_file)
 }
 
 /// Builds the `static/comments` section tree in the reference implementation's `AggregationModeSummaryOnly`
@@ -220,20 +228,25 @@ pub fn comments_report_value_flags(root_path: &str, per_file: bool) -> Option<Go
 /// always-on scalar `total_functions`/`documented_functions` counts — and the Key
 /// Metrics are unchanged.
 #[must_use]
-pub fn comments_report_value_summary(root_path: &str) -> Option<GoValue> {
-    comments_report_value_mode(root_path, true)
+pub fn comments_report_value_summary(root_path: &str, filter: &StaticFilter) -> Option<GoValue> {
+    comments_report_value_mode(root_path, filter, true)
 }
 
-fn comments_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoValue> {
-    comments_report_value_mode_flags(root_path, summary_only, false)
+fn comments_report_value_mode(
+    root_path: &str,
+    filter: &StaticFilter,
+    summary_only: bool,
+) -> Option<GoValue> {
+    comments_report_value_mode_flags(root_path, filter, summary_only, false)
 }
 
 fn comments_report_value_mode_flags(
     root_path: &str,
+    filter: &StaticFilter,
     summary_only: bool,
     per_file: bool,
 ) -> Option<GoValue> {
-    let mut agg = comments_aggregate(root_path)?;
+    let mut agg = comments_aggregate_opts(root_path, filter)?;
 
     // --per-file: one JSONFileEntry per ANALYZED file, in walk order (the
     // reference implementation ranges the retainer map here — run-to-run
@@ -490,8 +503,8 @@ fn build_file_entry(pf: &PerFileComments, root_path: &str) -> GoValue {
 /// With no parsed files the reference implementation returns `buildEmptyResult` instead (8 keys, no
 /// `analyzer_name`/collections).
 #[must_use]
-pub fn comments_raw_report_value(root_path: &str, opts: &PathPolicyOptions) -> Option<GoValue> {
-    let agg = comments_aggregate_opts(root_path, opts)?;
+pub fn comments_raw_report_value(root_path: &str, filter: &StaticFilter) -> Option<GoValue> {
+    let agg = comments_aggregate_opts(root_path, filter)?;
 
     if agg.report_count == 0 {
         let mut m = GoMap::new(MapOrigin::Map);
@@ -599,21 +612,15 @@ fn format_percent(v: f64) -> String {
 /// Runs the static pipeline over `root_path` and returns the assembled
 /// `ComputedMetrics` go-value (the shared report value behind every machine
 /// encoding). Returns `None` when the path does not exist.
-fn comments_metrics(root_path: &str) -> Option<GoValue> {
-    let agg = comments_aggregate(root_path)?;
+fn comments_metrics(root_path: &str, filter: &StaticFilter) -> Option<GoValue> {
+    let agg = comments_aggregate_opts(root_path, filter)?;
     Some(compute_metrics(&agg))
 }
 
 /// Runs the static pipeline over `root_path` and returns the cross-file
 /// [`Aggregated`] accumulator (shared by the machine-format `ComputeAllMetrics`
 /// path and the JSON-section path). Returns `None` when the path is missing.
-fn comments_aggregate(root_path: &str) -> Option<Aggregated> {
-    comments_aggregate_opts(root_path, &PathPolicyOptions::default())
-}
-
-/// [`comments_aggregate`] with explicit path-policy options (the plot path
-/// passes the run flags; the stdout formats keep the defaults).
-fn comments_aggregate_opts(root_path: &str, opts: &PathPolicyOptions) -> Option<Aggregated> {
+fn comments_aggregate_opts(root_path: &str, filter: &StaticFilter) -> Option<Aggregated> {
     // The reference static pipeline swallows walk errors: a nonexistent (or
     // unreadable) root analyzes ZERO files and still emits the empty report
     // with exit 0 ("static: complete files=0"), so an empty accumulator — not
@@ -627,7 +634,7 @@ fn comments_aggregate_opts(root_path: &str, opts: &PathPolicyOptions) -> Option<
     let analyzer = cf_comments::Analyzer::new();
 
     let mut files: Vec<std::path::PathBuf> = Vec::new();
-    collect_files(root, &parser, opts, &mut files);
+    collect_files(root, &parser, filter, &mut files);
     // filepath.WalkDir visits entries in lexical (byte-sorted) path order.
     files.sort();
 
@@ -674,13 +681,13 @@ fn comments_aggregate_opts(root_path: &str, opts: &PathPolicyOptions) -> Option<
 fn collect_files(
     dir: &Path,
     parser: &Parser,
-    opts: &PathPolicyOptions,
+    filter: &StaticFilter,
     out: &mut Vec<std::path::PathBuf>,
 ) {
     // Go parity: filepath.WalkDir visits a FILE root as a single entry, so
     // `codefang run <analyzer> path/to/file.c` analyzes that one file.
     if dir.is_file() {
-        visit_file(dir, parser, opts, out);
+        visit_file(dir, parser, filter, out);
         return;
     }
     let Ok(read) = fs::read_dir(dir) else {
@@ -700,10 +707,10 @@ fn collect_files(
             if super::should_skip_walk_dir(&entry.path(), &entry.file_name()) {
                 continue; // filepath.SkipDir on .git
             }
-            collect_files(&path, parser, opts, out);
+            collect_files(&path, parser, filter, out);
             continue;
         }
-        visit_file(&path, parser, opts, out);
+        visit_file(&path, parser, filter, out);
     }
 }
 
@@ -712,7 +719,7 @@ fn collect_files(
 fn visit_file(
     path: &Path,
     parser: &Parser,
-    opts: &PathPolicyOptions,
+    filter: &StaticFilter,
     out: &mut Vec<std::path::PathBuf>,
 ) {
     let path_str = path.to_string_lossy();
@@ -722,7 +729,7 @@ fn visit_file(
     }
     // matchesLanguageGlobs: --languages empty → all match (no-op).
     // pathpolicy.Exclude(path, nil, opts).
-    if exclude(&path_str, None, opts) {
+    if filter.skips(&path_str) {
         return;
     }
     out.push(path.to_path_buf());
@@ -1078,7 +1085,12 @@ mod per_file_tests {
     #[test]
     fn per_file_flag_emits_files_entries() {
         let dir = fixture();
-        let bytes = comments_report_json_flags(dir.path().to_str().unwrap(), true).unwrap();
+        let bytes = comments_report_json_flags(
+            dir.path().to_str().unwrap(),
+            &StaticFilter::default(),
+            true,
+        )
+        .unwrap();
         let json = String::from_utf8(bytes).unwrap();
         assert!(json.contains("\"files\""), "files key missing:\n{json}");
         assert!(
@@ -1105,7 +1117,12 @@ mod per_file_tests {
     #[test]
     fn no_per_file_flag_omits_files() {
         let dir = fixture();
-        let bytes = comments_report_json_flags(dir.path().to_str().unwrap(), false).unwrap();
+        let bytes = comments_report_json_flags(
+            dir.path().to_str().unwrap(),
+            &StaticFilter::default(),
+            false,
+        )
+        .unwrap();
         let json = String::from_utf8(bytes).unwrap();
         assert!(
             !json.contains("\"files\""),

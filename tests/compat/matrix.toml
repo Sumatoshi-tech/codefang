@@ -73,12 +73,17 @@ history = [
   "--since:2020-01-01",
   "--include-vendored",
   "--include-generated",
+  "--languages:Go",
 ]
-# static-affecting flags
+# static-affecting flags ("--flag:value" splits on the FIRST ':' only, so a
+# value may itself contain commas, e.g. "--languages:Go,Python")
 static = [
   "--per-file",
   "--include-vendored",
   "--include-generated",
+  "--languages:Go",
+  "--languages:Go,Python",
+  "--languages:all",
 ]
 
 # -----------------------------------------------------------------------------
@@ -113,6 +118,9 @@ history_limit = 20
 # representative format coverage in smoke (json + the two binding binary-ish ones)
 run_formats = ["json", "bin", "yaml"]
 include_flags = false
+# smoke gets a STATIC-only flag slice (static cells on the smoke repo need no
+# revwalk, so they are fast): flag x format regressions are probed pre-commit.
+include_static_flags = true
 
 [tiers.full]
 repos = ["hercules", "ioq3", "kubernetes"]

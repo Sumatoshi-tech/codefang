@@ -6,6 +6,26 @@
  },
  "go_nondeterminism": [
   {
+   "label": "flag:static/clones--languages:Go[json]@hercules",
+   "family": "flag",
+   "kind": "clone-pair-order-shuffles",
+   "reason": "Go itself is nondeterministic on this cell: the reference clone detector (MinHash/LSH) accumulates pairs iterating Go maps, so the issues/clone-pairs ORDER \u2014 and, at the top-N issue-cap boundary, the MEMBERSHIP \u2014 shuffles run-to-run. 6 consecutive live-Go runs of the exact cell argv produced 6 different full-output SHAs (2026-08-02: 3c481ea8, c9d86200, 4bf5965e, 688e8bb2, d560c6e6, 020ee80b). The Rust port is deterministic; the numeric clone metrics (counts, ratios, types) agree with Go whenever Go is frozen at one seed.",
+   "go_nondeterminism_evidence": {
+    "command": "codefang run --checkpoint=false --resume=false --no-cache --workers 1 --analyzers static/clones --format json --languages Go <hercules>",
+    "observed_go_shas": [
+     "3c481ea88552656ee3f0393cc1222c4faa0960c4a10f1f5c5bb503d6d83c362b",
+     "c9d86200ab9a00bbd3731fe11aa321d9e6d0b41d74f8b57a5106716216a3e38b",
+     "4bf5965e558121e5d1fd076737e3c8ad83f665d6e60d3efefa5ff5446cf44ae9",
+     "688e8bb287cb0172000f53c16d93920512b25a39c5bbf46f3986bdab9b26ee5b",
+     "d560c6e6aee6ce94a8d8cf9250fabad78fd244fd378a5c79c09deedd1c346bb1",
+     "020ee80b91ffb713e5b2e821f532e05b766c10c9de7672e9b0669dd54ad7737d"
+    ],
+    "observed_distribution": "6 consecutive live-Go runs on 2026-08-02: all 6 full-output SHAs distinct (issues list order + membership at the cap boundary shuffle)",
+    "note": "The flakes land in the flag family because --languages narrows the candidate set onto the map-iteration-dominated pairing paths; measured canonicalization cannot normalize ORDER-sensitive top-N membership."
+   },
+   "neutralizes_gate": true
+  },
+  {
    "label": "static:static/cohesion[text]@ioq3",
    "family": "static_analyzer",
    "kind": "summary-message-flips",
@@ -24,14 +44,16 @@
  ],
  "tracked_known_failing": [
   {
-   "label": "flag:static/complexity--include-vendored@hercules",
+   "label_glob": "flag:static/*--include-vendored*@hercules",
    "family": "flag",
-   "kind": "oracle-exceeds-own-budget",
-   "reason": "ORACLE DEFECT, not a Rust port gap: the frozen Go binary has an exponential re-walk of unmapped-node subtrees (each unmapped nesting level doubles the traversal), and hercules' 136MB vendor tree with --include-vendored drives it past the oracle's own 600s budget with zero bytes produced (measured: >10min, empty stdout). The Rust port fixed the exponential walk and completes the identical cell in 13s with a full 5.3MB report. The cell is therefore UNMEASURABLE against the live oracle. Kept RED per the fail-closed rule (an entry here never neutralizes); resolving it needs a policy decision on oracle-defect cells, not a code change.",
+   "kind": "deliberate-durability-cap-divergence",
+   "reason": "ROOT-CAUSED 2026-08-02 (was: 'oracle-exceeds-own-budget', unexplained timeout). Covers the 6 --include-vendored@hercules static cells (complexity + halstead across json/text/yaml formats). TWO layers, both diagnosed: (1) The frozen-oracle timeout is a Go BUG, not untestability: pkg/uast/parser_dsl.go toCanonicalNode re-walks every unmapped subtree twice (2^depth blowup); a PERF-ONLY, output-byte-identical patch (oracle/patches/uast-unmapped-subtree-rewalk-perf.patch — the same restructure Rust landed in cf-uast/src/lowering.rs) makes the oracle complete the cell with a full 5351785-byte report (measured 2026-08-02; the patch is proven byte-identical to the frozen binary on 9 diverse static/history cells). (2) With the oracle now completable, the residual divergence is REAL and DELIBERATE on the Rust side: Rust's durabilility caps skip vendor/gopkg.in/vmarkovtsev/BiDiSentiment.v1/assets/bindata.go (70.5MB > the 64MiB read cap; Go has no such cap and parses it), yielding 21473 vs Go's 21494 total functions (the 19 top-level funcs + 2 methods of bindata.go) on complexity, and the corresponding halstead-token/function-count deltas on halstead, plus tie-order diffs in the capped issues list. Cells stay RED: measuring them in-suite needs an oracle re-bless (tamper_check --bless, oracle SHA is fingerprinted) plus a policy call on the deliberate durability caps and a ~20min-per-cell runtime.",
    "evidence": {
-    "go_behavior": "timeout >600s, 0 bytes stdout (2026-07-26)",
-    "rust_behavior": "13.0s wall, 5347342 bytes report",
-    "root_cause": "frozen Go internal/analyzers pipeline unmapped-children double-walk (2^depth); fixed in crates/cf-uast/src/lowering.rs"
+    "patched_oracle_behavior": "completes with full 5351785-byte report (patched source @ b99c300~1 + oracle/patches/uast-unmapped-subtree-rewalk-perf.patch; killed late by a 400s signal yet wrote the complete report — full runtime ~18.5min; identity of the patch proven byte-for-byte on 9 cells)",
+    "frozen_oracle_behavior": "timeout >600s, 0 bytes stdout (2026-07-26)",
+    "rust_behavior": "12.7s wall, 5347342 bytes report; stderr: 'skipped 1 unreadable/oversized/unparseable files' (bindata.go 70538928 bytes > 64MiB cap)",
+    "residual_divergences": "Total Functions 21494 (go) vs 21473 (rust) = bindata.go functions skipped by the RUST-ONLY 64MiB durability cap; issues[] tie-order differs under equal complexity (zsyscall_* vendor files)",
+    "root_cause_oracle": "Go pkg/uast/parser_dsl.go toCanonicalNode: processChildren + createUnmappedNode double-walk per unmapped level (2^depth); identical fix in crates/cf-uast/src/lowering.rs"
    },
    "neutralizes_gate": false
   },
@@ -39,7 +61,7 @@
    "label": "fuzz:FuzzSerializer*/invalid-utf8-source",
    "family": "fuzz",
    "kind": "invalid-utf8-token-offset-misalignment",
-   "reason": "Real, tracked port gap on sources containing INVALID UTF-8 bytes: the reference implementation's Go strings carry raw bytes, so byte offsets into a function's token always align with the original source; the Rust port stores tokens as String via from_utf8_lossy, which inflates each invalid sequence into a 3-byte U+FFFD and shifts every later offset. Offset-derived operator/decision-point extraction (cf-complexity FunctionSourceContext / binary_operator_from_offsets) then misreads tokens after the corruption point, e.g. missing a `&&` (cyclomatic 7 vs Go's 8, avg 4.0 vs 4.5) on the distilled find. Valid-UTF-8 sources (i.e. real code) are unaffected. Fixing it means carrying raw bytes through Node.token (bstr-style) and lossy-converting only at serialization boundaries — an architectural change, tracked rather than patched around.",
+   "reason": "Real, tracked port gap on sources containing INVALID UTF-8 bytes: the reference implementation's Go strings carry raw bytes, so byte offsets into a function's token always align with the original source; the Rust port stores tokens as String via from_utf8_lossy, which inflates each invalid sequence into a 3-byte U+FFFD and shifts every later offset. Offset-derived operator/decision-point extraction (cf-complexity FunctionSourceContext / binary_operator_from_offsets) then misreads tokens after the corruption point, e.g. missing a `&&` (cyclomatic 7 vs Go's 8, avg 4.0 vs 4.5) on the distilled find. Valid-UTF-8 sources (i.e. real code) are unaffected. Fixing it means carrying raw bytes through Node.token (bstr-style) and lossy-converting only at serialization boundaries \u2014 an architectural change, tracked rather than patched around.",
    "evidence_source": "corpus/fuzzfinds/gojson_b345ea0e6cfd0f76.go (+ .evidence.json, .go_run_*, .rust_out)",
    "neutralizes_gate": false
   }

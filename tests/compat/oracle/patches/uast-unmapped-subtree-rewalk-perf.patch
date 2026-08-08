@@ -1,0 +1,53 @@
+diff --git a/pkg/uast/parser_dsl.go b/pkg/uast/parser_dsl.go
+index f63dcf8..73a48d3 100644
+--- a/pkg/uast/parser_dsl.go
++++ b/pkg/uast/parser_dsl.go
+@@ -320,10 +320,35 @@ func (ctx *parseContext) nodeType(root sitter.Node) string {
+ }
+ 
+ // toCanonicalNode converts a tree-sitter node to a canonical UAST Node.
++//
++// PERF-ONLY restructure (oracle rebuild patch, output-byte-identical): the
++// original shape ran processChildren over the subtree and then re-walked the
++// same subtree inside createUnmappedNode, doubling the work at every
++// unmapped nesting level (2^depth blowup on deeply nested unmapped chains,
++// e.g. generated protobuf descriptors in vendor trees). shouldSkipNode is
++// vacuously false without a mapping rule, and shouldSkipEmptyFile only fires
++// on empty sources where both walks agree on zero children, so computing the
++// unmapped children ONCE up front is output-identical.
+ func (ctx *parseContext) toCanonicalNode(root sitter.Node, parentContext string) *node.Node {
+ 	nodeType := ctx.nodeType(root)
+ 	mappingRule := ctx.findMappingRule(nodeType)
+ 
++	if mappingRule == nil {
++		mappedChildren := ctx.processUnmappedChildren(root, parentContext)
++
++		if ctx.shouldSkipEmptyFile(nodeType, mappedChildren) {
++			return nil
++		}
++
++		var roles []node.Role
++
++		if ctx.includeUnmapped {
++			return ctx.createIncludeUnmappedNode(root, nodeType, mappedChildren, roles)
++		}
++
++		return ctx.createSyntheticNode(mappedChildren)
++	}
++
+ 	children := ctx.processChildren(root, mappingRule)
+ 	if ctx.shouldSkipNode(root, mappingRule) {
+ 		return nil
+@@ -335,11 +360,7 @@ func (ctx *parseContext) toCanonicalNode(root sitter.Node, parentContext string)
+ 
+ 	var roles []node.Role
+ 
+-	if mappingRule != nil {
+-		return ctx.createMappedNode(root, mappingRule, children, roles)
+-	}
+-
+-	return ctx.createUnmappedNode(root, parentContext, nodeType, roles)
++	return ctx.createMappedNode(root, mappingRule, children, roles)
+ }
+ 
+ // findMappingRule finds a mapping rule for the given node type, resolving inheritance and merging fields.
