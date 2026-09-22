@@ -322,7 +322,6 @@ pub fn load_history_commit_hashes(
     Some(hashes)
 }
 
-
 /// Returns the reference implementation's streaming-pipeline *consume* order for an oldest-first commit
 /// window: the IDENTITY (oldest-first revwalk order).
 ///
@@ -2568,7 +2567,11 @@ mod history_window_tests {
         for limit in [0, -1] {
             let got = load_history_commit_hashes(&test.repo, limit, false, SinceSpec::Inactive)
                 .unwrap_or_else(|| panic!("limit {limit} loads"));
-            assert_eq!(got.as_slice(), &hashes[..], "limit {limit} must load all commits");
+            assert_eq!(
+                got.as_slice(),
+                &hashes[..],
+                "limit {limit} must load all commits"
+            );
         }
     }
 
@@ -2629,7 +2632,11 @@ mod history_window_tests {
             SinceSpec::Active(DATE_BEFORE_ROOT.to_owned()),
         )
         .expect("loads");
-        assert_eq!(got.as_slice(), &hashes[..], "cutoff before root filters nothing");
+        assert_eq!(
+            got.as_slice(),
+            &hashes[..],
+            "cutoff before root filters nothing"
+        );
     }
 
     /// `--limit` caps the NEWEST end of the `--since` window: the window is
@@ -2642,9 +2649,8 @@ mod history_window_tests {
             load_history_commit_hashes(&test.repo, 0, false, SinceSpec::Active(cutoff.clone()))
                 .expect("window loads");
         assert_eq!(unbounded.as_slice(), &hashes[2..]);
-        let capped =
-            load_history_commit_hashes(&test.repo, 2, false, SinceSpec::Active(cutoff))
-                .expect("window loads");
+        let capped = load_history_commit_hashes(&test.repo, 2, false, SinceSpec::Active(cutoff))
+            .expect("window loads");
         assert_eq!(
             capped.as_slice(),
             &hashes[3..],
@@ -2656,8 +2662,13 @@ mod history_window_tests {
     #[test]
     fn since_accepts_a_git_revision() {
         let (test, hashes) = linear_repo();
-        let got = load_history_commit_hashes(&test.repo, 0, false, SinceSpec::Active("HEAD~2".to_owned()))
-            .expect("--since must resolve a revision like `HEAD~2`");
+        let got = load_history_commit_hashes(
+            &test.repo,
+            0,
+            false,
+            SinceSpec::Active("HEAD~2".to_owned()),
+        )
+        .expect("--since must resolve a revision like `HEAD~2`");
         assert_eq!(
             got.as_slice(),
             &hashes[2..],
@@ -2674,8 +2685,9 @@ mod history_window_tests {
         // Now == the newest-but-one commit's instant; `1h` back == CUTOFF_3RD.
         std::env::set_var("CODEFANG_NOW", (T0 + 3 * STEP).to_string());
         let (test, hashes) = linear_repo();
-        let got = load_history_commit_hashes(&test.repo, 0, false, SinceSpec::Active("1h".to_owned()))
-            .expect("`--since 1h` must resolve against CODEFANG_NOW");
+        let got =
+            load_history_commit_hashes(&test.repo, 0, false, SinceSpec::Active("1h".to_owned()))
+                .expect("`--since 1h` must resolve against CODEFANG_NOW");
         assert_eq!(
             got.as_slice(),
             &hashes[2..],

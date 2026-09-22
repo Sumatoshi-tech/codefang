@@ -65,7 +65,14 @@ fn fixture() -> (TestRepo, Vec<Hash>) {
 fn ndjson_window(path: &str, extra: &[&str]) -> (i32, Vec<String>, String, String) {
     let out = codefang(
         &[
-            &["-a", "history/burndown", "--workers", "1", "--format", "ndjson"],
+            &[
+                "-a",
+                "history/burndown",
+                "--workers",
+                "1",
+                "--format",
+                "ndjson",
+            ],
             extra,
             &[path],
         ]
@@ -74,7 +81,10 @@ fn ndjson_window(path: &str, extra: &[&str]) -> (i32, Vec<String>, String, Strin
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
     let hashes = stdout
         .lines()
-        .filter_map(|line| line.find(NEEDLE_HASH).map(|i| line[i + 8..i + 48].to_owned()))
+        .filter_map(|line| {
+            line.find(NEEDLE_HASH)
+                .map(|i| line[i + 8..i + 48].to_owned())
+        })
         .collect();
     (
         out.status.code().unwrap_or(-1),
@@ -105,7 +115,13 @@ fn limit_bound_shows_in_the_report() {
     let path = test.path().to_str().expect("utf-8 path");
     for (limit, want) in [("1", 1), ("2", 2), ("5", 5)] {
         let out = codefang(&[
-            "-a", "history/devs", "--limit", limit, "--format", "json", path,
+            "-a",
+            "history/devs",
+            "--limit",
+            limit,
+            "--format",
+            "json",
+            path,
         ]);
         assert!(out.status.success(), "run failed for --limit {limit}");
         let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
@@ -124,7 +140,10 @@ fn since_partial_window_succeeds_with_the_window() {
     let (test, hashes) = fixture();
     let path = test.path().to_str().expect("utf-8 path");
     let (rc, got, _stdout, stderr) = ndjson_window(path, &["--since", CUTOFF_3RD]);
-    assert_eq!(rc, 0, "a partial --since window must exit 0, stderr: {stderr}");
+    assert_eq!(
+        rc, 0,
+        "a partial --since window must exit 0, stderr: {stderr}"
+    );
     assert_eq!(
         got,
         vec![
@@ -195,7 +214,11 @@ fn head_overrides_limit() {
             ]
             .concat(),
         );
-        assert!(out.status.success(), "run failed: {:?}", String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "run failed: {:?}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         out.stdout
     };
     let head = report(&["--head"]);
