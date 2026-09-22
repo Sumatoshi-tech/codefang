@@ -2440,8 +2440,8 @@ mod history_filter_tests {
         let entry = registry.lookup(id).expect("analyzer registered");
         let bytes = (entry.run)(&ctx, "json").expect("handler produced a report");
         let json = String::from_utf8(bytes).expect("utf8");
-        let agg = format!(r#""aggregate":{{"#);
-        let pos = json.find(&agg).expect("aggregate object");
+        let agg = r#""aggregate":{"#;
+        let pos = json.find(agg).expect("aggregate object");
         let from = &json[pos + agg.len()..];
         let needle = format!(r#""{key}":"#);
         let kpos = from.find(&needle).expect("aggregate key");
