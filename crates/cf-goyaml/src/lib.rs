@@ -281,6 +281,8 @@ mod tests {
             ("f5", GoValue::Float(0.0)),
             ("f7", GoValue::Float(1e20)),
             ("f8", GoValue::Float(1e-7)),
+            // Beyond f64 precision on purpose: the literal is the Go fixture.
+            #[allow(clippy::excessive_precision)]
             ("f10", GoValue::Float(123456789.123456789)),
         ]);
         let expect = "f1: 0.7142857142857143\nf3: 1\nf5: 0\nf7: 1e+20\nf8: 1e-07\nf10: 1.2345678912345679e+08\n";

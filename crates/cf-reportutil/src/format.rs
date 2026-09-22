@@ -71,6 +71,9 @@ mod tests {
     }
 
     // Reference suite: TestFormatFloat.
+    // 3.14159 is the captured Go fixture input (its truncation to "3.1" is the
+    // assertion), not an attempt to write PI.
+    #[allow(clippy::approx_constant)]
     #[test]
     fn format_float_basic() {
         assert_eq!(format_float(3.14159), "3.1");

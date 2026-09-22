@@ -35,6 +35,19 @@ install: submodules ## Build and install codefang + uast onto PATH (~/.cargo/bin
 test: submodules ## Run the workspace test suite
 	$(CARGO) test --workspace
 
+.PHONY: lint
+lint: submodules ## Clippy across the workspace; every warning is an error
+	$(CARGO) clippy --workspace --all-targets -- -D warnings
+
+.PHONY: deadcode
+# rustc's `dead_code` lint reports unreachable PRIVATE items (a `pub` item in a
+# library crate always looks reachable to it, so a clean run means "no private
+# code is unreachable", not "no exported function is unused"). A pub-API
+# reachability audit needs external tooling (cargo-deadstats-class) which is
+# deliberately not vendored here.
+deadcode: submodules ## Fail the build on any `dead_code` finding
+	RUSTFLAGS="-D dead_code" $(CARGO) check --workspace --all-targets
+
 .PHONY: clean
 clean: ## Remove build artifacts
 	$(CARGO) clean

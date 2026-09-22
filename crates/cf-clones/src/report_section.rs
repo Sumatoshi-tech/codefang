@@ -473,6 +473,9 @@ mod tests {
         f
     }
 
+    // Exact comparisons on purpose: `compute_score` maps its clamp endpoints
+    // (0.0 / 1.0) exactly, so an epsilon compare would hide a real regression.
+    #[allow(clippy::float_cmp)]
     #[test]
     fn compute_score_clamps_and_inverts() {
         assert_eq!(compute_score(1.5), 0.0);
@@ -499,6 +502,8 @@ mod tests {
         assert_eq!(issues[0].severity, "Poor"); // similarity 1.0 >= 0.8
     }
 
+    // Exact by construction: clone_ratio 0.0 maps to the score 1.0 endpoint.
+    #[allow(clippy::float_cmp)]
     #[test]
     fn empty_report_uses_default_status_and_full_score() {
         let a = Analyzer::new();

@@ -210,8 +210,6 @@ struct InitState {
     resolved: Vec<ResolvedRule>,
     #[allow(dead_code)]
     lang_info: LanguageInfo,
-    /// First-occurrence-wins rule index keyed by rule name (inheritance).
-    rule_index: HashMap<String, usize>,
     /// Pattern-root-type → candidate rule indices in declaration order.
     rule_dispatch: HashMap<String, Vec<usize>>,
     /// The tree-sitter language, looked up via [`crate::languages::get_language`].
@@ -292,7 +290,6 @@ impl LazyDslParser {
             Ok(InitState {
                 resolved,
                 lang_info,
-                rule_index,
                 rule_dispatch,
                 ts_language,
                 pattern_matcher,

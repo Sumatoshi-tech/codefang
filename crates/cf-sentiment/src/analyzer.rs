@@ -377,10 +377,12 @@ mod tests {
     const MIN_LEN: i64 = 10;
 
     fn s(v: &[&str]) -> Vec<String> {
-        v.iter().map(|x| x.to_string()).collect()
+        v.iter().copied().map(String::from).collect()
     }
 
     #[test]
+    // validate() copies a const exactly; an epsilon compare would hide a real clamp bug.
+    #[allow(clippy::float_cmp)]
     fn validate_clamps() {
         let mut c = Config {
             min_comment_length: 5,

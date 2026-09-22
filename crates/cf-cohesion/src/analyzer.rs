@@ -607,7 +607,7 @@ mod tests {
             Some(&ReportValue::Str("No functions found".into()))
         );
         // The empty result has no analyzer_name / functions keys.
-        assert!(report.get("functions").is_none());
+        assert_eq!(report.get("functions"), None);
     }
 
     #[test]

@@ -199,6 +199,11 @@ mod tests {
     use super::format_g;
 
     #[test]
+    // The literals below are Go-captured fixture inputs: some look like PI and
+    // one carries more digits than f64 holds, which is exactly what the Go
+    // encoder under test was asked to render. Not style slips, so the two
+    // literal-shape lints are silenced for the whole table.
+    #[allow(clippy::approx_constant, clippy::excessive_precision)]
     fn matches_reference_g_layout() {
         assert_eq!(format_g(1e20), "1e+20");
         assert_eq!(format_g(1e21), "1e+21");

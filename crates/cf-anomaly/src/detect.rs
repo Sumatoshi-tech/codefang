@@ -202,10 +202,10 @@ pub fn sort_external_results(anomalies: &mut [ExternalAnomaly], summaries: &mut 
     go_sort_slice(anomalies, |a, b| a.z_score.abs() > b.z_score.abs());
 
     go_sort_slice(summaries, |a, b| {
-        if a.source != b.source {
-            a.source < b.source
-        } else {
+        if a.source == b.source {
             a.dimension < b.dimension
+        } else {
+            a.source < b.source
         }
     });
 }
