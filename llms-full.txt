@@ -1091,16 +1091,29 @@ codefang run -a 'history/devs,history/sentiment' --format timeseries .
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--limit` | `int` | `0` | Maximum commits to analyze (`0` = no limit) |
-| `--since` | `string` | `""` | Only analyze commits after this time |
+| `--limit` | `int` | `0` | Analyze at most N commits — the N **newest** (`0` = no limit) |
+| `--since` | `string` | `""` | Only analyze commits at/after this time or revision |
 | `--first-parent` | `bool` | `false` | Follow only first parent of merge commits |
-| `--head` | `bool` | `false` | Analyze only HEAD commit |
+| `--head` | `bool` | `false` | Analyze only HEAD commit (ignores `--limit` and `--since`) |
 
-The `--since` flag accepts multiple formats:
+These flags bound the **history** phase only — static analyzers read the
+working tree, so neither one affects them.
 
-- **Go duration**: `24h`, `168h`, `720h`
-- **Date**: `2025-01-01`
+The window is selected **newest-first** (`--limit 10` = the ten most recent
+commits, like `git log -n 10`) and then handed to the analyzers in
+chronological oldest-first order, because ticks, burndown line survival and
+author identity all depend on that order. `--limit` and `--since` compose:
+`--since` picks the window, `--limit` caps its newest end.
+
+The `--since` flag accepts these forms, in precedence order:
+
+- **Go duration**: `24h`, `168h` (7 days), `1h30m` — units are `h`/`m`/`s`
+  only. There is **no** `d` or `w` unit and `m` means **minutes**, so a week
+  is `168h`, not `7d`
+- **Date**: `2025-01-01` (midnight UTC)
 - **RFC 3339**: `2025-01-01T00:00:00Z`
+- **Git revision**: `v1.2.0`, `HEAD~100`, or a bare SHA — that commit's author
+  time becomes the cutoff
 
 ```bash
 # Last 7 days only
@@ -1109,9 +1122,19 @@ codefang run -a history/devs --since 168h .
 # Since a specific date
 codefang run -a history/burndown --since 2025-01-01 .
 
+# Since a release tag
+codefang run -a history/couples --since v1.2.0 .
+
 # Only the latest 500 commits
 codefang run -a history/couples --limit 500 .
 ```
+
+!!! note "Empty windows and bad values"
+    A `--since` cutoff newer than every commit analyzes nothing: the run
+    succeeds (exit 0) and every history analyzer emits its empty report. A
+    cutoff at or before the root commit filters nothing. A value that is
+    neither a time form nor a resolvable revision fails immediately with
+    `Error: cannot resolve --since "<value>"`, empty stdout, exit 1.
 
 !!! note "Burndown and `--first-parent`"
 

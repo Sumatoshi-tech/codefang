@@ -55,6 +55,11 @@ pub(crate) const MAX_BLOB_SIZE: usize = 256 * 1024;
 /// while a gates-passed-but-unparsable file still counts as an analyzed file
 /// for quality and feeds sentiment's shell-comment fallback (which needs the
 /// blob bytes).
+///
+/// Every instance lives behind an `Rc` in [`CommitParseCache`], so the size gap
+/// between `Skipped` and the payload variants never reaches a stack frame or a
+/// hot copy; boxing them would only add an indirection to the parse path.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum ParseOutcome {
     /// A pre-parse gate rejected the file: zero hash, path policy, unsupported
     /// extension, blob read failure, the 256 KiB cap, or content-aware
@@ -350,7 +355,7 @@ fn compute_shared_walks(sel: UastSelection, key: &WalkKey) -> Option<SharedWalks
     let hashes = if key.head {
         vec![repo.head().ok()?]
     } else {
-        load_history_commit_hashes(&repo, key.limit, key.first_parent, key.since)?
+        load_history_commit_hashes(&repo, key.limit, key.first_parent, key.since.clone())?
     };
 
     let max_distance = key.max_distance;

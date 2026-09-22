@@ -395,6 +395,27 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
         }
     };
 
+    // `--since` is validated against the repository BEFORE any walking, like the
+    // reference's `initHistoryPipeline` (which parsed it during pipeline init).
+    // Left to the handler, an unresolvable value surfaced only as the generic
+    // dispatch-blocked diagnostic — which blames the port for the user's typo
+    // and never names the offending flag. stdout stays empty and rc stays 1
+    // either way; this only makes the failure diagnosable. Scoped to runs with
+    // history analyzers selected, because a static-only run never reads the
+    // flag (reference parity). The repository's own frozen error text is kept
+    // verbatim so existing greps on `cannot parse time:` still match.
+    if !_prog_history.is_empty() {
+        if let handlers::SinceSpec::Active(spec) = handlers::history_since_spec(sub) {
+            let repo_path = handlers::run_repo_path(sub);
+            if let Ok(repo) = cf_gitlib::Repository::open(&repo_path) {
+                if let Err(e) = repo.resolve_time(&spec) {
+                    eprintln!("Error: cannot resolve --since {spec:?}: {e}");
+                    return 1;
+                }
+            }
+        }
+    }
+
     // --format plot routes to the multi-page HTML renderer (the reference implementation: the
     // static/history phases each call validatePlotFlags then the plot
     // executor). The --output precheck fires for ANY plot selection (the exact

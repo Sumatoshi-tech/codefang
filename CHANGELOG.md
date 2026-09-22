@@ -5,6 +5,54 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [Unreleased] — `--limit` selects the newest commits; `--since` works
+
+### Changed
+
+- **`--limit N` now analyzes the N NEWEST commits** (the `git log -n`
+  convention) instead of the N oldest. Commits are still delivered to the
+  analyzers oldest-first, so tick, burndown and identity semantics are
+  unchanged — only the selected window moves. This is a deliberate
+  divergence from the retired Go reference, which selected the oldest
+  window (measured: `--limit 3` on kubernetes emitted `2c4b3a562ce3`, its
+  first commits). `specs/frds/FRD-newest-commit-window.md`.
+- **`--since` with a cutoff in the middle of the history now works.** It
+  previously planned a non-zero commit count, loaded zero (the oldest-first
+  loader stopped at the first too-old commit) and aborted with
+  `expected N commits, got 0: EOF`, empty stdout and exit 1. A cutoff newer
+  than every commit still yields the empty report with exit 0.
+- **`--since` now accepts a git revision** (`v1.2.0`, `HEAD~100`, a SHA):
+  that commit's author time becomes the cutoff. Duration forms now honor the
+  `CODEFANG_NOW` test clock, and the CLI's duplicate time parser was deleted in
+  favour of the single `cf-gitlib` one.
+- **A bad `--since` value says so**: `Error: cannot resolve --since "<value>"`
+  instead of the generic `command dispatch is blocked` placeholder (same exit
+  code, still no stdout).
+
+### Fixed
+
+- `site/guide/data-analytics.md` told users to run `--since 6m` for "the last
+  6 months"; `m` is minutes, so that meant 6 minutes. Docs now state the
+  supported units (`h`/`m`/`s`) and give `4380h`.
+- `cf_gitlib::testutil` documented a `testutil` feature that did not exist, so
+  no other crate could build a deterministic fixture repo. The feature exists.
+- `make lint` and `make deadcode` are implemented — `AGENTS.md` mandated both
+  gates, but neither target existed (and `cargo clippy` was failing outright on
+  deny-by-default lints in `cf-reportutil`, `cf-gojson` and `cf-goyaml`). Both
+  are clean now.
+- Removed the never-read `InitState.rule_index` field in `cf-uast` (it pinned a
+  HashMap of rule names per parser) and cleared the workspace clippy backlog.
+
+### Added
+
+- `crates/cf-commands/src/handlers.rs`: `history_window_tests` — window
+  contract (newest-N, empty/partial/full `--since`, `--limit` inside a window,
+  revision spec, injected clock, unresolvable spec).
+- `bins/codefang/tests/history_window.rs`: CLI-level e2e driving the real
+  binary over a real git repo, including the `--head` ≡ `--limit 1` invariant.
+
+---
+
 ## [Unreleased] — Repo hygiene & race fix
 
 ### Fixed

@@ -1,11 +1,11 @@
 //! `run --analyzers history/burndown --format timeseries --ndjson` closed form.
 //!
 //! Reproduces the reference streaming burndown time-series NDJSON pipeline for the
-//! oldest `--limit` commits as a deterministic, single-pass computation:
+//! newest `--limit` commits as a deterministic, single-pass computation:
 //!
-//! - **commit set / order** — `repository.Log(Reverse=true, FirstParent=true)`
-//!   (oldest-first `SortTime|SortTopological|SortReverse`; burndown forces
-//!   `--first-parent` for the whole run), truncated to `--limit` commits.
+//! - **commit set / order** — `handlers::load_history_commit_hashes`: the
+//!   `--limit` NEWEST commits, delivered oldest-first (burndown forces
+//!   `--first-parent` for the whole run).
 //! - **tick assignment** (`plumbing.TicksSinceStart`, 24 h default tick) —
 //!   `tick0 = FloorTime(when0, 24h)`; `tick = max(floor((when-tick0)/24h),
 //!   previousTick)` over the committer time. With no identity provider
@@ -49,7 +49,7 @@ const TICK_PERIOD: i64 = 86_400;
 /// reports into. Drained per commit to compute that commit's line stats.
 type DeltaSink = Rc<RefCell<Vec<(i64, i64, i64)>>>;
 
-/// Builds the burndown timeseries NDJSON bytes for the oldest `--limit` commits,
+/// Builds the burndown timeseries NDJSON bytes for the newest `--limit` commits,
 /// or `None` if the repository cannot be opened/walked.
 pub fn burndown_timeseries_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let path = run_repo_path(sub);
@@ -60,8 +60,7 @@ pub fn burndown_timeseries_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     // Burndown forces --first-parent (reference: `if slices.Contains(analyzerKeys,
     // "burndown") && !opts.FirstParent { opts.FirstParent = true }`), so the walk
     // follows only the first parent of merge commits (simplify_first_parent).
-    // The window is the `limit` NEWEST commits processed oldest-first (reference:
-    // `gitlib.loadHistoryCommits`), NOT the `limit` oldest.
+    // The window is the `limit` NEWEST commits processed oldest-first.
     let hashes = crate::handlers::load_history_commit_hashes(
         &repo,
         limit,
@@ -233,7 +232,7 @@ pub fn burndown_timeseries_contribution(
     })
 }
 
-/// Builds the burndown **record** NDJSON bytes for the oldest `--limit` commits
+/// Builds the burndown **record** NDJSON bytes for the newest `--limit` commits
 /// (`run --analyzers history/burndown --format ndjson`, no `--timeseries`,
 /// no `--head`), or `None` if the repository cannot be opened/walked.
 ///
@@ -294,8 +293,8 @@ pub fn burndown_ndjson_records(
 
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
 
-    // Window: `limit` NEWEST commits oldest-first, first-parent (reference:
-    // `gitlib.loadHistoryCommits`; burndown forces --first-parent).
+    // Window: `limit` NEWEST commits oldest-first, first-parent (burndown
+    // forces --first-parent).
     let hashes = crate::handlers::load_history_commit_hashes(
         &repo,
         limit,
@@ -377,7 +376,7 @@ pub fn burndown_ndjson_records(
 
 /// `history/burndown --format json` over the general history pipeline (streaming,
 /// e.g. `--limit N --workers 1`): the line-survival "burndown" report over the
-/// oldest N commits.
+/// newest N commits.
 ///
 /// This is the REAL port of the reference streaming pipeline
 /// (`the reference `initHistoryPipeline` Reverse+FirstParent+Limit → RunStreaming →
@@ -456,8 +455,8 @@ pub fn burndown_run_aggregate(sub: &clap::ArgMatches) -> Option<BurndownRunAggre
     let sampling = 30i64;
     let tick_size_hours = 24i64;
 
-    // Window: `limit` NEWEST commits oldest-first, first-parent (reference:
-    // `gitlib.loadHistoryCommits`; burndown forces --first-parent).
+    // Window: `limit` NEWEST commits oldest-first, first-parent (burndown
+    // forces --first-parent).
     let hashes = crate::handlers::load_history_commit_hashes(
         &repo,
         limit,

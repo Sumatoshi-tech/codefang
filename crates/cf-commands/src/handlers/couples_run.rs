@@ -36,7 +36,7 @@ const ZERO_HASH_HEX: &str = "0000000000000000000000000000000000000000";
 
 /// Builds the `history/couples` report value (the reference `ComputedMetrics`, the single
 /// value behind `ToJSON`/`ToYAML`) for either the HEAD commit (`--head`) or the
-/// oldest `--limit` commits (streaming Reverse walk). Returns `None` if the
+/// newest `--limit` commits (streaming walk). Returns `None` if the
 /// repository cannot be opened/walked. The caller serializes this one value
 /// across json/yaml/bin uniformly (`serialize_history_metrics`), so every
 /// format follows from the same report value (no per-format branch).
@@ -122,9 +122,8 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
     let first_parent = crate::handlers::effective_first_parent(sub);
 
     // Commit window: HEAD-only loads the single HEAD commit; streaming selects
-    // the `limit` NEWEST commits (the reference `gitlib.loadHistoryCommits`: newest-first
-    // walk, CollectN, then slices.Reverse to oldest-first) — NOT the `limit`
-    // oldest. With `limit <= 0` this is the full oldest-first history.
+    // the `limit` NEWEST commits (newest-first walk, then reversed to
+    // oldest-first). With `limit <= 0` this is the full oldest-first history.
     let hashes: Vec<cf_gitlib::Hash> = if head_only {
         vec![repo.head().ok()?]
     } else {

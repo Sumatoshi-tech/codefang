@@ -364,7 +364,7 @@ pub fn anomaly_head_report(sub: &clap::ArgMatches) -> Option<cf_anomaly::model::
     Some(cf_anomaly::metrics::compute_all_metrics(&input))
 }
 
-/// Runs the real `history/anomaly` pipeline over the oldest `--limit` commits and
+/// Runs the real `history/anomaly` pipeline over the newest `--limit` commits and
 /// returns the aggregated [`cf_anomaly::model::ComputedMetrics`], or `None` if the
 /// repository cannot be opened/walked. This is the single report value every
 /// machine format (json/yaml/bin) is an encoding of — the non-`--head` analogue of
@@ -376,8 +376,8 @@ pub fn anomaly_head_report(sub: &clap::ArgMatches) -> Option<cf_anomaly::model::
 /// `plumbing.{TreeDiff,BlobCache,FileDiff,LineStats,Languages,Identity}` →
 /// `anomaly.Analyzer.Consume` → `extractTC`/`buildTick` → `ticksToReport` →
 /// `AggregateCommitsToTicks` → `ComputeAllMetrics`):
-///  - **commit set / order**: `repository.Log(Reverse=true)` (oldest-first),
-///    truncated to `--limit` commits. `--first-parent` adds first-parent
+///  - **commit set / order**: `handlers::load_history_commit_hashes` — the `--limit` NEWEST
+///    commits, delivered oldest-first. `--first-parent` adds first-parent
 ///    simplification.
 ///  - **tick assignment** (`plumbing.TicksSinceStart`, 24 h default): `tick0 =
 ///    FloorTime(when0, 24h)`; `tick = max(floor((when-tick0)/24h), previousTick)`
@@ -450,9 +450,9 @@ pub(crate) fn anomaly_walk(sub: &clap::ArgMatches) -> Option<AnomalyWalk> {
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
     let first_parent = crate::handlers::effective_first_parent(sub);
 
-    // Window: `--head` loads EXACTLY the single HEAD commit (the reference implementation,
-    // ignoring `--limit`); otherwise the `limit` commits oldest-first (reference:
-    // `gitlib.loadHistoryCommits`).
+    // Window: `--head` loads EXACTLY the single HEAD commit (ignoring `--limit`
+    // and `--since`); otherwise the `--limit` NEWEST commits, oldest-first for
+    // the analyzers, capped by `--since`. See `handlers::load_history_commit_hashes`.
     let hashes = if sub.get_flag("head") {
         vec![repo.head().ok()?]
     } else {
@@ -766,11 +766,11 @@ pub fn anomaly_timeseries_contribution(
 }
 
 /// Builds the `run --analyzers history/quality --format json` bytes for the
-/// oldest `--limit` commits, or `None` if the repository cannot be opened/walked.
+/// newest `--limit` commits, or `None` if the repository cannot be opened/walked.
 ///
 /// Reproduces the reference streaming quality pipeline as a closed form:
-///  - **commit set / order**: `repository.Log(Reverse=true)` (oldest-first,
-///    `SortTime|SortTopological|SortReverse`), truncated to `--limit` commits
+///  - **commit set / order**: `handlers::load_history_commit_hashes` — the `--limit` NEWEST
+///    commits, delivered oldest-first
 ///    (reference initHistoryPipeline: `commitCount` capped at `opts.Limit`).
 ///  - **tick assignment** (`plumbing.TicksSinceStart`): `tick0 = FloorTime(when0,
 ///    24h)`; `tick = max(floor((when-tick0)/24h), previousTick)` over the
@@ -888,10 +888,11 @@ pub(crate) fn quality_walk(sub: &clap::ArgMatches) -> Option<Vec<QualityCommit>>
 
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
 
-    // Window: `--head` loads EXACTLY the single HEAD commit (the reference implementation, ignoring
-    // `--limit`); otherwise the `limit` commits oldest-first (reference:
-    // `gitlib.loadHistoryCommits`). The HEAD commit on a large repo spills (> 32
-    // changes ⇒ zero UAST files), yielding the reference implementation's single all-zero tick-0 report.
+    // Window: `--head` loads EXACTLY the single HEAD commit (ignoring `--limit`
+    // and `--since`); otherwise the `--limit` NEWEST commits, oldest-first for
+    // the analyzers, capped by `--since`. See `handlers::load_history_commit_hashes`.
+    // The HEAD commit on a large repo spills (> 32 changes ⇒ zero UAST files),
+    // yielding the reference implementation's single all-zero tick-0 report.
     let first_parent = crate::handlers::effective_first_parent(sub);
     let hashes = if sub.get_flag("head") {
         vec![repo.head().ok()?]
@@ -1315,11 +1316,11 @@ fn uast_to_cx_node(n: &cf_uast::Node) -> cf_complexity::node::Node {
 }
 
 /// Builds the `run --analyzers history/sentiment --format json` bytes for the
-/// oldest `--limit` commits, or `None` if the repository cannot be opened/walked.
+/// newest `--limit` commits, or `None` if the repository cannot be opened/walked.
 ///
 /// Reproduces the reference streaming sentiment pipeline as a closed form:
-///  - **commit set / order**: `repository.Log(Reverse=true)` (oldest-first),
-///    truncated to `--limit` commits (reference initHistoryPipeline).
+///  - **commit set / order**: `handlers::load_history_commit_hashes` — the `--limit` NEWEST
+///    commits, delivered oldest-first (reference initHistoryPipeline).
 ///  - **tick assignment** (`plumbing.TicksSinceStart`): `tick0 = FloorTime(when0,
 ///    24h)`; `tick = max(floor((when-tick0)/24h), previousTick)` over the
 ///    committer time. `commits_by_tick` records each tick's commit hashes (drives
@@ -1353,7 +1354,7 @@ pub fn sentiment_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     Some(cf_gojson::marshal(&metrics.to_go_value()))
 }
 
-/// Computes the typed sentiment [`cf_sentiment::ComputedMetrics`] for the oldest
+/// Computes the typed sentiment [`cf_sentiment::ComputedMetrics`] for the newest
 /// `--limit` commits — the single report value behind every output format. The
 /// serializer (json / yaml / bin) is chosen by the caller so all formats follow
 /// from the one computation (the reference `ComputeAllMetrics` → `FormatReport*`).
@@ -1443,9 +1444,9 @@ pub(crate) fn sentiment_walk(sub: &clap::ArgMatches) -> Option<Vec<SentimentComm
 
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
 
-    // Window: `--head` loads EXACTLY the single HEAD commit (the reference implementation, ignoring
-    // `--limit`); otherwise the `limit` commits oldest-first (reference:
-    // `gitlib.loadHistoryCommits`).
+    // Window: `--head` loads EXACTLY the single HEAD commit (ignoring `--limit`
+    // and `--since`); otherwise the `--limit` NEWEST commits, oldest-first for
+    // the analyzers, capped by `--since`. See `handlers::load_history_commit_hashes`.
     let first_parent = crate::handlers::effective_first_parent(sub);
     let hashes = if sub.get_flag("head") {
         vec![repo.head().ok()?]
@@ -1772,8 +1773,8 @@ fn extract_shell_comment_nodes(content: &[u8], out: &mut Vec<cf_sentiment::analy
 /// the reference streaming path (the reference `initHistoryPipeline` → `framework.RunStreaming`
 /// → `imports.HistoryAnalyzer.Consume` → `extractTC`/`buildTick`/`ticksToReport`
 /// → `BaseHistoryAnalyzer.Serialize` → `ComputeAllMetrics`):
-///  - **commit set / order**: `repository.Log(Reverse=true)` (oldest-first,
-///    `SortTime|SortTopological|SortReverse`), truncated to `--limit` commits
+///  - **commit set / order**: `handlers::load_history_commit_hashes` — the `--limit` NEWEST
+///    commits, delivered oldest-first
 ///    (reference: `commitCount` capped at `opts.Limit`). `--first-parent` adds
 ///    `SimplifyFirstParent`.
 ///  - **identity** (`plumbing.IdentityDetector`, loose mode): each commit's
@@ -1922,9 +1923,9 @@ pub(crate) fn imports_walk(sub: &clap::ArgMatches) -> Option<Vec<ImportsCommit>>
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
     let first_parent = crate::handlers::effective_first_parent(sub);
 
-    // Window: `--head` loads EXACTLY the single HEAD commit (the reference implementation,
-    // ignoring `--limit`); otherwise the `limit` commits oldest-first (reference:
-    // `gitlib.loadHistoryCommits`).
+    // Window: `--head` loads EXACTLY the single HEAD commit (ignoring `--limit`
+    // and `--since`); otherwise the `--limit` NEWEST commits, oldest-first for
+    // the analyzers, capped by `--since`. See `handlers::load_history_commit_hashes`.
     let hashes = if sub.get_flag("head") {
         vec![repo.head().ok()?]
     } else {
@@ -2213,8 +2214,8 @@ fn imports_map_to_report_value(
 /// → `file_history.HistoryAnalyzer.Consume` → aggregator → `ticksToReport` →
 /// `BaseHistoryAnalyzer.Serialize` → `ComputeAllMetricsWithOptions`):
 ///
-///  - **commit set / order**: `repository.Log(Reverse=true)` (oldest-first,
-///    `SortTime|SortTopological|SortReverse`), truncated to `--limit` commits
+///  - **commit set / order**: `handlers::load_history_commit_hashes` — the `--limit` NEWEST
+///    commits, delivered oldest-first
 ///    (reference: `commitCount` capped at `opts.Limit`). `--first-parent` adds
 ///    `SimplifyFirstParent`.
 ///  - **merge dedup** (`shouldConsumeCommit` / `MergeTracker`): a commit with
@@ -2341,11 +2342,9 @@ pub(crate) fn file_history_run(sub: &clap::ArgMatches) -> Option<FileHistoryRun>
     let first_parent = crate::handlers::effective_first_parent(sub);
     let head_only = sub.get_flag("head");
 
-    // The reference implementation: `--head` loads EXACTLY the single HEAD commit (ignoring
-    // `--limit`); otherwise `initHistoryPipeline` streams the first
-    // `min(limit, total)` commits of an oldest-first walk — the N OLDEST commits,
-    // oldest-first (see `load_history_commit_hashes`).
-    // Oldest-first window (the N OLDEST commits, oldest-first).
+    // Window: `--head` loads EXACTLY the single HEAD commit (ignoring `--limit`
+    // and `--since`); otherwise the `--limit` NEWEST commits, oldest-first for
+    // the analyzers, capped by `--since` (`load_history_commit_hashes`).
     let revwalk_hashes = if head_only {
         vec![repo.head().ok()?]
     } else {
@@ -3092,8 +3091,8 @@ fn compute_diff_line_stats(
 /// `typos.Analyzer.Consume` → `extractTC`/`buildTick` (per-tick dedup) →
 /// `ticksToReport` (cross-tick dedup) → `BaseHistoryAnalyzer.Serialize` →
 /// `ComputeAllMetrics`):
-///  - **commit set / order**: `repository.Log(Reverse=true)` (oldest-first,
-///    `SortTime|SortTopological|SortReverse`), truncated to `--limit` commits.
+///  - **commit set / order**: `handlers::load_history_commit_hashes` — the `--limit` NEWEST
+///    commits, delivered oldest-first.
 ///    `--first-parent` adds `SimplifyFirstParent`. With `--workers 1` Consume is
 ///    sequential in walk order, so per-tick and cross-tick dedup collapse to a
 ///    single global first-seen dedup in walk order (which is what we do).
@@ -3283,9 +3282,9 @@ pub(crate) fn typos_walk(sub: &clap::ArgMatches) -> Option<Vec<TyposCommit>> {
 
     let max_distance = typos_max_distance(sub);
 
-    // Window: `--head` loads EXACTLY the single HEAD commit (the reference implementation,
-    // ignoring `--limit`); otherwise the `limit` commits oldest-first (reference:
-    // `gitlib.loadHistoryCommits`).
+    // Window: `--head` loads EXACTLY the single HEAD commit (ignoring `--limit`
+    // and `--since`); otherwise the `--limit` NEWEST commits, oldest-first for
+    // the analyzers, capped by `--since`. See `handlers::load_history_commit_hashes`.
     let hashes = if sub.get_flag("head") {
         vec![repo.head().ok()?]
     } else {
@@ -3790,8 +3789,8 @@ fn devs_detect_language(name: &str, data: &[u8]) -> String {
 /// TreeDiff, BlobCache, FileDiff, LinesStats, LanguagesDetection}` →
 /// `devs.Analyzer.Consume` → `extractTC`/`buildTick`/`ticksToReport` →
 /// `BaseHistoryAnalyzer.Serialize` → `ComputeAllMetrics`):
-///  - **commit set / order**: `repository.Log(Reverse=true)` (oldest-first),
-///    truncated to `--limit` commits. `--first-parent` adds `SimplifyFirstParent`.
+///  - **commit set / order**: `handlers::load_history_commit_hashes` — the `--limit` NEWEST
+///    commits, delivered oldest-first. `--first-parent` adds `SimplifyFirstParent`.
 ///  - **oversized-commit skip** (the reference `maxChangesPerCommit = 10000`):
 ///    a commit whose RAW tree diff exceeds 10000 changes is skipped ENTIRELY —
 ///    its core analyzers never run, so it contributes nothing to the people dict
@@ -3931,9 +3930,9 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
     let first_parent = crate::handlers::effective_first_parent(sub);
 
-    // Window: `--head` loads EXACTLY the single HEAD commit (the reference implementation,
-    // ignoring `--limit`); otherwise the `limit` commits oldest-first (reference:
-    // `gitlib.loadHistoryCommits`).
+    // Window: `--head` loads EXACTLY the single HEAD commit (ignoring `--limit`
+    // and `--since`); otherwise the `--limit` NEWEST commits, oldest-first for
+    // the analyzers, capped by `--since`. See `handlers::load_history_commit_hashes`.
     let hashes = if sub.get_flag("head") {
         vec![repo.head().ok()?]
     } else {

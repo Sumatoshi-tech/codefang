@@ -413,19 +413,26 @@ No manual tuning needed. Key parameters:
 | Parameter | Flag | Default | Effect |
 |-----------|------|---------|--------|
 | Memory budget | `--memory-budget` | 2GB | Controls chunk size |
-| Commit limit | `--limit` | 0 (all) | Bounds history depth |
+| Commit limit | `--limit` | 0 (all) | Analyze at most N commits — the N **newest** |
 | First parent | `--first-parent` | false | Skip merge commits |
-| Since | `--since` | none | Time-based filtering |
+| Since | `--since` | none | Time- or revision-based filtering |
 
 ```bash
-# Analyze only last 6 months, first-parent only
-codefang run --since 6m --first-parent --format json /repo
+# Analyze only the last 6 months (4380 h), first-parent only
+codefang run --since 4380h --first-parent --format json /repo
+
+# ... or since a release tag, capped at the 500 newest commits in the window
+codefang run --since v1.28.0 --limit 500 --format json /repo
 ```
+
+Duration units are `h`/`m`/`s` only — there is no `d`/`w`, and `m` is
+**minutes**, so `--since 6m` means the last six minutes, not six months.
 
 !!! note "`--since` with inactive repos"
     If no commits fall within the `--since` window, history analyzers produce
-    empty results (zero ticks, zero developers). Static analyzers still run
-    normally since they analyze the current file tree, not commit history.
+    empty results (zero ticks, zero developers) and the run still exits 0.
+    Static analyzers still run normally since they analyze the current file
+    tree, not commit history.
 
 ---
 
