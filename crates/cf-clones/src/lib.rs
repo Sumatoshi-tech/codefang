@@ -218,6 +218,8 @@ mod tests {
         assert_eq!(clone_message(16), MSG_HIGH_CLONES);
     }
 
+    // Exact on purpose: the zero-denominator guard returns 0.0 exactly.
+    #[allow(clippy::float_cmp)]
     #[test]
     fn clone_ratio_zero_when_either_is_zero() {
         assert_eq!(compute_clone_ratio(0, 10), 0.0);

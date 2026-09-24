@@ -341,9 +341,9 @@ checkpoint:
 
 | Flag | Example | Description |
 |------|---------|-------------|
-| `--limit N` | `--limit 1000` | Analyze only the last N commits |
-| `--since` | `--since 2024-01-01` | Only commits after this date |
-| `--head` | `--head` | Snapshot of HEAD only (fast) |
+| `--limit N` | `--limit 1000` | Analyze only the N newest commits |
+| `--since` | `--since 2024-01-01` | Only commits at/after this date, duration, or revision |
+| `--head` | `--head` | Snapshot of HEAD only (fast; ignores the two flags above) |
 | `--first-parent` | `--first-parent` | Skip merge-commit side branches |
 | `--workers N` | `--workers 8` | Parallel pipeline workers |
 | `--memory-budget` | `--memory-budget 2GB` | Auto-tune caches |

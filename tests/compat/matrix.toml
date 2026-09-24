@@ -66,6 +66,12 @@ uast_analyze = ["json", "text"]
 # -----------------------------------------------------------------------------
 [flags]
 # history-affecting flags; each is one matrix cell against the base history run.
+#
+# DIVERGENCE: the `--limit:*` and `--since:*` cells below are compared against
+# the Go oracle, whose window is the N OLDEST commits and which aborts on a
+# partial `--since` range. codefang deliberately selects the N NEWEST commits
+# and supports partial ranges, so those cells are EXPECTED to differ and must
+# not be read as port defects (specs/frds/FRD-newest-commit-window.md).
 history = [
   "--head",
   "--limit:50",

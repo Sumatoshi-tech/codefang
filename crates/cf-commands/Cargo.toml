@@ -117,3 +117,6 @@ tempfile = "3"
 # tempdirs (history-filter oracle tests) — write access comes straight from
 # git2, the same libgit2 vendoring cf-gitlib is pinned to.
 git2 = { workspace = true }
+# Deterministic commit fixtures for the history-window tests (feature-gated, so
+# it is compiled for tests only).
+cf-gitlib = { path = "../cf-gitlib", features = ["testutil"] }

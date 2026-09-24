@@ -414,6 +414,8 @@ mod tests {
     }
 
     #[test]
+    // Captured Go fixture input; 3.14 is the value under test, not PI.
+    #[allow(clippy::approx_constant)]
     fn scalars_compact() {
         assert_eq!(st(marshal(&GoValue::Null)), "null");
         assert_eq!(st(marshal(&GoValue::Bool(true))), "true");

@@ -34,7 +34,7 @@ pub mod worker;
 
 #[cfg(test)]
 pub mod testing;
-#[cfg(test)]
+#[cfg(any(test, feature = "testutil"))]
 pub mod testutil;
 
 pub use blob::Blob;

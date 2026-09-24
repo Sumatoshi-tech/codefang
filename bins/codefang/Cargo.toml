@@ -33,3 +33,8 @@ git2 = { workspace = true }
 # thin shell that bootstraps malloc tunables + the --profile watchdog, then calls
 # cf_commands::run(argv).
 cf-commands = { path = "../../crates/cf-commands" }
+
+[dev-dependencies]
+# Deterministic commit fixtures for the CLI-level window tests (feature-gated:
+# compiled for tests only, never in a shipped binary).
+cf-gitlib = { path = "../../crates/cf-gitlib", features = ["testutil"] }

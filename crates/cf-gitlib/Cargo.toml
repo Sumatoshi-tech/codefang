@@ -23,6 +23,12 @@ cf-alg = { path = "../cf-alg" }
 # Derived Display/Error for the GitError taxonomy (strings are frozen contract).
 thiserror = "1"
 
+[features]
+# Deterministic on-disk repository fixtures (`cf_gitlib::testutil`) for
+# downstream crates' tests. Off in every production build, so the fixture
+# builder never reaches a shipped binary.
+testutil = []
+
 [lints.clippy]
 # Hash<->Oid byte copies and libgit2 size_t<->i64 conversions are deliberate,
 # centralized, and verified by unit tests; silence the pedantic cast lints.

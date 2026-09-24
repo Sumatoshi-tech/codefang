@@ -252,7 +252,11 @@ fn show_tree_sitter(files: &[String], language: &str) -> Result<(), String> {
     if files.is_empty() {
         return Err("no input files provided".to_string());
     }
-    for filename in files {
+    // The reference loops over every input file, but every path below returns,
+    // so only the first file is ever reached while grammar wiring is pending in
+    // cf-uast (DESIGN §5). Stated as an explicit first-file bail instead of a
+    // loop that cannot iterate twice; the sentinel strings are unchanged.
+    if let Some(filename) = files.first() {
         let _ = std::fs::read(filename)
             .map_err(|e| format!("failed to process {filename}: failed to read file: {e}"))?;
         // Language resolution mirrors mapping.go: an unknown/empty language is an

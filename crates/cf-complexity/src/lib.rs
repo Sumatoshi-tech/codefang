@@ -302,15 +302,12 @@ fn find_functions(root: &Node) -> Vec<&Node> {
 fn find_functions_capped(root: &Node, find_depth: Option<usize>) -> Vec<&Node> {
     let mut by_type: Vec<&Node> = Vec::new();
     let mut by_role: Vec<&Node> = Vec::new();
-    match find_depth {
-        Some(cap) => {
-            root.find_nodes_by_type_capped(&[uast::FUNCTION, uast::METHOD], cap, &mut by_type);
-            root.find_nodes_by_roles_capped(&[node::role::FUNCTION], cap, &mut by_role);
-        }
-        None => {
-            root.find_nodes_by_type(&[uast::FUNCTION, uast::METHOD], &mut by_type);
-            root.find_nodes_by_roles(&[node::role::FUNCTION], &mut by_role);
-        }
+    if let Some(cap) = find_depth {
+        root.find_nodes_by_type_capped(&[uast::FUNCTION, uast::METHOD], cap, &mut by_type);
+        root.find_nodes_by_roles_capped(&[node::role::FUNCTION], cap, &mut by_role);
+    } else {
+        root.find_nodes_by_type(&[uast::FUNCTION, uast::METHOD], &mut by_type);
+        root.find_nodes_by_roles(&[node::role::FUNCTION], &mut by_role);
     }
 
     let mut seen: Vec<*const Node> = Vec::new();
@@ -1190,7 +1187,7 @@ mod tests {
     }
 
     /// Cyclomatic/cognitive/nesting parity for the canonical `if{loop{if}}`
-    /// body, reproducing the SonarSource model. The loop sits in the outer-if's
+    /// body, reproducing the `SonarSource` model. The loop sits in the outer-if's
     /// first-child (condition) slot, walked at nesting 0; its inner `if` is in
     /// the loop's first-child slot, walked at nesting 1.
     /// cognitive = if(+1) + loop(+1) + inner-if(nesting 1 → +2) = 4. Verified

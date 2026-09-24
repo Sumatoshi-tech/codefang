@@ -186,7 +186,7 @@ fn b64_decode(s: &str) -> Vec<u8> {
         bits += 6;
         if bits >= 8 {
             bits -= 8;
-            out.push((buf >> bits) as u8 & 0xFF);
+            out.push((buf >> bits) as u8);
         }
     }
     out

@@ -209,6 +209,8 @@ mod tests {
     use super::*;
 
     #[test]
+    // Captured Go fixture input; 3.14 is the value under test, not PI.
+    #[allow(clippy::approx_constant)]
     fn json_float_threshold_and_exponent_stripping() {
         // >= 1e21 -> exponent, one-digit exponent stripping.
         assert_eq!(format_json_float(1e21), "1e+21");
@@ -243,6 +245,8 @@ mod tests {
     }
 
     #[test]
+    // Captured Go fixture input; 3.14 is the value under test, not PI.
+    #[allow(clippy::approx_constant)]
     fn g_layout_uses_two_digit_exponent() {
         // 'g' exponent threshold is exp < -4 || exp >= 21.
         assert_eq!(format_float_g(1e21), "1e+21");

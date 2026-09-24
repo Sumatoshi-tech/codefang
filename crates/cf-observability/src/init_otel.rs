@@ -324,8 +324,10 @@ mod tests {
     /// Mirrors the reference suite's `TestBuildResource_IncludesAppMode`.
     #[test]
     fn build_resource_includes_app_mode() {
-        let mut cfg = Config::default();
-        cfg.mode = AppMode::Mcp;
+        let cfg = Config {
+            mode: AppMode::Mcp,
+            ..Config::default()
+        };
         let res = build_resource(&cfg);
         assert_eq!(res.get("app.mode"), Some("mcp"));
         // service.name always present.
@@ -335,10 +337,12 @@ mod tests {
     /// Mirrors the reference suite's `TestInit_WithResourceAttributes`.
     #[test]
     fn build_resource_optional_attrs() {
-        let mut cfg = Config::default();
-        cfg.service_version = "1.2.3".to_string();
-        cfg.environment = "test".to_string();
-        cfg.mode = AppMode::Mcp;
+        let cfg = Config {
+            service_version: "1.2.3".to_string(),
+            environment: "test".to_string(),
+            mode: AppMode::Mcp,
+            ..Config::default()
+        };
         let res = build_resource(&cfg);
         assert_eq!(res.get("service.version"), Some("1.2.3"));
         assert_eq!(res.get("deployment.environment"), Some("test"));
@@ -385,8 +389,10 @@ mod tests {
     /// Mirrors the reference suite's `TestSampler_DebugTraceOverridesEnv`.
     #[test]
     fn sampler_debug_trace_overrides_env() {
-        let mut cfg = Config::default();
-        cfg.debug_trace = true;
+        let cfg = Config {
+            debug_trace: true,
+            ..Config::default()
+        };
         let s = select_sampler(&cfg, Some("always_off"), None);
         assert!(s.samples_root_span());
     }
@@ -394,8 +400,10 @@ mod tests {
     /// Mirrors the reference suite's `TestSampler_ConfigSampleRatioFallback`.
     #[test]
     fn sampler_config_sample_ratio_fallback() {
-        let mut cfg = Config::default();
-        cfg.sample_ratio = 1.0;
+        let cfg = Config {
+            sample_ratio: 1.0,
+            ..Config::default()
+        };
         let s = select_sampler(&cfg, None, None);
         assert!(s.samples_root_span());
     }

@@ -238,6 +238,8 @@ mod tests {
     }
 
     // Reference suite: TestGetFloat64_Float.
+    // 3.14 is the captured Go fixture value, not an attempt to write PI.
+    #[allow(clippy::approx_constant)]
     #[test]
     fn get_float64_float() {
         let r = report(vec![("key", GoValue::Float(3.14))]);
