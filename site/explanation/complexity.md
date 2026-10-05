@@ -99,26 +99,26 @@ text; a multi-line token is never a name.
 
 ```go
 func decisions(a, b int, xs []int) int {
-	r := 0
-	if a > 0 && b > 0 {        // cyclomatic +1 (if) +1 (&&) | cognitive +1 (if) +1 (&& sequence)
-		r++
-	} else if a < 0 || b < 0 { // cyclomatic +1 (if) +1 (||) | cognitive +1 (else if) +1 (|| sequence)
-		r--
-	} else {                   //                           | cognitive +1 (else)
-		r = 2
-	}
-	for _, x := range xs {     // cyclomatic +1              | cognitive +1
-		r += x
-	}
-	switch r {                 //                           | cognitive +1
-	case 1:                    // cyclomatic +1
-		r = 10
-	case 2:                    // cyclomatic +1
-		r = 20
-	default:                   // nothing
-		r = 0
-	}
-	return r
+    r := 0
+    if a > 0 && b > 0 {        // cyclomatic +1 (if) +1 (&&) | cognitive +1 (if) +1 (&& sequence)
+        r++
+    } else if a < 0 || b < 0 { // cyclomatic +1 (if) +1 (||) | cognitive +1 (else if) +1 (|| sequence)
+        r--
+    } else {                   //                           | cognitive +1 (else)
+        r = 2
+    }
+    for _, x := range xs {     // cyclomatic +1              | cognitive +1
+        r += x
+    }
+    switch r {                 //                           | cognitive +1
+    case 1:                    // cyclomatic +1
+        r = 10
+    case 2:                    // cyclomatic +1
+        r = 20
+    default:                   // nothing
+        r = 0
+    }
+    return r
 }
 ```
 
@@ -129,14 +129,14 @@ Nesting changes the cognitive score but not the cyclomatic one:
 
 ```go
 func nested(a, b, c bool) int {
-	if a {                 // cognitive +1 (nesting 0)
-		if b {             // cognitive +2 (nesting 1)
-			if c {         // cognitive +3 (nesting 2)
-				return 1
-			}
-		}
-	}
-	return 0
+    if a {                 // cognitive +1 (nesting 0)
+        if b {             // cognitive +2 (nesting 1)
+            if c {         // cognitive +3 (nesting 2)
+                return 1
+            }
+        }
+    }
+    return 0
 }
 ```
 

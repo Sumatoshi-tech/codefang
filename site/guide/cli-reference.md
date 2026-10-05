@@ -13,7 +13,7 @@ has no effect is a bug.
 The main analysis binary. It runs static and history analyzers against source
 code and Git repositories.
 
-#### Global flags
+### Global flags
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
@@ -333,7 +333,7 @@ codefang run -a '*' --extra-excluded-prefixes '.venv/,target/' .
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--people-dict` | `path` | `""` | File with one person per line, `|`-separated identity tokens (names and emails, matched case-insensitively). With a dictionary, an author matching no line is reported as `<unmatched>`. An unreadable file is an error. |
+| `--people-dict` | `path` | `""` | File with one person per line, its identity tokens separated by a vertical bar (names and emails, matched case-insensitively). With a dictionary, an author matching no line is reported as `<unmatched>`. An unreadable file is an error. |
 | `--exact-signatures` | `bool` | `false` | Match the whole `name <email>` signature instead of merging authors that share a name **or** an email. Yields considerably more identities. |
 | `--anonymize` | `bool` | `false` | Replace developer names in every report with `Developer-A`, `Developer-B`, … |
 
@@ -343,7 +343,7 @@ lowercased name, and a hit on one token registers the other: `alice <a@x>`,
 detector serves every history analyzer, so devs, burndown, couples,
 file-history and anomaly agree on author ids.
 
-```
+```text
 # people.txt
 Alice|alice@example.com|alice@other.org
 Bob|bob@example.com

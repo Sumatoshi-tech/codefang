@@ -57,7 +57,7 @@ and `--languages`.
 | leaf `Identifier` with the `Type` role | operator (type specifier) | its text |
 | any node with `props["operator"]` | operator | that property, and nothing else from the node |
 | `Call` / `Index` / `Slice` | operator | fixed `()` / `[]` / `[:]` |
-| every other node | operator(s) | the node's *residue*: its source span with its children blanked (` := `, ` + `, `return `, `.`, `++`), split into symbol runs and whitelisted keywords |
+| every other node | operator(s) | the node's *residue*: its source span with its children blanked (` := `, ` + `, `return` and its trailing space, `.`, `++`), split into symbol runs and whitelisted keywords |
 | `Parameter` (type or role), `Comment`, `DocString` | skipped | — |
 | the function's signature (every child before its body) | skipped | — |
 
@@ -292,5 +292,5 @@ Distribution** by bucket.
 
 ## See also
 
-- [Understanding Halstead metrics](../explanation/halstead.md) — the mental model, counting policy, aggregation and limitations.
-- [Quick start](../getting-started/quickstart.md) — run static analysis.
+* [Understanding Halstead metrics](../explanation/halstead.md) — the mental model, counting policy, aggregation and limitations.
+* [Quick start](../getting-started/quickstart.md) — run static analysis.

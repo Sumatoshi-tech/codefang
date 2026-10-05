@@ -38,8 +38,8 @@ on: variables, literals, names). From four counts it derives:
 
 ```go
 func hal(a int, b int) int {
-	c := a + b
-	return c * 2
+    c := a + b
+    return c * 2
 }
 ```
 
@@ -70,7 +70,7 @@ Codefang classifies UAST nodes inside each function body with one table
   operator of calls (`()`), indexing (`[]`) and slicing (`[:]`); otherwise
   the node's **residue** — its source text with every child blanked out.
   For `c := a + b` the declaration's residue is ` := ` and the binary
-  expression's is ` + `; for `return c * 2` it is `return `; for `r++` it
+  expression's is ` + `; for `return c * 2` it is `return` and its trailing space; for `r++` it
   is `++`. Residue is tokenized into symbol runs (always operators) and
   words (operators only when they are keywords: `return`, `if`, `for`,
   `let`, `int`, `new`, …). Brackets, commas, semicolons and a lone `:` are
