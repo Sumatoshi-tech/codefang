@@ -1,17 +1,23 @@
 //! Quality statistics: per-tick stats, time-series and aggregate computation.
 //!
 //! All numeric routines delegate to [`cf_alg_stats`] (the shared statistics
-//! kernel) so that the mean / median / P95 / max / min / sum values flowing
-//! into machine reports are computed operation-for-operation as in the
-//! reference implementation.
+//! kernel).
 //!
-//! # Compatibility
+//! # Tick semantics
+//!
+//! A tick enters the time series and the aggregate only when at least one
+//! file was analyzed in it ([`compute_all_metrics`]); the cohesion aggregates
+//! (`cohesion_mean_mean`, `min_cohesion`) are taken over the ticks that hold
+//! at least one cohesion sample, so `min <= mean` always holds. Within a
+//! tick, `cohesion_mean` / `cohesion_min` are `0` when no file has a function
+//! (no cohesion data).
+//!
+//! # Serialization
 //!
 //! [`TickStats`], [`TimeSeriesEntry`], [`AggregateData`] and [`ComputedMetrics`]
-//! are *wrapper* structs: their fields serialize in **declaration order**,
-//! honoring `omitempty` on `start_time` / `end_time`. They are emitted through
-//! the fixed-order `GoMap` builder in [`crate::serialize`], never via serde
-//! defaults; output bytes are pinned by `tests/compat`.
+//! serialize their fields in **declaration order**, honoring `omitempty` on
+//! `start_time` / `end_time`, through the fixed-order `GoMap` builder in
+//! [`crate::serialize`].
 
 use std::collections::BTreeMap;
 
@@ -87,8 +93,8 @@ pub struct TickStats {
 
 /// Computes per-tick statistics.
 ///
-/// Returns the zero value when no files were analyzed (pinned report
-/// behaviour for empty ticks).
+/// Returns the zero value when no files were analyzed; `cohesion_mean` /
+/// `cohesion_min` are `0` when the tick holds no cohesion sample.
 ///
 /// ```
 /// use cf_quality::data::TickQuality;
@@ -215,160 +221,67 @@ pub struct ReportData {
     pub tick_bounds: BTreeMap<i64, TickBounds>,
 }
 
-/// Groups per-commit quality into per-tick quality.
-///
-/// For every tick, merges the [`TickQuality`] of each of its commit hashes (in
-/// the order given by `commits_by_tick`), skipping hashes absent from
-/// `commit_quality`. Ticks with no present commits are omitted. Returns an
-/// empty map when either input is empty.
-///
-/// ```
-/// use cf_quality::data::TickQuality;
-/// use cf_quality::metrics::aggregate_commits_to_ticks;
-/// use std::collections::BTreeMap;
-///
-/// let commit_quality = BTreeMap::from([
-///     ("aaa".to_string(), TickQuality { complexities: vec![1.0], ..Default::default() }),
-///     ("bbb".to_string(), TickQuality { complexities: vec![2.0], ..Default::default() }),
-/// ]);
-/// // Tick 0 references "aaa", "bbb", and an absent "ccc" (skipped).
-/// let commits_by_tick = BTreeMap::from([(0i64, vec![
-///     "aaa".to_string(), "bbb".to_string(), "ccc".to_string(),
-/// ])]);
-///
-/// let per_tick = aggregate_commits_to_ticks(&commit_quality, &commits_by_tick);
-/// assert_eq!(per_tick[&0].complexities, vec![1.0, 2.0]);
-///
-/// // Either input empty → empty result.
-/// assert!(aggregate_commits_to_ticks(&BTreeMap::new(), &commits_by_tick).is_empty());
-/// ```
-#[must_use]
-pub fn aggregate_commits_to_ticks(
-    commit_quality: &BTreeMap<String, TickQuality>,
-    commits_by_tick: &BTreeMap<i64, Vec<String>>,
-) -> BTreeMap<i64, TickQuality> {
-    let mut result = BTreeMap::new();
-
-    if commit_quality.is_empty() || commits_by_tick.is_empty() {
-        return result;
-    }
-
-    for (&tick, hashes) in commits_by_tick {
-        let mut merged: Option<TickQuality> = None;
-
-        for hash in hashes {
-            let Some(cq) = commit_quality.get(hash) else {
-                continue;
-            };
-            merged.get_or_insert_with(TickQuality::new).merge(cq);
-        }
-
-        if let Some(m) = merged {
-            result.insert(tick, m);
-        }
-    }
-
-    result
-}
-
-/// Builds [`ReportData`] from the canonical inputs.
-///
-/// Aggregates per-commit quality into per-tick quality only when
-/// `commit_quality` is non-empty; otherwise `tick_quality` is empty.
-#[must_use]
-pub fn parse_report_data(
-    commit_quality: &BTreeMap<String, TickQuality>,
-    commits_by_tick: &BTreeMap<i64, Vec<String>>,
-    tick_bounds: BTreeMap<i64, TickBounds>,
-) -> ReportData {
-    let tick_quality = if !commit_quality.is_empty() {
-        aggregate_commits_to_ticks(commit_quality, commits_by_tick)
-    } else {
-        BTreeMap::new()
-    };
-
-    ReportData {
-        tick_quality,
-        tick_bounds,
-    }
-}
-
-/// Runs all quality metrics.
-///
-/// Iterates ticks in ascending order. The global minimum comment-score and
-/// cohesion are seeded to `+∞` and updated only for ticks with
-/// `files_analyzed > 0` whose value is strictly smaller; if no such tick
-/// exists the field is reset to `0` — this infinity-seed/reset sequence is
-/// pinned reference behaviour and must be reproduced exactly.
+/// Runs all quality metrics over the ticks that analyzed at least one file,
+/// in ascending tick order. The aggregate means are the means of the per-tick
+/// values; `min_comment_score` is the minimum over those ticks and
+/// `min_cohesion` / `cohesion_mean_mean` are taken over the ticks that hold a
+/// cohesion sample (`0` when no tick does).
 #[must_use]
 pub fn compute_all_metrics(input: &ReportData) -> ComputedMetrics {
-    let ticks: Vec<i64> = input.tick_quality.keys().copied().collect();
-    let mut time_series = Vec::with_capacity(ticks.len());
+    let analyzed: Vec<(i64, &TickQuality)> = input
+        .tick_quality
+        .iter()
+        .filter(|(_, tq)| tq.files_analyzed() > 0)
+        .map(|(tick, tq)| (*tick, tq))
+        .collect();
+    let mut time_series = Vec::with_capacity(analyzed.len());
 
-    let mut complexity_medians = Vec::with_capacity(ticks.len());
-    let mut complexity_p95s = Vec::with_capacity(ticks.len());
-    let mut halstead_medians = Vec::with_capacity(ticks.len());
-    let mut comment_means = Vec::with_capacity(ticks.len());
-    let mut cohesion_means = Vec::with_capacity(ticks.len());
+    let mut complexity_medians = Vec::with_capacity(analyzed.len());
+    let mut complexity_p95s = Vec::with_capacity(analyzed.len());
+    let mut halstead_medians = Vec::with_capacity(analyzed.len());
+    let mut comment_means = Vec::with_capacity(analyzed.len());
+    let mut comment_mins = Vec::with_capacity(analyzed.len());
+    let mut cohesion_means = Vec::with_capacity(analyzed.len());
+    let mut cohesion_mins = Vec::with_capacity(analyzed.len());
 
     let mut total_files: i64 = 0;
     let mut total_bugs: f64 = 0.0;
 
-    let mut global_min_comment = f64::INFINITY;
-    let mut global_min_cohesion = f64::INFINITY;
-
-    for &tick in &ticks {
-        let tq = &input.tick_quality[&tick];
+    for (tick, tq) in analyzed {
         let ts = compute_tick_stats(tq);
-
-        let mut entry = TimeSeriesEntry {
+        let bounds = input.tick_bounds.get(&tick).cloned().unwrap_or_default();
+        time_series.push(TimeSeriesEntry {
             tick,
+            start_time: bounds.start_time,
+            end_time: bounds.end_time,
             stats: ts,
-            ..TimeSeriesEntry::default()
-        };
-
-        if let Some(bounds) = input.tick_bounds.get(&tick) {
-            entry.start_time = bounds.start_time.clone();
-            entry.end_time = bounds.end_time.clone();
-        }
-
-        time_series.push(entry);
+        });
 
         complexity_medians.push(ts.complexity_median);
         complexity_p95s.push(ts.complexity_p95);
         halstead_medians.push(ts.halstead_vol_median);
         comment_means.push(ts.comment_score_mean);
-        cohesion_means.push(ts.cohesion_mean);
+        comment_mins.push(ts.comment_score_min);
+        if !tq.cohesion_scores.is_empty() {
+            cohesion_means.push(ts.cohesion_mean);
+            cohesion_mins.push(ts.cohesion_min);
+        }
 
         total_files += ts.files_analyzed;
         total_bugs += ts.delivered_bugs_sum;
-
-        if ts.comment_score_min < global_min_comment && ts.files_analyzed > 0 {
-            global_min_comment = ts.comment_score_min;
-        }
-        if ts.cohesion_min < global_min_cohesion && ts.files_analyzed > 0 {
-            global_min_cohesion = ts.cohesion_min;
-        }
-    }
-
-    if global_min_comment.is_infinite() && global_min_comment > 0.0 {
-        global_min_comment = 0.0;
-    }
-    if global_min_cohesion.is_infinite() && global_min_cohesion > 0.0 {
-        global_min_cohesion = 0.0;
     }
 
     let aggregate = AggregateData {
-        total_ticks: ticks.len() as i64,
+        total_ticks: time_series.len() as i64,
         total_files_analyzed: total_files,
         complexity_median_mean: stats::mean(&complexity_medians),
         complexity_p95_mean: stats::mean(&complexity_p95s),
         halstead_vol_median_mean: stats::mean(&halstead_medians),
         total_delivered_bugs: total_bugs,
         comment_score_mean_mean: stats::mean(&comment_means),
-        min_comment_score: global_min_comment,
+        min_comment_score: stats::min(&comment_mins),
         cohesion_mean_mean: stats::mean(&cohesion_means),
-        min_cohesion: global_min_cohesion,
+        min_cohesion: stats::min(&cohesion_mins),
     };
 
     ComputedMetrics {
@@ -377,7 +290,7 @@ pub fn compute_all_metrics(input: &ReportData) -> ComputedMetrics {
     }
 }
 
-/// Per-commit summary used by the unified timeseries / drain paths.
+/// Per-commit summary used by the `--format timeseries` paths.
 ///
 /// Field order here is irrelevant — the machine output for this map is
 /// *map-origin* and therefore byte-sorts its keys on encode.
@@ -408,9 +321,6 @@ pub struct CommitSummary {
 }
 
 /// Computes the per-commit summary for one [`TickQuality`].
-///
-/// Shared by the commit-timeseries and drain paths, which build identical
-/// maps.
 #[must_use]
 pub fn commit_summary(tq: &TickQuality) -> CommitSummary {
     let ts = compute_tick_stats(tq);
@@ -429,19 +339,6 @@ pub fn commit_summary(tq: &TickQuality) -> CommitSummary {
     }
 }
 
-/// Builds the per-commit summary map.
-///
-/// Returns an empty map when `commit_quality` is empty.
-#[must_use]
-pub fn extract_commit_time_series(
-    commit_quality: &BTreeMap<String, TickQuality>,
-) -> BTreeMap<String, CommitSummary> {
-    commit_quality
-        .iter()
-        .map(|(hash, tq)| (hash.clone(), commit_summary(tq)))
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -450,26 +347,16 @@ mod tests {
         assert!((a - b).abs() <= d, "expected {b} got {a} (delta {d})");
     }
 
-    fn cq(pairs: &[(&str, TickQuality)]) -> BTreeMap<String, TickQuality> {
-        pairs
-            .iter()
-            .map(|(h, q)| ((*h).into(), q.clone()))
-            .collect()
+    /// A [`ReportData`] over `(tick, quality)` pairs without bounds.
+    fn report(ticks: Vec<(i64, TickQuality)>) -> ReportData {
+        ReportData {
+            tick_quality: ticks.into_iter().collect(),
+            tick_bounds: BTreeMap::new(),
+        }
     }
 
-    fn ct(pairs: &[(i64, &[&str])]) -> BTreeMap<i64, Vec<String>> {
-        pairs
-            .iter()
-            .map(|(t, hs)| (*t, hs.iter().map(|s| (*s).to_string()).collect()))
-            .collect()
-    }
-
-    const HASH_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    const HASH_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-
-    // Mirrors reference test TestComputeTickStats.
     #[test]
-    fn compute_tick_stats_matches_go() {
+    fn compute_tick_stats_over_five_files() {
         let tq = TickQuality {
             complexities: vec![2.0, 4.0, 6.0, 8.0, 10.0],
             cognitives: vec![1.0, 2.0, 3.0, 4.0, 5.0],
@@ -501,7 +388,6 @@ mod tests {
         assert_eq!(ts.max_complexity, 10);
     }
 
-    // Mirrors reference test TestComputeTickStats_ZeroFiles.
     #[test]
     fn compute_tick_stats_zero_files() {
         let ts = compute_tick_stats(&TickQuality::default());
@@ -510,12 +396,11 @@ mod tests {
         delta(ts.complexity_median, 0.0, 0.01);
     }
 
-    // Mirrors reference test TestComputeAllMetrics_FromCommitData.
     #[test]
-    fn compute_all_metrics_from_commit_data() {
-        let commit_quality = cq(&[
+    fn compute_all_metrics_over_two_ticks() {
+        let input = report(vec![
             (
-                HASH_A,
+                0,
                 TickQuality {
                     complexities: vec![10.0, 20.0],
                     halstead_volumes: vec![100.0, 200.0],
@@ -526,7 +411,7 @@ mod tests {
                 },
             ),
             (
-                HASH_B,
+                1,
                 TickQuality {
                     complexities: vec![30.0],
                     halstead_volumes: vec![300.0],
@@ -537,246 +422,148 @@ mod tests {
                 },
             ),
         ]);
-        let commits_by_tick = ct(&[(0, &[HASH_A]), (1, &[HASH_B])]);
-
-        let input = parse_report_data(&commit_quality, &commits_by_tick, BTreeMap::new());
         let computed = compute_all_metrics(&input);
 
         assert_eq!(computed.time_series.len(), 2);
-        assert_eq!(computed.aggregate.total_ticks, 2);
-        assert_eq!(computed.aggregate.total_files_analyzed, 3);
+        let agg = computed.aggregate;
+        assert_eq!(agg.total_ticks, 2);
+        assert_eq!(agg.total_files_analyzed, 3);
+        delta(agg.complexity_median_mean, 22.5, 1e-9);
+        delta(agg.total_delivered_bugs, 0.6, 1e-9);
+        delta(agg.min_comment_score, 0.5, 1e-9);
+        delta(agg.min_cohesion, 0.8, 1e-9);
+        delta(agg.cohesion_mean_mean, (0.85 + 1.0) / 2.0, 1e-9);
     }
 
-    // Mirrors reference test TestComputeAllMetrics_FromCanonical.
     #[test]
-    fn compute_all_metrics_from_canonical() {
-        let commit_quality = cq(&[(
-            HASH_A,
+    fn compute_all_metrics_carries_tick_bounds() {
+        let mut input = report(vec![(
+            3,
             TickQuality {
-                complexities: vec![10.0, 20.0],
-                halstead_volumes: vec![100.0, 200.0],
-                delivered_bugs: vec![0.1, 0.2],
-                comment_scores: vec![0.5, 0.7],
-                cohesion_scores: vec![0.8, 0.9],
+                complexities: vec![1.0],
                 ..TickQuality::default()
             },
         )]);
-        let commits_by_tick = ct(&[(0, &[HASH_A])]);
-
-        let input = parse_report_data(&commit_quality, &commits_by_tick, BTreeMap::new());
+        input.tick_bounds.insert(
+            3,
+            TickBounds {
+                start_time: "2024-01-01T00:00:00Z".into(),
+                end_time: "2024-01-01T12:00:00Z".into(),
+            },
+        );
         let computed = compute_all_metrics(&input);
-
-        assert_eq!(computed.time_series.len(), 1);
-        assert_eq!(computed.aggregate.total_ticks, 1);
-        assert_eq!(computed.aggregate.total_files_analyzed, 2);
+        assert_eq!(computed.time_series[0].tick, 3);
+        assert_eq!(computed.time_series[0].start_time, "2024-01-01T00:00:00Z");
+        assert_eq!(computed.time_series[0].end_time, "2024-01-01T12:00:00Z");
     }
 
-    // Mirrors reference test TestComputeAllMetrics_Empty.
     #[test]
     fn compute_all_metrics_empty() {
-        let input = parse_report_data(&BTreeMap::new(), &BTreeMap::new(), BTreeMap::new());
-        let computed = compute_all_metrics(&input);
+        let computed = compute_all_metrics(&report(Vec::new()));
         assert!(computed.time_series.is_empty());
-        assert_eq!(computed.aggregate.total_ticks, 0);
-    }
-
-    // Mirrors reference test TestComputeAllMetrics_Basic (buildTestQualityReport).
-    #[test]
-    fn compute_all_metrics_basic() {
-        let commit_quality = cq(&[
-            (
-                "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-                TickQuality {
-                    complexities: vec![10.0, 20.0, 30.0],
-                    cognitives: vec![5.0, 10.0, 15.0],
-                    max_complexities: vec![4, 8, 12],
-                    functions: vec![2, 3, 5],
-                    halstead_volumes: vec![100.0, 200.0, 300.0],
-                    halstead_efforts: vec![50.0, 100.0, 150.0],
-                    delivered_bugs: vec![0.1, 0.2, 0.3],
-                    comment_scores: vec![0.5, 0.7, 0.9],
-                    doc_coverages: vec![0.4, 0.6, 0.8],
-                    cohesion_scores: vec![0.8, 0.9, 1.0],
-                },
-            ),
-            (
-                "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2",
-                TickQuality {
-                    complexities: vec![15.0, 25.0],
-                    cognitives: vec![7.0, 12.0],
-                    max_complexities: vec![6, 10],
-                    functions: vec![3, 4],
-                    halstead_volumes: vec![150.0, 250.0],
-                    halstead_efforts: vec![75.0, 125.0],
-                    delivered_bugs: vec![0.2, 0.3],
-                    comment_scores: vec![0.6, 0.8],
-                    doc_coverages: vec![0.5, 0.7],
-                    cohesion_scores: vec![0.85, 0.95],
-                },
-            ),
-            (
-                "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
-                TickQuality {
-                    complexities: vec![5.0, 15.0, 25.0, 35.0],
-                    cognitives: vec![3.0, 8.0, 13.0, 18.0],
-                    max_complexities: vec![3, 7, 10, 14],
-                    functions: vec![1, 3, 5, 7],
-                    halstead_volumes: vec![50.0, 150.0, 250.0, 350.0],
-                    halstead_efforts: vec![25.0, 75.0, 125.0, 175.0],
-                    delivered_bugs: vec![0.05, 0.15, 0.25, 0.35],
-                    comment_scores: vec![0.4, 0.6, 0.8, 1.0],
-                    doc_coverages: vec![0.3, 0.5, 0.7, 0.9],
-                    cohesion_scores: vec![0.7, 0.8, 0.9, 1.0],
-                },
-            ),
-        ]);
-        let commits_by_tick = ct(&[
-            (0, &["c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"]),
-            (1, &["c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2"]),
-            (2, &["c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"]),
-        ]);
-
-        let input = parse_report_data(&commit_quality, &commits_by_tick, BTreeMap::new());
-        let computed = compute_all_metrics(&input);
-
-        assert!(!computed.time_series.is_empty());
-        assert!(computed.aggregate.total_ticks > 0);
-        assert!(computed.aggregate.total_files_analyzed > 0);
-        assert!(computed.aggregate.complexity_median_mean > 0.0);
-        assert!(computed.aggregate.complexity_p95_mean > 0.0);
-        assert!(computed.aggregate.halstead_vol_median_mean > 0.0);
-        assert!(computed.aggregate.total_delivered_bugs > 0.0);
-    }
-
-    // Mirrors reference test TestAggregateCommitsToTicks_* .
-    #[test]
-    fn aggregate_single_commit_per_tick() {
-        let commit_quality = cq(&[
-            (
-                HASH_A,
-                TickQuality {
-                    complexities: vec![10.0, 20.0],
-                    ..TickQuality::default()
-                },
-            ),
-            (
-                HASH_B,
-                TickQuality {
-                    complexities: vec![30.0],
-                    ..TickQuality::default()
-                },
-            ),
-        ]);
-        let commits_by_tick = ct(&[(0, &[HASH_A]), (1, &[HASH_B])]);
-        let result = aggregate_commits_to_ticks(&commit_quality, &commits_by_tick);
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[&0].complexities.len(), 2);
-        assert_eq!(result[&1].complexities.len(), 1);
+        assert_eq!(computed.aggregate, AggregateData::default());
     }
 
     #[test]
-    fn aggregate_multiple_commits_per_tick() {
-        let commit_quality = cq(&[
-            (
-                HASH_A,
-                TickQuality {
-                    complexities: vec![10.0],
-                    halstead_volumes: vec![100.0],
-                    ..TickQuality::default()
-                },
-            ),
-            (
-                HASH_B,
-                TickQuality {
-                    complexities: vec![20.0],
-                    halstead_volumes: vec![200.0],
-                    ..TickQuality::default()
-                },
-            ),
-        ]);
-        let commits_by_tick = ct(&[(0, &[HASH_A, HASH_B])]);
-        let result = aggregate_commits_to_ticks(&commit_quality, &commits_by_tick);
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[&0].complexities.len(), 2);
-        assert_eq!(result[&0].halstead_volumes.len(), 2);
+    fn commit_summary_of_two_files() {
+        let tq = TickQuality {
+            complexities: vec![10.0, 20.0],
+            cognitives: vec![5.0, 8.0],
+            max_complexities: vec![12, 18],
+            functions: vec![3, 5],
+            halstead_volumes: vec![100.0, 200.0],
+            halstead_efforts: vec![50.0, 100.0],
+            delivered_bugs: vec![0.1, 0.2],
+            comment_scores: vec![0.5, 0.7],
+            doc_coverages: vec![0.6, 0.8],
+            cohesion_scores: vec![0.8, 0.9],
+        };
+        let summary = commit_summary(&tq);
+        delta(summary.complexity_median, 15.0, 0.01);
+        delta(summary.cognitive_median, 6.5, 0.01);
+        assert_eq!(summary.max_complexity, 18);
+        assert_eq!(summary.functions, 8);
+        delta(summary.halstead_effort_median, 75.0, 0.01);
+        delta(summary.delivered_bugs_sum, 0.3, 0.01);
+        delta(summary.comment_score_min, 0.5, 0.01);
+        delta(summary.doc_coverage_mean, 0.7, 0.01);
+        delta(summary.cohesion_min, 0.8, 0.01);
+        assert_eq!(summary.files_analyzed, 2);
     }
 
+    /// A tick whose commits yielded no analyzable file carries no statistics:
+    /// it is absent from the time series and never drags an aggregate mean
+    /// below the aggregate minimum.
     #[test]
-    fn aggregate_empty() {
-        let result = aggregate_commits_to_ticks(&BTreeMap::new(), &BTreeMap::new());
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn aggregate_missing_commit() {
-        let commit_quality = cq(&[(
-            HASH_A,
+    fn zero_file_ticks_are_excluded_from_series_and_aggregate() {
+        let mut tick_quality = BTreeMap::new();
+        tick_quality.insert(
+            0,
             TickQuality {
-                complexities: vec![10.0],
+                complexities: vec![2.0],
+                comment_scores: vec![1.0],
+                doc_coverages: vec![1.0],
+                cohesion_scores: vec![1.0],
                 ..TickQuality::default()
             },
-        )]);
-        let commits_by_tick = ct(&[(0, &[HASH_A, "cccccccccccccccccccccccccccccccccccccccc"])]);
-        let result = aggregate_commits_to_ticks(&commit_quality, &commits_by_tick);
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[&0].complexities.len(), 1);
+        );
+        tick_quality.insert(1, TickQuality::default());
+        tick_quality.insert(
+            2,
+            TickQuality {
+                complexities: vec![4.0],
+                comment_scores: vec![1.0],
+                doc_coverages: vec![1.0],
+                cohesion_scores: vec![1.0],
+                ..TickQuality::default()
+            },
+        );
+        let input = ReportData {
+            tick_quality,
+            tick_bounds: BTreeMap::new(),
+        };
+        let computed = compute_all_metrics(&input);
+        let ticks: Vec<i64> = computed.time_series.iter().map(|e| e.tick).collect();
+        assert_eq!(ticks, vec![0, 2], "{:?}", computed.time_series);
+        let agg = computed.aggregate;
+        assert_eq!(agg.total_ticks, 2);
+        assert_eq!(agg.total_files_analyzed, 2);
+        delta(agg.complexity_median_mean, 3.0, 1e-9);
+        delta(agg.cohesion_mean_mean, 1.0, 1e-9);
+        delta(agg.min_cohesion, 1.0, 1e-9);
+        delta(agg.comment_score_mean_mean, 1.0, 1e-9);
+        assert!(agg.min_cohesion <= agg.cohesion_mean_mean);
+        assert!(agg.min_comment_score <= agg.comment_score_mean_mean);
     }
 
-    // Mirrors reference test TestExtractCommitTimeSeries.
+    /// Cohesion aggregates are computed over the ticks that have cohesion
+    /// data: a tick of function-free files (no cohesion sample) neither
+    /// lowers `cohesion_mean_mean` nor sets `min_cohesion` to 0.
     #[test]
-    fn extract_commit_time_series_matches_go() {
-        let commit_quality = cq(&[
-            (
-                HASH_A,
-                TickQuality {
-                    complexities: vec![10.0, 20.0],
-                    cognitives: vec![5.0, 8.0],
-                    max_complexities: vec![12, 18],
-                    functions: vec![3, 5],
-                    halstead_volumes: vec![100.0, 200.0],
-                    halstead_efforts: vec![50.0, 100.0],
-                    delivered_bugs: vec![0.1, 0.2],
-                    comment_scores: vec![0.5, 0.7],
-                    doc_coverages: vec![0.6, 0.8],
-                    cohesion_scores: vec![0.8, 0.9],
-                },
-            ),
-            (
-                HASH_B,
-                TickQuality {
-                    complexities: vec![30.0],
-                    cognitives: vec![15.0],
-                    max_complexities: vec![25],
-                    functions: vec![7],
-                    halstead_volumes: vec![300.0],
-                    halstead_efforts: vec![150.0],
-                    delivered_bugs: vec![0.3],
-                    comment_scores: vec![0.9],
-                    doc_coverages: vec![0.95],
-                    cohesion_scores: vec![1.0],
-                },
-            ),
-        ]);
-
-        let result = extract_commit_time_series(&commit_quality);
-        assert_eq!(result.len(), 2);
-
-        let a = result[HASH_A];
-        delta(a.complexity_median, 15.0, 0.01);
-        assert_eq!(a.max_complexity, 18);
-        assert_eq!(a.functions, 8);
-        delta(a.delivered_bugs_sum, 0.3, 0.01);
-        delta(a.comment_score_min, 0.5, 0.01);
-        delta(a.cohesion_min, 0.8, 0.01);
-        assert_eq!(a.files_analyzed, 2);
-
-        let b = result[HASH_B];
-        delta(b.complexity_median, 30.0, 0.01);
-        assert_eq!(b.files_analyzed, 1);
-    }
-
-    #[test]
-    fn extract_commit_time_series_empty() {
-        assert!(extract_commit_time_series(&BTreeMap::new()).is_empty());
+    fn ticks_without_cohesion_samples_do_not_zero_the_cohesion_aggregate() {
+        let mut tick_quality = BTreeMap::new();
+        tick_quality.insert(
+            0,
+            TickQuality {
+                complexities: vec![3.0],
+                cohesion_scores: vec![0.75],
+                ..TickQuality::default()
+            },
+        );
+        tick_quality.insert(
+            1,
+            TickQuality {
+                complexities: vec![0.0],
+                ..TickQuality::default()
+            },
+        );
+        let input = ReportData {
+            tick_quality,
+            tick_bounds: BTreeMap::new(),
+        };
+        let agg = compute_all_metrics(&input).aggregate;
+        assert_eq!(agg.total_ticks, 2);
+        delta(agg.cohesion_mean_mean, 0.75, 1e-9);
+        delta(agg.min_cohesion, 0.75, 1e-9);
     }
 }

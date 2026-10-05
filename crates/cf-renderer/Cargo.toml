@@ -14,7 +14,7 @@ thiserror = "1"
 # report-format serialization crates from the design (DESIGN.md §1.1, §2.3:
 # cf-gojson / cf-goyaml), NEVER serde_json/serde_yaml, so output stays
 # byte-identical with the reference implementation (pinned by
-# tests/compat). The encoder subset this crate needs lives in its
+# the report e2e suites in bins/codefang/tests). The encoder subset this crate needs lives in its
 # `gocompat` module (same GoValue/Encoder API shape). Consolidation plan:
 # depend on the shared crates and delete `gocompat` once their encoders are
 # wired through this path:

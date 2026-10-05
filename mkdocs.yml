@@ -126,6 +126,7 @@ nav:
           - Comments: analyzers/comments.md
           - Imports (static): analyzers/imports.md
           - Clones: analyzers/clones.md
+          - Composition: analyzers/composition.md
       - History analyzers:
           - Burndown: analyzers/burndown.md
           - Developers: analyzers/developers.md
@@ -143,7 +144,7 @@ nav:
   - Architecture:
       - Overview: architecture/overview.md
       - UAST system: architecture/uast.md
-      - Streaming pipeline: architecture/streaming-pipeline.md
+      - History pipeline: architecture/streaming-pipeline.md
   - Explanation:
       - Static analyzers:
           - Complexity metrics: explanation/complexity.md

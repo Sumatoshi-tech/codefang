@@ -23,7 +23,7 @@
 //!
 //! Compatibility: output bytes are pinned against the reference implementation
 //! (`gopkg.in/yaml.v3` v3.0.1 `Marshal`) by this crate's oracle tests and the
-//! differential gate in `tests/compat`.
+//! the report e2e suites (`bins/codefang/tests`).
 //!
 //! # Quick start
 //!

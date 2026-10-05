@@ -1,8 +1,8 @@
 //! Report-contract serialization for the quality machine reports.
 //!
 //! All machine output is routed through [`cf_gojson`] (the report-format JSON
-//! encoder) — never serde defaults; the bytes are pinned against the reference
-//! binary by `tests/compat`. The CFB1 "bin" envelope is produced via
+//! encoder) — never serde defaults; the bytes are pinned by the CLI-level
+//! end-to-end tests. The CFB1 "bin" envelope is produced via
 //! [`cf_reportutil::encode_binary_envelope`].
 //!
 //! The YAML report path is owned by the `cf-analyze` cross-format conversion

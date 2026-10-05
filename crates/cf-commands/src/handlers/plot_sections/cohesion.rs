@@ -12,8 +12,6 @@ use cf_plotpage::echarts::{
 };
 use cf_plotpage::{build_pie_chart, get_chart_palette, ChartOpts, Hint, Section, Theme};
 
-use crate::handlers::go_sort;
-
 /// Reference plot-section constants.
 const EMPTY_CHART_HEIGHT: &str = "400px";
 const PIE_RADIUS: &str = "60%";
@@ -306,9 +304,11 @@ fn box_plot_chart(report: &GoValue) -> Chart {
         return empty_box_plot();
     }
 
-    // sort.Slice by median ascending (reference: pdqsort; equal-median ties measured).
-    go_sort::slice(&mut groups, |a, b| {
-        percentile(&a.scores, P_MEDIAN) < percentile(&b.scores, P_MEDIAN)
+    // The least cohesive directories (lowest median) first, then by label.
+    groups.sort_by(|a, b| {
+        percentile(&a.scores, P_MEDIAN)
+            .total_cmp(&percentile(&b.scores, P_MEDIAN))
+            .then_with(|| a.label.cmp(&b.label))
     });
     groups.truncate(MAX_DIRECTORIES);
 

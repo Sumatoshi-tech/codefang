@@ -14,6 +14,9 @@ description = "Git repository access layer over libgit2. Per-thread !Send/!Sync 
 # pin source). Per-thread !Send/!Sync Repository, RAII Drop frees handles.
 # See DESIGN §3.
 git2 = { workspace = true }
+# libgit2 options git2 does not wrap (the object-cache limit); the same
+# libgit2-sys git2 builds on, so no second libgit2 is linked.
+libgit2-sys = "0.17"
 # Byte text helpers (is_binary / count_lines) shared with the analyzers.
 cf-textutil = { path = "../cf-textutil" }
 # Overflow-checked numeric conversions.

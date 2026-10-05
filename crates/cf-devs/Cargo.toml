@@ -19,7 +19,7 @@ publish = false
 #
 # Report serialization routes exclusively through cf-gojson / cf-goyaml; the
 # machine-format bytes (json/yaml/ndjson/timeseries/compact/bin) are pinned
-# against the reference implementation by tests/compat.
+# by the report e2e suites in bins/codefang/tests.
 
 [dependencies]
 # Report-format-compatible JSON encoder. NEVER serde_json for output. The
@@ -45,3 +45,5 @@ cf-gosort = { path = "../cf-gosort" }
 pedantic = "warn"
 
 [dev-dependencies]
+# The YAML encoder, for the json/yaml asymmetry tests of the developer rows.
+cf-goyaml = { path = "../cf-goyaml" }

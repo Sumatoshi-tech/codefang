@@ -1,17 +1,18 @@
 //! Data types for the temporal anomaly analyzer.
 //!
-//! Each report-bearing type provides [`ToGoValue::to_go_value`] so it can be
-//! serialized through [`cf_gojson`] (and, later, `cf-goyaml`) with the
-//! contractual report bytes (pinned by `tests/compat`).
+//! Each report-bearing type provides [`ToGoValue::to_go_value`] so the SAME
+//! value tree is serialized through `cf-gojson` (json, bin) and `cf-goyaml`
+//! (yaml).
 //!
 //! # Ordering rules
 //!
 //! Wrapper structs serialize their fields in **declaration order** (via
 //! [`cf_gojson::GoMap::new_struct`]), honoring omit-when-empty. Dynamic report
-//! maps such as `commit_metrics` and the per-tick `languages` map serialize
-//! with **byte-sorted keys** (via [`cf_gojson::GoMap::new_map`]).
+//! maps such as the per-tick `languages` map serialize with **byte-sorted
+//! keys** (via [`cf_gojson::GoMap::new_map`]). Every list is present, `[]`
+//! when empty.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use cf_gojson::{GoMap, GoValue};
 
@@ -23,35 +24,68 @@ pub trait ToGoValue {
 
 /// Raw metrics collected for a single tick.
 ///
-/// An internal accumulation type — it is never serialized directly. Maps use
-/// [`BTreeMap`] so iteration order is deterministic (only map length and
-/// additive merging matter to the result).
+/// An internal accumulation type — it is never serialized directly. Maps and
+/// sets use their B-tree forms so iteration order is deterministic.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TickMetrics {
-    /// Number of files changed across the tick.
-    pub files_changed: i64,
     /// Lines added across the tick.
     pub lines_added: i64,
     /// Lines removed across the tick.
     pub lines_removed: i64,
     /// Net churn (`lines_added - lines_removed`).
     pub net_churn: i64,
-    /// Files changed in the tick (concatenated across commits).
-    pub files: Vec<String>,
+    /// The DISTINCT files touched in the tick, across all its commits.
+    pub files: BTreeSet<String>,
     /// Language name -> file count for this tick.
     pub languages: BTreeMap<String, i64>,
     /// Unique author IDs seen in this tick.
-    pub author_ids: std::collections::BTreeSet<i64>,
+    pub author_ids: BTreeSet<i64>,
 }
 
-/// Raw metrics for a single commit.
+impl TickMetrics {
+    /// Number of distinct files touched in the tick.
+    #[must_use]
+    #[allow(clippy::cast_possible_wrap)] // a file count never reaches i64::MAX
+    pub fn files_changed(&self) -> i64 {
+        self.files.len() as i64
+    }
+
+    /// Number of distinct languages touched in the tick.
+    #[must_use]
+    #[allow(clippy::cast_possible_wrap)]
+    pub fn language_diversity(&self) -> i64 {
+        self.languages.len() as i64
+    }
+
+    /// Number of distinct authors active in the tick.
+    #[must_use]
+    #[allow(clippy::cast_possible_wrap)]
+    pub fn author_count(&self) -> i64 {
+        self.author_ids.len() as i64
+    }
+
+    /// The tick's raw metric values.
+    #[must_use]
+    pub fn raw(&self) -> RawMetrics {
+        RawMetrics {
+            files_changed: self.files_changed(),
+            lines_added: self.lines_added,
+            lines_removed: self.lines_removed,
+            net_churn: self.net_churn,
+            language_diversity: self.language_diversity(),
+            author_count: self.author_count(),
+        }
+    }
+}
+
+/// Raw metrics for a single commit (the per-commit ndjson record).
 ///
-/// JSON field order and omit-when-empty semantics are part of the report
-/// contract: `files_changed, lines_added, lines_removed, net_churn,
-/// files (omitempty), languages (omitempty), author_id`.
+/// JSON field order and omit-when-empty semantics: `files_changed,
+/// lines_added, lines_removed, net_churn, files (omitempty), languages
+/// (omitempty), author_id`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CommitAnomalyData {
-    /// Files changed in the commit.
+    /// Distinct files changed in the commit.
     pub files_changed: i64,
     /// Lines added in the commit.
     pub lines_added: i64,
@@ -59,7 +93,8 @@ pub struct CommitAnomalyData {
     pub lines_removed: i64,
     /// Net churn (`lines_added - lines_removed`).
     pub net_churn: i64,
-    /// File names touched by the commit (omitted when empty).
+    /// File names touched by the commit — a delete names the deleted file
+    /// (omitted when empty).
     pub files: Vec<String>,
     /// Language name -> file count (omitted when empty).
     pub languages: BTreeMap<String, i64>,
@@ -202,9 +237,7 @@ impl ToGoValue for Record {
         m.push("z_scores", self.z_scores.to_go_value());
         m.push("max_abs_z_score", GoValue::Float(self.max_abs_z_score));
         m.push("metrics", self.metrics.to_go_value());
-        // `files` is always present and renders as `null` when empty
-        // (report-format contract).
-        m.push("files", string_array_or_null(&self.files));
+        m.push("files", string_array(&self.files));
         GoValue::Object(m)
     }
 }
@@ -276,7 +309,8 @@ impl ToGoValue for AggregateData {
 ///
 /// Field order:
 /// `tick, start_time (omitempty), end_time (omitempty), metrics,
-/// is_anomaly, churn_z_score, language_diversity, author_count`.
+/// is_anomaly, churn_z_score`. The raw values (including the language and
+/// author counts) live under `metrics` only.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TimeSeriesEntry {
     /// Time-period index.
@@ -291,10 +325,6 @@ pub struct TimeSeriesEntry {
     pub is_anomaly: bool,
     /// Net-churn Z-score for the tick.
     pub churn_z_score: f64,
-    /// Distinct languages this tick.
-    pub language_diversity: i64,
-    /// Distinct authors this tick.
-    pub author_count: i64,
 }
 
 impl ToGoValue for TimeSeriesEntry {
@@ -310,8 +340,6 @@ impl ToGoValue for TimeSeriesEntry {
         m.push("metrics", self.metrics.to_go_value());
         m.push("is_anomaly", GoValue::Bool(self.is_anomaly));
         m.push("churn_z_score", GoValue::Float(self.churn_z_score));
-        m.push("language_diversity", GoValue::Int(self.language_diversity));
-        m.push("author_count", GoValue::Int(self.author_count));
         GoValue::Object(m)
     }
 }
@@ -408,21 +436,7 @@ impl ComputedMetrics {
 impl ToGoValue for ComputedMetrics {
     fn to_go_value(&self) -> GoValue {
         let mut m = GoMap::new_struct();
-        // The report contract distinguishes an absent list from an empty one:
-        // with a non-empty time series, an empty anomaly set marshals as
-        // `null` (the main path's `var`-declared append target: no tick was
-        // flagged), while an EMPTY time series (zero-commit walk, e.g. a
-        // `--since` cutoff past every commit) takes the reference empty-input
-        // early return whose anomaly list is materialized — `[]`. Both cases
-        // oracle-measured; pinned by the differential gate.
-        m.push(
-            "anomalies",
-            if self.anomalies.is_empty() && self.time_series.is_empty() {
-                GoValue::Array(Vec::new())
-            } else {
-                records_array_or_null(&self.anomalies)
-            },
-        );
+        m.push("anomalies", records_array(&self.anomalies));
         m.push("time_series", time_series_array(&self.time_series));
         m.push("aggregate", self.aggregate.to_go_value());
         if !self.external_anomalies.is_empty() {
@@ -443,20 +457,9 @@ impl ToGoValue for ComputedMetrics {
 
 // --- serialization helpers ---
 
-/// Encodes a string list as a JSON array, never `null` (used where
-/// omit-when-empty already guarded against the empty case).
+/// Encodes a string list as a JSON array (`[]` when empty).
 fn string_array(items: &[String]) -> GoValue {
     GoValue::Array(items.iter().cloned().map(GoValue::Str).collect())
-}
-
-/// Encodes a string list that renders as `null` when empty (report-format
-/// contract for always-present list fields, e.g. `Record.files`).
-fn string_array_or_null(items: &[String]) -> GoValue {
-    if items.is_empty() {
-        GoValue::Null
-    } else {
-        string_array(items)
-    }
 }
 
 /// Encodes a string-keyed count map with byte-sorted keys (map-origin
@@ -471,18 +474,6 @@ fn lang_map(langs: &BTreeMap<String, i64>) -> GoValue {
 
 fn records_array(items: &[Record]) -> GoValue {
     GoValue::Array(items.iter().map(ToGoValue::to_go_value).collect())
-}
-
-/// Encodes the anomaly list with the contractual absent-list behavior: an
-/// empty list renders as `null` in JSON but `[]` in YAML, so it maps to
-/// [`GoValue::NilSlice`] (which each encoder renders the matching way), not
-/// to a bare `null` (which YAML would wrongly render as `null`).
-fn records_array_or_null(items: &[Record]) -> GoValue {
-    if items.is_empty() {
-        GoValue::NilSlice
-    } else {
-        records_array(items)
-    }
 }
 
 fn time_series_array(items: &[TimeSeriesEntry]) -> GoValue {
@@ -566,15 +557,14 @@ mod tests {
     }
 
     #[test]
-    fn record_emits_null_files_when_empty() {
+    fn record_emits_empty_files_list() {
         let rec = Record {
             tick: 4,
             max_abs_z_score: 5.0,
             ..Default::default()
         };
         let json = Encoder::marshal().encode_to_string(&rec.to_go_value());
-        // `files` is always present => `null` for an empty slice.
-        assert!(json.contains(r#""files":null"#), "got: {json}");
+        assert!(json.contains(r#""files":[]"#), "got: {json}");
     }
 
     #[test]
@@ -583,24 +573,48 @@ mod tests {
         let json = Encoder::marshal().encode_to_string(&cm.to_go_value());
         assert!(!json.contains("external_anomalies"), "got: {json}");
         assert!(!json.contains("external_summaries"), "got: {json}");
-        // An entirely empty report (zero-commit walk) takes the reference
-        // empty-input early return: BOTH lists are materialized (`[]`), never
-        // `null` (oracle-measured; the `null` case needs a non-empty
-        // time series — see `anomalies_null_with_nonempty_time_series`).
         assert!(json.contains(r#""anomalies":[]"#), "got: {json}");
         assert!(json.contains(r#""time_series":[]"#), "got: {json}");
     }
 
     #[test]
-    fn anomalies_null_with_nonempty_time_series() {
+    fn anomalies_is_an_empty_list_when_nothing_is_flagged() {
         let cm = ComputedMetrics {
             time_series: vec![TimeSeriesEntry::default()],
             ..ComputedMetrics::default()
         };
         let json = Encoder::marshal().encode_to_string(&cm.to_go_value());
-        // Main path (non-empty time series), zero detections: the reference
-        // `var`-declared append target stays nil => `null`.
-        assert!(json.contains(r#""anomalies":null"#), "got: {json}");
+        assert!(json.contains(r#""anomalies":[]"#), "got: {json}");
+        let yaml = String::from_utf8(cf_goyaml::marshal(&cm.to_go_value())).unwrap();
+        assert!(yaml.contains("anomalies: []"), "got: {yaml}");
+    }
+
+    #[test]
+    fn time_series_entry_carries_the_raw_values_once() {
+        let entry = TimeSeriesEntry {
+            tick: 3,
+            metrics: RawMetrics {
+                language_diversity: 2,
+                author_count: 4,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let json = Encoder::marshal().encode_to_string(&entry.to_go_value());
+        assert_eq!(
+            json,
+            r#"{"tick":3,"metrics":{"files_changed":0,"lines_added":0,"lines_removed":0,"net_churn":0,"language_diversity":2,"author_count":4},"is_anomaly":false,"churn_z_score":0}"#
+        );
+    }
+
+    #[test]
+    fn tick_metrics_count_distinct_files() {
+        let tm = TickMetrics {
+            files: BTreeSet::from(["a.go".to_string(), "b.go".to_string()]),
+            ..Default::default()
+        };
+        assert_eq!(tm.files_changed(), 2);
+        assert_eq!(tm.raw().files_changed, 2);
     }
 
     #[test]

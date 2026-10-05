@@ -1,31 +1,20 @@
-//! Standalone per-file Halstead analysis.
+//! Standalone per-file Halstead analysis — the entry point the
+//! `history/quality` analyzer consumes.
 //!
-//! This is the path used by the **quality** history analyzer (NOT the
-//! streaming visitor path the static pipeline uses). For each changed file's
-//! UAST root it:
-//!
-//!  1. finds every function node — UAST `Function`/`Method` type ∪ `Function`
-//!     role, at traversal depth ≤ [`crate::MAX_DEPTH`], each node once;
-//!  2. collects operators/operands over each function's **full subtree**;
-//!  3. aggregates per-function operator/operand maps into file-level distinct/
-//!     total counts and derives the file-level measures.
-//!
-//! Only the file-level scalars the quality analyzer reads — `volume`,
-//! `effort`, `delivered_bugs` — are returned; the CMS `estimated_total_*` path
-//! is omitted because it never feeds those scalars. A file with no functions
-//! yields all zeros.
-
-use std::collections::HashMap;
+//! It runs the same detector and the same union aggregate as the static
+//! `static/halstead` report ([`crate::aggregate`]), so a file measured by
+//! `quality` and by `static/halstead` yields the same volume, effort and bug
+//! estimate. Only the three file-level scalars the quality analyzer reads
+//! are returned; a file with no functions yields all zeros.
 
 use cf_uast_node::Node;
 
-use crate::calculator::{HalsteadCounts, MetricsCalculator};
-use crate::detector::{HalNode, OperatorOperandDetector};
+use crate::aggregate::{analyze_functions, summarize};
 
 /// File-level Halstead measures consumed by the quality analyzer.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct FileHalstead {
-    /// V — file-level volume.
+    /// V — file-level volume (union of every function's multisets).
     pub volume: f64,
     /// E — file-level effort.
     pub effort: f64,
@@ -33,98 +22,26 @@ pub struct FileHalstead {
     pub delivered_bugs: f64,
 }
 
-/// [`HalNode`] adapter over the production `cf_uast_node::Node`.
-///
-/// The detector reads the type, token, roles, props, and children; these map
-/// directly onto the node fields. The role/type strings are the canonical
-/// UAST strings the parser emits, which is what the detector matches.
-impl HalNode for Node {
-    fn node_type(&self) -> &str {
-        &self.node_type
-    }
-    fn token(&self) -> &str {
-        &self.token
-    }
-    fn has_any_role(&self, roles: &[&str]) -> bool {
-        Node::has_any_role(self, roles)
-    }
-    fn prop(&self, key: &str) -> Option<&str> {
-        self.props.get(key).map(String::as_str)
-    }
-    fn children(&self) -> &[Self] {
-        &self.children
-    }
-}
-
-/// Runs the standalone Halstead analysis over `root`, returning the file-level
-/// measures.
+/// Runs the file-level analysis over `root` without the file's source bytes
+/// (token-less nodes are recovered through verbatim tokens only; see
+/// [`crate::detector::collect_functions`]). Prefer [`analyze_with_source`]
+/// when the bytes are at hand.
 #[must_use]
-#[allow(clippy::cast_possible_wrap)] // distinct-token counts fit i64
 pub fn analyze(root: &Node) -> FileHalstead {
-    let functions = find_functions(root);
-    if functions.is_empty() {
-        return FileHalstead::default();
-    }
-
-    let detector = OperatorOperandDetector::new();
-    let calc = MetricsCalculator::new();
-
-    // Aggregate per-function operator/operand maps into file-level maps.
-    let mut file_operators: HashMap<String, i64> = HashMap::new();
-    let mut file_operands: HashMap<String, i64> = HashMap::new();
-
-    for f_node in &functions {
-        let mut operators: HashMap<String, i64> = HashMap::new();
-        let mut operands: HashMap<String, i64> = HashMap::new();
-        detector.collect(*f_node, &mut operators, &mut operands);
-
-        for (op, count) in &operators {
-            *file_operators.entry(op.clone()).or_insert(0) += *count;
-        }
-        for (opnd, count) in &operands {
-            *file_operands.entry(opnd.clone()).or_insert(0) += *count;
-        }
-    }
-
-    let counts = HalsteadCounts {
-        distinct_operators: file_operators.len() as i64,
-        distinct_operands: file_operands.len() as i64,
-        total_operators: calc.sum_map(&file_operators),
-        total_operands: calc.sum_map(&file_operands),
-    };
-    let d = calc.calculate(counts);
-
-    FileHalstead {
-        volume: d.volume,
-        effort: d.effort,
-        delivered_bugs: d.delivered_bugs,
-    }
+    analyze_with_source(root, None)
 }
 
-/// Finds all function nodes: UAST `Function`/`Method` types ∪ `Function` role,
-/// traversal depth ≤ [`crate::MAX_DEPTH`], each node once.
-///
-/// The reference behavior unions a type-traversal and a role-traversal into an
-/// identity set; both share the same pre-order DFS, so a node matching both
-/// appears once. A single DFS that yields any node matching either criterion
-/// is equivalent because each node is visited exactly once.
-fn find_functions(root: &Node) -> Vec<&Node> {
-    let mut out: Vec<&Node> = Vec::new();
-    // Iterative pre-order DFS with depth; root at depth 0.
-    let mut stack: Vec<(&Node, i64)> = vec![(root, 0)];
-    while let Some((node, depth)) = stack.pop() {
-        if depth <= crate::MAX_DEPTH {
-            let by_type = node.node_type == "Function" || node.node_type == "Method";
-            let by_role = HalNode::has_any_role(node, &["Function"]);
-            if by_type || by_role {
-                out.push(node);
-            }
-        }
-        for child in node.children.iter().rev() {
-            stack.push((child, depth + 1));
-        }
+/// Runs the file-level analysis over `root`, reading token-less nodes back
+/// from `source` by span.
+#[must_use]
+pub fn analyze_with_source(root: &Node, source: Option<&[u8]>) -> FileHalstead {
+    let functions = analyze_functions(root, source);
+    let summary = summarize(&functions);
+    FileHalstead {
+        volume: summary.derived.volume,
+        effort: summary.derived.effort,
+        delivered_bugs: summary.derived.delivered_bugs,
     }
-    out
 }
 
 #[cfg(test)]
@@ -133,11 +50,34 @@ mod tests {
 
     #[test]
     fn empty_tree_is_zero() {
-        let root = Node {
-            node_type: "File".to_string(),
-            ..Node::default()
-        };
-        let r = analyze(&root);
-        assert_eq!(r, FileHalstead::default());
+        assert_eq!(
+            analyze(&Node::with_token("File", "")),
+            FileHalstead::default()
+        );
+    }
+
+    /// `func same() int { return 1 }` has one operator and one operand:
+    /// n = 2, N = 2, V = 2 · log2(2) = 2.
+    #[test]
+    fn one_return_function_has_positive_volume() {
+        let mut lit = Node::with_token("Literal", "1");
+        lit.roles = vec!["Literal".into()];
+        let mut ret = Node::with_token("Return", "return 1");
+        ret.roles = vec!["Return".into()];
+        ret.add_child(lit);
+        let mut body = Node::with_token("Block", "");
+        body.roles = vec!["Body".into()];
+        body.add_child(ret);
+        let mut f = Node::with_token("Function", "");
+        f.roles = vec!["Function".into(), "Declaration".into()];
+        f.props.insert("name".into(), "same".into());
+        f.add_child(body);
+        let mut root = Node::with_token("File", "");
+        root.add_child(f);
+
+        let h = analyze(&root);
+        assert_eq!(h.volume, 2.0);
+        assert_eq!(h.effort, 1.0); // D = (1/2) · (1/1) = 0.5
+        assert_eq!(h.delivered_bugs, 2.0 / 3000.0);
     }
 }

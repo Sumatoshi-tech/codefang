@@ -17,13 +17,60 @@
 //!   is produced; with none, it is dropped.
 //! - **IDs.** Stable IDs are assigned in a later pass (the `uast parse`
 //!   command calls `assign_stable_ids`); this lowering leaves `id` empty.
+//!
+//! # Shape contract (language-agnostic guarantees)
+//!
+//! Documented for analyzer authors in `site/architecture/uast.md`; every
+//! mapping table inherits them without spelling them out:
+//!
+//! - **Operator text.** A mapped node gets `props.operator` from, in order:
+//!   the rule's own `operator` prop; a tree-sitter field named `operator`,
+//!   `op` or `operation`; the space-joined repeated `operators` field; and —
+//!   for `BinaryOp` / `UnaryOp` / `Assignment` nodes only — the first
+//!   anonymous child token (`=`, `not`, `++`, …). See [`OPERATOR_FIELDS`].
+//! - **Source-text tokens.** `Identifier` and `Literal` nodes whose rule
+//!   names no token source carry the node's source text.
+//! - **Leaf comments.** `Comment` nodes never have children and their span
+//!   and token never include the trailing line terminator.
+//! - **Else role.** Children lowered from an `If`'s `alternative` field carry
+//!   the `Else` role, so an else-if link (`If` under `If`) and an else branch
+//!   (`Block` under `If`) are recognisable without a wrapper node.
+//! - **Prop values.** `@capture` resolves a query capture, `descendant:<kind>`
+//!   the first descendant's text, anything else is a literal.
+//! - **Conditions.** A dotted condition path may start with `parent` to
+//!   inspect the enclosing tree-sitter node (`parent.type == "..."`).
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use cf_uast_mapping::{PatternMatcher, Rule};
-use cf_uast_node::{Node, Positions};
+use cf_uast_node::{
+    Node, Positions, ROLE_ELSE, UAST_ASSIGNMENT, UAST_BINARY_OP, UAST_COMMENT, UAST_IDENTIFIER,
+    UAST_IF, UAST_LITERAL, UAST_UNARY_OP,
+};
 use tree_sitter::{Node as TsNode, Query, Tree};
+
+/// The `props` key carrying an operator node's operator text.
+const PROP_OPERATOR: &str = "operator";
+/// Tree-sitter field names that hold a node's operator token, in lookup
+/// order (`operator`: most grammars; `op`: tree-sitter-swift; `operation`:
+/// tree-sitter-swift prefix expressions).
+const OPERATOR_FIELDS: &[&str] = &["operator", "op", "operation"];
+/// The repeated field tree-sitter-python's `comparison_operator` uses for a
+/// chain (`a < b <= c`); its values are space-joined.
+const OPERATORS_FIELD: &str = "operators";
+/// UAST types whose operator text may fall back to the first anonymous child.
+const OPERATOR_TYPES: &[&str] = &[UAST_BINARY_OP, UAST_UNARY_OP, UAST_ASSIGNMENT];
+/// UAST types whose token defaults to the node's source text.
+const SOURCE_TEXT_TYPES: &[&str] = &[UAST_IDENTIFIER, UAST_LITERAL];
+/// The tree-sitter field holding an `If`'s else / else-if branch.
+const FIELD_ALTERNATIVE: &str = "alternative";
+/// The condition-path segment that steps to the tree-sitter parent.
+const PARENT_SEGMENT: &str = "parent";
+/// Prop-value prefix selecting the first descendant of a kind.
+const PROP_DESCENDANT_PREFIX: &str = "descendant:";
+/// Prop-value prefix selecting a query capture.
+const PROP_CAPTURE_PREFIX: char = '@';
 
 /// A mapping [`Rule`] with its inheritance already merged and its pattern
 /// already compiled.
@@ -250,7 +297,13 @@ impl<'a> Lowering<'a> {
             return self.finish_unmapped_node(root, node_type, mapped_children);
         };
 
-        let children = self.process_children(root, Some(resolved));
+        // Comments are leaves (shape contract): a doc comment's marker/text
+        // sub-nodes would otherwise lower to nested Comments.
+        let children = if resolved.rule.uast_spec.r#type == UAST_COMMENT {
+            Vec::new()
+        } else {
+            self.process_children(root, Some(resolved))
+        };
 
         if self.should_skip_node(root, Some(resolved)) {
             return None;
@@ -285,6 +338,7 @@ impl<'a> Lowering<'a> {
     fn process_children(&self, root: TsNode<'_>, mapping_rule: Option<&ResolvedRule>) -> Vec<Node> {
         let count = root.named_child_count();
         let mut children = Vec::with_capacity(count);
+        let alternatives = Self::alternative_child_ids(root, mapping_rule);
         // Index-based `named_child(idx)`, NOT a cursor walk and NOT the
         // cursor-backed `named_children` iterator: only per-index construction
         // assigns production aliases correctly (extras keep their raw kind) —
@@ -295,12 +349,33 @@ impl<'a> Lowering<'a> {
             };
             if !self.should_exclude_child(child, mapping_rule) {
                 let child_ctx = self.derive_parent_context(root, mapping_rule);
-                if let Some(canonical) = self.to_canonical_node(child, &child_ctx) {
+                if let Some(mut canonical) = self.to_canonical_node(child, &child_ctx) {
+                    if alternatives.contains(&child.id())
+                        && !canonical.roles.iter().any(|r| r == ROLE_ELSE)
+                    {
+                        canonical.roles.push(ROLE_ELSE.to_string());
+                    }
                     children.push(canonical);
                 }
             }
         }
         children
+    }
+
+    /// The tree-sitter ids of an `If` node's `alternative`-field children
+    /// (else / else-if branches); empty for every other rule type.
+    ///
+    /// Identity is compared by [`TsNode::id`] rather than by index so the
+    /// per-index named-child construction above stays untouched.
+    fn alternative_child_ids(root: TsNode<'_>, mapping_rule: Option<&ResolvedRule>) -> Vec<usize> {
+        let is_if = mapping_rule.is_some_and(|r| r.rule.uast_spec.r#type == UAST_IF);
+        if !is_if {
+            return Vec::new();
+        }
+        let mut cursor = root.walk();
+        root.children_by_field_name(FIELD_ALTERNATIVE, &mut cursor)
+            .map(|n| n.id())
+            .collect()
     }
 
     /// The context string a child sees: the parent rule's UAST type, or the
@@ -458,7 +533,8 @@ impl<'a> Lowering<'a> {
     /// Resolves a dotted condition path against `root` and returns the value
     /// to compare: the resolved node's alias-aware type for a terminal
     /// `.type` segment, its source text otherwise. `None` when any segment
-    /// fails to resolve (the condition is then false).
+    /// fails to resolve (the condition is then false). A `parent` segment
+    /// steps to the enclosing tree-sitter node (`parent.type == "pair"`).
     fn resolve_field_path(&self, root: TsNode<'_>, path: &str) -> Option<String> {
         let mut segments: Vec<&str> = path.split('.').collect();
         let terminal_is_type = segments.last() == Some(&"type");
@@ -468,7 +544,11 @@ impl<'a> Lowering<'a> {
 
         let mut node = root;
         for seg in &segments {
-            node = self.resolve_path_segment(node, seg)?;
+            node = if *seg == PARENT_SEGMENT {
+                node.parent()?
+            } else {
+                self.resolve_path_segment(node, seg)?
+            };
         }
 
         if terminal_is_type {
@@ -541,9 +621,14 @@ impl<'a> Lowering<'a> {
         let mut props: HashMap<String, String> = HashMap::new();
         self.extract_properties(root, rule, &mut props);
         self.extract_name(root, rule, &mut props);
+        self.extract_operator(root, rule, &mut props);
 
         let pos = self.extract_positions(root);
-        let token_text = self.extract_token_text(root, rule);
+        let uast_type = rule.uast_spec.r#type.as_str();
+        let mut token_text = self.extract_token_text(root, rule);
+        if token_text.is_empty() && SOURCE_TEXT_TYPES.contains(&uast_type) {
+            token_text = self.extract_node_text(root);
+        }
 
         let mut node = Node::new(
             Vec::new(),
@@ -559,7 +644,90 @@ impl<'a> Lowering<'a> {
         // spec resolves to a `fields.name`/`text` source.
         self.extract_token(root, rule, &mut node);
 
+        if uast_type == UAST_COMMENT {
+            self.trim_comment_span(&mut node);
+        }
+
         node
+    }
+
+    /// Fills `props["operator"]` for operator nodes (shape contract): an
+    /// explicit rule prop wins; then the grammar's operator field(s); then,
+    /// for [`OPERATOR_TYPES`], the first anonymous child token.
+    fn extract_operator(&self, root: TsNode<'_>, rule: &Rule, props: &mut HashMap<String, String>) {
+        if props.contains_key(PROP_OPERATOR) {
+            return;
+        }
+        let from_fields = self.operator_from_fields(root);
+        let text = if from_fields.is_some() {
+            from_fields
+        } else if OPERATOR_TYPES.contains(&rule.uast_spec.r#type.as_str()) {
+            self.first_anonymous_child_text(root)
+        } else {
+            None
+        };
+        if let Some(text) = text.filter(|t| !t.is_empty()) {
+            props.insert(PROP_OPERATOR.to_string(), text);
+        }
+    }
+
+    /// The operator text held by one of [`OPERATOR_FIELDS`], or the
+    /// space-joined values of the repeated [`OPERATORS_FIELD`].
+    fn operator_from_fields(&self, root: TsNode<'_>) -> Option<String> {
+        for field in OPERATOR_FIELDS {
+            if let Some(op) = root.child_by_field_name(field) {
+                return Some(self.extract_node_text(op));
+            }
+        }
+        let mut cursor = root.walk();
+        let chain: Vec<String> = root
+            .children_by_field_name(OPERATORS_FIELD, &mut cursor)
+            .map(|n| self.extract_node_text(n))
+            .collect();
+        if chain.is_empty() {
+            None
+        } else {
+            Some(chain.join(" "))
+        }
+    }
+
+    /// The text of the node's first anonymous (unnamed) child — the operator
+    /// keyword or symbol of grammars that give it no field (`=`, `not`, `++`).
+    fn first_anonymous_child_text(&self, root: TsNode<'_>) -> Option<String> {
+        let mut cursor = root.walk();
+        let first = root.children(&mut cursor).find(|c| !c.is_named());
+        first.map(|c| self.extract_node_text(c))
+    }
+
+    /// Drops the trailing line terminator(s) from a `Comment`'s span and
+    /// token: tree-sitter-rust's doc-comment token swallows the newline, so
+    /// the raw span ended at column 1 of the NEXT line.
+    fn trim_comment_span(&self, node: &mut Node) {
+        let Some(pos) = node.pos.as_mut() else {
+            return;
+        };
+        let (start, end) = (
+            usize::try_from(pos.start_offset).unwrap_or(usize::MAX),
+            usize::try_from(pos.end_offset).unwrap_or(usize::MAX),
+        );
+        if start > end || end > self.source.len() {
+            return;
+        }
+        let text = &self.source[start..end];
+        let kept = text.len() - trailing_line_terminators(text);
+        if kept == text.len() {
+            return;
+        }
+        let trimmed = &text[..kept];
+        pos.end_offset = (start + kept) as u64;
+        let newlines = trimmed.iter().filter(|&&b| b == b'\n').count() as u64;
+        pos.end_line = pos.start_line + newlines;
+        pos.end_col = match trimmed.iter().rposition(|&b| b == b'\n') {
+            Some(last_nl) => (kept - last_nl - 1) as u64 + 1,
+            None => pos.start_col + kept as u64,
+        };
+        let token_kept = node.token.trim_end_matches(['\n', '\r']).len();
+        node.token.truncate(token_kept);
     }
 
     /// The rule's roles, verbatim.
@@ -610,31 +778,18 @@ impl<'a> Lowering<'a> {
         }
     }
 
-    /// Resolves one prop value: `@capture`, `descendant:<type>`, or a direct
-    /// child type.
+    /// Resolves one prop value: `@capture` (a query capture),
+    /// `descendant:<kind>` (the first descendant's text), or a literal.
     fn extract_property_value(&self, root: TsNode<'_>, prop: &str) -> String {
-        if let Some(capture) = prop.strip_prefix('@') {
+        if let Some(capture) = prop.strip_prefix(PROP_CAPTURE_PREFIX) {
             if !capture.is_empty() {
                 return self.extract_capture_text(root, capture);
             }
         }
-        if let Some(after) = prop.strip_prefix("descendant:") {
+        if let Some(after) = prop.strip_prefix(PROP_DESCENDANT_PREFIX) {
             return self.find_descendant_token(root, after);
         }
-        self.extract_direct_child_property(root, prop)
-    }
-
-    /// The text of the first named child whose type equals `prop`.
-    fn extract_direct_child_property(&self, root: TsNode<'_>, prop: &str) -> String {
-        let count = root.named_child_count();
-        for idx in 0..count {
-            if let Some(child) = root.named_child(idx) {
-                if self.node_type(child) == prop {
-                    return self.extract_node_text(child);
-                }
-            }
-        }
-        String::new()
+        prop.to_string()
     }
 
     /// Post-construction token override (see [`Self::create_mapped_node`]).
@@ -849,6 +1004,14 @@ impl<'a> Lowering<'a> {
         }
         String::new()
     }
+}
+
+/// The number of trailing `\n` / `\r` bytes in `text`.
+fn trailing_line_terminators(text: &[u8]) -> usize {
+    text.iter()
+        .rev()
+        .take_while(|&&b| b == b'\n' || b == b'\r')
+        .count()
 }
 
 /// The first descendant (pre-order, including self) of the given type.

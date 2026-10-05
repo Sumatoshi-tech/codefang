@@ -6,7 +6,7 @@
 //! byte-identity-critical export is [`Node::to_map`], whose output is serialized
 //! into machine reports — its keys (`children`, `id`, `pos`, `props`, `roles`,
 //! `token`, `type`) must emit in raw-UTF-8 byte order (report-format contract;
-//! pinned by `tests/compat`). To guarantee that, [`Node::to_map`] returns a
+//! pinned by the report e2e suites (`bins/codefang/tests`)). To guarantee that, [`Node::to_map`] returns a
 //! [`GoValue`] built from a map-origin [`GoMap`] (sort-on-encode), never
 //! `serde_json`. See DESIGN.md §2.2.
 //!

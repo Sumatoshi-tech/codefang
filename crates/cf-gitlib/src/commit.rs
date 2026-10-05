@@ -200,8 +200,13 @@ impl<'repo> Commit<'repo> {
 /// An iterator over commits from a revwalk.
 ///
 /// Looks up full commit objects lazily and honors an optional `since`
-/// author-time filter: when set, iteration stops at the first commit whose
-/// author time is strictly before `since`.
+/// author-time filter: when set, every commit whose author time is strictly
+/// before `since` is SKIPPED and the walk continues. The walk itself is
+/// ordered by committer time, and author time can be arbitrarily skewed
+/// against it (`git commit --date`, rebases, imported history), so the first
+/// too-old commit is not a stop condition — stopping there dropped younger
+/// commits that happened to sort below it. The price is a full walk when
+/// `--since` is set.
 ///
 /// Implements [`cf_alg::PullIterator`].
 pub struct CommitIter<'repo> {
@@ -239,7 +244,8 @@ impl<'repo> CommitIter<'repo> {
 
     /// Returns the next commit, or `None` at end of iteration.
     ///
-    /// Frees the walk once exhausted or filtered out.
+    /// Commits older than the `since` cutoff (author time) are skipped; the
+    /// walk is freed once exhausted.
     #[must_use]
     pub fn next_commit(&mut self) -> Option<Commit<'repo>> {
         let walk = self.walk.as_mut()?;
@@ -254,11 +260,8 @@ impl<'repo> CommitIter<'repo> {
                 continue;
             };
 
-            if let Some(since) = self.since {
-                if time_before(commit.author().when(), since) {
-                    self.walk = None;
-                    return None;
-                }
+            if is_before_since(&commit, self.since) {
+                continue;
             }
 
             return Some(Commit::new(commit, self.repo));
@@ -295,31 +298,32 @@ impl<'repo> CommitIter<'repo> {
         Ok(())
     }
 
-    /// Advances by one commit without materializing a `Commit`.
+    /// Advances by one in-window commit without materializing a `Commit`.
     ///
-    /// Returns `true` if a commit was consumed, `false` at EOF / since-cutoff.
+    /// Returns `true` if a commit was consumed, `false` at EOF.
     fn skip1(&mut self) -> bool {
-        let Some(walk) = self.walk.as_mut() else {
-            return false;
-        };
+        loop {
+            let Some(walk) = self.walk.as_mut() else {
+                return false;
+            };
 
-        let Some(Ok(oid)) = walk.next() else {
-            self.walk = None;
-            return false;
-        };
+            let Some(Ok(oid)) = walk.next() else {
+                self.walk = None;
+                return false;
+            };
 
-        if let Some(since) = self.since {
-            // Look up the commit to inspect its author time.
+            if self.since.is_none() {
+                return true;
+            }
+            // Look up the commit to inspect its author time; a commit before
+            // the cutoff is skipped, like `next_commit` does.
             let Ok(commit) = self.repo.native().find_commit(oid) else {
                 return false;
             };
-            if time_before(commit.author().when(), since) {
-                self.walk = None;
-                return false;
+            if !is_before_since(&commit, self.since) {
+                return true;
             }
         }
-
-        true
     }
 
     /// Releases the walk; idempotent.
@@ -336,6 +340,12 @@ impl<'repo> PullIterator<Commit<'repo>> for CommitIter<'repo> {
     fn close(&mut self) {
         CommitIter::close(self);
     }
+}
+
+/// Whether `commit`'s author time falls before the `since` cutoff (no cutoff
+/// ⇒ never).
+fn is_before_since(commit: &git2::Commit<'_>, since: Option<git2::Time>) -> bool {
+    since.is_some_and(|since| time_before(commit.author().when(), since))
 }
 
 /// Reports whether `a` is strictly before `b`.

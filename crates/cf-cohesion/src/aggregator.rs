@@ -1,215 +1,232 @@
-//! Result aggregation.
+//! Cross-file aggregation.
 //!
-//! When cohesion runs over many files (and when it feeds the quality analyzer /
-//! timeseries), per-file reports are merged into one: numeric mean over
-//! `lcom`/`cohesion_score`/`function_cohesion`, sum over `total_functions`,
-//! concatenation + de-dup of the `functions` table keyed by
-//! `("_source_file", "name")`, and a recomputed message. The aggregation keys
-//! and the message labeler are part of the report contract.
+//! Every function of every analyzed file is kept (no de-duplication by name);
+//! files without functions carry no cohesion data and are excluded from every
+//! denominator. `lcom` is the function-weighted mean of the per-file LCOM-HS
+//! values (a variable is a per-file notion, so LCOM is never recomputed over
+//! the union), `cohesion_score = 1 - lcom`, and `function_cohesion` is the
+//! mean per-function cohesion over all functions.
 
-use crate::report_value::{Report, ReportValue};
-use std::collections::{BTreeMap, BTreeSet};
+use crate::analyzer::FileReport;
+use crate::calc;
 
-const SCORE_THRESHOLD_HIGH: f64 = 0.7;
-const SCORE_THRESHOLD_MEDIUM: f64 = 0.4;
-const SCORE_THRESHOLD_LOW: f64 = 0.3;
+/// Overall message when no analyzed file has a function.
+pub const NO_DATA_MESSAGE: &str = "No cohesion data available";
 
-/// Numeric keys averaged across reports.
-pub const NUMERIC_KEYS: [&str; 3] = ["lcom", "cohesion_score", "function_cohesion"];
-/// Count keys summed across reports.
-pub const COUNT_KEYS: [&str; 1] = ["total_functions"];
-/// The collection key holding the per-function table.
-pub const COLLECTION_KEY: &str = "functions";
-/// The composite identity used to de-duplicate function rows.
-pub const DEDUP_KEYS: [&str; 2] = ["_source_file", "name"];
+const MESSAGE_THRESHOLD_EXCELLENT: f64 = 0.7;
+const MESSAGE_THRESHOLD_GOOD: f64 = 0.4;
+const MESSAGE_THRESHOLD_FAIR: f64 = 0.3;
 
-/// Overall-cohesion message keyed by the aggregated score (distinct wording
-/// from the per-analyzer message; both are part of the report contract).
+/// One analyzed file: its path relative to the analyzed root and its report.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnalyzedFile {
+    /// Path relative to the analyzed root.
+    pub path: String,
+    /// The file's cohesion report.
+    pub report: FileReport,
+}
+
+/// One function in the cross-file table.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AggregatedFunction {
+    /// Source file (relative path).
+    pub source_file: String,
+    /// Function name.
+    pub name: String,
+    /// 1-based first source line.
+    pub start_line: u64,
+    /// Source lines spanned.
+    pub line_count: u64,
+    /// Distinct variables used.
+    pub variable_count: usize,
+    /// Per-function cohesion.
+    pub cohesion: f64,
+}
+
+/// The cross-file aggregate.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Aggregate {
+    /// Files that were parsed and analyzed.
+    pub files_analyzed: usize,
+    /// Files with at least one function (the data-bearing files).
+    pub files_with_functions: usize,
+    /// Number of functions across all files.
+    pub total_functions: usize,
+    /// Function-weighted mean of the per-file LCOM-HS.
+    pub lcom: f64,
+    /// `1 - lcom`.
+    pub cohesion_score: f64,
+    /// Mean per-function cohesion over all functions.
+    pub function_cohesion: f64,
+    /// Every function, in walk order (file, then source position).
+    pub functions: Vec<AggregatedFunction>,
+    /// Overall message (see [`overall_message`]); [`NO_DATA_MESSAGE`] when
+    /// there are no functions.
+    pub message: String,
+}
+
+impl Aggregate {
+    /// The aggregate of `files_analyzed` files none of which has a function.
+    #[must_use]
+    pub fn no_data(files_analyzed: usize) -> Self {
+        Aggregate {
+            files_analyzed,
+            files_with_functions: 0,
+            total_functions: 0,
+            lcom: 0.0,
+            cohesion_score: 0.0,
+            function_cohesion: 0.0,
+            functions: Vec::new(),
+            message: NO_DATA_MESSAGE.to_string(),
+        }
+    }
+
+    /// True when at least one function was found.
+    #[must_use]
+    pub fn has_data(&self) -> bool {
+        self.total_functions > 0
+    }
+}
+
+/// Aggregates per-file reports (see the module docs for the semantics).
 #[must_use]
-pub fn get_cohesion_message(score: f64) -> &'static str {
-    if score >= SCORE_THRESHOLD_HIGH {
+pub fn aggregate(files: &[AnalyzedFile]) -> Aggregate {
+    let mut functions: Vec<AggregatedFunction> = Vec::new();
+    let mut weighted_lcom = 0.0;
+    let mut files_with_functions = 0;
+    for file in files {
+        if !file.report.has_functions() {
+            continue;
+        }
+        files_with_functions += 1;
+        weighted_lcom += file.report.lcom * file.report.total_functions as f64;
+        functions.extend(file.report.functions.iter().map(|f| AggregatedFunction {
+            source_file: file.path.clone(),
+            name: f.name.clone(),
+            start_line: f.start_line,
+            line_count: f.line_count,
+            variable_count: f.variable_count,
+            cohesion: f.cohesion,
+        }));
+    }
+    if functions.is_empty() {
+        return Aggregate::no_data(files.len());
+    }
+    let total = functions.len();
+    let lcom = weighted_lcom / total as f64;
+    let cohesions: Vec<f64> = functions.iter().map(|f| f.cohesion).collect();
+    let cohesion_score = calc::cohesion_score(lcom);
+    Aggregate {
+        files_analyzed: files.len(),
+        files_with_functions,
+        total_functions: total,
+        lcom,
+        cohesion_score,
+        function_cohesion: calc::mean_or(&cohesions, 0.0),
+        functions,
+        message: overall_message(cohesion_score).to_string(),
+    }
+}
+
+/// Overall message keyed on the aggregate `cohesion_score`.
+#[must_use]
+pub fn overall_message(score: f64) -> &'static str {
+    if score >= MESSAGE_THRESHOLD_EXCELLENT {
         "Excellent overall cohesion across all analyzed code"
-    } else if score >= SCORE_THRESHOLD_MEDIUM {
+    } else if score >= MESSAGE_THRESHOLD_GOOD {
         "Good overall cohesion with room for improvement"
-    } else if score >= SCORE_THRESHOLD_LOW {
+    } else if score >= MESSAGE_THRESHOLD_FAIR {
         "Fair overall cohesion - consider refactoring some functions"
     } else {
         "Poor overall cohesion - significant refactoring recommended"
     }
 }
 
-/// The empty aggregated result.
-#[must_use]
-pub fn create_empty_result() -> Report {
-    let mut r = Report::new();
-    r.insert("total_functions".into(), ReportValue::Int(0));
-    r.insert("lcom".into(), ReportValue::Float(0.0));
-    r.insert("cohesion_score".into(), ReportValue::Float(1.0));
-    r.insert("function_cohesion".into(), ReportValue::Float(1.0));
-    r.insert(
-        "message".into(),
-        ReportValue::Str("No functions found".into()),
-    );
-    r
-}
-
-/// Aggregates multiple per-file cohesion reports into one.
-///
-/// Semantics:
-/// * `total_functions` = sum across reports.
-/// * `lcom`, `cohesion_score`, `function_cohesion` = arithmetic mean across reports
-///   that carry the key.
-/// * `functions` = concatenation of every report's table, de-duplicated by the
-///   `(_source_file, name)` identity (first occurrence wins).
-/// * `message` = recomputed from the aggregated `cohesion_score` via
-///   [`get_cohesion_message`].
-///
-/// An empty input yields [`create_empty_result`].
-#[must_use]
-pub fn aggregate(reports: &[Report]) -> Report {
-    if reports.is_empty() {
-        return create_empty_result();
-    }
-
-    let mut total_functions = 0i64;
-    let mut numeric_sums: BTreeMap<&str, f64> = BTreeMap::new();
-    let mut numeric_counts: BTreeMap<&str, usize> = BTreeMap::new();
-    let mut functions: Vec<BTreeMap<String, ReportValue>> = Vec::new();
-    let mut seen: BTreeSet<(String, String)> = BTreeSet::new();
-
-    for report in reports {
-        for k in COUNT_KEYS {
-            if let Some(v) = report.get(k).and_then(ReportValue::as_int) {
-                total_functions += v;
-            }
-        }
-        for k in NUMERIC_KEYS {
-            if let Some(v) = report.get(k).and_then(ReportValue::as_float) {
-                *numeric_sums.entry(k).or_insert(0.0) += v;
-                *numeric_counts.entry(k).or_insert(0) += 1;
-            }
-        }
-        if let Some(rows) = report
-            .get(COLLECTION_KEY)
-            .and_then(ReportValue::as_functions)
-        {
-            for row in rows {
-                let sf = row
-                    .get(DEDUP_KEYS[0])
-                    .and_then(ReportValue::as_str)
-                    .unwrap_or("")
-                    .to_string();
-                let name = row
-                    .get(DEDUP_KEYS[1])
-                    .and_then(ReportValue::as_str)
-                    .unwrap_or("")
-                    .to_string();
-                if seen.insert((sf, name)) {
-                    functions.push(row.clone());
-                }
-            }
-        }
-    }
-
-    let mean = |k: &str| -> f64 {
-        let count = numeric_counts.get(k).copied().unwrap_or(0);
-        if count == 0 {
-            0.0
-        } else {
-            numeric_sums.get(k).copied().unwrap_or(0.0) / count as f64
-        }
-    };
-
-    let cohesion_score = mean("cohesion_score");
-
-    let mut out = Report::new();
-    out.insert("total_functions".into(), ReportValue::Int(total_functions));
-    out.insert("lcom".into(), ReportValue::Float(mean("lcom")));
-    out.insert("cohesion_score".into(), ReportValue::Float(cohesion_score));
-    out.insert(
-        "function_cohesion".into(),
-        ReportValue::Float(mean("function_cohesion")),
-    );
-    // The report contract sorts the de-duplicated rows by the *last* identifier
-    // key ("name") with the pinned unstable sort (pdqsort) before they enter
-    // the report. Replicating both the key and the exact tie permutation here
-    // is what makes the downstream value-sort in `report_section` (also the
-    // pinned pdqsort) emit the same byte order as the reference.
-    cf_gosort::go_sort_slice(&mut functions, |a, b| {
-        let na = a
-            .get(DEDUP_KEYS[1])
-            .and_then(ReportValue::as_str)
-            .unwrap_or("");
-        let nb = b
-            .get(DEDUP_KEYS[1])
-            .and_then(ReportValue::as_str)
-            .unwrap_or("");
-        na < nb
-    });
-    out.insert("functions".into(), ReportValue::Functions(functions));
-    out.insert(
-        "message".into(),
-        ReportValue::Str(get_cohesion_message(cohesion_score).into()),
-    );
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::analyzer::FunctionMetrics;
 
-    fn report(total: i64, lcom: f64, score: f64, fcoh: f64) -> Report {
-        let mut r = Report::new();
-        r.insert("total_functions".into(), ReportValue::Int(total));
-        r.insert("lcom".into(), ReportValue::Float(lcom));
-        r.insert("cohesion_score".into(), ReportValue::Float(score));
-        r.insert("function_cohesion".into(), ReportValue::Float(fcoh));
-        r
+    fn file(path: &str, lcom: f64, cohesions: &[f64]) -> AnalyzedFile {
+        let functions: Vec<FunctionMetrics> = cohesions
+            .iter()
+            .enumerate()
+            .map(|(i, c)| FunctionMetrics {
+                name: format!("f{i}"),
+                start_line: i as u64 + 1,
+                line_count: 1,
+                variable_count: 1,
+                cohesion: *c,
+            })
+            .collect();
+        AnalyzedFile {
+            path: path.to_string(),
+            report: FileReport {
+                total_functions: functions.len(),
+                lcom,
+                cohesion_score: 1.0 - lcom,
+                function_cohesion: calc::mean_or(cohesions, 1.0),
+                functions,
+                message: String::new(),
+            },
+        }
     }
 
     #[test]
-    fn empty_input_is_empty_result() {
-        let r = aggregate(&[]);
-        assert_eq!(r.get("total_functions"), Some(&ReportValue::Int(0)));
-        assert_eq!(r.get("cohesion_score"), Some(&ReportValue::Float(1.0)));
+    fn empty_input_is_no_data() {
+        let agg = aggregate(&[]);
+        assert!(!agg.has_data());
+        assert_eq!(agg.message, NO_DATA_MESSAGE);
+        assert_eq!(agg.cohesion_score, 0.0);
     }
 
     #[test]
-    fn sums_counts_and_means_numerics() {
-        let a = report(2, 0.2, 0.8, 0.6);
-        let b = report(3, 0.4, 0.6, 0.4);
-        let r = aggregate(&[a, b]);
-        assert_eq!(r.get("total_functions"), Some(&ReportValue::Int(5)));
-        assert!((r.get("lcom").unwrap().as_float().unwrap() - 0.3).abs() < 1e-9);
-        assert!((r.get("cohesion_score").unwrap().as_float().unwrap() - 0.7).abs() < 1e-9);
-        assert!((r.get("function_cohesion").unwrap().as_float().unwrap() - 0.5).abs() < 1e-9);
+    fn function_free_files_are_excluded_from_every_denominator() {
+        let files = [
+            file("poor.go", 0.5, &[0.0, 0.0]),
+            file("t1.go", 0.0, &[]),
+            file("t2.go", 0.0, &[]),
+        ];
+        let agg = aggregate(&files);
+        assert_eq!(agg.files_analyzed, 3);
+        assert_eq!(agg.files_with_functions, 1);
+        assert_eq!(agg.total_functions, 2);
+        assert!((agg.lcom - 0.5).abs() < 1e-9, "lcom {}", agg.lcom);
+        assert!((agg.cohesion_score - 0.5).abs() < 1e-9);
+        assert_eq!(agg.function_cohesion, 0.0);
     }
 
     #[test]
-    fn message_recomputed_from_score() {
-        let r = aggregate(&[report(1, 0.0, 0.75, 1.0)]);
-        assert_eq!(
-            r.get("message"),
-            Some(&ReportValue::Str(
-                "Excellent overall cohesion across all analyzed code".into()
-            ))
-        );
+    fn scalars_are_function_weighted() {
+        // 3 functions at LCOM 1/3, 2 functions at LCOM 0.5.
+        let files = [
+            file("a.go", 1.0 / 3.0, &[1.0, 1.0, 2.0 / 3.0]),
+            file("b.go", 0.5, &[0.0, 0.0]),
+        ];
+        let agg = aggregate(&files);
+        assert_eq!(agg.total_functions, 5);
+        assert!((agg.lcom - 0.4).abs() < 1e-9, "lcom {}", agg.lcom);
+        assert!((agg.cohesion_score - 0.6).abs() < 1e-9);
+        assert!((agg.function_cohesion - (2.0 + 2.0 / 3.0) / 5.0).abs() < 1e-9);
+        assert_eq!(agg.message, overall_message(0.6));
     }
 
     #[test]
-    fn functions_deduped_by_source_and_name() {
-        let mut a = report(1, 0.0, 0.5, 0.5);
-        let mut b = report(1, 0.0, 0.5, 0.5);
-        let mut row = BTreeMap::new();
-        row.insert("_source_file".to_string(), ReportValue::Str("a.go".into()));
-        row.insert("name".to_string(), ReportValue::Str("f".into()));
-        a.insert(
-            "functions".into(),
-            ReportValue::Functions(vec![row.clone()]),
-        );
-        b.insert("functions".into(), ReportValue::Functions(vec![row]));
-        let r = aggregate(&[a, b]);
-        let funcs = r.get("functions").unwrap().as_functions().unwrap();
-        assert_eq!(funcs.len(), 1);
+    fn every_function_is_kept_even_with_equal_names() {
+        let mut a = file("a.go", 0.0, &[1.0, 1.0]);
+        a.report.functions[0].name = "String".into();
+        a.report.functions[1].name = "String".into();
+        let agg = aggregate(&[a]);
+        assert_eq!(agg.functions.len(), 2);
+        assert_eq!(agg.functions[0].name, agg.functions[1].name);
+        assert_ne!(agg.functions[0].start_line, agg.functions[1].start_line);
+    }
+
+    #[test]
+    fn overall_messages_follow_the_thresholds() {
+        assert!(overall_message(0.7).starts_with("Excellent"));
+        assert!(overall_message(0.4).starts_with("Good"));
+        assert!(overall_message(0.3).starts_with("Fair"));
+        assert!(overall_message(0.0).starts_with("Poor"));
     }
 }

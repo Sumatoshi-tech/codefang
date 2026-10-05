@@ -8,17 +8,18 @@
 //! * [`HotspotData`] — high-churn files at/above the medium risk threshold,
 //!   sorted by risk then commit count;
 //! * [`AggregateData`] — repository-wide summary statistics;
-//! * [`CompositionData`] / [`CompositionTimeSeriesEntry`] — file category mix.
+//! * [`CompositionData`] / [`CompositionTimeSeriesEntry`] — the category mix
+//!   of the DISTINCT files changed in the window, overall and per tick.
 //!
-//! Sort orders and arithmetic are part of the report contract (pinned by the
-//! differential gate) so the derived numeric values are byte-identical after
-//! rendering through [`crate::report`].
+//! Sort orders and arithmetic are part of the report contract, so the
+//! derived numeric values are stable after rendering through
+//! [`crate::report`].
 
 use std::collections::BTreeMap;
 
 use cf_metrics::{risk_priority, RiskLevel};
 
-use crate::classify::ALL_CATEGORIES;
+use crate::category::ALL_CATEGORIES;
 use crate::tc::{CategoryCounts, LineStats};
 
 /// Churn score divisor for normalization.
@@ -34,11 +35,10 @@ pub const HOTSPOT_THRESHOLD_HIGH: i64 = 30;
 pub const HOTSPOT_THRESHOLD_MEDIUM: i64 = 15;
 
 /// The change history for a single file: a map from developer id to line
-/// stats, plus the list of commit hashes that touched the file.
+/// stats, plus the list of commit hashes that touched the file (following
+/// renames).
 ///
-/// Only the **length** of `hashes` (commit count) feeds the metrics, so the
-/// hash order (nondeterministic in the reference implementation) does not
-/// affect any derived numbers.
+/// Only the **length** of `hashes` (commit count) feeds the metrics.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FileHistory {
     /// Developer id -> aggregated line stats for this file.
@@ -129,16 +129,19 @@ pub struct AggregateData {
     pub high_churn_files: i64,
 }
 
-/// Aggregate file composition breakdown.
+/// Aggregate file composition: the distinct files changed in the window by
+/// category.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CompositionData {
-    /// Category name -> count (only non-zero categories present).
+    /// Category name -> number of distinct files (only non-zero categories
+    /// present).
     pub breakdown: BTreeMap<String, i64>,
-    /// Category name -> percentage of total.
+    /// Category name -> percentage of the distinct files changed.
     pub percentages: BTreeMap<String, f64>,
 }
 
-/// File composition for a single tick.
+/// File composition for a single tick: the distinct files changed in that
+/// tick by category.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CompositionTimeSeriesEntry {
     /// Tick index.
@@ -147,8 +150,25 @@ pub struct CompositionTimeSeriesEntry {
     pub start_time: String,
     /// Tick end time (RFC3339), empty when unknown (`omitempty`).
     pub end_time: String,
-    /// Category name -> count for this tick (only non-zero categories present).
+    /// Category name -> number of distinct files changed in this tick (only
+    /// non-zero categories present).
     pub breakdown: BTreeMap<String, i64>,
+}
+
+/// Tick bounds (start/end RFC3339 strings) keyed by tick index.
+pub type TickBounds = BTreeMap<i64, (String, String)>;
+
+/// The composition inputs the history walk accumulates: the distinct files
+/// changed in the window by category, the same per tick, and the tick time
+/// bounds.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CompositionInput {
+    /// Distinct files changed in the window, by category.
+    pub files: CategoryCounts,
+    /// Distinct files changed per tick, by category.
+    pub ticks: BTreeMap<i64, CategoryCounts>,
+    /// Tick index -> `(start_time, end_time)` RFC3339 bounds.
+    pub tick_bounds: TickBounds,
 }
 
 /// All computed metric results.
@@ -166,14 +186,6 @@ pub struct ComputedMetrics {
     pub composition: CompositionData,
     /// Per-tick composition time series.
     pub composition_ts: Vec<CompositionTimeSeriesEntry>,
-}
-
-impl ComputedMetrics {
-    /// Returns the analyzer identifier.
-    #[must_use]
-    pub fn analyzer_name(&self) -> &'static str {
-        crate::ANALYZER_NAME
-    }
 }
 
 /// Configurable hotspot thresholds.
@@ -197,30 +209,25 @@ impl Default for MetricOptions {
     }
 }
 
-/// Computes all metrics with default options.
+/// Computes all metrics with default options and no composition inputs.
 #[must_use]
 pub fn compute_all_metrics(input: &ReportData) -> ComputedMetrics {
-    let empty: BTreeMap<i64, CategoryCounts> = BTreeMap::new();
-    compute_all_metrics_with_options(input, MetricOptions::default(), &empty, None)
+    compute_all_metrics_with_options(
+        input,
+        MetricOptions::default(),
+        &CompositionInput::default(),
+    )
 }
 
-/// Tick bounds (start/end RFC3339 strings) keyed by tick index.
-pub type TickBounds = BTreeMap<i64, (String, String)>;
-
-/// Computes all metrics with configurable thresholds and optional composition
-/// inputs.
-///
-/// `tick_composition` and `tick_bounds` correspond to the `tick_composition`
-/// and `tick_bounds` report entries; pass an empty map / `None` when not
-/// available.
+/// Computes all metrics with configurable thresholds and the composition
+/// inputs the walk accumulated.
 #[must_use]
 pub fn compute_all_metrics_with_options(
     input: &ReportData,
     opts: MetricOptions,
-    tick_composition: &BTreeMap<i64, CategoryCounts>,
-    tick_bounds: Option<&TickBounds>,
+    composition: &CompositionInput,
 ) -> ComputedMetrics {
-    let (composition, composition_ts) = compute_composition(tick_composition, tick_bounds);
+    let (composition, composition_ts) = compute_composition(composition);
     ComputedMetrics {
         file_churn: compute_file_churn(input),
         file_contributors: compute_file_contributors(input),
@@ -410,60 +417,53 @@ pub fn compute_aggregate_with_options(input: &ReportData, opts: MetricOptions) -
     agg
 }
 
-/// Computes the aggregate and per-tick composition.
+/// Computes the aggregate and per-tick composition: the aggregate breakdown
+/// and percentages come from the distinct files changed in the window, each
+/// tick entry from the distinct files changed in that tick (ascending tick
+/// order) with its time bounds when known.
 #[must_use]
 pub fn compute_composition(
-    tick_comp: &BTreeMap<i64, CategoryCounts>,
-    tick_bounds: Option<&TickBounds>,
+    input: &CompositionInput,
 ) -> (CompositionData, Vec<CompositionTimeSeriesEntry>) {
-    let mut comp = CompositionData::default();
-
-    if tick_comp.is_empty() {
-        return (comp, Vec::new());
-    }
-
-    // BTreeMap iterates ticks in ascending order (report contract).
-    let mut ts: Vec<CompositionTimeSeriesEntry> = Vec::with_capacity(tick_comp.len());
-    let mut total = CategoryCounts::default();
-
-    for (&t, counts) in tick_comp {
-        total.add(counts);
-
-        let mut breakdown = BTreeMap::new();
-        for cat in ALL_CATEGORIES {
-            let v = counts.get(cat);
-            if v > 0 {
-                breakdown.insert(cat.as_str().to_string(), v);
+    let ts: Vec<CompositionTimeSeriesEntry> = input
+        .ticks
+        .iter()
+        .map(|(&tick, counts)| {
+            let (start_time, end_time) = input.tick_bounds.get(&tick).cloned().unwrap_or_default();
+            CompositionTimeSeriesEntry {
+                tick,
+                start_time,
+                end_time,
+                breakdown: non_zero_breakdown(counts),
             }
-        }
+        })
+        .collect();
 
-        let mut entry = CompositionTimeSeriesEntry {
-            tick: t,
-            breakdown,
-            ..Default::default()
-        };
-        if let Some(bounds) = tick_bounds.and_then(|tb| tb.get(&t)) {
-            entry.start_time.clone_from(&bounds.0);
-            entry.end_time.clone_from(&bounds.1);
-        }
-        ts.push(entry);
-    }
-
-    let grand_total = total.total();
-    for cat in ALL_CATEGORIES {
-        let v = total.get(cat);
-        if v > 0 {
-            comp.breakdown.insert(cat.as_str().to_string(), v);
-        }
-        if grand_total > 0 {
+    let mut comp = CompositionData {
+        breakdown: non_zero_breakdown(&input.files),
+        percentages: BTreeMap::new(),
+    };
+    let total = input.files.total();
+    if total > 0 {
+        for cat in ALL_CATEGORIES {
             comp.percentages.insert(
                 cat.as_str().to_string(),
-                v as f64 / grand_total as f64 * PERCENT_MULTIPLIER,
+                input.files.get(cat) as f64 / total as f64 * PERCENT_MULTIPLIER,
             );
         }
     }
-
     (comp, ts)
+}
+
+/// The non-zero categories of `counts`, keyed by report name.
+fn non_zero_breakdown(counts: &CategoryCounts) -> BTreeMap<String, i64> {
+    ALL_CATEGORIES
+        .iter()
+        .filter_map(|&cat| {
+            let v = counts.get(cat);
+            (v > 0).then(|| (cat.as_str().to_string(), v))
+        })
+        .collect()
 }
 
 // --- helpers ---
@@ -787,11 +787,6 @@ mod tests {
     }
 
     #[test]
-    fn computed_metrics_analyzer_name() {
-        assert_eq!(ComputedMetrics::default().analyzer_name(), "file_history");
-    }
-
-    #[test]
     fn compute_all_full() {
         let input = report(&[
             (
@@ -843,25 +838,62 @@ mod tests {
         assert_eq!(r.aggregate.total_contributors, 2);
     }
 
+    /// The aggregate breakdown counts the distinct files of the window (one
+    /// source file edited in three ticks is ONE file), every tick lists its
+    /// own distinct files, and a tick carries its bounds when known.
     #[test]
-    fn composition_basic() {
-        let mut tick_comp = BTreeMap::new();
-        tick_comp.insert(
-            0,
-            CategoryCounts {
-                source: 3,
-                vendor: 1,
+    fn composition_counts_distinct_files_overall_and_per_tick() {
+        let one_source = CategoryCounts {
+            source: 1,
+            ..Default::default()
+        };
+        let input = CompositionInput {
+            files: CategoryCounts {
+                source: 1,
+                binary: 1,
                 ..Default::default()
             },
+            ticks: BTreeMap::from([
+                (0, one_source),
+                (1, one_source),
+                (
+                    2,
+                    CategoryCounts {
+                        source: 1,
+                        binary: 1,
+                        ..Default::default()
+                    },
+                ),
+            ]),
+            tick_bounds: BTreeMap::from([(
+                2,
+                (
+                    "2021-01-03T00:00:00Z".to_string(),
+                    "2021-01-03T12:00:00Z".to_string(),
+                ),
+            )]),
+        };
+        let (comp, ts) = compute_composition(&input);
+        assert_eq!(
+            comp.breakdown,
+            BTreeMap::from([("source".into(), 1), ("binary".into(), 1)])
         );
-        let (comp, ts) = compute_composition(&tick_comp, None);
-        assert_eq!(comp.breakdown.get("source"), Some(&3));
-        assert_eq!(comp.breakdown.get("vendor"), Some(&1));
-        // 3/4 * 100 = 75, 1/4 * 100 = 25.
-        assert!((comp.percentages["source"] - 75.0).abs() < DELTA);
-        assert!((comp.percentages["vendor"] - 25.0).abs() < DELTA);
-        assert_eq!(ts.len(), 1);
+        assert!((comp.percentages["source"] - 50.0).abs() < DELTA);
+        assert!((comp.percentages["binary"] - 50.0).abs() < DELTA);
+        assert!((comp.percentages["vendor"] - 0.0).abs() < DELTA);
+        assert_eq!(ts.len(), 3);
         assert_eq!(ts[0].tick, 0);
-        assert_eq!(ts[0].breakdown.get("source"), Some(&3));
+        assert_eq!(ts[0].breakdown, BTreeMap::from([("source".into(), 1)]));
+        assert!(ts[0].start_time.is_empty() && ts[0].end_time.is_empty());
+        assert_eq!(ts[2].breakdown.get("binary"), Some(&1));
+        assert_eq!(ts[2].start_time, "2021-01-03T00:00:00Z");
+        assert_eq!(ts[2].end_time, "2021-01-03T12:00:00Z");
+    }
+
+    #[test]
+    fn composition_empty_input_is_empty() {
+        let (comp, ts) = compute_composition(&CompositionInput::default());
+        assert_eq!(comp, CompositionData::default());
+        assert!(ts.is_empty());
     }
 }

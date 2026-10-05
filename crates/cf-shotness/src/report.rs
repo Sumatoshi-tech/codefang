@@ -3,13 +3,11 @@
 //! The serialized machine output of the shotness analyzer is its
 //! [`crate::metrics::ComputedMetrics`]. This module assembles
 //! the ordered [`GoValue`] tree so cf-gojson renders the contractual report
-//! bytes (pinned by `tests/compat`):
+//! bytes (pinned by the report e2e suites (`bins/codefang/tests`)):
 //!
 //! - [`ComputedMetrics`] is struct-origin → keys in declaration order
 //!   (`node_hotness`, `node_coupling`, `hotspot_nodes`, `aggregate`);
-//! - each row struct emits its fields in declaration order;
-//! - the per-commit timeseries summary is map-origin → keys byte-sorted
-//!   (`coupling_pairs` before `nodes_touched`).
+//! - each row struct emits its fields in declaration order.
 //!
 //! All serialization routes through cf-gojson; never serde.
 
@@ -19,31 +17,7 @@ use crate::metrics::{
     AggregateData, ComputedMetrics, HotspotNodeData, NodeCouplingData, NodeHotnessData,
 };
 
-/// Per-commit summary for timeseries output.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CommitSummary {
-    /// Number of nodes touched in the commit.
-    pub nodes_touched: i64,
-    /// Number of coupling pairs implied by the touched nodes.
-    pub coupling_pairs: i64,
-}
-
-impl CommitSummary {
-    /// JSON-friendly map representation.
-    ///
-    /// Built as a **map-origin** object so cf-gojson byte-sorts the keys
-    /// (report-format contract): `coupling_pairs` sorts before
-    /// `nodes_touched`.
-    #[must_use]
-    pub fn to_go_value(&self) -> GoValue {
-        let mut m = GoMap::new_map();
-        m.push("nodes_touched", GoValue::Int(self.nodes_touched));
-        m.push("coupling_pairs", GoValue::Int(self.coupling_pairs));
-        GoValue::Map(m)
-    }
-}
-
-fn node_hotness_to_value(h: &NodeHotnessData) -> GoValue {
+fn node_hotness_to_value(h: &NodeHotnessData, ended_tracked: bool) -> GoValue {
     let mut o = GoMap::new_struct();
     o.push("name", GoValue::Str(h.name.clone()));
     o.push("type", GoValue::Str(h.type_.clone()));
@@ -51,6 +25,9 @@ fn node_hotness_to_value(h: &NodeHotnessData) -> GoValue {
     o.push("change_count", GoValue::Int(h.change_count));
     o.push("coupled_nodes", GoValue::Int(h.coupled_nodes));
     o.push("hotness_score", GoValue::Float(h.hotness_score));
+    if ended_tracked {
+        o.push("ended", GoValue::Bool(h.ended));
+    }
     GoValue::Map(o)
 }
 
@@ -76,8 +53,7 @@ fn hotspot_to_value(h: &HotspotNodeData) -> GoValue {
 }
 
 /// Builds the [`GoValue`] tree for [`AggregateData`] (struct field order).
-#[must_use]
-pub fn aggregate_to_value(a: &AggregateData) -> GoValue {
+fn aggregate_to_value(a: &AggregateData, ended_tracked: bool) -> GoValue {
     let mut o = GoMap::new_struct();
     o.push("total_nodes", GoValue::Int(a.total_nodes));
     o.push("total_changes", GoValue::Int(a.total_changes));
@@ -91,6 +67,9 @@ pub fn aggregate_to_value(a: &AggregateData) -> GoValue {
         GoValue::Float(a.avg_coupling_strength),
     );
     o.push("hot_nodes", GoValue::Int(a.hot_nodes));
+    if ended_tracked {
+        o.push("ended_nodes", GoValue::Int(a.ended_nodes));
+    }
     GoValue::Map(o)
 }
 
@@ -106,7 +85,7 @@ impl ComputedMetrics {
             GoValue::Array(
                 self.node_hotness
                     .iter()
-                    .map(node_hotness_to_value)
+                    .map(|h| node_hotness_to_value(h, self.ended_tracked))
                     .collect(),
             ),
         );
@@ -135,7 +114,10 @@ impl ComputedMetrics {
                 GoValue::Array(self.hotspot_nodes.iter().map(hotspot_to_value).collect())
             },
         );
-        root.push("aggregate", aggregate_to_value(&self.aggregate));
+        root.push(
+            "aggregate",
+            aggregate_to_value(&self.aggregate, self.ended_tracked),
+        );
 
         GoValue::Map(root)
     }
@@ -164,19 +146,6 @@ mod tests {
     }
 
     #[test]
-    fn commit_summary_keys_byte_sorted() {
-        let cs = CommitSummary {
-            nodes_touched: 3,
-            coupling_pairs: 3,
-        };
-        // map-origin: coupling_pairs sorts before nodes_touched.
-        assert_eq!(
-            marshal(&cs.to_go_value()),
-            br#"{"coupling_pairs":3,"nodes_touched":3}"#
-        );
-    }
-
-    #[test]
     fn two_node_report_struct_field_order_and_hottest_first() {
         let input = ReportData {
             nodes: vec![
@@ -184,6 +153,8 @@ mod tests {
                 NodeSummary::new("Function", "foo", "a.go"),
             ],
             counters: vec![hm(&[(0, 6), (1, 3)]), hm(&[(1, 10), (0, 3)])],
+            ended: Vec::new(),
+            ended_tracked: false,
         };
         let metrics = compute_all_metrics(&input);
         let s = String::from_utf8(marshal(&metrics.to_go_value())).unwrap();
@@ -193,5 +164,27 @@ mod tests {
         assert!(s.contains(r#""aggregate":"#));
         // Hottest node (foo, change_count 10) sorts first; field order preserved.
         assert!(s.contains(r#"{"name":"foo","type":"Function","file":"a.go","change_count":10"#));
+        assert!(
+            s.contains(r#""hotness_score":1}"#),
+            "untracked: no ended field: {s}"
+        );
+        assert!(!s.contains("ended_nodes"), "{s}");
+    }
+
+    #[test]
+    fn a_tracked_report_carries_the_ended_fields() {
+        let input = ReportData {
+            nodes: vec![
+                NodeSummary::new("Function", "bar", "a.go"),
+                NodeSummary::new("Function", "foo", "a.go"),
+            ],
+            counters: vec![hm(&[(0, 6), (1, 3)]), hm(&[(1, 10), (0, 3)])],
+            ended: vec![true, false],
+            ended_tracked: true,
+        };
+        let s = String::from_utf8(marshal(&compute_all_metrics(&input).to_go_value())).unwrap();
+        assert!(s.contains(r#""name":"bar","type":"Function","file":"a.go","change_count":6,"coupled_nodes":1,"hotness_score":0.6,"ended":true}"#), "{s}");
+        assert!(s.contains(r#""hotness_score":1,"ended":false}"#), "{s}");
+        assert!(s.contains(r#""hot_nodes":1,"ended_nodes":1}"#), "{s}");
     }
 }

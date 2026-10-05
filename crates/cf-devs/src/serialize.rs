@@ -6,7 +6,7 @@
 //! byte-sorts on encode. This module never touches `serde_json`.
 //!
 //! Integer map keys serialize as decimal strings sorted lexicographically
-//! (report-format contract; pinned by `tests/compat`). We reproduce that
+//! (report-format contract; pinned by the report e2e suites (`bins/codefang/tests`)). We reproduce that
 //! by inserting stringified keys into a map-origin `GoMap`.
 
 use std::collections::BTreeMap;
@@ -176,11 +176,8 @@ pub fn bus_factor_data_to_go(b: &BusFactorData) -> GoValue {
         "primary_percentage".to_string(),
         GoValue::Float(b.primary_pct),
     );
-    if b.secondary_dev_id != 0 {
-        obj.insert(
-            "secondary_dev_id".to_string(),
-            GoValue::Int(b.secondary_dev_id),
-        );
+    if let Some(id) = b.secondary_dev_id {
+        obj.insert("secondary_dev_id".to_string(), GoValue::Int(id));
     }
     if !b.secondary_dev_name.is_empty() {
         obj.insert(

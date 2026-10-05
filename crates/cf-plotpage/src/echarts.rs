@@ -1,6 +1,6 @@
 //! Minimal go-echarts v2.6.7 model — enough to reproduce, byte for byte, the
 //! chart `option_*` JSON and `<div>`/`<script>` snippet that `--format plot`
-//! pages embed (pinned against the reference binary by `tests/compat`).
+//! pages embed (pinned by the report e2e suites (`bins/codefang/tests`)).
 //!
 //! # How the reference bytes are produced
 //!

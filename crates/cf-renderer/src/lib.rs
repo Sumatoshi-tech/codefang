@@ -19,8 +19,8 @@
 //!
 //! # Byte identity
 //!
-//! Machine-format report bytes are a frozen contract, pinned against the
-//! reference implementation by `tests/compat` (DESIGN.md §1.1/§2). All
+//! Machine-format report bytes are a frozen contract, pinned by the report
+//! e2e suites (`bins/codefang/tests`; DESIGN.md §1.1/§2). All
 //! JSON serialization here routes through the [`gocompat`] encoder (map-key
 //! byte-sorting, HTML escaping on, report-contract float formatting, score-last
 //! via declaration-ordered objects), never `serde_json`. [`gocompat`] mirrors

@@ -12,7 +12,7 @@
 //! constants and parsing behavior feed analyzer output downstream, so they are
 //! reproduced exactly — including the deliberately-not-`(1 << 18) - 1` value of
 //! [`AUTHOR_MISSING`]. Output bytes are pinned against the reference binary by
-//! `tests/compat`.
+//! the report e2e suites (`bins/codefang/tests`).
 
 #![forbid(unsafe_code)]
 

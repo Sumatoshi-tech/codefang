@@ -3,7 +3,7 @@
 //! [`GitError`] is a flat set of sentinel errors plus `"<context>: <cause>"`
 //! wrappers over libgit2 errors. Every `Display` string is part of the CLI
 //! error-message contract and must stay byte-identical (pinned by the
-//! differential gate in `tests/compat`).
+//! the report e2e suites (`bins/codefang/tests`)).
 
 use std::fmt;
 

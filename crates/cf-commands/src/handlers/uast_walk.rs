@@ -1,163 +1,288 @@
-//! Shared UAST history walk for the five tree-sitter-heavy history analyzers
+//! The UAST history pass behind the five tree-sitter-heavy history analyzers
 //! (`history/{imports,quality,sentiment,shotness,typos}`).
 //!
-//! Each of those analyzers consumes the SAME per-commit inputs: the tree diff
-//! against the first parent, the common gates (spill threshold, 256 KiB blob
-//! cap, path policy), and the UAST parse of the changed blobs — the dominant
-//! cost of a history run. When a single `run` selects two or more of them, the
-//! reference pipeline streams ONE commit walk into every leaf; running five
-//! independent walks here multiplied the wall time by the selection size.
+//! Each of those analyzers consumes the SAME per-commit inputs: the filtered
+//! tree diff against the first parent, the 256 KiB blob cap, and the UAST
+//! parse of the changed blobs — the dominant cost of a history run. ONE
+//! chunked pass of the history core ([`walk_chunks`]) feeds every analyzer
+//! the run selected: per commit, the tree diff is computed once, then the
+//! changes are visited CHANGE-MAJOR — each change's two sides are read and
+//! parsed at most once ([`ChangeParses`]), every selected analyzer adds that
+//! change's contribution to its per-commit product, and the parses are
+//! dropped before the next change. A worker's parse live set is therefore
+//! the two sides of one change, never a whole commit's (the per-thread
+//! memory peak follows the largest live set, not the window or the commit
+//! size). Each commit's [`UastCommitProduct`] is folded in window order into
+//! the selected analyzers' finished per-commit records ([`UastFold`]) and
+//! dropped, so no whole-window product vector exists.
 //!
-//! This module restores the single-walk shape WITHOUT touching any analyzer
-//! logic: one [`parallel_prepare`] pass computes the tree diff once per commit
-//! and parses each needed `(file name, blob hash)` at most once per commit
-//! through [`CommitParseCache`], then calls the SAME per-commit product
-//! functions the single-analyzer walks call
-//! ([`history::quality_commit_product`], [`history::sentiment_commit_product`],
-//! [`history::imports_commit_product`], [`history::typos_commit_product`],
-//! [`shotness_run::shotness_commit_product`]). The per-analyzer sequential
-//! reduces (identity/tick stamping, shotness's cumulative state machine) run
-//! unchanged over the shared walk's outputs, so byte identity follows from
-//! shared code, not from re-verified duplication.
-//!
-//! The computed walks are memoized process-wide (one CLI invocation = one walk
-//! parameter set), so every consumer — the combined render, the plot
-//! orchestrators, the per-id pipeline loop, the merged ndjson/timeseries/text
-//! documents, and the anomaly store enrichment that re-reads quality/sentiment
-//! metrics — reuses the one walk instead of re-walking. Single-analyzer
-//! invocations (fewer than two of the five selected) keep their existing
-//! direct walks and never touch this store.
+//! The finished results ([`UastResults`]) are memoized process-wide (one CLI
+//! invocation = one walk parameter set), so every consumer — the combined
+//! render, the plot orchestrators, the per-id pipeline loop, the merged
+//! ndjson/timeseries/text documents — reads the one pass through a shared
+//! [`Arc`] instead of re-walking or copying. A single-analyzer run is the
+//! same pass with one analyzer selected, so a report never depends on which
+//! other UAST analyzers are co-selected.
 
-use std::collections::HashMap;
-use std::rc::Rc;
-use std::sync::Mutex;
+use std::cell::OnceCell;
+use std::sync::{Arc, Mutex};
 
 use cf_gitlib::blob::CachedBlob;
+use cf_gitlib::changes::{Change, ChangeEntry};
 use cf_gitlib::Hash;
-use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 
-use crate::handlers::history::{self, ImportsCommit, QualityCommit, SentimentCommit, TyposCommit};
-use crate::handlers::shotness_run::{self, ShotnessChangeProduct, ShotnessCommit, ShotnessReducer};
-use crate::handlers::{
-    effective_first_parent, expand_combined_ids, floor_tick_secs, load_history_commit_hashes,
-    run_repo_path,
+use crate::handlers::history::imports::{ImportsCommit, ImportsWalk};
+use crate::handlers::history::quality::QualityCommit;
+use crate::handlers::history::sentiment::SentimentCommit;
+use crate::handlers::history::typos::{TyposCommit, TyposContext};
+use cf_units::{KIB, MIB};
+
+use crate::handlers::history::{
+    self, gated_product, walk_chunks, ChunkPlan, CommitStamp, Gated, HistoryRun, StampSummary,
+    WalkCost,
 };
+use crate::handlers::shotness_run::{
+    self, CompiledDsl, ShotnessChangeProduct, ShotnessCommit, ShotnessDsl, ShotnessFold,
+};
+use crate::handlers::spill::{SpillError, Spilled};
+use crate::handlers::{expand_combined_ids, run_repo_path, HistoryFilter};
 
-/// `UASTChangesAnalyzer` spill threshold, identical across the five analyzers:
-/// a commit with more than this many file changes streams zero UAST changes.
-pub(crate) const SPILL_THRESHOLD: usize = 32;
-/// UAST blob size cap (`UASTPipeline.parseBlob`).
+/// UAST blob size cap: larger blobs are not parsed.
 pub(crate) const MAX_BLOB_SIZE: usize = 256 * 1024;
 
-/// Outcome of one gated `(file name, blob hash)` UAST parse, memoized per
-/// commit by [`CommitParseCache`]. The three cases preserve the distinctions
-/// the analyzers branch on: a gate-skipped file contributes nothing anywhere,
-/// while a gates-passed-but-unparsable file still counts as an analyzed file
-/// for quality and feeds sentiment's shell-comment fallback (which needs the
-/// blob bytes).
+/// Seconds in one `--tick-size` hour.
+const SECS_PER_HOUR: i64 = 3_600;
+
+/// Outcome of one gated UAST parse of a change side, memoized by
+/// [`ChangeParses`]. The three cases preserve the distinctions the analyzers
+/// branch on: a gate-skipped file contributes nothing anywhere, while a
+/// gates-passed-but-unparsable file feeds sentiment's shell-comment fallback
+/// (which reads the side's blob bytes).
 ///
-/// Every instance lives behind an `Rc` in [`CommitParseCache`], so the size gap
-/// between `Skipped` and the payload variants never reaches a stack frame or a
-/// hot copy; boxing them would only add an indirection to the parse path.
+/// An outcome is built in place in one of the two parse cells of a
+/// [`ChangeParses`] and never moved, so the size gap between `Skipped` and
+/// the inline root never reaches a hot copy (boxing the root would only add
+/// an allocation per parse).
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum ParseOutcome {
-    /// A pre-parse gate rejected the file: zero hash, path policy, unsupported
-    /// extension, blob read failure, the 256 KiB cap, or content-aware
-    /// generated detection.
+    /// A pre-parse gate rejected the file: zero hash, unsupported extension,
+    /// blob read failure, or the 256 KiB cap.
     Skipped,
-    /// Every gate passed but the tree-sitter parse failed; the blob is kept
-    /// for content fallbacks (sentiment's `.sh` comment extraction).
-    Failed(Rc<CachedBlob>),
+    /// Every gate passed but the tree-sitter parse failed.
+    Failed,
     /// The parsed UAST root.
     Parsed(cf_uast::Node),
 }
 
-/// Per-commit blob + UAST parse memo shared by every analyzer product function
-/// run over that commit. Keyed by `(file name, blob hash)` so each blob parses
-/// at most once per commit no matter how many of the five analyzers (or change
-/// sides) need it. The gate sequence inside [`CommitParseCache::parse`] is the
-/// exact `UASTPipeline.parseBlob` order every individual walk applied: zero
-/// hash, `pathpolicy.Exclude(name, nil)`, parser language support, blob read,
-/// the 256 KiB cap, `pathpolicy.Exclude(name, content)`, then the parse. All
-/// gates are pure functions of `(name, blob)`, so memoizing them is
-/// observation-free.
-pub(crate) struct CommitParseCache<'a> {
-    repo: &'a cf_gitlib::Repository,
-    parser: &'a cf_uast::Parser,
-    opts: &'a PathPolicyOptions,
-    blobs: HashMap<Hash, Option<Rc<CachedBlob>>>,
-    parses: HashMap<(String, Hash), Rc<ParseOutcome>>,
+/// One side of a change.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Side {
+    /// The old side (`change.from`; empty for an insert).
+    Before,
+    /// The new side (`change.to`; empty for a delete).
+    After,
 }
 
-impl<'a> CommitParseCache<'a> {
-    /// Builds an empty per-commit cache over this worker thread's repository
-    /// handle, UAST parser, and path-policy options.
-    pub(crate) fn new(
+/// The blob reads and gated UAST parses of ONE change's two sides, shared by
+/// every analyzer the pass computes and dropped before the next change
+/// ([`for_each_change`]), so a worker holds the parses of at most one change
+/// at a time. Each side reads its blob and parses at most once, however many
+/// analyzers ask; a Before side identical to the After side (same blob, and
+/// for the parse the same name) shares the After side's read and parse. The
+/// vendor / generated / language policy was already applied to the change
+/// list by the shared [`HistoryFilter`], so the gates here are purely about
+/// parseability: zero hash, parser language support, blob read, the 256 KiB
+/// cap, then the parse.
+pub(crate) struct ChangeParses<'a> {
+    repo: &'a cf_gitlib::Repository,
+    parser: &'a cf_uast::Parser,
+    change: &'a Change,
+    before_blob: OnceCell<Option<CachedBlob>>,
+    after_blob: OnceCell<Option<CachedBlob>>,
+    before_parse: OnceCell<ParseOutcome>,
+    after_parse: OnceCell<ParseOutcome>,
+}
+
+impl<'a> ChangeParses<'a> {
+    /// An empty scope over `change`, this worker thread's repository handle
+    /// and UAST parser.
+    fn new(
         repo: &'a cf_gitlib::Repository,
         parser: &'a cf_uast::Parser,
-        opts: &'a PathPolicyOptions,
+        change: &'a Change,
     ) -> Self {
         Self {
             repo,
             parser,
-            opts,
-            blobs: HashMap::new(),
-            parses: HashMap::new(),
+            change,
+            before_blob: OnceCell::new(),
+            after_blob: OnceCell::new(),
+            before_parse: OnceCell::new(),
+            after_parse: OnceCell::new(),
         }
     }
 
-    /// Reads (and memoizes) a blob; `None` mirrors the `CachedBlob::from_repo`
-    /// error every walk treated as "skip this change".
-    pub(crate) fn blob(&mut self, hash: Hash) -> Option<Rc<CachedBlob>> {
-        if let Some(cached) = self.blobs.get(&hash) {
-            return cached.clone();
-        }
-        let blob = CachedBlob::from_repo(self.repo, hash).ok().map(Rc::new);
-        self.blobs.insert(hash, blob.clone());
-        blob
+    /// The change this scope parses.
+    pub(crate) const fn change(&self) -> &'a Change {
+        self.change
     }
 
-    /// Runs the gated UAST parse for `(name, hash)`, memoized per commit.
-    pub(crate) fn parse(&mut self, name: &str, hash: Hash) -> Rc<ParseOutcome> {
-        let key = (name.to_string(), hash);
-        if let Some(cached) = self.parses.get(&key) {
-            return Rc::clone(cached);
-        }
-        let outcome = Rc::new(self.parse_uncached(name, hash));
-        self.parses.insert(key, Rc::clone(&outcome));
-        outcome
+    /// This worker thread's repository handle.
+    pub(crate) const fn repo(&self) -> &'a cf_gitlib::Repository {
+        self.repo
     }
 
-    /// The one gated parse (`UASTPipeline.parseBlob` gate order).
-    fn parse_uncached(&mut self, name: &str, hash: Hash) -> ParseOutcome {
-        if hash.is_zero() {
+    /// This worker thread's UAST parser.
+    pub(crate) const fn parser(&self) -> &'a cf_uast::Parser {
+        self.parser
+    }
+
+    /// The change entry of `side`.
+    pub(crate) const fn entry(&self, side: Side) -> &'a ChangeEntry {
+        match side {
+            Side::Before => &self.change.from,
+            Side::After => &self.change.to,
+        }
+    }
+
+    /// Reads (once) the blob of `side`; `None` mirrors the
+    /// `CachedBlob::from_repo` error every analyzer treats as "skip this
+    /// change".
+    pub(crate) fn blob(&self, side: Side) -> Option<&CachedBlob> {
+        let same_blob = self.change.from.hash == self.change.to.hash;
+        let cell = match side {
+            Side::Before if !same_blob => &self.before_blob,
+            _ => &self.after_blob,
+        };
+        cell.get_or_init(|| CachedBlob::from_repo(self.repo, self.entry(side).hash).ok())
+            .as_ref()
+    }
+
+    /// Runs (once) the gated UAST parse of `side`.
+    pub(crate) fn parse(&self, side: Side) -> &ParseOutcome {
+        let (from, to) = (&self.change.from, &self.change.to);
+        let same_file = from.hash == to.hash && from.name == to.name;
+        let cell = match side {
+            Side::Before if !same_file => &self.before_parse,
+            _ => &self.after_parse,
+        };
+        cell.get_or_init(|| {
+            #[cfg(test)]
+            live_parses::born();
+            self.gated_parse(side)
+        })
+    }
+
+    /// The one gated parse of `side`.
+    fn gated_parse(&self, side: Side) -> ParseOutcome {
+        let entry = self.entry(side);
+        if entry.hash.is_zero() || !self.parser.is_supported(&entry.name) {
             return ParseOutcome::Skipped;
         }
-        if exclude(name, None, self.opts) {
-            return ParseOutcome::Skipped;
-        }
-        if !self.parser.is_supported(name) {
-            return ParseOutcome::Skipped;
-        }
-        let Some(blob) = self.blob(hash) else {
+        let Some(blob) = self.blob(side) else {
             return ParseOutcome::Skipped;
         };
         if blob.data.len() > MAX_BLOB_SIZE {
             return ParseOutcome::Skipped;
         }
-        if exclude(name, Some(&blob.data), self.opts) {
-            return ParseOutcome::Skipped;
-        }
-        match self.parser.parse(name, &blob.data) {
+        match self.parser.parse(&entry.name, &blob.data) {
             Ok(root) => ParseOutcome::Parsed(root),
-            Err(_) => ParseOutcome::Failed(blob),
+            Err(_) => ParseOutcome::Failed,
         }
     }
 }
 
-/// Which of the five UAST-heavy history analyzers the current `run` selected
-/// (resolved over the registry exactly like the dispatch paths do).
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
+/// Visits `changes` in change order, each through a FRESH [`ChangeParses`]
+/// that is dropped before the next change: the parse live set of a worker is
+/// the two sides of one change, never a whole commit's.
+fn for_each_change(
+    repo: &cf_gitlib::Repository,
+    parser: &cf_uast::Parser,
+    changes: &[Change],
+    mut visit: impl FnMut(&ChangeParses<'_>),
+) {
+    for change in changes {
+        visit(&ChangeParses::new(repo, parser, change));
+    }
+}
+
+/// Test-only accounting of the [`ParseOutcome`]s alive on the current
+/// thread: the parse live set of a worker is what its memory peak follows.
+#[cfg(test)]
+mod live_parses {
+    use std::cell::Cell;
+
+    thread_local! {
+        /// Outcomes alive now.
+        static LIVE: Cell<usize> = const { Cell::new(0) };
+        /// The most outcomes alive at once since the last [`reset`].
+        static PEAK: Cell<usize> = const { Cell::new(0) };
+        /// Outcomes created since the last [`reset`].
+        static BORN: Cell<usize> = const { Cell::new(0) };
+    }
+
+    /// Counts a new outcome.
+    pub(super) fn born() {
+        let live = LIVE.get() + 1;
+        LIVE.set(live);
+        PEAK.set(PEAK.get().max(live));
+        BORN.set(BORN.get() + 1);
+    }
+
+    /// Counts a dropped outcome.
+    pub(super) fn died() {
+        LIVE.set(LIVE.get() - 1);
+    }
+
+    /// Restarts the peak and birth counts from the outcomes alive now.
+    pub(super) fn reset() {
+        PEAK.set(LIVE.get());
+        BORN.set(0);
+    }
+
+    /// `(alive now, peak, created)` since the last [`reset`].
+    pub(super) fn snapshot() -> (usize, usize, usize) {
+        (LIVE.get(), PEAK.get(), BORN.get())
+    }
+}
+
+#[cfg(test)]
+impl Drop for ParseOutcome {
+    fn drop(&mut self) {
+        live_parses::died();
+    }
+}
+
+/// One of the five UAST-heavy history analyzers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum UastAnalyzer {
+    /// `history/quality`.
+    Quality,
+    /// `history/sentiment`.
+    Sentiment,
+    /// `history/imports`.
+    Imports,
+    /// `history/typos`.
+    Typos,
+    /// `history/shotness`.
+    Shotness,
+}
+
+impl UastAnalyzer {
+    /// The analyzer id.
+    const fn id(self) -> &'static str {
+        match self {
+            Self::Quality => "history/quality",
+            Self::Sentiment => "history/sentiment",
+            Self::Imports => "history/imports",
+            Self::Typos => "history/typos",
+            Self::Shotness => "history/shotness",
+        }
+    }
+}
+
+/// Which of the five UAST-heavy history analyzers one pass feeds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) struct UastSelection {
     quality: bool,
     sentiment: bool,
@@ -186,6 +311,37 @@ impl UastSelection {
         }
     }
 
+    /// This selection plus `analyzer`.
+    const fn with(mut self, analyzer: UastAnalyzer) -> Self {
+        match analyzer {
+            UastAnalyzer::Quality => self.quality = true,
+            UastAnalyzer::Sentiment => self.sentiment = true,
+            UastAnalyzer::Imports => self.imports = true,
+            UastAnalyzer::Typos => self.typos = true,
+            UastAnalyzer::Shotness => self.shotness = true,
+        }
+        self
+    }
+
+    /// The selected analyzers' ids in report order
+    /// ([`crate::handlers::HISTORY_PHASE_EMIT_ORDER`]), comma-joined: the
+    /// pass's name in the `-v` plan line.
+    fn walk_name(self) -> String {
+        let selected = [
+            ("history/quality", self.quality),
+            ("history/sentiment", self.sentiment),
+            ("history/shotness", self.shotness),
+            ("history/imports", self.imports),
+            ("history/typos", self.typos),
+        ];
+        selected
+            .iter()
+            .filter(|(_, on)| *on)
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
     /// How many of the five are selected.
     fn count(self) -> usize {
         usize::from(self.quality)
@@ -194,391 +350,681 @@ impl UastSelection {
             + usize::from(self.typos)
             + usize::from(self.shotness)
     }
-
-    /// The shared walk only pays off (and only changes the execution shape)
-    /// when at least two of the five run in one process; single-analyzer
-    /// invocations keep their direct walks.
-    fn shared_applies(self) -> bool {
-        self.count() >= 2
-    }
 }
 
-/// Everything that determines the walk outputs; a key mismatch (impossible
+/// Everything that determines the pass results; a key mismatch (impossible
 /// within one CLI invocation, possible across library tests) recomputes.
 #[derive(Clone, PartialEq, Eq)]
 struct WalkKey {
     path: String,
     head: bool,
-    limit: i64,
+    limit: usize,
     first_parent: bool,
     since: crate::handlers::SinceSpec,
+    tick_size_hours: i64,
     max_distance: i64,
+    min_comment_len: i64,
     max_changes: usize,
+    exact_signatures: bool,
+    people_dict: Option<String>,
+    anonymize: bool,
     selection: UastSelection,
-    /// The TreeDiff-level change filter (policy + `--languages`): part of the
-    /// key because it changes the walk outputs.
-    filter: crate::handlers::HistoryFilter,
+    /// The change filter (policy + `--languages`): part of the key because it
+    /// changes the walk outputs.
+    filter: HistoryFilter,
+    /// The shotness entity selection (`--shotness-dsl-struct`,
+    /// `--shotness-dsl-name`); the default when shotness is not selected.
+    shotness_dsl: ShotnessDsl,
 }
 
 impl WalkKey {
-    fn from_matches(sub: &clap::ArgMatches, selection: UastSelection) -> Self {
-        Self {
+    fn from_matches(sub: &clap::ArgMatches, selection: UastSelection) -> Option<Self> {
+        let opts = history::HistoryOptions::from_matches(sub).ok()?;
+        let shotness_dsl = if selection.shotness {
+            ShotnessDsl::from_matches(sub).ok()?
+        } else {
+            ShotnessDsl::default()
+        };
+        Some(Self {
             path: run_repo_path(sub),
-            head: sub.get_flag("head"),
-            limit: sub.get_one::<i64>("limit").copied().unwrap_or(0),
-            first_parent: effective_first_parent(sub),
-            since: crate::handlers::history_since_spec(sub),
-            max_distance: history::typos_max_distance(sub),
-            max_changes: history::max_changes_per_commit_cap(sub),
+            head: opts.head,
+            limit: opts.limit,
+            first_parent: opts.first_parent,
+            since: opts.since,
+            tick_size_hours: opts.tick_size_hours,
+            max_distance: history::typos::typos_max_distance(sub),
+            min_comment_len: history::sentiment::sentiment_min_comment_len(sub),
+            max_changes: opts.max_changes,
+            exact_signatures: opts.exact_signatures,
+            people_dict: opts.people_dict,
+            anonymize: opts.anonymize,
             selection,
-            filter: crate::handlers::history_filter(sub).unwrap_or_default(),
+            filter: opts.filter,
+            shotness_dsl,
+        })
+    }
+}
+
+/// The finished per-analyzer results of one pass — the per-commit records
+/// every report builder reads, shared behind an [`Arc`]. `None` for an
+/// unselected analyzer.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct UastResults {
+    /// `history/quality` records, walk order.
+    pub quality: Option<Arc<Vec<QualityCommit>>>,
+    /// `history/sentiment` records, walk order.
+    pub sentiment: Option<Arc<Vec<SentimentCommit>>>,
+    /// `history/imports` records with the identity state naming the authors.
+    pub imports: Option<Arc<ImportsWalk>>,
+    /// `history/typos` records, walk order.
+    pub typos: Option<Arc<Vec<TyposCommit>>>,
+    /// `history/shotness` records, walk order.
+    pub shotness: Option<Arc<Vec<ShotnessCommit>>>,
+}
+
+/// Process-wide memo: one CLI invocation has one walk parameter set, so the
+/// five analyzers (and every format/section consumer above them) share ONE
+/// computation. The inner `None` records a failed walk (repo unreadable) so
+/// it is not retried. The lock is held across the computation: concurrent
+/// analyzer tasks asking for the pass block until the first one finishes
+/// it — the pass is one task, never N.
+static STORE: Mutex<Option<(WalkKey, Option<HeldResults>)>> = Mutex::new(None);
+
+/// Pre-computes the pass when two or more UAST analyzers are selected, so the
+/// multi-analyzer dispatch paths can fan out their per-analyzer tasks AFTER
+/// the one heavy pass completes, instead of having several tasks block on the
+/// store lock. A single UAST analyzer keeps running concurrently with the
+/// other selected history analyzers.
+pub(crate) fn prewarm(sub: &clap::ArgMatches) {
+    let selection = UastSelection::from_matches(sub);
+    if selection.count() >= 2 {
+        memoized(sub, selection);
+    }
+}
+
+/// The pass results for this invocation's selection plus `want`, computed
+/// once and memoized; only `want`'s field is filled. `None` when the walk
+/// fails (the repository cannot be opened or walked) or spilled results
+/// cannot be read back (the cause goes to stderr).
+pub(crate) fn uast_results(sub: &clap::ArgMatches, want: UastAnalyzer) -> Option<UastResults> {
+    let held = memoized(sub, UastSelection::from_matches(sub).with(want))?;
+    held.view(want)
+        .map_err(|e| eprintln!("Error: cannot read the spilled {}: {e}", want.id()))
+        .ok()
+}
+
+/// Forgets the memoized pass results (and their spill files): a
+/// long-running process (`codefang mcp`) must not hold one call's results
+/// into the next.
+pub(crate) fn forget_results() {
+    *STORE.lock().expect("shared walk store poisoned") = None;
+}
+
+/// Looks up (computing if needed) the pass results for `selection`. The
+/// lock is released before a consumer reads spilled results back.
+fn memoized(sub: &clap::ArgMatches, selection: UastSelection) -> Option<HeldResults> {
+    let key = WalkKey::from_matches(sub, selection)?;
+    let mut guard = STORE.lock().expect("shared walk store poisoned");
+    if let Some((have, results)) = guard.as_ref() {
+        if *have == key {
+            return results.clone();
+        }
+    }
+    let results = compute_results(sub, &key).map(|results| hold(sub, results));
+    *guard = Some((key, results.clone()));
+    results
+}
+
+/// How the memo keeps finished results: on disk while the run's other
+/// history walks run after the pass (they would otherwise share memory with
+/// results nobody reads until rendering), in memory otherwise. A failed
+/// spill keeps them in memory.
+fn hold(sub: &clap::ArgMatches, results: UastResults) -> HeldResults {
+    if !history::other_walks_follow_the_uast_pass(sub) {
+        return HeldResults::in_memory(results);
+    }
+    match HeldResults::spilled(&results) {
+        Ok(held) => {
+            if sub.try_get_one::<bool>("verbose").ok().flatten() == Some(&true) {
+                for (id, bytes) in held.spilled_bytes() {
+                    eprintln!(
+                        "progress: {id} results spilled to disk: {} MiB",
+                        bytes.div_ceil(cf_units::MIB as u64)
+                    );
+                }
+            }
+            held
+        }
+        Err(e) => {
+            eprintln!("warning: keeping the UAST results in memory: {e}");
+            HeldResults::in_memory(results)
         }
     }
 }
 
-/// The shared walk's per-analyzer outputs — exactly what each direct walk
-/// returns. `None` for an unselected analyzer.
-struct SharedWalks {
+/// One analyzer's finished results: shared in memory, or spilled to disk.
+enum Held<T> {
+    Memory(Arc<T>),
+    Disk(Arc<Spilled<T>>),
+}
+
+impl<T> Clone for Held<T> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Memory(value) => Self::Memory(Arc::clone(value)),
+            Self::Disk(spilled) => Self::Disk(Arc::clone(spilled)),
+        }
+    }
+}
+
+impl<T: serde::Serialize + serde::de::DeserializeOwned + Default> Held<T> {
+    /// `value` written to disk.
+    fn spill(value: &T) -> Result<Self, SpillError> {
+        Spilled::write(value).map(|spilled| Self::Disk(Arc::new(spilled)))
+    }
+
+    /// The results: the shared copy, or a fresh copy read back from disk.
+    fn get(&self) -> Result<Arc<T>, SpillError> {
+        match self {
+            Self::Memory(value) => Ok(Arc::clone(value)),
+            Self::Disk(spilled) => spilled.read().map(Arc::new),
+        }
+    }
+
+    /// Bytes on disk, `None` when held in memory.
+    fn disk_bytes(&self) -> Option<u64> {
+        match self {
+            Self::Memory(_) => None,
+            Self::Disk(spilled) => Some(spilled.bytes()),
+        }
+    }
+}
+
+/// The pass results as the memo keeps them, one [`Held`] per selected
+/// analyzer.
+#[derive(Clone)]
+pub(crate) struct HeldResults {
+    quality: Option<Held<Vec<QualityCommit>>>,
+    sentiment: Option<Held<Vec<SentimentCommit>>>,
+    imports: Option<Held<ImportsWalk>>,
+    typos: Option<Held<Vec<TyposCommit>>>,
+    shotness: Option<Held<Vec<ShotnessCommit>>>,
+}
+
+impl HeldResults {
+    /// `results`, kept in memory.
+    fn in_memory(results: UastResults) -> Self {
+        Self {
+            quality: results.quality.map(Held::Memory),
+            sentiment: results.sentiment.map(Held::Memory),
+            imports: results.imports.map(Held::Memory),
+            typos: results.typos.map(Held::Memory),
+            shotness: results.shotness.map(Held::Memory),
+        }
+    }
+
+    /// `results`, every selected analyzer written to its own spill file.
+    fn spilled(results: &UastResults) -> Result<Self, SpillError> {
+        Ok(Self {
+            quality: results.quality.as_deref().map(Held::spill).transpose()?,
+            sentiment: results.sentiment.as_deref().map(Held::spill).transpose()?,
+            imports: results.imports.as_deref().map(Held::spill).transpose()?,
+            typos: results.typos.as_deref().map(Held::spill).transpose()?,
+            shotness: results.shotness.as_deref().map(Held::spill).transpose()?,
+        })
+    }
+
+    /// `want`'s results (read back from disk when spilled); the other
+    /// fields stay empty.
+    fn view(&self, want: UastAnalyzer) -> Result<UastResults, SpillError> {
+        let mut out = UastResults::default();
+        match want {
+            UastAnalyzer::Quality => {
+                out.quality = self.quality.as_ref().map(Held::get).transpose()?
+            }
+            UastAnalyzer::Sentiment => {
+                out.sentiment = self.sentiment.as_ref().map(Held::get).transpose()?;
+            }
+            UastAnalyzer::Imports => {
+                out.imports = self.imports.as_ref().map(Held::get).transpose()?
+            }
+            UastAnalyzer::Typos => out.typos = self.typos.as_ref().map(Held::get).transpose()?,
+            UastAnalyzer::Shotness => {
+                out.shotness = self.shotness.as_ref().map(Held::get).transpose()?;
+            }
+        }
+        Ok(out)
+    }
+
+    /// `(analyzer id, bytes)` of every spilled analyzer, in report order.
+    fn spilled_bytes(&self) -> Vec<(&'static str, u64)> {
+        [
+            (
+                "history/quality",
+                self.quality.as_ref().and_then(Held::disk_bytes),
+            ),
+            (
+                "history/sentiment",
+                self.sentiment.as_ref().and_then(Held::disk_bytes),
+            ),
+            (
+                "history/shotness",
+                self.shotness.as_ref().and_then(Held::disk_bytes),
+            ),
+            (
+                "history/imports",
+                self.imports.as_ref().and_then(Held::disk_bytes),
+            ),
+            (
+                "history/typos",
+                self.typos.as_ref().and_then(Held::disk_bytes),
+            ),
+        ]
+        .into_iter()
+        .filter_map(|(id, bytes)| Some((id, bytes?)))
+        .collect()
+    }
+}
+
+/// The per-worker inputs of the pass's pure per-commit stage.
+pub(crate) struct UastParams<'a> {
+    /// The shared change filter.
+    pub filter: &'a HistoryFilter,
+    /// `--max-changes-per-commit`.
+    pub max_changes: usize,
+    /// The analyzers to compute.
+    pub selection: UastSelection,
+    /// `--min-comment-len` (sentiment).
+    pub min_comment_len: i64,
+    /// `--typos-max-distance` (typos).
+    pub max_distance: i64,
+    /// The shotness DSL (read when shotness is selected).
+    pub shotness_dsl: &'a ShotnessDsl,
+}
+
+/// One commit's products across the selected analyzers — each field is the
+/// analyzer's per-commit product over the commit's FILTERED changes, in
+/// change order; an unselected analyzer's field stays empty.
+#[derive(Default)]
+pub(crate) struct UastCommitProduct {
+    /// Per-file quality samples.
+    pub quality: cf_quality::TickQuality,
+    /// The comments the commit introduced or changed.
+    pub sentiment: Vec<String>,
+    /// The extracted `(lang, import)` entries.
+    pub imports: Vec<cf_imports::history::ImportEntry>,
+    /// The typo fixes.
+    pub typos: Vec<cf_typos::Typo>,
+    /// The per-change shotness inputs (entity lists and line diffs).
+    pub shotness: Vec<ShotnessChangeProduct>,
+}
+
+/// The per-commit inputs of the selected analyzers besides the changes:
+/// the compiled shotness DSL and the typos context (`None` when that
+/// analyzer is not selected).
+struct CommitScratch {
+    shotness: Option<CompiledDsl>,
+    typos: Option<TyposContext>,
+}
+
+impl UastCommitProduct {
+    /// Computes the selected analyzers' products over `changes`, CHANGE-MAJOR:
+    /// every selected analyzer reads one change's shared parses before the
+    /// next change is parsed, and each product accumulates in change order.
+    fn compute(
+        repo: &cf_gitlib::Repository,
+        parser: &cf_uast::Parser,
+        changes: &[Change],
+        params: &UastParams<'_>,
+        scratch: &mut CommitScratch,
+    ) -> Self {
+        let mut product = Self::default();
+        for_each_change(repo, parser, changes, |parses| {
+            product.add_change(parses, params, scratch);
+        });
+        product
+    }
+
+    /// Adds one change's contribution to every selected analyzer's product.
+    fn add_change(
+        &mut self,
+        parses: &ChangeParses<'_>,
+        params: &UastParams<'_>,
+        scratch: &mut CommitScratch,
+    ) {
+        let sel = params.selection;
+        if sel.quality {
+            history::quality::quality_change(parses, &mut self.quality);
+        }
+        if sel.sentiment {
+            history::sentiment::sentiment_change(
+                parses,
+                params.min_comment_len,
+                &mut self.sentiment,
+            );
+        }
+        if sel.imports {
+            history::imports::imports_change(parses, &mut self.imports);
+        }
+        if let Some(dsl) = &scratch.shotness {
+            self.shotness
+                .extend(shotness_run::shotness_change(parses, dsl));
+        }
+        if let Some(context) = &mut scratch.typos {
+            history::typos::typos_change(parses, context, &mut self.typos);
+        }
+    }
+}
+
+/// The pure per-commit stage of the pass, run on a worker thread: the raw
+/// tree diff behind the `--max-changes-per-commit` gate, the shared change
+/// filter, then the selected analyzers' products. `None` on a fatal git
+/// error (or a shotness DSL the preflight would have rejected).
+pub(crate) fn uast_prepare(
+    repo: &cf_gitlib::Repository,
+    hash: Hash,
+    params: &UastParams<'_>,
+) -> Option<Gated<UastCommitProduct>> {
+    let sel = params.selection;
+    let mut scratch = CommitScratch {
+        shotness: sel
+            .shotness
+            .then(|| params.shotness_dsl.compile())
+            .transpose()
+            .ok()?,
+        typos: sel
+            .typos
+            .then(|| TyposContext::new(hash, params.max_distance)),
+    };
+    history::with_uast_parser(|parser| {
+        gated_product(
+            repo,
+            hash,
+            params.filter,
+            params.max_changes,
+            |_, changes| UastCommitProduct::compute(repo, parser, changes, params, &mut scratch),
+        )
+    })
+}
+
+/// The pass's reduce state: each kept commit's product is folded, in window
+/// order, into the selected analyzers' records and dropped.
+struct UastFold {
     quality: Option<Vec<QualityCommit>>,
     sentiment: Option<Vec<SentimentCommit>>,
     imports: Option<Vec<ImportsCommit>>,
     typos: Option<Vec<TyposCommit>>,
-    shotness: Option<Vec<ShotnessCommit>>,
+    shotness: Option<ShotnessFold>,
 }
 
-/// Process-wide memo: one CLI invocation has one walk parameter set, so the
-/// five walk functions (and every format/section consumer above them) share
-/// ONE computation. The inner `Option<SharedWalks>` records a failed walk
-/// (repo unreadable) so it is not retried. The lock is held across the
-/// computation: concurrent analyzer tasks asking for the walk block until the
-/// first one finishes it — the shared walk is one task, never N.
-static STORE: Mutex<Option<(WalkKey, Option<SharedWalks>)>> = Mutex::new(None);
-
-/// Pre-computes the shared walk (when applicable) so the multi-analyzer
-/// dispatch paths can fan out their per-analyzer tasks AFTER the one heavy
-/// walk completes, instead of having several tasks block on the store lock.
-pub(crate) fn prewarm(sub: &clap::ArgMatches) {
-    let selection = UastSelection::from_matches(sub);
-    if !selection.shared_applies() {
-        return;
-    }
-    let key = WalkKey::from_matches(sub, selection);
-    let mut guard = STORE.lock().expect("shared walk store poisoned");
-    if matches!(guard.as_ref(), Some((have, _)) if *have == key) {
-        return;
-    }
-    let walks = compute_shared_walks(selection, &key);
-    *guard = Some((key, walks));
-}
-
-/// Looks up (computing if needed) one analyzer's shared-walk output. Returns
-/// `None` when the shared walk does not apply to this invocation — the caller
-/// then runs its existing direct walk. `Some(inner)` is the walk result
-/// (`inner == None` ⇔ the walk failed, exactly like the direct walk's `None`).
-fn shared_component<T>(
-    sub: &clap::ArgMatches,
-    selected: impl Fn(UastSelection) -> bool,
-    extract: impl Fn(&SharedWalks) -> Option<T>,
-) -> Option<Option<T>> {
-    let selection = UastSelection::from_matches(sub);
-    if !selection.shared_applies() || !selected(selection) {
-        return None;
-    }
-    let key = WalkKey::from_matches(sub, selection);
-    let mut guard = STORE.lock().expect("shared walk store poisoned");
-    if let Some((have, walks)) = guard.as_ref() {
-        if *have == key {
-            return Some(walks.as_ref().and_then(&extract));
+impl UastFold {
+    /// An empty fold for `sel`; `first_parent` is the walk's first-parent
+    /// mode (shotness skips merges otherwise).
+    fn new(sel: UastSelection, first_parent: bool) -> Self {
+        Self {
+            quality: sel.quality.then(Vec::new),
+            sentiment: sel.sentiment.then(Vec::new),
+            imports: sel.imports.then(Vec::new),
+            typos: sel.typos.then(Vec::new),
+            shotness: sel.shotness.then(|| ShotnessFold::new(first_parent)),
         }
     }
-    let walks = compute_shared_walks(selection, &key);
-    let result = walks.as_ref().and_then(&extract);
-    *guard = Some((key, walks));
-    Some(result)
+
+    /// Folds one kept commit, in window order.
+    fn consume(&mut self, stamp: &CommitStamp, product: UastCommitProduct) {
+        if let Some(commits) = &mut self.quality {
+            commits.push(QualityCommit::new(stamp, product.quality));
+        }
+        if let Some(commits) = &mut self.sentiment {
+            commits.push(SentimentCommit::new(stamp, product.sentiment));
+        }
+        if let Some(commits) = &mut self.imports {
+            commits.push(ImportsCommit::new(stamp, product.imports));
+        }
+        if let Some(commits) = &mut self.typos {
+            commits.push(TyposCommit::new(stamp, product.typos));
+        }
+        if let Some(fold) = &mut self.shotness {
+            fold.consume(stamp, &product.shotness);
+        }
+    }
+
+    /// The finished results; imports keeps the identity state and the tick
+    /// size its report names authors and ticks with.
+    fn finish(self, summary: StampSummary, tick_size_secs: i64) -> UastResults {
+        UastResults {
+            quality: self.quality.map(Arc::new),
+            sentiment: self.sentiment.map(Arc::new),
+            imports: self.imports.map(|commits| {
+                Arc::new(ImportsWalk {
+                    commits,
+                    summary,
+                    tick_size_secs,
+                })
+            }),
+            typos: self.typos.map(Arc::new),
+            shotness: self.shotness.map(|fold| Arc::new(fold.finish())),
+        }
+    }
 }
 
-/// The `history/quality` view of the shared walk (see [`shared_component`]).
-pub(crate) fn shared_quality_walk(sub: &clap::ArgMatches) -> Option<Option<Vec<QualityCommit>>> {
-    shared_component(sub, |sel| sel.quality, |w| w.quality.clone())
-}
+/// The shared UAST pass's measured cost (any selection: every selected
+/// analyzer reads the same per-change parses). Kubernetes, 7,973 commits,
+/// `history/sentiment`: one worker peaks at 166 MB, 24 workers at 839 MB
+/// (28 MiB per added worker); all five co-selected peak at 664 MB and
+/// 1046 MB (16 MiB per added worker). Products hold at most 24 bytes more
+/// per commit over the whole window than over 50-commit chunks.
+const UAST_COST: WalkCost = WalkCost {
+    worker_bytes: 32 * MIB,
+    product_bytes: 4 * KIB,
+};
 
-/// The `history/sentiment` view of the shared walk.
-pub(crate) fn shared_sentiment_walk(
-    sub: &clap::ArgMatches,
-) -> Option<Option<Vec<SentimentCommit>>> {
-    shared_component(sub, |sel| sel.sentiment, |w| w.sentiment.clone())
-}
-
-/// The `history/imports` view of the shared walk.
-pub(crate) fn shared_imports_walk(sub: &clap::ArgMatches) -> Option<Option<Vec<ImportsCommit>>> {
-    shared_component(sub, |sel| sel.imports, |w| w.imports.clone())
-}
-
-/// The `history/typos` view of the shared walk.
-pub(crate) fn shared_typos_walk(sub: &clap::ArgMatches) -> Option<Option<Vec<TyposCommit>>> {
-    shared_component(sub, |sel| sel.typos, |w| w.typos.clone())
-}
-
-/// The `history/shotness` view of the shared walk.
-pub(crate) fn shared_shotness_walk(sub: &clap::ArgMatches) -> Option<Option<Vec<ShotnessCommit>>> {
-    shared_component(sub, |sel| sel.shotness, |w| w.shotness.clone())
-}
-
-/// One commit's products across the selected analyzers — each field is the
-/// exact value the analyzer's direct walk computes per commit.
-#[derive(Default)]
-struct SharedCommitProduct {
-    /// RAW (pre-filter) tree-diff change count, for the oversized-commit gate.
-    raw_change_count: usize,
-    quality: Option<cf_quality::TickQuality>,
-    sentiment: Option<Option<Vec<String>>>,
-    imports: Option<Vec<cf_imports::history::ImportEntry>>,
-    typos: Option<Vec<cf_typos::Typo>>,
-    shotness: Option<Vec<ShotnessChangeProduct>>,
-}
-
-/// Runs the ONE shared walk: the same window selection as every direct walk,
-/// one parallel pure-compute stage (tree diff once, every parse through the
-/// per-commit cache), then the SAME sequential ordered reduces (identity/tick
-/// stamping computed once — it is identical across the five walks — plus
-/// shotness's cumulative state machine). `None` mirrors the direct walks'
-/// failure (`.ok()?` on a fatal git error).
-fn compute_shared_walks(sel: UastSelection, key: &WalkKey) -> Option<SharedWalks> {
-    use cf_alg_levenshtein::Context as LevenshteinContext;
-    use cf_analyzers_plumbing::identity_detector::IdentityDetector;
-
-    let path = &key.path;
-    let repo = cf_gitlib::Repository::open(path).ok()?;
-
-    // Window: identical to every direct walk (`--head` ⇒ exactly the HEAD
-    // commit; otherwise the `limit` commits oldest-first).
-    let hashes = if key.head {
-        vec![repo.head().ok()?]
+/// Runs the ONE pass over the run's chunk plan: the gated per-commit
+/// products are computed in parallel one chunk at a time and folded in
+/// window order ([`walk_chunks`]). `None` when the walk fails.
+fn compute_results(sub: &clap::ArgMatches, key: &WalkKey) -> Option<UastResults> {
+    let run = HistoryRun::open(sub)?;
+    // Two or more UAST analyzers are pre-computed ([`prewarm`]) before the
+    // other history walks start, so the pass has the budget to itself.
+    let name = key.selection.walk_name();
+    let plan = if key.selection.count() >= 2 {
+        ChunkPlan::for_lone_walk(sub, &name, run.hashes.len(), UAST_COST)
     } else {
-        load_history_commit_hashes(&repo, key.limit, key.first_parent, key.since.clone())?
+        ChunkPlan::for_walk(sub, &name, run.hashes.len(), UAST_COST)
+    }
+    .ok()?;
+    let params = UastParams {
+        filter: &run.filter,
+        max_changes: run.max_changes,
+        selection: key.selection,
+        min_comment_len: key.min_comment_len,
+        max_distance: key.max_distance,
+        shotness_dsl: &key.shotness_dsl,
     };
+    let mut fold = UastFold::new(key.selection, run.first_parent);
+    let summary = walk_chunks(
+        &run,
+        plan,
+        |repo, hash| uast_prepare(repo, hash, &params),
+        |gated| gated.oversized(params.max_changes),
+        |stamp, gated| fold.consume(stamp, gated.product),
+    )?;
+    Some(fold.finish(summary, run.tick_size_hours() * SECS_PER_HOUR))
+}
 
-    let max_distance = key.max_distance;
-    // Oversized-commit gate: commits whose RAW tree diff exceeds the cap are
-    // silently dropped from history BEFORE any analyzer (reference framework
-    // behaviour; flag `--max-changes-per-commit`, 0 = default 10000).
-    let max_changes = key.max_changes;
-    let opts = PathPolicyOptions::default();
-    let opts_ref = &opts;
+#[cfg(test)]
+mod tests {
+    use cf_gitlib::testutil::{init_repo, CommitBuilder, TestRepo};
 
-    // ---- parallel pure-compute stage -----------------------------------------
-    // Per commit: ONE tree diff, ONE gated parse per (name, hash) via the
-    // cache, then each selected analyzer's per-commit product function — the
-    // same functions the direct walks call.
-    let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
-    let filter_ref = &key.filter;
-    let prepared = history::parallel_prepare(path, &hashes, workers, move |repo, hash| {
-        history::with_uast_parser(|parser| {
-            let commit = repo.lookup_commit(hash).ok()?;
-            let raw_changes = history::commit_tree_changes(repo, &commit)?;
-            let mut product = SharedCommitProduct {
-                raw_change_count: raw_changes.len(),
-                ..SharedCommitProduct::default()
+    use super::*;
+
+    /// The `-v` plan line names the pass by its selected analyzers, in
+    /// report order.
+    #[test]
+    fn the_pass_is_named_by_its_selection() {
+        let one = UastSelection::default().with(UastAnalyzer::Sentiment);
+        assert_eq!(one.walk_name(), "history/sentiment");
+        let two = UastSelection::default()
+            .with(UastAnalyzer::Typos)
+            .with(UastAnalyzer::Quality);
+        assert_eq!(two.walk_name(), "history/quality,history/typos");
+    }
+
+    /// 2021-01-01T00:00:00Z.
+    const T0: i64 = 1_609_459_200;
+    /// One day.
+    const DAY: i64 = 86_400;
+    /// The Go files every fixture commit writes.
+    const FILES: [&str; 3] = ["a.go", "b.go", "c.go"];
+    /// The two sides of one change: the most parses a worker may hold.
+    const SIDES_PER_CHANGE: usize = 2;
+    /// Every analyzer alone, then all five together (the shared pass).
+    const SELECTIONS: [&[UastAnalyzer]; 6] = [
+        &[UastAnalyzer::Quality],
+        &[UastAnalyzer::Sentiment],
+        &[UastAnalyzer::Imports],
+        &[UastAnalyzer::Typos],
+        &[UastAnalyzer::Shotness],
+        &[
+            UastAnalyzer::Quality,
+            UastAnalyzer::Sentiment,
+            UastAnalyzer::Imports,
+            UastAnalyzer::Typos,
+            UastAnalyzer::Shotness,
+        ],
+    ];
+
+    /// A Go file with an import, a comment and one function, whose name
+    /// carries a typo in the first version (`recieve`) that the second
+    /// version fixes; the second version also adds a comment.
+    fn go_file(file: &str, fixed: bool) -> Vec<u8> {
+        let name = if fixed { "receive" } else { "recieve" };
+        let extra = if fixed {
+            "// wonderful helper that makes every caller happy\n"
+        } else {
+            ""
+        };
+        format!(
+            "package p\n\nimport \"strings\"\n\n// the {file} helper keeps the happy path tidy\n{extra}func {name}(s string) string {{\n\treturn strings.TrimSpace(s)\n}}\n"
+        )
+        .into_bytes()
+    }
+
+    /// Two commits: the first adds [`FILES`], the second modifies all of
+    /// them (three Modify changes whose both sides parse).
+    fn multi_file_history() -> (TestRepo, Hash) {
+        let test = init_repo().expect("init");
+        let mut first = CommitBuilder::new(&test, "add", T0).author("alice", "alice@x");
+        let mut second = CommitBuilder::new(&test, "fix", T0 + DAY).author("bob", "bob@x");
+        for file in FILES {
+            first = first.write(file, &go_file(file, false));
+            second = second.write(file, &go_file(file, true));
+        }
+        first.commit().expect("first commit");
+        let modified = second.commit().expect("second commit");
+        (test, modified)
+    }
+
+    /// The parsed `run` matches over `test`.
+    fn run_matches(test: &TestRepo) -> clap::ArgMatches {
+        let path = test.path().to_str().expect("utf-8 path");
+        crate::build_codefang_command()
+            .try_get_matches_from(["codefang", "run", "-a", "history/quality", path])
+            .expect("run args parse")
+            .subcommand_matches("run")
+            .expect("run")
+            .clone()
+    }
+
+    impl UastResults {
+        /// These results with only `analyzer`'s field kept.
+        fn only(&self, analyzer: UastAnalyzer) -> Self {
+            let mut out = Self::default();
+            match analyzer {
+                UastAnalyzer::Quality => out.quality.clone_from(&self.quality),
+                UastAnalyzer::Sentiment => out.sentiment.clone_from(&self.sentiment),
+                UastAnalyzer::Imports => out.imports.clone_from(&self.imports),
+                UastAnalyzer::Typos => out.typos.clone_from(&self.typos),
+                UastAnalyzer::Shotness => out.shotness.clone_from(&self.shotness),
+            }
+            out
+        }
+    }
+
+    /// The five analyzers, in one selection.
+    const ALL: [UastAnalyzer; 5] = [
+        UastAnalyzer::Quality,
+        UastAnalyzer::Sentiment,
+        UastAnalyzer::Imports,
+        UastAnalyzer::Typos,
+        UastAnalyzer::Shotness,
+    ];
+
+    /// Every analyzer's results, spilled to disk, read back equal to what
+    /// the pass computed; reading one analyzer loads only that analyzer.
+    #[test]
+    fn spilled_results_read_back_as_computed() {
+        let (test, _) = multi_file_history();
+        let sub = run_matches(&test);
+        let selection = ALL
+            .iter()
+            .fold(UastSelection::default(), |sel, &a| sel.with(a));
+        let key = WalkKey::from_matches(&sub, selection).expect("key");
+        let computed = compute_results(&sub, &key).expect("pass");
+        let held = HeldResults::spilled(&computed).expect("spill");
+        for analyzer in ALL {
+            assert_eq!(
+                held.view(analyzer).expect("read back"),
+                computed.only(analyzer),
+                "{analyzer:?}"
+            );
+        }
+        let memory = HeldResults::in_memory(computed.clone());
+        assert_eq!(
+            memory.view(UastAnalyzer::Typos).expect("view"),
+            computed.only(UastAnalyzer::Typos)
+        );
+    }
+
+    /// A worker computing a multi-file commit's products holds the parses of
+    /// at most ONE change (its two sides) at a time — for every analyzer
+    /// alone (a direct walk) and for all five together (the shared walk) —
+    /// and still parses each side of each change exactly once, however many
+    /// analyzers read it.
+    #[test]
+    fn a_worker_holds_the_parses_of_one_change_at_a_time() {
+        let (test, modified) = multi_file_history();
+        let run = HistoryRun::open(&run_matches(&test)).expect("open run");
+        let dsl = ShotnessDsl::default();
+        let one_side = FILES.len();
+        let both_sides = SIDES_PER_CHANGE * FILES.len();
+        let expected_parses = [
+            one_side, both_sides, one_side, both_sides, both_sides, both_sides,
+        ];
+        let mut defects = Vec::new();
+        for (analyzers, expected) in SELECTIONS.into_iter().zip(expected_parses) {
+            let selection = analyzers
+                .iter()
+                .fold(UastSelection::default(), |sel, &a| sel.with(a));
+            let params = UastParams {
+                filter: &run.filter,
+                max_changes: run.max_changes,
+                selection,
+                min_comment_len: cf_sentiment::DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH,
+                max_distance: cf_typos::DEFAULT_MAXIMUM_ALLOWED_TYPO_DISTANCE as i64,
+                shotness_dsl: &dsl,
             };
-            // Oversized commits are dropped before any analyzer — no per-file
-            // work; the reduce below removes them from the walk entirely.
-            if product.raw_change_count > max_changes {
-                return Some(product);
-            }
-            // TreeDiffAnalyzer.filterChanges (policy + --languages); the reduce
-            // and every per-commit product below consume only these changes.
-            let mut changes = raw_changes;
-            filter_ref.retain_changes(repo, &mut changes);
-            let mut cache = CommitParseCache::new(repo, parser, opts_ref);
-            if sel.quality {
-                product.quality = Some(history::quality_commit_product(&changes, &mut cache));
-            }
-            if sel.sentiment {
-                product.sentiment = Some(history::sentiment_commit_product(&changes, &mut cache));
-            }
-            if sel.imports {
-                product.imports = Some(history::imports_commit_product(&changes, &mut cache));
-            }
-            if sel.shotness {
-                product.shotness =
-                    Some(shotness_run::shotness_commit_product(&changes, &mut cache));
-            }
-            if sel.typos {
-                // The Levenshtein context is pure scratch buffers (results are
-                // state-independent), so a per-commit context is byte-identical
-                // to the direct walk's long-lived one.
-                let mut lctx = LevenshteinContext::new();
-                product.typos = Some(history::typos_commit_product(
-                    repo,
-                    hash,
-                    &changes,
-                    max_distance,
-                    &mut lctx,
-                    &mut cache,
+            live_parses::reset();
+            let gated = uast_prepare(&run.repo, modified, &params).expect("prepare");
+            assert_eq!(gated.raw_change_count, FILES.len());
+            let (live, peak, born) = live_parses::snapshot();
+            if live != 0 || peak > SIDES_PER_CHANGE || born != expected {
+                defects.push(format!(
+                    "{analyzers:?}: {peak} parses alive at once (at most {SIDES_PER_CHANGE}), \
+                     {born} parsed (expected {expected}), {live} outlived the commit"
                 ));
             }
-            Some(product)
-        })
-    })?;
-
-    // Oversized-commit skip: dropped from history before identity/tick
-    // stamping (the reference framework never shows the commit to any
-    // analyzer, core or leaf), exactly like each direct walk's gate. The
-    // ORIGINAL walk position of each surviving commit is preserved: the
-    // reference runner numbers consume positions before the drop suppresses a
-    // record, and the forked-leaf NDJSON drain order keys on that position.
-    let mut kept_pos: Vec<usize> = Vec::new();
-    let (hashes, prepared): (Vec<_>, Vec<_>) = hashes
-        .into_iter()
-        .zip(prepared)
-        .enumerate()
-        .filter(|(_, (_, p))| p.raw_change_count <= max_changes)
-        .map(|(i, hp)| {
-            kept_pos.push(i);
-            hp
-        })
-        .unzip();
-
-    // ---- sequential ordered identity/tick stamping ----------------------------
-    // Identical across the five walks, so computed once here.
-    struct Stamp {
-        pos: usize,
-        hash_str: String,
-        tick: i64,
-        author_id: i64,
-        when: i64,
-        offset_min: i32,
-        num_parents: usize,
+        }
+        assert!(defects.is_empty(), "{}", defects.join("\n"));
     }
-    let mut identity = IdentityDetector::new();
-    let mut tick0: Option<i64> = None;
-    let mut previous_tick: i64 = 0;
-    let mut stamps: Vec<Stamp> = Vec::with_capacity(hashes.len());
-    for (j, hash) in hashes.iter().enumerate() {
-        let commit = repo.lookup_commit(*hash).ok()?;
-        let committer_when = commit.committer().when;
-        let when = committer_when.seconds();
-
-        let gsig = commit.author();
-        let author_id = identity.consume_signature(&cf_analyzers_plumbing::Signature {
-            name: gsig.name.clone(),
-            email: gsig.email.clone(),
-            when_unix: gsig.when.seconds(),
-        });
-
-        let base = *tick0.get_or_insert_with(|| floor_tick_secs(when));
-        let raw_tick = (when - base).div_euclid(86_400);
-        let tick = raw_tick.max(previous_tick);
-        previous_tick = tick;
-
-        stamps.push(Stamp {
-            pos: kept_pos[j],
-            hash_str: hash.to_string(),
-            tick,
-            author_id,
-            when,
-            offset_min: committer_when.offset_minutes(),
-            num_parents: commit.num_parents(),
-        });
-    }
-
-    // Zips the shared stamps with each selected analyzer's per-commit product
-    // into that analyzer's commit-struct vec (the direct walks' exact output).
-    fn assemble<T>(
-        selected: bool,
-        stamps: &[Stamp],
-        prepared: &[SharedCommitProduct],
-        build: impl Fn(&Stamp, &SharedCommitProduct) -> T,
-    ) -> Option<Vec<T>> {
-        selected.then(|| {
-            stamps
-                .iter()
-                .zip(prepared)
-                .map(|(s, p)| build(s, p))
-                .collect()
-        })
-    }
-
-    let quality = assemble(sel.quality, &stamps, &prepared, |s, p| QualityCommit {
-        pos: s.pos,
-        hash: s.hash_str.clone(),
-        tq: p
-            .quality
-            .clone()
-            .expect("quality product for selected analyzer"),
-        tick: s.tick,
-        author_id: s.author_id,
-        when: s.when,
-        offset_min: s.offset_min,
-    });
-    let sentiment = assemble(sel.sentiment, &stamps, &prepared, |s, p| SentimentCommit {
-        hash: s.hash_str.clone(),
-        comments: p
-            .sentiment
-            .clone()
-            .expect("sentiment product for selected analyzer"),
-        tick: s.tick,
-        author_id: s.author_id,
-        when: s.when,
-        offset_min: s.offset_min,
-    });
-    let imports = assemble(sel.imports, &stamps, &prepared, |s, p| ImportsCommit {
-        hash: s.hash_str.clone(),
-        entries: p
-            .imports
-            .clone()
-            .expect("imports product for selected analyzer"),
-        author_id: s.author_id,
-        tick: s.tick,
-        when: s.when,
-        offset_min: s.offset_min,
-    });
-    let typos = assemble(sel.typos, &stamps, &prepared, |s, p| TyposCommit {
-        typos: p
-            .typos
-            .clone()
-            .expect("typos product for selected analyzer"),
-        tick: s.tick,
-        author_id: s.author_id,
-        when: s.when,
-        offset_min: s.offset_min,
-    });
-
-    // ---- shotness sequential cumulative reduce --------------------------------
-    // The state machine consumes the precomputed parse/extract/diff products in
-    // walk order — the same `ShotnessReducer` the direct walk drives.
-    let shotness = sel.shotness.then(|| {
-        let mut reducer = ShotnessReducer::default();
-        stamps
-            .iter()
-            .zip(&prepared)
-            .zip(&hashes)
-            .map(|((s, p), hash)| {
-                let mut entry = ShotnessCommit {
-                    hash: s.hash_str.clone(),
-                    touched: std::collections::BTreeMap::new(),
-                    tick: s.tick,
-                    author_id: s.author_id,
-                    when: s.when,
-                    offset_min: s.offset_min,
-                };
-                if reducer.should_consume(*hash, s.num_parents) {
-                    let products = p
-                        .shotness
-                        .as_ref()
-                        .expect("shotness product for selected analyzer");
-                    entry.touched = reducer.consume(products);
-                }
-                entry
-            })
-            .collect()
-    });
-
-    Some(SharedWalks {
-        quality,
-        sentiment,
-        imports,
-        typos,
-        shotness,
-    })
 }

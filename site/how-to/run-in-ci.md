@@ -74,12 +74,14 @@ detects issues.
              echo "${{ steps.codefang.outputs.report }}"
    ```
 
-5. If a large repository runs out of memory in CI, constrain it with a memory
-   budget by running the binary directly inside the job, or in Docker:
+5. If a large repository runs out of memory or time in CI, bound the history
+   window — `--limit`, `--since`, `--first-parent`,
+   `--max-changes-per-commit` — by running the binary directly inside the
+   job, or in Docker:
 
    ```bash
    docker run --rm -v "$(pwd):/workspace:ro" \
-     codefang run -a 'history/*' --memory-budget 2GiB --format json --silent /workspace
+     codefang run -a 'history/*' --limit 2000 --format json --silent /workspace
    ```
 
 ## Result

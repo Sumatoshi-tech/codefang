@@ -23,7 +23,7 @@
 //! [`cf_gojson`] crate's `marshal` (map keys byte-sorted, `<`/`>`/`&` and
 //! `U+2028`/`U+2029` escaped, no insignificant whitespace, no trailing
 //! newline). Output bytes are pinned against the reference implementation by
-//! `tests/compat`.
+//! the report e2e suites (`bins/codefang/tests`).
 //!
 //! Cross-type numeric coercion in [`accessors::get_int`] /
 //! [`accessors::get_float64`] delegates to the shared [`cf_safeconv`] crate.

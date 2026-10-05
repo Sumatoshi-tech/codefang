@@ -24,7 +24,7 @@
 //! Machine-format report bytes (json/yaml/ndjson/timeseries/compact/bin) are
 //! produced via [`cf_gojson`] in [`serialize`]; this crate never uses
 //! `serde_json` for output. Compatibility: output bytes are pinned against the
-//! reference implementation by `tests/compat`.
+//! reference implementation by the report e2e suites (`bins/codefang/tests`).
 
 #![forbid(unsafe_code)]
 
@@ -849,5 +849,98 @@ mod tests {
         let pos10 = s.find("\"10\"").unwrap();
         let pos2 = s.find("\"2\"").unwrap();
         assert!(pos10 < pos2, "got: {s}");
+    }
+
+    /// The secondary developer is emitted whenever one exists — including
+    /// developer id 0 — and omitted only for a single-contributor language.
+    #[test]
+    fn bus_factor_secondary_id_zero_is_emitted() {
+        let names = vec![
+            "alice|alice@example.com".to_string(),
+            "bob|bob@example.com".to_string(),
+        ];
+        let mut two = LanguageData {
+            name: "Go".into(),
+            total_lines: 30,
+            total_contribution: 30,
+            ..LanguageData::default()
+        };
+        two.contributors.insert(1, 20);
+        two.contributors.insert(0, 10);
+        two.contributor_order = vec![1, 0];
+        let mut one = LanguageData {
+            name: "Python".into(),
+            total_lines: 5,
+            total_contribution: 5,
+            ..LanguageData::default()
+        };
+        one.contributors.insert(1, 5);
+        one.contributor_order = vec![1];
+
+        let bf = compute_bus_factor(
+            &BusFactorInput {
+                languages: &[two, one],
+                names: &names,
+            },
+            &MetricOptions::default(),
+        );
+        let go = bf.iter().find(|b| b.language == "Go").unwrap();
+        assert_eq!(go.primary_dev_id, 1);
+        assert_eq!(go.secondary_dev_id, Some(0));
+        let go_json =
+            String::from_utf8(cf_gojson::marshal(&serialize::bus_factor_data_to_go(go))).unwrap();
+        assert!(go_json.contains(r#""secondary_dev_id":0"#), "{go_json}");
+        assert!(
+            go_json.contains(r#""secondary_dev_name":"alice""#),
+            "{go_json}"
+        );
+
+        let py = bf.iter().find(|b| b.language == "Python").unwrap();
+        assert_eq!(py.secondary_dev_id, None);
+        let py_json =
+            String::from_utf8(cf_gojson::marshal(&serialize::bus_factor_data_to_go(py))).unwrap();
+        assert!(!py_json.contains("secondary"), "{py_json}");
+    }
+
+    /// A developer with no language breakdown renders `languages: null` in
+    /// JSON and `languages: []` in YAML (the documented asymmetry).
+    #[test]
+    fn developer_without_languages_is_null_in_json_and_empty_in_yaml() {
+        let dev = DeveloperData {
+            id: 3,
+            name: "carol".into(),
+            commits: 1,
+            ..DeveloperData::default()
+        };
+        let json =
+            String::from_utf8(cf_gojson::marshal(&serialize::developer_data_to_go(&dev))).unwrap();
+        assert!(json.contains(r#""languages":null"#), "{json}");
+        let yaml = String::from_utf8(cf_goyaml::marshal(&serialize::developer_data_to_go_yaml(
+            &dev,
+        )))
+        .unwrap();
+        assert!(yaml.contains("languages: []"), "{yaml}");
+        assert!(!yaml.contains("email"), "empty email is omitted: {yaml}");
+    }
+
+    /// The active window never starts before tick 0: a history shorter than
+    /// the active period makes every tick active, and the ratio fallback
+    /// truncates toward zero.
+    #[test]
+    fn active_threshold_clamps_to_zero_and_truncates_the_ratio() {
+        use crate::metrics::compute_active_threshold;
+        let opts = MetricOptions::default();
+        // 90 days of 24-hour ticks reach back 90 ticks.
+        assert_eq!(compute_active_threshold(100, TICK_SIZE, &opts), 10);
+        assert_eq!(compute_active_threshold(90, TICK_SIZE, &opts), 0);
+        assert_eq!(compute_active_threshold(5, TICK_SIZE, &opts), 0);
+        // One-hour ticks reach back 90 * 24 ticks.
+        assert_eq!(
+            compute_active_threshold(3000, TICK_SIZE / 24, &opts),
+            3000 - 90 * 24
+        );
+        // Unknown tick size: the 0.7 ratio of the period, truncated.
+        assert_eq!(compute_active_threshold(9, 0, &opts), 6);
+        assert_eq!(compute_active_threshold(0, 0, &opts), 0);
     }
 }

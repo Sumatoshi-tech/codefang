@@ -4,7 +4,7 @@
 //! [`initial_tree_changes`] treats every file in a tree as an insertion (for a
 //! root commit); [`tree_files`] materializes all blob files in a tree. The
 //! change stream feeds the history analyzers, so its ordering and contents are
-//! part of the report contract (pinned by `tests/compat`).
+//! part of the report contract (pinned by the report e2e suites (`bins/codefang/tests`)).
 
 use crate::error::Result;
 use crate::file::File;

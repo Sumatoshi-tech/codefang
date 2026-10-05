@@ -15,7 +15,7 @@
 //! LogLog-Beta polynomial and `alpha` constants are fixed, and the final
 //! estimate is rounded half away from zero (`f64::round`) before truncation to
 //! `u64`. Sketch estimates appear in machine-format reports whose bytes are
-//! pinned against the reference implementation by `tests/compat`.
+//! pinned by the report e2e suites (`bins/codefang/tests`).
 //!
 //! # Thread safety
 //!

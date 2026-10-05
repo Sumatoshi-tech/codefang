@@ -17,7 +17,7 @@ cf-alg-lru = { path = "../cf-alg-lru" }
 cf-storage = { path = "../cf-storage" }
 # Canonical report-format JSON writer (write_json over cf-gojson). The
 # cache.json metadata bytes are part of the compatibility contract (pinned by
-# tests/compat); we route through this, never raw serde_json.
+# the report e2e suites in bins/codefang/tests); we route through this, never raw serde_json.
 cf-textutil = { path = "../cf-textutil" }
 # SHA-256 cache-key derivation. Util only — never used for machine report
 # output.

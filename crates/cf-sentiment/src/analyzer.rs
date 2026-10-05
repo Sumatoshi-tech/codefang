@@ -1,20 +1,21 @@
 //! Comment extraction, merging, and filtering pipeline.
 //!
 //! The pure (UAST-independent) part of the analyzer: grouping comment nodes by
-//! line, merging adjacent comments, stripping comment delimiters, and filtering
-//! comments down to those suitable for sentiment analysis.
+//! line, merging adjacent comments, stripping comment delimiters, filtering
+//! comments down to those suitable for sentiment analysis, and the
+//! before/after multiset difference ([`new_or_changed`]) that keeps only the
+//! comments a commit introduced or edited.
 //!
-//! The UAST-bound pieces (`Consume`, `Fork`, snapshots, the history-analyzer
-//! wiring) live in the framework crates; this module provides the deterministic
-//! text pipeline plus the analyzer's identity constants and config defaults,
-//! all directly testable.
+//! The UAST-bound pieces (the history walk, the per-commit tree diff) live in
+//! the command layer; this module provides the deterministic text pipeline
+//! plus the analyzer's identity constant and the default minimum length, all
+//! directly testable.
 //!
-//! # Pattern semantics (report compatibility)
+//! # Pattern semantics
 //!
-//! The reference implementation expresses these filters as RE2 patterns. They
-//! are reproduced here with hand-written Unicode-class scans (no `regex` crate
-//! dependency) so that length/letter-ratio checks use **byte** lengths, exactly
-//! as the reference does:
+//! The filters are expressed as RE2-style patterns, reproduced here with
+//! hand-written Unicode-class scans (no `regex` crate dependency); length and
+//! letter-ratio checks use **byte** lengths:
 //! * `[^\p{L}\p{N}]` — first char must be a Unicode letter or number;
 //! * `[^\p{L}\p{N}\-_:;,./?!#&%+*=\n \t()]+` — strip runs of disallowed
 //!   characters;
@@ -27,30 +28,11 @@
 /// Analyzer ID as it appears in reports and on the CLI.
 pub const ANALYZER_ID: &str = "history/sentiment";
 
-/// Analyzer description shown in CLI help.
-pub const ANALYZER_DESCRIPTION: &str =
-    "Classifies each new or changed comment per commit as containing positive or negative emotions.";
-
-/// Minimum comment length below which the configured value is replaced by the
-/// default.
-pub const MIN_COMMENT_LENGTH_THRESHOLD_HIGH: i64 = 10;
-
-/// Default minimum comment length.
+/// Default minimum comment length in bytes (`--min-comment-len`).
 pub const DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH: i64 = 20;
-
-/// Default sentiment gap threshold.
-pub const DEFAULT_COMMENT_SENTIMENT_GAP: f32 = 0.5;
 
 /// Minimum letters ratio for a comment.
 pub const COMMENT_LETTERS_RATIO: f32 = 0.6;
-
-/// Estimated bytes of TC payload per commit.
-pub const SENTIMENT_AVG_TC_SIZE: i64 = 500;
-
-/// Config key for the minimum comment length.
-pub const CONFIG_MIN_LENGTH: &str = "CommentSentiment.MinLength";
-/// Config key for the sentiment gap.
-pub const CONFIG_GAP: &str = "CommentSentiment.Gap";
 
 /// Comment prefixes stripped before analysis, longest first so `///` matches
 /// before `//`.
@@ -61,27 +43,9 @@ pub const COMMENT_PREFIXES: &[&str] = &[
 /// Comment suffixes stripped from lines.
 pub const COMMENT_SUFFIXES: &[&str] = &["*/"];
 
-/// Configuration shared by the analyzer: the configurable fields that affect
-/// the text pipeline.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Config {
-    /// Minimum comment byte length.
-    pub min_comment_length: i64,
-    /// Sentiment gap threshold.
-    pub gap: f32,
-}
-
-impl Config {
-    /// Clamps invalid configuration to defaults.
-    pub fn validate(&mut self) {
-        if self.gap < 0.0 || self.gap >= 1.0 {
-            self.gap = DEFAULT_COMMENT_SENTIMENT_GAP;
-        }
-        if self.min_comment_length < MIN_COMMENT_LENGTH_THRESHOLD_HIGH {
-            self.min_comment_length = DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH;
-        }
-    }
-}
+/// The per-line continuation marker of Javadoc / Doxygen / C block comments
+/// (` * text`), stripped after the prefixes.
+const BLOCK_CONTINUATION_MARKER: char = '*';
 
 /// Returns true if `c` is a Unicode letter (`\p{L}`).
 fn is_letter(c: char) -> bool {
@@ -135,7 +99,20 @@ fn trim_space(s: &str) -> &str {
     s.trim_matches(|c: char| c.is_whitespace())
 }
 
-/// Removes common comment syntax from each line.
+/// Removes common comment syntax from each line: a leading prefix
+/// ([`COMMENT_PREFIXES`]), a trailing suffix ([`COMMENT_SUFFIXES`]), then a
+/// leading block-continuation `*`; the stripped lines are joined with one
+/// space.
+///
+/// ```
+/// use cf_sentiment::analyzer::strip_comment_delimiters;
+///
+/// assert_eq!(strip_comment_delimiters("// a line\n// another"), "a line another");
+/// assert_eq!(
+///     strip_comment_delimiters("/**\n * Javadoc text\n * continues\n */"),
+///     "Javadoc text continues"
+/// );
+/// ```
 #[must_use]
 pub fn strip_comment_delimiters(text: &str) -> String {
     let mut lines: Vec<String> = Vec::new();
@@ -152,6 +129,9 @@ pub fn strip_comment_delimiters(text: &str) -> String {
                 let end = trimmed.len() - suffix.len();
                 trimmed = trim_space(&trimmed[..end]).to_string();
             }
+        }
+        if let Some(rest) = trimmed.strip_prefix(BLOCK_CONTINUATION_MARKER) {
+            trimmed = trim_space(rest).to_string();
         }
         lines.push(trimmed);
     }
@@ -243,8 +223,8 @@ pub fn is_license(s: &str) -> bool {
 
 /// Filters merged comments down to those suitable for sentiment analysis.
 ///
-/// `min_length` is compared against the **byte** length (report compatibility:
-/// the reference implementation compares byte lengths).
+/// `min_length` is compared against the comment's length in **characters**
+/// (Unicode scalar values), so the filter treats every script alike.
 #[must_use]
 pub fn filter_comments(comments: &[String], min_length: i64) -> Vec<String> {
     let mut filtered = Vec::with_capacity(comments.len());
@@ -268,7 +248,7 @@ pub fn filter_comments(comments: &[String], min_length: i64) -> Vec<String> {
         comment = strip_function_names(&comment);
         comment = strip_filtered_chars(&comment);
 
-        if (comment.len() as i64) < min_length {
+        if (comment.chars().count() as i64) < min_length {
             continue;
         }
 
@@ -357,6 +337,40 @@ pub fn merge_comments(nodes: &[CommentNode], min_length: i64) -> Vec<String> {
     filter_comments(&merged, min_length)
 }
 
+/// The comments of `after` that are NEW or CHANGED relative to `before`: the
+/// multiset difference `after − before`, in `after` order. A comment text
+/// present `n` times in `before` cancels its first `n` occurrences in
+/// `after`, so a commit that only adds code to a commented file contributes
+/// nothing and an edited comment counts once (as new text).
+///
+/// ```
+/// use cf_sentiment::analyzer::new_or_changed;
+///
+/// let after = vec!["kept".to_string(), "edited text".to_string()];
+/// let before = vec!["kept".to_string(), "old text".to_string()];
+/// assert_eq!(new_or_changed(&after, &before), vec!["edited text".to_string()]);
+/// ```
+#[must_use]
+pub fn new_or_changed(after: &[String], before: &[String]) -> Vec<String> {
+    use std::collections::HashMap;
+
+    let mut unchanged: HashMap<&str, usize> = HashMap::new();
+    for text in before {
+        *unchanged.entry(text.as_str()).or_insert(0) += 1;
+    }
+    after
+        .iter()
+        .filter(|text| match unchanged.get_mut(text.as_str()) {
+            Some(n) if *n > 0 => {
+                *n -= 1;
+                false
+            }
+            _ => true,
+        })
+        .cloned()
+        .collect()
+}
+
 /// Returns the UTF-8 byte length of the char starting with lead byte `b`.
 fn utf8_char_len(b: u8) -> usize {
     if b < 0x80 {
@@ -374,31 +388,25 @@ fn utf8_char_len(b: u8) -> usize {
 mod tests {
     use super::*;
 
+    /// The minimum length counts characters, so a short comment in a
+    /// non-ASCII script is filtered like its ASCII counterpart.
+    #[test]
+    fn min_length_counts_characters_not_bytes() {
+        // 14 characters, 26 bytes in UTF-8.
+        let short_cyrillic = "// Хороший код".to_string();
+        assert_eq!(filter_comments(&[short_cyrillic], 20), Vec::<String>::new());
+        // 21 characters (and bytes).
+        let ascii = "// a really great design".to_string();
+        assert_eq!(
+            filter_comments(&[ascii], 20),
+            vec!["a really great design".to_string()]
+        );
+    }
+
     const MIN_LEN: i64 = 10;
 
     fn s(v: &[&str]) -> Vec<String> {
         v.iter().copied().map(String::from).collect()
-    }
-
-    #[test]
-    // validate() copies a const exactly; an epsilon compare would hide a real clamp bug.
-    #[allow(clippy::float_cmp)]
-    fn validate_clamps() {
-        let mut c = Config {
-            min_comment_length: 5,
-            gap: 2.0,
-        };
-        c.validate();
-        assert_eq!(c.gap, DEFAULT_COMMENT_SENTIMENT_GAP);
-        assert_eq!(c.min_comment_length, DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH);
-
-        let mut ok = Config {
-            min_comment_length: 30,
-            gap: 0.8,
-        };
-        ok.validate();
-        assert_eq!(ok.min_comment_length, 30);
-        assert!((ok.gap - 0.8).abs() < 1e-6);
     }
 
     #[test]
@@ -530,6 +538,61 @@ mod tests {
     fn identity_constants() {
         assert_eq!(ANALYZER_ID, "history/sentiment");
         assert_eq!(DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH, 20);
-        assert!((DEFAULT_COMMENT_SENTIMENT_GAP - 0.5).abs() < 1e-6);
+    }
+
+    /// A Javadoc / Doxygen block keeps its text once the ` * ` continuation
+    /// markers are stripped line by line.
+    #[test]
+    fn strip_javadoc_continuation_asterisks() {
+        let block = "/**\n * This function is wonderful\n * and works every time\n */";
+        assert_eq!(
+            strip_comment_delimiters(block),
+            "This function is wonderful and works every time"
+        );
+        assert_eq!(strip_comment_delimiters("* bare bullet"), "bare bullet");
+        assert_eq!(strip_comment_delimiters(" *"), "");
+        // The Javadoc block survives the whole filter pipeline.
+        let out = filter_comments(&s(&[block]), DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH);
+        assert_eq!(out.len(), 1, "javadoc block must not be rejected: {out:?}");
+    }
+
+    /// Only comments NEW in `after` survive: an unchanged comment is removed
+    /// once per occurrence in `before`, order of `after` is preserved.
+    #[test]
+    fn new_or_changed_is_a_multiset_difference() {
+        let after = s(&["same text", "new text", "same text", "same text"]);
+        let before = s(&["same text", "gone text", "same text"]);
+        assert_eq!(
+            new_or_changed(&after, &before),
+            s(&["new text", "same text"])
+        );
+        assert!(new_or_changed(&[], &before).is_empty());
+        assert_eq!(new_or_changed(&after, &[]), after);
+    }
+
+    /// Comment nodes separated by a non-comment line are two merged comments.
+    #[test]
+    fn merge_non_adjacent_lines_split() {
+        let nodes = vec![
+            CommentNode {
+                start_line: 1,
+                end_line: 1,
+                token: "first block".into(),
+            },
+            CommentNode {
+                start_line: 5,
+                end_line: 6,
+                token: "second block".into(),
+            },
+            CommentNode {
+                start_line: 7,
+                end_line: 7,
+                token: "still second".into(),
+            },
+        ];
+        assert_eq!(
+            merge_adjacent_comments(&nodes),
+            s(&["first block", "second block\nstill second"])
+        );
     }
 }

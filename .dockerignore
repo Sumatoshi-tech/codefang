@@ -4,7 +4,6 @@ third_party/libgit2/build
 third_party/libgit2/install
 
 # Build outputs
-build/bin
 build/
 
 # Git and editor metadata

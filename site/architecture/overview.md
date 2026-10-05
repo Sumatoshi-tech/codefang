@@ -39,48 +39,56 @@ codefang run -a history/burndown,history/devs --limit 50 .
 | Crate | Description |
 |-------|-------------|
 | `bins/codefang` | CLI entry point for the analyzer. Subcommands `run`, `render`, `version`, `completion`. Delegates to `cf-commands`. |
-| `bins/uast` | CLI entry point for the UAST parser. Subcommands `parse`, `query`, `diff`, `explore`, `analyze`, `validate`, `mapping`, `lsp`, `server`. |
+| `bins/uast` | CLI entry point for the UAST parser. Subcommands `parse`, `diff`, `query`, `explore`, `analyze`, `validate`, `mapping`, `completion`, `version`. |
 
 ### Core libraries (workspace crates)
 
 The Rust port is a workspace of small, single-responsibility crates (`cf-*`).
-The most important ones:
+The ones the binaries link:
 
 | Crate | Description |
 |-------|-------------|
-| `cf-uast` | UAST parser engine: Tree-sitter integration, DSL engine, language mappings, pre-compiled matchers. |
-| `cf-uast-node`, `cf-uast-spec` | UAST node model and the schema it conforms to. |
-| `cf-commands` | The `codefang` command bodies (`run`, `render`) and analyzer wiring. |
-| `cf-framework`, `cf-pipeline`, `cf-streaming` | Pipeline orchestration: runner, coordinator, blob/diff/UAST stages, memory-bounded streaming. |
-| `cf-gitlib` | Git operations via the `git2` crate (vendored libgit2): repository, commit, tree, changes, batch blob/diff worker. |
-| `cf-alg`, `cf-alg-stats`, `cf-alg-mapx`, `cf-alg-lru`, … | Generic algorithms, statistics, map/slice helpers, and supporting data structures used across analyzers. |
-| `cf-gojson`, `cf-goyaml`, `cf-gosort` | Go-byte-compatible serialization encoders — the only path report output may use, so output stays byte-identical to the frozen oracle. |
+| `cf-uast` | UAST parser engine: Tree-sitter integration, rule lowering, grammar selection by extension. |
+| `cf-uast-node`, `cf-uast-mapping`, `cf-uast-mappings`, `cf-uast-spec` | UAST node model, the mapping model and macro, the compiled-in language mappings, the schema. |
+| `cf-commands` | The `codefang` command tree and bodies: the analyzer registry, the shared static walk, the shared history core, every output format. |
+| `cf-gitlib` | Git operations via the `git2` crate (vendored libgit2): repository, revwalk, tree diff with rename detection, blobs, line diffs. |
+| `cf-analyzers-plumbing`, `cf-identity` | The shared history tick assigner (`HistoryTicks`) and author identity detector. |
+| `cf-langpath`, `cf-pathpolicy`, `cf-pathfilter` | Language detection (an enry / Linguist port) and the vendored / generated path policy shared by both phases. |
+| `cf-alg`, `cf-alg-stats`, `cf-alg-mapx`, `cf-alg-levenshtein`, … | Generic algorithms, statistics and map/slice helpers used across analyzers. |
+| `cf-gojson`, `cf-goyaml`, `cf-reportutil`, `cf-analyze` | The report encoders (JSON, YAML, the CFB1 binary envelope) and the unified `codefang.run.v1` model — the only path report output may use, so machine-format bytes stay stable across releases. |
+| `cf-renderer`, `cf-terminal`, `cf-plotpage` | Terminal `text` / `compact` rendering and the HTML `plot` pages. |
 | `cf-safeconv` | Safe numeric conversions (clamp / checked / extract) used across the workspace. |
-| `cf-persist`, `cf-checkpoint`, `cf-storage` | Codec-based persistence, checkpointing for crash recovery, atomic file writes. |
-| `cf-config` | Configuration system: typed config, loader, compiled defaults, validation. |
-| `cf-mcp` | Model Context Protocol server exposing analysis as agent tools. |
-| `cf-observability` | OpenTelemetry integration: tracing, RED metrics, structured logging. |
-| `cf-budget`, `cf-cache`, `cf-meminfo` | Memory-budget solver, blob/hash caches, memory introspection for auto-tuning. |
-| Analyzer crates (`cf-complexity`, `cf-cohesion`, `cf-halstead`, `cf-comments`, `cf-imports`, `cf-clones`, `cf-composition`, `cf-burndown-core`, `cf-couples`, `cf-devs`, `cf-file-history`, `cf-sentiment`, `cf-shotness`, `cf-typos`, `cf-anomaly`, `cf-quality`) | One crate per analyzer's logic. |
+| Analyzer crates (`cf-complexity`, `cf-cohesion`, `cf-halstead`, `cf-comments`, `cf-imports`, `cf-clones`, `cf-composition`, `cf-analyzer-burndown`, `cf-burndown-core`, `cf-couples`, `cf-devs`, `cf-file-history`, `cf-sentiment`, `cf-shotness`, `cf-typos`, `cf-anomaly`, `cf-quality`) | One crate per analyzer's logic. |
+
+`codefang` also links `cf-mcp` (the `codefang mcp` server), `cf-streaming`,
+`cf-budget`, `cf-framework`, `cf-units` (the history memory budget),
+`cf-meminfo` (heap release), `cf-persist` (the UAST results spill) and
+`cf-config` (the configuration file). Neither binary links `cf-checkpoint`,
+`cf-storage`, `cf-spillstore`, `cf-cache`, `cf-observability`,
+`cf-plumbing`, `cf-analyzers-common`, `cf-alg-bloom`,
+`cf-alg-cms`, `cf-alg-interval` or `cf-alg-lru` (`cargo tree -p codefang`,
+`cargo tree -p uast`).
 
 ### Analyzers
 
-#### Shared components (`cf-analyzers-plumbing`)
+#### Shared history core
 
-The plumbing crate provides the shared pipeline components that all history
-analyzers depend on. These run as "core" analyzers in the pipeline before any
-leaf analyzers consume their output.
+Every history analyzer runs through one shared core in `cf-commands`
+(`crates/cf-commands/src/handlers/history/mod.rs`): one commit window, one
+tree diff with rename detection, one change filter, one identity and tick
+assignment and one chronological reduce. See
+[History pipeline](streaming-pipeline.md).
 
 | Component | Purpose |
 |-----------|---------|
-| Tree-diff analyzer | Computes per-commit tree diffs via libgit2 |
-| Blob-cache analyzer | Caches blob content for efficient re-reads |
-| File-diff analyzer | Computes file-level diffs from blobs |
-| Identity detector | Maps commit authors to canonical identities |
-| Language detection | Detects file languages |
-| Ticks-since-start | Assigns tick indices to commits for time-series |
-| Line-stats calculator | Computes per-commit line addition/deletion stats |
-| UAST-changes analyzer | Parses UAST for changed files |
+| `HistoryRun` | The opened repository, the oldest-first commit window and the change filter |
+| `walk_chunks` + worker pool (`history/chunks.rs`, `history/pool.rs`) | The pure per-commit pass (tree diff, line stats, blob reads, UAST parses) on a worker pool at most one chunk ahead of the in-order fold |
+| `Stamper` | The ONE identity + tick assignment, one commit at a time in window order |
+| Memory budget (`history/budget.rs`) | `--memory-budget` / `--chunk-size` → each walk's chunk size and worker count |
+| `HistoryFilter` | `--languages`, vendored / generated policy, the generated-code marker |
+| `IdentityDetector` (`cf-analyzers-plumbing`) | Maps commit authors to canonical developers |
+| `HistoryTicks` (`cf-analyzers-plumbing`) | Assigns monotonic tick indices (`--tick-size`) |
+| Shared UAST pass (`uast_walk.rs`) | Parses each change's two sides once, one change at a time, for every selected UAST-based analyzer |
 
 #### Static analyzers
 
@@ -91,10 +99,12 @@ leaf analyzers consume their output.
 | Halstead | `static/halstead` | Halstead software science metrics |
 | Cohesion | `static/cohesion` | Class/module cohesion metrics |
 | Imports | `static/imports` | Import graph and dependency analysis |
+| Clones | `static/clones` | Near-duplicate function detection |
+| Composition | `static/composition` | File categories (source, test, docs, config, …) |
 
-The analysis layer also contains the static analysis service, analyzer
-registry, output formatting (JSON, text, compact, YAML, plot, binary,
-timeseries), and cross-format conversion logic.
+`cf-commands` also holds the analyzer registry, the shared static walk and
+the output formatting (JSON, YAML, binary, text, compact, NDJSON,
+timeseries, plot).
 
 #### History analyzers
 
@@ -133,21 +143,19 @@ flowchart TD
     end
 
     subgraph uast_engine["cf-uast (Tree-sitter)"]
-        DETECT[Language Detection<br/><em>enry</em>]
-        PARSE[DSL Parser]
+        DETECT[Grammar selection<br/><em>file extension</em>]
+        PARSE[Parser<br/><em>compiled-in mappings</em>]
         NODES[UAST Nodes]
     end
 
-    subgraph framework["cf-framework"]
-        COORD[Coordinator<br/><em>worker pool</em>]
-        BLOB_PIPE[Blob Pipeline]
-        DIFF_PIPE[Diff Pipeline]
-        UAST_PIPE[UAST Pipeline]
-        RUNNER[Runner<br/><em>chunk processing</em>]
+    subgraph core["cf-commands history core"]
+        WINDOW[Commit window<br/><em>--limit / --since / --head</em>]
+        PREP[Per-commit pass<br/><em>worker pool, one chunk ahead</em>]
+        STAMP[Identity + ticks<br/><em>Stamper</em>]
+        REDUCE[Chronological reduce]
     end
 
     subgraph analyzers["analyzer crates"]
-        PLUMB[Plumbing<br/><em>core analyzers</em>]
         STATIC[Static Analyzers<br/><em>complexity, cohesion,<br/>halstead, comments, imports</em>]
         HISTORY[History Analyzers<br/><em>burndown, couples, devs,<br/>sentiment, anomaly, ...</em>]
     end
@@ -161,21 +169,14 @@ flowchart TD
         TS_OUT[TimeSeries]
     end
 
-    REPO --> OPEN --> COMMITS
-    COMMITS --> COORD
-    COORD --> BLOB_PIPE --> BLOBS
-    COORD --> DIFF_PIPE --> TREEDIFF
-    COORD --> UAST_PIPE --> PARSE
+    REPO --> OPEN --> COMMITS --> WINDOW --> PREP
+    PREP --> TREEDIFF
+    PREP --> BLOBS
+    BLOBS --> PARSE
     SRC --> DETECT --> PARSE --> NODES
-
-    BLOBS --> PLUMB
-    TREEDIFF --> PLUMB
-    NODES --> PLUMB
-
-    PLUMB --> HISTORY
-    SRC --> STATIC
-
-    RUNNER --> COORD
+    NODES --> PREP
+    PREP --> STAMP --> REDUCE --> HISTORY
+    NODES --> STATIC
 
     STATIC --> FORMAT
     HISTORY --> FORMAT
@@ -208,12 +209,10 @@ flowchart LR
         direction TB
         H1[Open Git repository via libgit2]
         H2[Walk commit history]
-        H3[Coordinator pipelines<br/><em>blob, diff, UAST workers</em>]
-        H4[Core plumbing analyzers<br/><em>tree_diff, blob_cache,<br/>identity, ticks, ...</em>]
-        H5[Leaf history analyzers<br/><em>burndown, couples, devs,<br/>sentiment, anomaly, ...</em>]
-        H6[Streaming chunks +<br/>hibernate/boot cycles]
+        H3[Parallel per-commit pass<br/><em>tree diff, line diffs,<br/>UAST parses</em>]
+        H4[Identity + tick stamps]
+        H5[Chronological reduce per analyzer<br/><em>burndown, couples, devs,<br/>sentiment, anomaly, ...</em>]
         H1 --> H2 --> H3 --> H4 --> H5
-        H2 --> H6
     end
 
     CMD["codefang run -a static/*,history/*"]
@@ -227,76 +226,66 @@ flowchart LR
 
 ### Static mode
 
-1. Reads source files from the filesystem.
-2. Parses each file into a UAST using Tree-sitter with DSL-based mappings.
-3. Runs selected static analyzers (complexity, cohesion, halstead, comments, imports).
+1. Walks the source tree once per analyzer (`walk_source_files`), applying
+   the vendored / generated policy, `--languages` and a 64 MiB per-file cap.
+2. Parses each file into a UAST using Tree-sitter and the compiled-in
+   mappings.
+3. Runs the selected static analyzers (complexity, cohesion, halstead,
+   comments, imports, clones, composition); up to four analyzers run
+   concurrently.
 4. Produces per-file and aggregate metrics.
 
-Static analysis is fast, parallelized across files, and requires no Git history.
+Static analysis requires no Git history.
 
 ### History mode
 
-1. Opens the Git repository via libgit2 through the `git2` crate (supports both normal and bare repos).
-2. Loads the commit history (optionally filtered by `--limit`, `--since`, `--first-parent`).
-3. The **Coordinator** orchestrates a worker pool with three pipeline stages: blob loading, diff computation, and UAST parsing.
-4. **Core plumbing analyzers** (tree diff, blob cache, identity detection, tick assignment, line stats, language detection, UAST changes) process each commit first.
-5. **Leaf history analyzers** consume the plumbing output and accumulate their state using the generic aggregator framework or custom memory-efficient data structures.
-6. For large repositories, the **streaming pipeline** splits commits into memory-bounded chunks with hibernate/boot cycles and optional double-buffered pipelining. The `BaseHistoryAnalyzer` manages state serialization transparently.
-7. **Checkpointing** after each chunk enables crash recovery.
+1. Opens the Git repository via libgit2 through the `git2` crate.
+2. Selects the commit window (`--limit` newest commits, `--since`, `--head`,
+   `--first-parent`) and consumes it oldest-first.
+3. Diffs every commit against its first parent with rename detection and
+   applies the shared change filter and `--max-changes-per-commit`.
+4. Computes each commit's pure products (line stats, blob reads, UAST
+   parses) in parallel across all cores.
+5. Assigns every commit its author id and tick once, then each analyzer
+   reduces the products in chronological order on one thread — so the report
+   is the same on any CPU count.
 
 ### Combined mode
 
-When both static and history analyzers are selected, Codefang runs both phases
-sequentially, encodes each phase to an internal binary format, then decodes and
-merges the results into a single output document in the requested format.
+When both static and history analyzers are selected, Codefang computes every
+analyzer's report (up to four concurrently), encodes each into the internal
+CFB1 binary envelope, then decodes and merges them into a single
+`codefang.run.v1` document in the requested format.
 
 ---
 
 ## Pipeline architecture
 
-The history analysis pipeline is built around a **Runner** that coordinates
-the full lifecycle:
-
-```text
-Initialize --> ProcessChunk (x N) --> FinalizeWithAggregators
-```
-
-Each `ProcessChunk` call:
-
-1. Feeds commits to the **Coordinator** worker pool.
-2. The Coordinator dispatches work across three parallel pipeline stages (blob, diff, UAST).
-3. Collected `CommitData` is fed sequentially to each analyzer's `Consume` method.
-4. Between chunks, hibernatable analyzers serialize their state to compact form and reboot.
-
-The **Runner** supports two execution strategies:
-
-- **Single-pass**: All commits in one chunk (small repos or unlimited memory).
-- **Streaming**: Memory-bounded chunks with hibernate/boot cycles, planned by the `streaming.Planner`. See [Streaming Pipeline](streaming-pipeline.md) for details.
+There is no runner or coordinator: each history analyzer walks the commit
+window in chunks (`--chunk-size`; one chunk by default) — a parallel
+per-commit pass over the chunk followed by a single-threaded chronological
+fold into the analyzer's reduce state — and several analyzers of one run are
+computed concurrently. See [History pipeline](streaming-pipeline.md) for the
+commit window, the change filter, identity and ticks, and how reports are
+serialized.
 
 ---
 
-## Configuration layers
+## Configuration
 
-Configuration follows a clear priority chain:
-
-```text
-CLI flags  >  Environment variables  >  .codefang.yaml  >  Compiled defaults
-```
-
-The `cf-config` crate handles loading and merging. Environment variables use the `CODEFANG_` prefix with
-underscore-separated nesting (e.g., `CODEFANG_PIPELINE_WORKERS=8`).
-
-See the [Configuration reference](../guide/configuration.md) for the full
-config file structure and validation rules.
+A run is configured by the `codefang run` command-line flags (see the
+[CLI reference](../guide/cli-reference.md)); the `cf-config` crate (typed
+config, loader, compiled defaults) is not linked into the binary. See the
+[Configuration reference](../guide/configuration.md).
 
 ---
 
 ## Observability
 
-Every layer of the pipeline is instrumented with OpenTelemetry:
-
-- **Tracing**: Hierarchical spans from `codefang.run` through coordinator pipeline, chunk processing, individual analyzers, git operations, and UAST parsing.
-- **Metrics**: RED (Rate, Errors, Duration) metrics plus analysis-specific counters (commits, chunks, cache hit rates).
-- **Logging**: Structured `slog` logging with automatic trace context injection.
-
-See [Observability](../operations/observability.md) for the full instrumentation guide.
+The default `codefang` binary exports no traces or metrics:
+`cf-observability` is compiled only with `cf-commands`' non-default
+`runtime` feature. A run reports on stderr — the resolved selection and the
+elapsed time as `progress:` lines (`--silent` turns them off), each skipped
+file once as a `warning:` line, and every failure as one `Error: <cause>`
+line — and writes report bytes only to stdout (or to `--output` for
+`plot`).

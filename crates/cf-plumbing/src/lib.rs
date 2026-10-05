@@ -13,7 +13,7 @@
 //! on [`LineStats`] exist purely so that *downstream* crates (which DO route
 //! through the shared report serializers) observe the exact same field names
 //! and declaration order; the field order below is the byte-identity-relevant
-//! invariant (pinned by `tests/compat`).
+//! invariant (pinned by the report e2e suites (`bins/codefang/tests`)).
 //!
 //! # Bridged identity constants
 //!

@@ -30,14 +30,16 @@ codefang run -a static/complexity --format text .
 
 Human-readable table output with optional color. This is the most readable
 format for terminal review. Static analyzers render section headers, aligned
-columns, and summary lines. History analyzers render a version header followed
-by structured key-value data.
+columns, and summary lines. History analyzers print the `codefang (v2):`
+version header once, then one section per analyzer: its id (`history/devs:`)
+followed by a summary box with the key figures and the top items (top
+contributors, most coupled files, typo fixes, anomalous ticks, …).
 
-Use `--verbose` (`-v`) to expand full detail in static reports. Use `--no-color`
-to strip ANSI escape codes (useful when piping to a file).
+Use `--no-color` (or `NO_COLOR=1`) to strip ANSI escape codes (useful when
+piping to a file).
 
 ```bash
-codefang run -a static/complexity --format text -v .
+codefang run -a static/complexity --format text --no-color .
 ```
 
 ??? example "Example Output"
@@ -178,7 +180,6 @@ codefang run --format json .
 
     - CI/CD pipelines that parse results programmatically
     - Loading into data warehouses (ClickHouse, BigQuery, Snowflake)
-    - Cross-format conversion input (`--input`)
     - Building BI dashboards from function-level metrics
 
 ---
@@ -312,13 +313,16 @@ A unified chronological JSON array that merges data from **all selected history
 analyzers** into a single stream keyed by commit. Each entry contains commit
 metadata plus per-analyzer data for that commit.
 
-This format is only meaningful for history analyzers. It requires at least one
-analyzer that implements the `CommitTimeSeriesProvider` interface (anomaly,
-devs, quality, sentiment).
+This format is only meaningful for history analyzers. Every history analyzer
+contributes its per-commit data (typos, which has no per-commit summary,
+contributes its name only); a static-only selection rejects the format.
 
 ```bash
 codefang run -a history/devs,history/sentiment --format timeseries .
 ```
+
+`--format timeseries --ndjson` emits the document's `commits` array, one JSON
+line per commit, with every selected analyzer merged into that line.
 
 ??? example "Example Output"
 
@@ -446,61 +450,54 @@ open ./report/index.html
 
 ## Format comparison
 
-The following table summarizes which formats are available for which analyzer
-categories:
+The following table summarizes which formats each selection accepts (the
+same matrix `codefang run` validates before any analysis starts):
 
-| Format | Static Analyzers | History Analyzers | Mixed Runs |
-|--------|:---------------:|:-----------------:|:----------:|
-| `text` | :material-check: | -- | -- |
-| `compact` | :material-check: | -- | -- |
+| Format | Static only | History only | Mixed static + history |
+|--------|:-----------:|:------------:|:----------------------:|
 | `json` | :material-check: | :material-check: | :material-check: |
 | `yaml` | :material-check: | :material-check: | :material-check: |
-| `ndjson` | :material-check: | :material-check: | :material-check: |
-| `plot` | :material-check: | :material-check: | :material-check: |
+| `bin` | :material-check: | :material-check: | :material-check: |
+| `text` | :material-check: | :material-check: | :material-check: |
+| `compact` | :material-check: | :material-check: | :material-check: |
+| `ndjson` | -- | :material-check: | :material-check: |
 | `timeseries` | -- | :material-check: | :material-check: |
+| `plot` | :material-check: | :material-check: | :material-check: |
 
-!!! note "Mixed Runs"
+!!! note "Mixed runs"
+    A mixed static+history selection renders `json`, `yaml`, `bin` and
+    `ndjson` as one unified document. `text` prints the static sections and
+    then the history text; `compact` prints every analyzer's compact line,
+    static first. `timeseries` (with or without `--ndjson`) is the history
+    time series: static analyzers have no per-commit data, so they are named
+    once on stderr (`warning: static analyzers have no per-commit time
+    series; omitted: …`).
 
-    When both static and history analyzers are selected (`-a '*'`), the format
-    must be one of the **universal formats**: `json`, `yaml`, `plot`, or
-    `timeseries`. The `text` and `compact` formats are only available when
-    running static analyzers alone.
-
-!!! info "Memory optimization"
-
-    The `text` and `compact` formats use **summary-only aggregation**: only
-    running sums and averages are kept in memory, while per-function detail
-    data is not collected. This dramatically reduces memory usage on large
-    codebases (up to 97% heap reduction). The `json`, `yaml`, `plot`, and
-    `binary` formats use **full aggregation** since they need per-item data
-    for serialization.
+A format the selection cannot render fails before the walk with
+`Error: format <value> is not supported for <analyzer>`. `--ndjson` is a
+modifier of `--format timeseries` only; with any other format it is rejected
+with `Error: invalid --ndjson: …`.
 
 ---
 
-## Cross-format conversion
+## Saving a report
 
-You can convert a previously generated report to a different format without
-re-running analysis. First, generate a binary (or JSON) report, then convert:
+Every format except `plot` is written to **stdout** by default; `-o <file>`
+(`--output <file>`) writes the same bytes to that file instead (created or
+truncated). With `--format plot`, `-o` names the output **directory** and is
+required.
+
+There is no conversion of a saved report into another format: the format is
+chosen when the analysis runs. Run once per format you need, bounding the
+history window with `--limit` / `--since` to keep each run short:
 
 ```bash
-# Step 1: Generate binary report
-codefang run -a 'history/*' --format bin . > report.bin
+# JSON for the warehouse
+codefang run -a 'history/*' --format json -o report.json .
 
-# Step 2: Convert to interactive plot
-codefang run -a 'history/*' --input report.bin --format plot > report.html
+# YAML of the same window
+codefang run -a 'history/*' --format yaml -o report.yaml .
 
-# Step 3: Convert the same data to YAML
-codefang run -a 'history/*' --input report.bin --format yaml
-
-# Step 4: Convert to unified time-series
-codefang run -a 'history/*' --input report.bin --format timeseries
+# Interactive pages
+codefang run -a 'history/*' --format plot -o ./report .
 ```
-
-The `--input-format` flag controls how the input file is parsed. It defaults to
-`auto` which detects the format from the file content:
-
-| Value | Description |
-|-------|-------------|
-| `auto` | Detect from content (binary magic bytes or JSON) |
-| `json` | Force JSON parsing |
-| `bin` | Force binary parsing |

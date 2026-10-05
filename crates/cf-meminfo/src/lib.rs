@@ -1,7 +1,8 @@
 //! Runtime memory introspection (ported from the Go package `meminfo`).
 //!
-//! This crate exposes a single helper, [`read_rss_bytes`], that returns the
-//! current process resident set size (RSS) in bytes. It is the byte-for-byte
+//! This crate exposes [`read_rss_bytes`], which returns the current process
+//! resident set size (RSS) in bytes, and [`release_free_heap`], which returns
+//! freed heap pages to the operating system. It is the byte-for-byte
 //! behavioral port of `pkg/meminfo` (`ReadRSSBytes`), which is build-tagged
 //! per-OS in Go (`rss_linux.go` / `rss_other.go`) and consumed by `analyze`.
 //!
@@ -98,6 +99,44 @@ pub fn read_rss_bytes() -> i64 {
     0
 }
 
+/// Returns the heap's free pages to the operating system.
+///
+/// glibc keeps freed memory inside its per-thread arenas and gives back only
+/// the top of each heap, so a parallel walk whose workers each once held a
+/// large transient working set keeps every worker's high-water mark resident
+/// long after the memory was freed. Measured on a 7,973-commit kubernetes
+/// prefix, `history/sentiment` sat at 1777 MB resident and dropped to 679 MB
+/// after a forced trim. This asks glibc to release every whole free page in
+/// every arena (`malloc_trim(0)`); live allocations are untouched.
+///
+/// A no-op on other C libraries and platforms.
+///
+/// # Examples
+///
+/// ```
+/// cf_meminfo::release_free_heap();
+/// ```
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+pub fn release_free_heap() {
+    // SAFETY: malloc_trim takes no pointers and is thread-safe: it locks each
+    // arena while it scans it. Its return value only reports whether anything
+    // was released.
+    unsafe {
+        libc::malloc_trim(0);
+    }
+}
+
+/// Returns the heap's free pages to the operating system: a no-op off glibc,
+/// whose allocators do not expose (or need) an explicit trim.
+///
+/// # Examples
+///
+/// ```
+/// cf_meminfo::release_free_heap();
+/// ```
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+pub fn release_free_heap() {}
+
 /// Returns the system memory page size in bytes.
 ///
 /// Equivalent to `os.Getpagesize()` in the reference runtime, which on Linux is backed by
@@ -142,6 +181,65 @@ mod tests {
     #[test]
     fn read_rss_bytes_zero_off_linux() {
         assert_eq!(read_rss_bytes(), 0);
+    }
+
+    /// 1 KiB blocks: small enough to live inside a malloc arena, never in a
+    /// dedicated mapping.
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    const FRAGMENT_BLOCK_SIZE: usize = 1024;
+    /// 64 MiB of blocks.
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    const FRAGMENT_BLOCKS: usize = 64 * 1024;
+    /// One block in this many stays alive, so the freed space around it is
+    /// trapped below live data and cannot be returned from the heap's top.
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    const PIN_EVERY: usize = 64;
+    /// The resident drop that proves trapped free pages went back to the OS
+    /// (about 60 MiB of the 64 MiB is free whole pages).
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    const MIN_RELEASED_BYTES: i64 = 32 * 1024 * 1024;
+
+    /// Freed memory trapped between live allocations stays resident until
+    /// the heap is asked to release it; afterwards RSS drops by the trapped
+    /// pages while the live blocks stay intact.
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn release_free_heap_returns_trapped_free_pages() {
+        let blocks: Vec<Vec<u8>> = (0..FRAGMENT_BLOCKS)
+            .map(|i| vec![(i % 251 + 1) as u8; FRAGMENT_BLOCK_SIZE])
+            .collect();
+        let pinned: Vec<Vec<u8>> = blocks
+            .into_iter()
+            .enumerate()
+            .filter_map(|(i, block)| (i % PIN_EVERY == 0).then_some(block))
+            .collect();
+        let before = read_rss_bytes();
+        release_free_heap();
+        let after = read_rss_bytes();
+        assert!(
+            pinned
+                .iter()
+                .enumerate()
+                .all(|(i, b)| b.iter().all(|&v| v == ((i * PIN_EVERY) % 251 + 1) as u8)),
+            "live blocks survive the release"
+        );
+        assert!(
+            before - after >= MIN_RELEASED_BYTES,
+            "released {} bytes (rss {before} -> {after})",
+            before - after
+        );
+    }
+
+    /// Releasing free memory is always safe to call, also with nothing to
+    /// release and from several threads at once.
+    #[test]
+    fn release_free_heap_is_safe_to_call_concurrently() {
+        std::thread::scope(|s| {
+            for _ in 0..4 {
+                s.spawn(release_free_heap);
+            }
+        });
+        release_free_heap();
     }
 
     /// The page size used to scale RSS must be a sane positive value.

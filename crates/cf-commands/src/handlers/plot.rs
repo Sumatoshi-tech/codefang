@@ -1,18 +1,16 @@
-//! `--format plot` static-phase orchestration — the Rust analogue of the reference
-//! `runStaticPlotAnalyzers` → `StaticService.FormatPlotPages` flow.
+//! `--format plot` static-phase orchestration, plus the output-directory
+//! helpers the history plot phase ([`super::history_plot`]) shares.
 //!
-//! Flow (matching the reference implementation):
+//! Flow:
 //!
 //! 1. run the selected static analyzers and gather each one's AGGREGATED RAW
-//!    report (the `analyze.Report` value — the same map `report.json` carries);
-//! 2. `RenderPlotPages`: for each analyzer with a registered section renderer,
-//!    render `<output>/<id-with-dashes>.html` (page title = the full analyzer
-//!    id) and collect its [`PageMeta`];
-//! 3. `RenderIndex`: render `<output>/index.html` from the collected metas;
-//! 4. `writeReportJSON`: write `<output>/report.json` — the results map keyed
-//!    by the analyzer's short name, two-space-indented `encoding/json` with
-//!    the `Encoder.Encode` trailing newline, 0o640 file mode, atomic
-//!    temp+rename.
+//!    report (the same map `report.json` carries);
+//! 2. for each analyzer with a registered section renderer, render
+//!    `<output>/<id-with-dashes>.html` (page title = the full analyzer id) and
+//!    collect its [`PageMeta`];
+//! 3. render `<output>/index.html` from the collected metas;
+//! 4. write `<output>/report.json` — the results map keyed by the analyzer's
+//!    short name ([`write_report_json_atomic`]).
 
 use std::fs;
 use std::io;
@@ -28,22 +26,21 @@ use crate::handlers::{
 };
 use crate::pipeline::RunContext;
 
-/// Project title shown on every plot page (the reference `plotPageTitle`).
+/// Project title shown on every plot page.
 const PLOT_PAGE_TITLE: &str = "Codefang";
 
-/// Output directory mode (the reference `plotDirPerm`).
+/// Mode of an output directory a plot run creates.
 #[cfg(unix)]
 const PLOT_DIR_MODE: u32 = 0o750;
 
-/// report.json file mode (the reference `reportJSONPerm`).
+/// `report.json` file mode.
 #[cfg(unix)]
 const REPORT_JSON_MODE: u32 = 0o640;
 
 /// One plot-capable static analyzer: its registry id, the short name keying
-/// the `report.json` results map (reference: analyzer `Name()`), the builder of its
-/// aggregated raw report, and its optional section renderer. Analyzers whose
-/// sections are not yet ported keep `sections: None` — the reference implementation renders no page for
-/// them but still includes their report in `report.json`.
+/// the `report.json` results map, the builder of its aggregated raw report,
+/// and its optional section renderer. An analyzer with `sections: None`
+/// renders no page but still has its report in `report.json`.
 pub struct PlotAnalyzer {
     /// Full analyzer id (`static/complexity`).
     pub id: &'static str,
@@ -83,11 +80,9 @@ fn composition_raw(ctx: &RunContext) -> Option<GoValue> {
     static_json::composition_raw_report_value(&ctx.path, &super::static_filter(ctx).ok()?)
 }
 
-/// The plot-capable static analyzers in registry order (reference:
-/// `defaultUASTAnalyzers ++ defaultRawFileAnalyzers`: clones,
-/// complexity, comments, halstead, cohesion, imports, then composition). One
-/// line per analyzer; see `plot_sections/mod.rs` for the porting recipe.
-/// Composition registers no plot sections in the reference implementation (no page; report.json only).
+/// The plot-capable static analyzers in registry order: clones, complexity,
+/// comments, halstead, cohesion, imports, then composition (no page;
+/// `report.json` only).
 pub const PLOT_ANALYZERS: &[PlotAnalyzer] = &[
     PlotAnalyzer {
         id: "static/clones",
@@ -137,14 +132,11 @@ pub const PLOT_ANALYZERS: &[PlotAnalyzer] = &[
 /// the page set + `report.json` into `output_dir`. Returns `None` when any
 /// selected id has no plot entry yet (caller falls through to the
 /// dispatch-blocked diagnostic), `Some(0)` on success, `Some(1)` on an I/O
-/// failure (reference: surfaces the render error through cobra, rc 1).
+/// failure (the error is printed as `Error: <cause>`).
 #[must_use]
 pub fn run_static_plot(ctx: &RunContext, static_ids: &[String], output_dir: &str) -> Option<i32> {
-    // Resolve every selected id to its plot entry in SELECTION order — the reference implementation
-    // renders pages (and collects the index metas) in the resolved
-    // `analyzerNames` order (reference `AnalyzerNamesByID(analyzerIDs)` →
-    // `RenderPlotPages` ranges that list), which is the CLI selection order; a
-    // glob selection arrives here already expanded in registry order.
+    // Pages (and the index cards) follow the SELECTION order; a glob
+    // selection arrives here already expanded in registry order.
     let mut selected: Vec<&PlotAnalyzer> = Vec::new();
     for id in static_ids {
         let entry = PLOT_ANALYZERS.iter().find(|entry| entry.id == id)?;
@@ -154,10 +146,9 @@ pub fn run_static_plot(ctx: &RunContext, static_ids: &[String], output_dir: &str
         return None;
     }
 
-    // Run the analyzers (reference: service.AnalyzeFolder over the shared folder
-    // walk). The static analyzers are independent single-threaded folder walks,
-    // so COMPUTE their reports concurrently and keep the deterministic
-    // selection order for rendering/writing below.
+    // The static analyzers are independent folder walks: COMPUTE their
+    // reports concurrently and keep the selection order for rendering and
+    // writing below.
     let reports: Vec<Option<GoValue>> = crate::handlers::run_concurrent(
         selected.len(),
         crate::handlers::ANALYZER_CONCURRENCY,
@@ -184,15 +175,10 @@ fn render_plot_output(
     output_dir: &str,
 ) -> io::Result<()> {
     create_output_dir(output_dir)?;
+    let renderer = page_renderer(output_dir);
 
-    let renderer = MultiPageRenderer {
-        output_dir: output_dir.to_string(),
-        title: PLOT_PAGE_TITLE.to_string(),
-        theme: Theme::Dark,
-    };
-
-    // RenderPlotPages: pages only for analyzers with a section renderer whose
-    // sections build successfully (the reference implementation skips section errors silently).
+    // Pages only for analyzers with a section renderer whose sections build
+    // (an analyzer whose sections fail keeps its report.json entry).
     let mut pages: Vec<PageMeta> = Vec::new();
     for (entry, (_, report)) in selected.iter().zip(results) {
         let Some(section_fn) = entry.sections else {
@@ -211,12 +197,25 @@ fn render_plot_output(
     }
 
     renderer.render_index(&pages)?;
-    write_report_json(results, output_dir)
+    let mut map = GoMap::new(MapOrigin::Map);
+    for (name, report) in results {
+        map.push(*name, report.clone());
+    }
+    write_report_json_atomic(output_dir, &GoValue::Map(map))
 }
 
-/// The reference `os.MkdirAll(outputDir, 0o750)` — apply the reference mode to directories this
-/// run creates; pre-existing directories keep their mode (as in the reference implementation).
-fn create_output_dir(output_dir: &str) -> io::Result<()> {
+/// The dark-themed multi-page renderer writing into `output_dir`.
+pub(crate) fn page_renderer(output_dir: &str) -> MultiPageRenderer {
+    MultiPageRenderer {
+        output_dir: output_dir.to_string(),
+        title: PLOT_PAGE_TITLE.to_string(),
+        theme: Theme::Dark,
+    }
+}
+
+/// Creates `output_dir` (and its parents); a directory this run creates gets
+/// mode 0o750, a pre-existing one keeps its mode.
+pub(crate) fn create_output_dir(output_dir: &str) -> io::Result<()> {
     let existed = Path::new(output_dir).is_dir();
     fs::create_dir_all(output_dir)?;
     #[cfg(unix)]
@@ -229,17 +228,12 @@ fn create_output_dir(output_dir: &str) -> io::Result<()> {
     Ok(())
 }
 
-/// The reference `writeReportJSON`: the results map (analyzer short name
-/// → raw report) as two-space-indented JSON + the `Encoder.Encode` trailing
-/// newline, written atomically (temp file + rename) with mode 0o640.
-fn write_report_json(results: &[(&'static str, GoValue)], output_dir: &str) -> io::Result<()> {
-    let mut map = GoMap::new(MapOrigin::Map);
-    for (name, report) in results {
-        map.push(*name, report.clone());
-    }
+/// Writes `value` to `<output_dir>/report.json` as two-space-indented JSON
+/// with a trailing newline, atomically (temp file + rename), mode 0o640.
+pub(crate) fn write_report_json_atomic(output_dir: &str, value: &GoValue) -> io::Result<()> {
     let bytes = Encoder::indented("  ")
         .with_trailing_newline(true)
-        .encode(&GoValue::Map(map));
+        .encode(value);
 
     let final_path = Path::new(output_dir).join("report.json");
     let tmp_path = Path::new(output_dir).join(".report.json.tmp");

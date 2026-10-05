@@ -14,7 +14,7 @@
 //! The column indices, per-row seeds and resulting frequency estimates are a
 //! frozen compatibility contract: they flow into the Halstead analyzer's
 //! machine-format reports, whose bytes are pinned against the reference
-//! implementation by `tests/compat`. The hash machinery (`mix64`,
+//! implementation by the report e2e suites (`bins/codefang/tests`). The hash machinery (`mix64`,
 //! `generate_seeds`, `fnv64a`) is provided by the [`cf_alg_hashutil`] crate,
 //! whose fixed seeds and finalizers are part of the same contract.
 //!

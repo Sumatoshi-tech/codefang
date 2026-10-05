@@ -15,6 +15,12 @@ use cf_uast_node::Node;
 /// Abstraction over the UAST parser. Used by both `codefang_analyze` and
 /// `uast_parse`.
 pub trait UastParser {
+    /// The synthetic filename a snippet in `language` is parsed under:
+    /// `code.<language>` unless the backend knows the language's extension.
+    fn filename_for(&self, language: &str) -> String {
+        crate::tools::synthetic_filename(language)
+    }
+
     /// Whether the parser supports the given (synthetic) filename.
     fn is_supported(&self, filename: &str) -> bool;
 
@@ -27,18 +33,30 @@ pub trait UastParser {
     fn parse(&self, filename: &str, code: &[u8]) -> Result<Node, ToolError>;
 }
 
+/// One inline source snippet a tool call analyzes.
+#[derive(Debug, Clone, Copy)]
+pub struct Snippet<'a> {
+    /// The synthetic filename the language maps to (`code.go`).
+    pub filename: &'a str,
+    /// The source bytes.
+    pub code: &'a [u8],
+    /// The parsed UAST root.
+    pub root: &'a Node,
+}
+
 /// Abstraction over the static-analysis factory.
 ///
-/// Given a parsed root node and the selected analyzer names, `run` returns the
-/// result map as a [`JsonValue`] (a map-origin object, byte-sorted on encode —
-/// report-format contract).
+/// Given a snippet (its synthetic filename, source and parsed root) and the
+/// selected analyzer names, `run` returns the result map as a [`JsonValue`]
+/// keyed by analyzer name.
 pub trait StaticAnalysisProvider {
-    /// Runs the named analyzers over `root`, returning the combined result map.
+    /// Runs the named analyzers over `snippet`, returning the combined result
+    /// map.
     ///
     /// # Errors
     ///
     /// Returns a [`ToolError`] describing the first analyzer failure.
-    fn run(&self, root: &Node, names: &[String]) -> Result<JsonValue, ToolError>;
+    fn run(&self, snippet: &Snippet<'_>, names: &[String]) -> Result<JsonValue, ToolError>;
 }
 
 /// Options passed to a [`HistoryAnalysisProvider`], derived from a validated

@@ -1,7 +1,6 @@
-//! `history/file-history` plot sections.
-//! (`GenerateStoreSections` → `buildStoreSections` over the `file_churn` and
-//! `composition` store kinds, which the run's `ComputedMetrics` carries as
-//! `file_churn` / `composition_ts`).
+//! `history/file-history` plot sections: the most-modified-files bar over
+//! the report's `file_churn` list and the composition-over-time stacked area
+//! over its `composition_ts` (distinct files changed per tick, by category).
 
 use cf_file_history::{CompositionTimeSeriesEntry, FileChurnData};
 use cf_plotpage::echarts::{AxisLabel, AxisLine, LineStyle, XAxis};
@@ -10,15 +9,12 @@ use cf_plotpage::{
     LineSeries, Section, SeriesValue, Theme,
 };
 
-use crate::handlers::go_sort;
-
-/// file_Reference history plot-section constants.
+/// File-history plot-section constants.
 const TOP_FILES_LIMIT: usize = 20;
 const X_AXIS_ROTATE: f64 = 60.0;
 const COMPOSITION_AREA_ALPHA: f64 = 0.5;
 
-/// The reference `AllCategories` order (file_history `Category` constants) with the
-/// per-category chart colors (`categoryColors`).
+/// The canonical category order with the per-category chart colors.
 const CATEGORY_COLORS: &[(&str, &str)] = &[
     ("source", "#4CAF50"),
     ("documentation", "#2196F3"),
@@ -30,8 +26,8 @@ const CATEGORY_COLORS: &[(&str, &str)] = &[
     ("binary", "#F44336"),
 ];
 
-/// The reference `GenerateStoreSections` → `buildStoreSections`: zero churn AND zero
-/// composition yield zero sections.
+/// Builds the file-history sections; zero churn AND zero composition yield
+/// zero sections.
 pub fn sections(
     file_churn: &[FileChurnData],
     composition_ts: &[CompositionTimeSeriesEntry],
@@ -86,12 +82,15 @@ pub fn sections(
     sections
 }
 
-/// The reference `buildBarChartFromChurnData`: re-sort (the reference `sort.Slice`, commit-count
-/// descending over the churn-score-sorted input), cut to the top 20, one
-/// "Commits" series, rotated X labels.
+/// Bar of the top 20 files by commit count (then path), one "Commits"
+/// series, rotated X labels.
 fn build_bar_chart_from_churn(file_churn: &[FileChurnData]) -> Chart {
     let mut churn: Vec<&FileChurnData> = file_churn.iter().collect();
-    go_sort::slice(&mut churn, |a, b| a.commit_count > b.commit_count);
+    churn.sort_by(|a, b| {
+        b.commit_count
+            .cmp(&a.commit_count)
+            .then_with(|| a.path.cmp(&b.path))
+    });
     let limit = churn.len().min(TOP_FILES_LIMIT);
     let top = &churn[..limit];
 
@@ -109,8 +108,7 @@ fn build_bar_chart_from_churn(file_churn: &[FileChurnData]) -> Chart {
     let co = ChartOpts::default_dark();
     let mut chart = build_bar_chart(Some(&co), &labels, &series, "Commits");
 
-    // The reference implementation's follow-up WithXAxisOpts replaces the X axis with the rotated-label
-    // variant (no name, interval "0").
+    // The rotated-label X axis (no name, interval "0").
     chart.x_axis = XAxis {
         axis_label: Some(AxisLabel {
             rotate: X_AXIS_ROTATE,
@@ -131,9 +129,9 @@ fn build_bar_chart_from_churn(file_churn: &[FileChurnData]) -> Chart {
     chart
 }
 
-/// The reference `buildCompositionChartFromTS`: per-category stacked area line over the
-/// pre-computed time series; categories with no positive values are skipped;
-/// `None` when nothing plots.
+/// Per-category stacked area line over the composition time series;
+/// categories with no positive values are skipped; `None` when nothing
+/// plots.
 fn build_composition_chart_from_ts(ts: &[CompositionTimeSeriesEntry]) -> Option<Chart> {
     if ts.is_empty() {
         return None;

@@ -3,7 +3,7 @@
 //! Per `specs/rust-rewrite/DESIGN.md` (§1.1, §2, §3.2 row "json"), report
 //! serialization MUST route through the shared contract encoder — never raw
 //! `serde_json` — so machine-format report bytes stay pinned (differential
-//! gate: `tests/compat`).
+//! report e2e suites, `bins/codefang/tests`).
 //!
 //! The shared encoder is the tier-0 crate [`cf_gojson`]. This module is a
 //! thin wrapper selecting the [`cf_gojson::Encoder`] configuration every

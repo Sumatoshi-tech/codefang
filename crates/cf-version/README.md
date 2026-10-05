@@ -15,26 +15,23 @@ consumed by `option_env!`:
 
 | Field   | Env (first non-empty wins)              | Default     |
 | ------- | --------------------------------------- | ----------- |
-| Version | `CF_VERSION`, `GIT_VERSION`             | `dev`       |
-| Commit  | `CF_COMMIT`, `GIT_COMMIT`               | `none`      |
+| Version | `CF_VERSION`, `GIT_VERSION`             | crate version |
+| Commit  | `CF_COMMIT`, `GIT_COMMIT`, `GIT_HASH`, the checkout's `HEAD` | `unknown` |
 | Date    | `CF_DATE`, `SOURCE_DATE_EPOCH` (→RFC3339 UTC) | `unknown` |
 
-A plain `cargo build` with no env produces `dev` / `none` / `unknown`.
+A plain `cargo build` with no env reports the crate version, the commit `HEAD` points at (or `unknown` outside a git checkout), and an `unknown` build date.
 `SOURCE_DATE_EPOCH` keeps the `built:` date reproducible so version goldens
-are stable. The banner format is a frozen CLI contract, pinned against the
-reference binary by `tests/compat`.
+are stable. The banner format is a CLI contract, pinned by the `codefang`
+and `uast` end-to-end tests.
 
 ## Usage
 
-With no build-time injection the defaults (`dev` / `none` / `unknown`) are used.
-This exact behavior is pinned by the crate doctest and unit tests on
-[`banner`](src/lib.rs):
+The banner always has the same shape, whatever was injected:
 
 ```rust
-assert_eq!(
-    cf_version::banner("codefang"),
-    "codefang dev (commit: none, built: unknown)",
-);
+let line = cf_version::banner("codefang");
+assert!(line.starts_with(&format!("codefang {} (commit: ", cf_version::VERSION)));
+assert!(line.ends_with(&format!(", built: {})", cf_version::DATE)));
 ```
 
 Build with injected metadata:

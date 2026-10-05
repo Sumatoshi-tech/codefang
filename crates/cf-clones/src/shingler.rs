@@ -1,10 +1,11 @@
-//! K-gram shingling of UAST function subtrees.
+//! K-gram shingling of a function's pre-order node-type sequence.
 //!
-//! A *shingle* is a sequence of `k` consecutive node types from a pre-order
-//! traversal, joined by `"|"`. These shingles are the set elements that feed
-//! each function's `MinHash` signature.
+//! A *shingle* is a window of `k` consecutive node types joined by
+//! [`SHINGLE_SEPARATOR`]. Each shingle is hashed with FNV-1a; the resulting
+//! sorted, deduplicated set is both the input of the `MinHash` signature and
+//! the exact set the engine verifies candidate pairs against.
 
-use cf_uast_node::Node;
+use cf_alg_hashutil::fnv64a;
 
 /// Default k-gram window size for shingling.
 pub const DEFAULT_SHINGLE_SIZE: usize = 5;
@@ -12,7 +13,7 @@ pub const DEFAULT_SHINGLE_SIZE: usize = 5;
 /// Separator placed between node types within a shingle.
 pub const SHINGLE_SEPARATOR: &str = "|";
 
-/// Extracts k-gram shingles from a function's UAST subtree.
+/// Extracts k-gram shingles from a node-type sequence.
 #[derive(Debug, Clone, Copy)]
 pub struct Shingler {
     k: usize,
@@ -37,121 +38,77 @@ impl Shingler {
         self.k
     }
 
-    /// Returns the k-gram shingles of `func_node`'s subtree.
-    ///
-    /// Each shingle is the UTF-8 bytes of `k` consecutive node types joined by
-    /// [`SHINGLE_SEPARATOR`]. Returns an empty vector if the subtree has fewer
-    /// than `k` typed nodes.
+    /// Returns the sorted, deduplicated FNV-1a hashes of every `k`-gram of
+    /// `types` (each window joined by [`SHINGLE_SEPARATOR`]). Empty when the
+    /// sequence is shorter than `k`.
     ///
     /// ```
+    /// use cf_alg_hashutil::fnv64a;
     /// use cf_clones::Shingler;
-    /// use cf_uast_node::Builder;
     ///
-    /// // A left-deep chain A -> B -> C so pre-order yields [A, B, C].
-    /// let c = Builder::new().with_type("C").build();
-    /// let mut b = Builder::new().with_type("B").build();
-    /// b.add_child(c);
-    /// let mut a = Builder::new().with_type("A").build();
-    /// a.add_child(b);
+    /// let hashes = Shingler::new(2).shingle_hashes(&["A", "B", "C"]);
+    /// let mut want = vec![fnv64a(b"A|B"), fnv64a(b"B|C")];
+    /// want.sort_unstable();
+    /// assert_eq!(hashes, want);
     ///
-    /// let shingles = Shingler::new(2).extract_shingles(&a);
-    /// let strings: Vec<String> = shingles
-    ///     .iter()
-    ///     .map(|s| String::from_utf8(s.clone()).unwrap())
-    ///     .collect();
-    /// assert_eq!(strings, vec!["A|B".to_string(), "B|C".to_string()]);
-    ///
-    /// // Fewer than k typed nodes -> no shingles.
-    /// assert!(Shingler::new(5).extract_shingles(&a).is_empty());
+    /// // Fewer than k types -> no shingles.
+    /// assert!(Shingler::new(5).shingle_hashes(&["A", "B", "C"]).is_empty());
     /// ```
     #[must_use]
-    pub fn extract_shingles(&self, func_node: &Node) -> Vec<Vec<u8>> {
-        let types = collect_node_types(func_node);
-        if types.len() < self.k {
+    pub fn shingle_hashes(&self, types: &[&str]) -> Vec<u64> {
+        if self.k == 0 || types.len() < self.k {
             return Vec::new();
         }
-
-        let shingle_count = types.len() - self.k + 1;
-        let mut shingles = Vec::with_capacity(shingle_count);
-        for i in 0..shingle_count {
-            shingles.push(join_types(&types[i..i + self.k]).into_bytes());
-        }
-        shingles
+        let mut buf: Vec<u8> = Vec::new();
+        let mut hashes: Vec<u64> = types
+            .windows(self.k)
+            .map(|window| {
+                buf.clear();
+                for (i, t) in window.iter().enumerate() {
+                    if i > 0 {
+                        buf.extend_from_slice(SHINGLE_SEPARATOR.as_bytes());
+                    }
+                    buf.extend_from_slice(t.as_bytes());
+                }
+                fnv64a(&buf)
+            })
+            .collect();
+        hashes.sort_unstable();
+        hashes.dedup();
+        hashes
     }
-}
-
-/// Collects node types in pre-order, skipping empty-typed nodes.
-#[must_use]
-pub fn collect_node_types(root: &Node) -> Vec<String> {
-    let mut types = Vec::new();
-    root.visit_pre_order(|n: &Node| {
-        if !n.node_type.is_empty() {
-            types.push(n.node_type.clone());
-        }
-    });
-    types
-}
-
-/// Joins node-type strings with [`SHINGLE_SEPARATOR`].
-#[must_use]
-fn join_types(types: &[String]) -> String {
-    types.join(SHINGLE_SEPARATOR)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::uast::NodeBuilder;
-    use cf_uast_node::Node;
-
-    fn chain(types: &[&str]) -> Node {
-        // Build a left-deep chain so pre-order yields the types in order.
-        let mut node = NodeBuilder::new(types[types.len() - 1]).build();
-        for t in types[..types.len() - 1].iter().rev() {
-            let parent = NodeBuilder::new(t).child(node).build();
-            node = parent;
-        }
-        node
-    }
-
-    #[test]
-    fn collect_node_types_preorder() {
-        let tree = chain(&["A", "B", "C"]);
-        assert_eq!(collect_node_types(&tree), vec!["A", "B", "C"]);
-    }
-
-    #[test]
-    fn collect_skips_empty_types() {
-        // A node with empty type must not contribute.
-        let inner = NodeBuilder::new("B").build();
-        let mut mid = NodeBuilder::new("").build(); // empty type
-        mid.add_child(inner);
-        let root = NodeBuilder::new("A").child(mid).build();
-        assert_eq!(collect_node_types(&root), vec!["A", "B"]);
-    }
-
-    #[test]
-    fn fewer_than_k_types_yields_no_shingles() {
-        let s = Shingler::new(5);
-        let tree = chain(&["A", "B", "C"]);
-        assert!(s.extract_shingles(&tree).is_empty());
-    }
-
-    #[test]
-    fn shingles_are_k_grams_joined_by_pipe() {
-        let s = Shingler::new(2);
-        let tree = chain(&["A", "B", "C"]);
-        let shingles = s.extract_shingles(&tree);
-        let as_strings: Vec<String> = shingles
-            .iter()
-            .map(|b| String::from_utf8(b.clone()).unwrap())
-            .collect();
-        assert_eq!(as_strings, vec!["A|B".to_string(), "B|C".to_string()]);
-    }
 
     #[test]
     fn default_k_is_five() {
         assert_eq!(Shingler::default().k(), DEFAULT_SHINGLE_SIZE);
         assert_eq!(DEFAULT_SHINGLE_SIZE, 5);
+    }
+
+    #[test]
+    fn fewer_than_k_types_yields_no_shingles() {
+        assert!(Shingler::new(5).shingle_hashes(&["A", "B", "C"]).is_empty());
+        assert!(Shingler::new(0).shingle_hashes(&["A"]).is_empty());
+    }
+
+    #[test]
+    fn shingles_are_k_grams_joined_by_pipe() {
+        let hashes = Shingler::new(2).shingle_hashes(&["A", "B", "C"]);
+        let mut want = vec![fnv64a(b"A|B"), fnv64a(b"B|C")];
+        want.sort_unstable();
+        assert_eq!(hashes, want);
+    }
+
+    #[test]
+    fn repeated_windows_are_a_set() {
+        // A|B occurs twice but the set holds it once.
+        let hashes = Shingler::new(2).shingle_hashes(&["A", "B", "A", "B"]);
+        let mut want = vec![fnv64a(b"A|B"), fnv64a(b"B|A")];
+        want.sort_unstable();
+        assert_eq!(hashes, want);
     }
 }

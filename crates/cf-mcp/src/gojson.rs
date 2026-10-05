@@ -2,7 +2,7 @@
 //!
 //! This encoder reproduces the report-format serialization contract: the
 //! output bytes are pinned against the reference implementation
-//! (tests/compat). Its rules are frozen — tidy internals only, never the
+//! (the report e2e suites in bins/codefang/tests). Its rules are frozen — tidy internals only, never the
 //! emitted bytes.
 //!
 //! **Temporary in-crate shim, not the real serialization crate.** DESIGN.md
@@ -82,6 +82,32 @@ impl JsonValue {
         Self::Object {
             entries,
             sorted: false,
+        }
+    }
+}
+
+/// A parsed JSON document as a [`JsonValue`]: objects keep their document
+/// key order (struct-origin), numbers keep their kind (signed, unsigned,
+/// float).
+#[cfg(feature = "mcp")]
+impl From<&serde_json::Value> for JsonValue {
+    fn from(value: &serde_json::Value) -> Self {
+        use serde_json::Value;
+        match value {
+            Value::Null => Self::Null,
+            Value::Bool(b) => Self::Bool(*b),
+            Value::Number(n) => n
+                .as_i64()
+                .map(Self::Int)
+                .or_else(|| n.as_u64().map(Self::Uint))
+                .unwrap_or_else(|| Self::Float(n.as_f64().unwrap_or(0.0))),
+            Value::String(s) => Self::Str(s.clone()),
+            Value::Array(items) => Self::Array(items.iter().map(Self::from).collect()),
+            Value::Object(map) => Self::struct_object(
+                map.iter()
+                    .map(|(k, v)| (k.clone(), Self::from(v)))
+                    .collect(),
+            ),
         }
     }
 }
@@ -384,6 +410,16 @@ fn go_style_from_shortest(shortest: &str, f: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A parsed JSON document converts with its keys in document order and
+    /// every number kind kept, so it re-encodes to the same bytes.
+    #[test]
+    fn parsed_json_converts_in_document_order() {
+        let src = r#"{"b":1,"a":[true,null,2.5,"x"],"c":{"z":-3,"y":18446744073709551615}}"#;
+        let parsed: serde_json::Value = serde_json::from_str(src).expect("json");
+        let value = JsonValue::from(&parsed);
+        assert_eq!(Encoder::compact().encode_to_string(&value), src);
+    }
 
     fn smap(entries: &[(&str, JsonValue)]) -> JsonValue {
         JsonValue::sorted_object(

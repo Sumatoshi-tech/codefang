@@ -2,7 +2,7 @@
 //! `cf-gojson` crate (DESIGN.md sec 2.2).
 //!
 //! Machine-format report bytes are a frozen contract (pinned by
-//! `tests/compat`) and differ from `serde_json` defaults on four points:
+//! the report e2e suites (`bins/codefang/tests`)) and differ from `serde_json` defaults on four points:
 //! map-key ordering, HTML escaping (on by default), float formatting
 //! (shortest-round-trip `'g'` style with the `1e21` exponent threshold), and
 //! compact-vs-indent semantics. This module provides the subset the renderer

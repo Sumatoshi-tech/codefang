@@ -4,7 +4,7 @@
 //! index-keyed matrices that form the analyzer report. All index assignment
 //! flows from byte-sorted name lists so the output is reproducible.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 /// Raw file co-occurrence data: `file -> otherFile -> count`.
 pub type RawFiles = BTreeMap<String, BTreeMap<String, i64>>;
@@ -13,18 +13,17 @@ pub type RawFiles = BTreeMap<String, BTreeMap<String, i64>>;
 /// commits`.
 pub type People = Vec<BTreeMap<String, i64>>;
 
-/// Builds the byte-sorted file-name sequence and a name→index map.
-///
-/// The sequence is sorted in raw byte order (the default `str` ordering),
-/// which is the index order the report contract expects.
+/// Builds the byte-sorted file-name sequence and a name→index map over
+/// `names` (a byte-ordered set, so the sequence is the report's index
+/// order).
 #[must_use]
-pub fn build_files_index(files: &RawFiles) -> (Vec<String>, HashMap<String, usize>) {
-    let mut sequence: Vec<String> = files.keys().cloned().collect();
-    sequence.sort();
-    let mut index = HashMap::with_capacity(sequence.len());
-    for (i, file) in sequence.iter().enumerate() {
-        index.insert(file.clone(), i);
-    }
+pub fn build_files_index(names: BTreeSet<&str>) -> (Vec<String>, HashMap<String, usize>) {
+    let sequence: Vec<String> = names.into_iter().map(str::to_string).collect();
+    let index = sequence
+        .iter()
+        .enumerate()
+        .map(|(i, file)| (file.clone(), i))
+        .collect();
     (sequence, index)
 }
 
@@ -36,7 +35,7 @@ struct DevCommit {
 }
 
 /// Builds the developer co-occurrence matrix and per-developer file-index
-/// lists.
+/// lists over the files in `files_index`.
 ///
 /// Returns `(matrix, people_files)` where:
 /// * `matrix[i]` maps developer `j` → `sum over files of min(commits_i,
@@ -47,7 +46,7 @@ struct DevCommit {
 /// Both have length `people_number + 1` (one extra slot for the
 /// "missing author" sentinel).
 #[must_use]
-#[allow(clippy::implicit_hasher)] // public signature is frozen
+#[allow(clippy::implicit_hasher)] // the index is the std HashMap `build_files_index` builds
 pub fn compute_people_matrix(
     people: &People,
     files_index: &HashMap<String, usize>,
@@ -66,42 +65,32 @@ fn build_people_file_indices(
     people_number: usize,
 ) -> Vec<Vec<usize>> {
     let mut result = vec![Vec::new(); people_number + 1];
-    for (i, files) in people.iter().enumerate() {
-        if i > people_number {
-            break;
-        }
-        for file in files.keys() {
-            if let Some(&fi) = files_index.get(file) {
-                result[i].push(fi);
-            }
-        }
+    for (i, files) in people.iter().enumerate().take(people_number + 1) {
+        result[i] = files
+            .keys()
+            .filter_map(|file| files_index.get(file).copied())
+            .collect();
         result[i].sort_unstable();
     }
     result
 }
 
-/// Builds the `file -> [(devID, commits)]` inverted index.
-/// Only positive commit counts are recorded.
+/// Builds the `file index -> [(devID, commits)]` inverted index over the
+/// indexed files; only positive commit counts are recorded.
 fn build_inverted_index(
     people: &People,
-    _files_index: &HashMap<String, usize>,
+    files_index: &HashMap<String, usize>,
     people_number: usize,
-) -> BTreeMap<String, Vec<DevCommit>> {
-    // The inverted index is keyed by file name regardless of `files_index`
-    // membership: filtering to indexed files happens separately via the
-    // per-developer file lists. The `files_index` parameter is retained only
-    // for signature parity with `compute_people_matrix`; the accumulated
-    // matrix is identical either way because only co-touched files ever
-    // produce a non-zero `min(commits_i, commits_j)` contribution.
-    let mut inverted: BTreeMap<String, Vec<DevCommit>> = BTreeMap::new();
-    for (i, files) in people.iter().enumerate() {
-        if i > people_number {
-            break;
-        }
+) -> BTreeMap<usize, Vec<DevCommit>> {
+    let mut inverted: BTreeMap<usize, Vec<DevCommit>> = BTreeMap::new();
+    for (i, files) in people.iter().enumerate().take(people_number + 1) {
         for (file, &commits) in files {
+            let Some(&index) = files_index.get(file) else {
+                continue;
+            };
             if commits > 0 {
                 inverted
-                    .entry(file.clone())
+                    .entry(index)
                     .or_default()
                     .push(DevCommit { dev_id: i, commits });
             }
@@ -115,7 +104,7 @@ fn build_inverted_index(
 /// For each file, adds `min(commits_a, commits_b)` for every ordered developer
 /// pair (including `a == b`).
 fn accumulate_matrix(
-    inverted: &BTreeMap<String, Vec<DevCommit>>,
+    inverted: &BTreeMap<usize, Vec<DevCommit>>,
     people_number: usize,
 ) -> Vec<BTreeMap<usize, i64>> {
     let mut matrix: Vec<BTreeMap<usize, i64>> = vec![BTreeMap::new(); people_number + 1];
@@ -135,9 +124,9 @@ fn accumulate_matrix(
 /// Builds the file co-occurrence matrix keyed by file index.
 ///
 /// `matrix[i]` maps the index of every co-changed file to its count, for the
-/// file at sorted position `i`.
+/// file at sorted position `i`; a file with no coupling row has an empty map.
 #[must_use]
-#[allow(clippy::implicit_hasher)] // public signature is frozen
+#[allow(clippy::implicit_hasher)] // the index is the std HashMap `build_files_index` builds
 pub fn compute_files_matrix(
     raw_files: &RawFiles,
     files_sequence: &[String],
@@ -172,10 +161,14 @@ mod tests {
             .collect()
     }
 
+    fn names(files: &RawFiles) -> BTreeSet<&str> {
+        files.keys().map(String::as_str).collect()
+    }
+
     #[test]
     fn files_index_is_byte_sorted() {
         let files = raw(&[("b.go", &[]), ("a.go", &[]), ("c.go", &[])]);
-        let (seq, idx) = build_files_index(&files);
+        let (seq, idx) = build_files_index(names(&files));
         assert_eq!(seq, vec!["a.go", "b.go", "c.go"]);
         assert_eq!(idx["a.go"], 0);
         assert_eq!(idx["c.go"], 2);
@@ -188,7 +181,7 @@ mod tests {
             ("a.go", &[("a.go", 2), ("b.go", 1)]),
             ("b.go", &[("b.go", 2), ("a.go", 1)]),
         ]);
-        let (seq, idx) = build_files_index(&files);
+        let (seq, idx) = build_files_index(names(&files));
         let m = compute_files_matrix(&files, &seq, &idx);
         // a.go = 0, b.go = 1.
         assert_eq!(m[0][&0], 2);
@@ -201,7 +194,7 @@ mod tests {
     fn people_matrix_uses_min_commits() {
         // file a.go touched by dev0 (3 commits) and dev1 (5 commits).
         let files = raw(&[("a.go", &[("a.go", 1)])]);
-        let (_seq, idx) = build_files_index(&files);
+        let (_seq, idx) = build_files_index(names(&files));
         let mut people: People = vec![BTreeMap::new(), BTreeMap::new()];
         people[0].insert("a.go".to_string(), 3);
         people[1].insert("a.go".to_string(), 5);
@@ -214,6 +207,23 @@ mod tests {
         assert_eq!(matrix[1][&0], 3);
         // both devs touched file index 0.
         assert_eq!(pfiles[0], vec![0]);
+        assert_eq!(pfiles[1], vec![0]);
+    }
+
+    /// A touched file outside the index (not at the window head) feeds
+    /// neither the matrix nor the file lists.
+    #[test]
+    fn people_matrix_ignores_unindexed_files() {
+        let files = raw(&[("a.go", &[("a.go", 1)])]);
+        let (_seq, idx) = build_files_index(names(&files));
+        let mut people: People = vec![BTreeMap::new(), BTreeMap::new()];
+        people[0].insert("gone.go".to_string(), 3);
+        people[1].insert("gone.go".to_string(), 5);
+        people[1].insert("a.go".to_string(), 1);
+        let (matrix, pfiles) = compute_people_matrix(&people, &idx, 1);
+        assert!(matrix[0].is_empty());
+        assert_eq!(matrix[1][&1], 1);
+        assert!(pfiles[0].is_empty());
         assert_eq!(pfiles[1], vec![0]);
     }
 }

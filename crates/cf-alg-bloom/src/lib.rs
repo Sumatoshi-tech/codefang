@@ -9,7 +9,7 @@
 //! `h(i) = h1 + i*h2 mod m`, avoiding `k` independent hash functions.
 //!
 //! Compatibility: filter behavior is pinned to the reference implementation
-//! (differential gate: `tests/compat`). Concretely:
+//! (the report e2e suites, `bins/codefang/tests`). Concretely:
 //!
 //! * `optimal_m` / `optimal_k` use the reference sizing formulas, including
 //!   the `f64`-to-integer truncation, so [`Filter::bit_count`] and

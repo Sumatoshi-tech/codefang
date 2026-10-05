@@ -4,8 +4,6 @@
 /vendor
 cmd/codefang/plugin_template_source.go
 coverage.txt
-build/bin/codefang
-build/bin/uast
 python/dist
 python/build
 
@@ -67,7 +65,6 @@ third_party/go-sitter-forest/
 test/benchmarks/
 test/benchmarks/benchmark_results.txt
 debug/
-build/bin/
 build.log
 .backend.pid
 .vite.pid

@@ -1,120 +1,42 @@
 //! Per-developer import history (`ImportsPerDeveloper`, id `history/imports`).
 //!
 //! The history analyzer tracks import usage across commit history, attributing
-//! each import to the commit author, language, and tick. The accumulated state
-//! is a 4-level map ([`ImportsMap`]: author -> lang -> import -> tick -> count)
-//! that merges **additively** (counts are summed) — the analyzer's defining
-//! behaviour.
-//!
-//! This module owns the self-contained data model and the
-//! merge/aggregation/attribution logic, and defines the analyzer surface
-//! (name/flag/extract-commit-timeseries) over it. The pipeline wiring
-//! (consume/fork/snapshotting) lives in the framework crates.
+//! each import to the commit author, the file's language and the commit's
+//! tick. The accumulated state is a 4-level map ([`ImportsMap`]: author id ->
+//! language -> import -> tick -> count) that merges **additively** (counts
+//! are summed). [`HistoryReport`] is the report the machine formats encode:
+//! the tick size, the author index and the map keyed by developer name.
 
 use std::collections::BTreeMap;
 
-/// Default tick length, in hours.
-pub const DEFAULT_TICK_HOURS: u64 = 24;
+use cf_gojson::{GoMap, GoValue};
 
-/// 4-level import-usage map: author -> lang -> import -> tick -> count.
+/// 4-level import-usage map: author id -> language -> import -> tick -> count.
 ///
 /// Every level uses a [`BTreeMap`] so iteration is deterministic (sorted),
 /// which matters for reproducible aggregation/serialization.
-pub type ImportsMap = BTreeMap<i64, BTreeMap<String, BTreeMap<String, BTreeMap<i64, i64>>>>;
+pub type ImportsMap = BTreeMap<i64, LanguageImports>;
 
-/// A single import extracted from a commit, carrying its language.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// language -> import -> tick -> count: one developer's usage.
+pub type LanguageImports = BTreeMap<String, BTreeMap<String, BTreeMap<i64, i64>>>;
+
+/// A single import extracted from a commit, carrying the language of the file
+/// it was found in (the parser's language name, e.g. `go`, `python`).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ImportEntry {
-    /// The language the import was found in (e.g. `go`, `uast`).
+    /// The language of the importing file.
     pub lang: String,
     /// The import path.
     pub import: String,
 }
 
-/// Per-commit summary for timeseries output.
-///
-/// `languages` maps language -> import count.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct CommitSummary {
-    /// Total number of imports in the commit.
-    pub import_count: i64,
-    /// Per-language import counts.
-    pub languages: BTreeMap<String, i64>,
-}
-
-/// Per-tick aggregated payload.
-#[derive(Debug, Clone, Default)]
-pub struct TickData {
-    /// The accumulated 4-level imports map for the tick.
-    pub imports: ImportsMap,
-    /// Per-commit summaries keyed by commit hash string.
-    pub commit_stats: BTreeMap<String, CommitSummary>,
-}
-
-/// The per-developer import history analyzer.
-///
-/// Stateless config holder; mutable per-tick state lives in
-/// [`TickData`]/[`ImportsMap`].
-#[derive(Debug, Clone)]
-pub struct HistoryAnalyzer {
-    /// Tick size in hours (defaults to [`DEFAULT_TICK_HOURS`]).
-    pub tick_hours: u64,
-    /// Author index: author id -> name.
-    pub reversed_people_dict: Vec<String>,
-}
-
-impl Default for HistoryAnalyzer {
-    fn default() -> Self {
-        HistoryAnalyzer {
-            tick_hours: DEFAULT_TICK_HOURS,
-            reversed_people_dict: Vec::new(),
-        }
-    }
-}
-
-impl HistoryAnalyzer {
-    /// Creates a new history analyzer.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Returns the analyzer name.
-    #[must_use]
-    pub fn name(&self) -> &'static str {
-        "ImportsPerDeveloper"
-    }
-
-    /// Returns the CLI flag.
-    #[must_use]
-    pub fn flag(&self) -> &'static str {
-        "imports-per-dev"
-    }
-
-    /// Returns the stable analyzer id.
-    #[must_use]
-    pub fn id(&self) -> &'static str {
-        "history/imports"
-    }
-
-    /// Extracts per-commit timeseries data from a report's `commit_stats`:
-    /// `None` when there are no commit stats, otherwise a map of commit hash ->
-    /// `{import_count, languages}`.
-    #[must_use]
-    pub fn extract_commit_time_series(
-        &self,
-        commit_stats: &BTreeMap<String, CommitSummary>,
-    ) -> Option<BTreeMap<String, CommitSummary>> {
-        if commit_stats.is_empty() {
-            return None;
-        }
-        Some(commit_stats.clone())
-    }
-}
-
 /// Adds extracted entries to the 4-level map under one author/tick: each entry
-/// increments `map[author][lang][import][tick]` by one.
+/// increments `map[author][lang][import][tick]` by one. An empty entry list
+/// adds nothing — not even the author.
 pub fn add_entries_to_map(m: &mut ImportsMap, entries: &[ImportEntry], author_id: i64, tick: i64) {
+    if entries.is_empty() {
+        return;
+    }
     let langs = m.entry(author_id).or_default();
     for entry in entries {
         let imps = langs.entry(entry.lang.clone()).or_default();
@@ -145,14 +67,19 @@ pub fn add_entries_to_map(m: &mut ImportsMap, entries: &[ImportEntry], author_id
 /// ```
 pub fn merge_import_maps(dst: &mut ImportsMap, src: &ImportsMap) {
     for (auth, src_langs) in src {
-        let dst_langs = dst.entry(*auth).or_default();
-        for (lang, src_imps) in src_langs {
-            let dst_imps = dst_langs.entry(lang.clone()).or_default();
-            for (imp, src_ticks) in src_imps {
-                let dst_ticks = dst_imps.entry(imp.clone()).or_default();
-                for (tick, count) in src_ticks {
-                    *dst_ticks.entry(*tick).or_insert(0) += *count;
-                }
+        merge_language_imports(dst.entry(*auth).or_default(), src_langs);
+    }
+}
+
+/// Merges one developer's `language -> import -> tick -> count` map into
+/// `dst` additively.
+fn merge_language_imports(dst: &mut LanguageImports, src: &LanguageImports) {
+    for (lang, src_imps) in src {
+        let dst_imps = dst.entry(lang.clone()).or_default();
+        for (imp, src_ticks) in src_imps {
+            let dst_ticks = dst_imps.entry(imp.clone()).or_default();
+            for (tick, count) in src_ticks {
+                *dst_ticks.entry(*tick).or_insert(0) += *count;
             }
         }
     }
@@ -190,11 +117,9 @@ pub fn aggregate_import_counts(imports: &ImportsMap) -> BTreeMap<String, i64> {
 /// Maximum number of imports returned by [`top_imports`].
 pub const TOP_IMPORTS_LIMIT: usize = 20;
 
-/// Returns the top imports by count (descending), capped at [`TOP_IMPORTS_LIMIT`].
-///
-/// The reference implementation sorts unstably by count descending with
-/// unspecified tie order; this implementation breaks ties by import name
-/// ascending for determinism. Returns parallel `(labels, data)` vectors.
+/// Returns the top imports by count (descending, ties by import name
+/// ascending), capped at [`TOP_IMPORTS_LIMIT`], as parallel `(labels, data)`
+/// vectors — the plot's bar chart input.
 ///
 /// ```
 /// use std::collections::BTreeMap;
@@ -213,135 +138,169 @@ pub const TOP_IMPORTS_LIMIT: usize = 20;
 pub fn top_imports(counts: &BTreeMap<String, i64>) -> (Vec<String>, Vec<i64>) {
     let mut items: Vec<(String, i64)> = counts.iter().map(|(k, v)| (k.clone(), *v)).collect();
     items.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    if items.len() > TOP_IMPORTS_LIMIT {
-        items.truncate(TOP_IMPORTS_LIMIT);
-    }
+    items.truncate(TOP_IMPORTS_LIMIT);
     let labels = items.iter().map(|(k, _)| k.clone()).collect();
     let data = items.iter().map(|(_, v)| *v).collect();
     (labels, data)
+}
+
+/// Report key: the tick length in seconds.
+pub const KEY_TICK_SIZE: &str = "tick_size";
+/// Report key: developer names by author id.
+pub const KEY_AUTHOR_INDEX: &str = "author_index";
+/// Report key: the developer → language → import → tick → count map.
+pub const KEY_IMPORTS: &str = "imports";
+
+/// The `history/imports` report: the tick size, the author index and the
+/// per-developer import usage — the ONE value json/yaml/bin encode.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct HistoryReport {
+    /// Tick length in seconds (`--tick-size` hours × 3600).
+    pub tick_size_secs: i64,
+    /// Developer names by author id.
+    pub author_index: Vec<String>,
+    /// author id -> language -> import -> tick -> count.
+    pub imports: ImportsMap,
+}
+
+impl HistoryReport {
+    /// The developer name of `author_id`: its `author_index` entry, or the
+    /// id itself when it lies outside the index.
+    fn developer_name(&self, author_id: i64) -> String {
+        usize::try_from(author_id)
+            .ok()
+            .and_then(|i| self.author_index.get(i))
+            .map_or_else(|| author_id.to_string(), Clone::clone)
+    }
+
+    /// The map keyed by developer name: two author ids that resolve to the
+    /// same name merge additively.
+    fn imports_by_developer(&self) -> BTreeMap<String, LanguageImports> {
+        let mut by_name: BTreeMap<String, LanguageImports> = BTreeMap::new();
+        for (author_id, langs) in &self.imports {
+            merge_language_imports(
+                by_name.entry(self.developer_name(*author_id)).or_default(),
+                langs,
+            );
+        }
+        by_name
+    }
+
+    /// The report value: `tick_size`, `author_index` and `imports`
+    /// (developer → language → import → tick → count; tick keys are
+    /// integers, rendered as decimal strings in json).
+    ///
+    /// ```
+    /// use cf_imports::history::{add_entries_to_map, HistoryReport, ImportEntry, ImportsMap};
+    ///
+    /// let mut imports = ImportsMap::new();
+    /// add_entries_to_map(&mut imports, &[ImportEntry { lang: "go".into(), import: "fmt".into() }], 0, 3);
+    /// let report = HistoryReport { tick_size_secs: 86_400, author_index: vec!["alice".into()], imports };
+    /// let json = String::from_utf8(cf_gojson::marshal(&report.to_go_value())).unwrap();
+    /// assert_eq!(
+    ///     json,
+    ///     r#"{"tick_size":86400,"author_index":["alice"],"imports":{"alice":{"go":{"fmt":{"3":1}}}}}"#
+    /// );
+    /// ```
+    #[must_use]
+    pub fn to_go_value(&self) -> GoValue {
+        let mut developers = GoMap::new_map();
+        for (name, langs) in self.imports_by_developer() {
+            let mut lang_map = GoMap::new_map();
+            for (lang, imps) in &langs {
+                let mut imp_map = GoMap::new_map();
+                for (imp, ticks) in imps {
+                    let mut tick_map = GoMap::new_int_map();
+                    for (tick, count) in ticks {
+                        tick_map.push(tick.to_string(), GoValue::Int(*count));
+                    }
+                    imp_map.push(imp.clone(), GoValue::Map(tick_map));
+                }
+                lang_map.push(lang.clone(), GoValue::Map(imp_map));
+            }
+            developers.push(name, GoValue::Map(lang_map));
+        }
+
+        let mut root = GoMap::new_struct();
+        root.push(KEY_TICK_SIZE, GoValue::Int(self.tick_size_secs));
+        root.push(
+            KEY_AUTHOR_INDEX,
+            GoValue::Array(
+                self.author_index
+                    .iter()
+                    .cloned()
+                    .map(GoValue::Str)
+                    .collect(),
+            ),
+        );
+        root.push(KEY_IMPORTS, GoValue::Map(developers));
+        GoValue::Map(root)
+    }
+
+    /// The yaml value: the same tree as [`HistoryReport::to_go_value`] (the
+    /// yaml encoder renders the integer tick keys as plain scalars).
+    #[must_use]
+    pub fn to_go_value_yaml(&self) -> GoValue {
+        self.to_go_value()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_history_analyzer_name() {
-        let h = HistoryAnalyzer::new();
-        assert!(!h.name().is_empty());
-        assert_eq!(h.name(), "ImportsPerDeveloper");
-    }
-
-    #[test]
-    fn test_history_analyzer_flag() {
-        let h = HistoryAnalyzer::new();
-        assert!(!h.flag().is_empty());
-        assert_eq!(h.flag(), "imports-per-dev");
-    }
-
-    #[test]
-    fn test_history_analyzer_id() {
-        let h = HistoryAnalyzer::new();
-        assert_eq!(h.id(), "history/imports");
-    }
-
-    #[test]
-    fn test_extract_commit_time_series() {
-        let h = HistoryAnalyzer::new();
-        let hash = "aabbccdd00112233445566778899aabbccddeeff".to_string();
-        let mut langs = BTreeMap::new();
-        langs.insert("go".to_string(), 3);
-        langs.insert("python".to_string(), 2);
-        let mut stats = BTreeMap::new();
-        stats.insert(
-            hash.clone(),
-            CommitSummary {
-                import_count: 5,
-                languages: langs,
-            },
-        );
-
-        let result = h.extract_commit_time_series(&stats).expect("not nil");
-        let entry = result.get(&hash).expect("hash present");
-        assert_eq!(entry.import_count, 5);
-        assert_eq!(entry.languages["go"], 3);
-        assert_eq!(entry.languages["python"], 2);
-    }
-
-    #[test]
-    fn test_extract_commit_time_series_empty() {
-        let h = HistoryAnalyzer::new();
-        assert!(h.extract_commit_time_series(&BTreeMap::new()).is_none());
-    }
-
-    // --- additive-merge / aggregation coverage (the core behaviour) ---
-
-    fn build_test_import_ticks() -> Vec<TickData> {
-        let mk = |pairs: &[(i64, &str, &str, i64, i64)]| -> ImportsMap {
-            let mut m: ImportsMap = BTreeMap::new();
-            for (author, lang, imp, tick, count) in pairs {
-                m.entry(*author)
-                    .or_default()
-                    .entry(lang.to_string())
-                    .or_default()
-                    .entry(imp.to_string())
-                    .or_default()
-                    .insert(*tick, *count);
-            }
-            m
-        };
-
-        vec![
-            TickData {
-                imports: mk(&[
-                    (0, "go", "fmt", 0, 3),
-                    (0, "go", "os", 0, 2),
-                    (0, "go", "strings", 0, 1),
-                ]),
-                commit_stats: BTreeMap::new(),
-            },
-            TickData {
-                imports: mk(&[
-                    (0, "go", "fmt", 1, 5),
-                    (0, "go", "io", 1, 1),
-                    (1, "go", "fmt", 1, 2),
-                    (1, "go", "os", 1, 3),
-                ]),
-                commit_stats: BTreeMap::new(),
-            },
-        ]
-    }
-
-    #[test]
-    fn test_merge_and_aggregate_counts() {
-        let ticks = build_test_import_ticks();
-        let mut merged: ImportsMap = BTreeMap::new();
-        for td in &ticks {
-            merge_import_maps(&mut merged, &td.imports);
+    fn mk(pairs: &[(i64, &str, &str, i64, i64)]) -> ImportsMap {
+        let mut m: ImportsMap = BTreeMap::new();
+        for (author, lang, imp, tick, count) in pairs {
+            m.entry(*author)
+                .or_default()
+                .entry(lang.to_string())
+                .or_default()
+                .entry(imp.to_string())
+                .or_default()
+                .insert(*tick, *count);
         }
+        m
+    }
+
+    #[test]
+    fn merge_and_aggregate_counts() {
+        let tick0 = mk(&[
+            (0, "go", "fmt", 0, 3),
+            (0, "go", "os", 0, 2),
+            (0, "go", "strings", 0, 1),
+        ]);
+        let tick1 = mk(&[
+            (0, "go", "fmt", 1, 5),
+            (0, "go", "io", 1, 1),
+            (1, "go", "fmt", 1, 2),
+            (1, "go", "os", 1, 3),
+        ]);
+        let mut merged: ImportsMap = BTreeMap::new();
+        merge_import_maps(&mut merged, &tick0);
+        merge_import_maps(&mut merged, &tick1);
         let counts = aggregate_import_counts(&merged);
         // fmt: 3 + 5 + 2 = 10; os: 2 + 3 = 5; strings: 1; io: 1.
         assert_eq!(counts["fmt"], 10);
         assert_eq!(counts["os"], 5);
         assert_eq!(counts["strings"], 1);
         assert_eq!(counts["io"], 1);
-    }
-
-    #[test]
-    fn test_top_imports_orders_by_count_desc() {
-        let ticks = build_test_import_ticks();
-        let mut merged: ImportsMap = BTreeMap::new();
-        for td in &ticks {
-            merge_import_maps(&mut merged, &td.imports);
-        }
-        let counts = aggregate_import_counts(&merged);
         let (labels, data) = top_imports(&counts);
         assert_eq!(labels[0], "fmt");
         assert_eq!(data[0], 10);
     }
 
     #[test]
-    fn test_add_entries_to_map_increments() {
+    fn top_imports_is_capped() {
+        let counts: BTreeMap<String, i64> = (0..30).map(|i| (format!("m{i:02}"), i)).collect();
+        let (labels, data) = top_imports(&counts);
+        assert_eq!(labels.len(), TOP_IMPORTS_LIMIT);
+        assert_eq!(labels[0], "m29");
+        assert_eq!(data[0], 29);
+    }
+
+    #[test]
+    fn add_entries_to_map_increments() {
         let mut m: ImportsMap = BTreeMap::new();
         let entries = vec![
             ImportEntry {
@@ -353,12 +312,69 @@ mod tests {
                 import: "fmt".to_string(),
             },
             ImportEntry {
-                lang: "go".to_string(),
+                lang: "python".to_string(),
                 import: "os".to_string(),
             },
         ];
         add_entries_to_map(&mut m, &entries, 0, 0);
         assert_eq!(m[&0]["go"]["fmt"][&0], 2);
-        assert_eq!(m[&0]["go"]["os"][&0], 1);
+        assert_eq!(m[&0]["python"]["os"][&0], 1);
+        // A commit without imports leaves no trace of its author.
+        add_entries_to_map(&mut m, &[], 1, 0);
+        assert!(!m.contains_key(&1));
+    }
+
+    /// The documented shape: developer → language → import → tick → count,
+    /// plus `tick_size` and the author index.
+    #[test]
+    fn report_value_is_the_documented_four_level_map() {
+        let report = HistoryReport {
+            tick_size_secs: 86_400,
+            author_index: vec!["alice".into(), "bob".into()],
+            imports: mk(&[
+                (0, "go", "fmt", 0, 1),
+                (0, "go", "fmt", 2, 1),
+                (0, "go", "net/http", 2, 1),
+                (1, "python", "os", 1, 1),
+            ]),
+        };
+        let json = String::from_utf8(cf_gojson::marshal(&report.to_go_value())).unwrap();
+        assert_eq!(
+            json,
+            concat!(
+                r#"{"tick_size":86400,"author_index":["alice","bob"],"#,
+                r#""imports":{"alice":{"go":{"fmt":{"0":1,"2":1},"net/http":{"2":1}}},"bob":{"python":{"os":{"1":1}}}}}"#
+            )
+        );
+        let yaml = String::from_utf8(cf_goyaml::marshal(&report.to_go_value_yaml())).unwrap();
+        assert!(yaml.contains("tick_size: 86400"), "{yaml}");
+        assert!(yaml.contains("net/http:"), "{yaml}");
+        assert!(yaml.contains("python:"), "{yaml}");
+    }
+
+    #[test]
+    fn empty_report_keeps_every_key() {
+        let report = HistoryReport {
+            tick_size_secs: 3_600,
+            ..HistoryReport::default()
+        };
+        let json = String::from_utf8(cf_gojson::marshal(&report.to_go_value())).unwrap();
+        assert_eq!(json, r#"{"tick_size":3600,"author_index":[],"imports":{}}"#);
+    }
+
+    #[test]
+    fn same_name_authors_merge_and_unknown_ids_keep_their_number() {
+        let report = HistoryReport {
+            tick_size_secs: 86_400,
+            author_index: vec!["alice".into(), "alice".into()],
+            imports: mk(&[
+                (0, "go", "fmt", 0, 1),
+                (1, "go", "fmt", 0, 2),
+                (7, "go", "os", 0, 1),
+            ]),
+        };
+        let json = String::from_utf8(cf_gojson::marshal(&report.to_go_value())).unwrap();
+        assert!(json.contains(r#""alice":{"go":{"fmt":{"0":3}}}"#), "{json}");
+        assert!(json.contains(r#""7":{"go":{"os":{"0":1}}}"#), "{json}");
     }
 }

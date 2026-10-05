@@ -2,23 +2,24 @@
 //!
 //! Each submodule is the crate-owned orchestration for one analyzer family
 //! (static folder walk + per-file UAST analysis, or one git revwalk + per-commit
-//! analysis), moved verbatim out of the `codefang` binary's `main.rs` where it
-//! had previously been reached through a 31-arm per-`(analyzer, format)` `if`
-//! ladder. The analyzer MATH stays in the cf-* analyzer crates these call
+//! analysis). The analyzer MATH stays in the cf-* analyzer crates these call
 //! (cf-complexity, cf-halstead, cf-comments, cf-imports, cf-couples,
 //! cf-shotness, cf-analyzer-burndown, …); this module owns only the
 //! pipeline-tier orchestration + serialization (cf-gojson / cf-goyaml /
-//! cf-reportutil), exactly as the reference framework + run command do.
+//! cf-reportutil).
 //!
 //! [`default_registry`] builds the single [`crate::pipeline::Registry`] mapping
 //! every analyzer id to ONE [`crate::pipeline::RunHandler`]. Each handler owns
-//! its own `match format` (mirroring an analyzer's `FormatReport*` family in
-//! the reference implementation); dispatch in [`crate::pipeline::run_pipeline`] is a keyed lookup by id,
-//! NOT a per-format branch ladder.
+//! its own `match format`; dispatch in [`crate::pipeline::run_pipeline`] is a
+//! keyed lookup by id, NOT a per-format branch ladder.
+//!
+//! The shared run validation ([`preflight`]), the ONE static file walk
+//! ([`walk_source_files`] / [`walk_all_files`]) and the two walk filters
+//! ([`StaticFilter`], [`HistoryFilter`]) live here because every handler of
+//! both phases reads them.
 
 pub mod burndown_ndjson;
 pub mod couples_run;
-pub mod go_sort;
 pub mod history;
 pub mod history_formats;
 pub mod history_plot;
@@ -27,6 +28,7 @@ pub mod plot;
 pub mod plot_sections;
 pub mod section_render;
 pub mod shotness_run;
+pub(crate) mod spill;
 pub mod static_clones;
 pub mod static_cohesion;
 pub mod static_comments;
@@ -38,7 +40,11 @@ pub mod static_imports;
 pub mod static_json;
 pub(crate) mod uast_walk;
 
-use crate::pipeline::{AnalyzerEntry, Mode, Registry, RunContext};
+use std::path::{Path, PathBuf};
+
+use cf_uast::Parser;
+
+use crate::pipeline::{AnalyzerEntry, HandlerError, Mode, Registry, RunContext};
 
 /// Concurrency cap for independent per-analyzer tasks in the multi-analyzer
 /// dispatch paths (combined render, plot orchestrators, the per-id pipeline).
@@ -104,57 +110,391 @@ pub(crate) fn run_cancelled() -> bool {
     cancel_flag().load(std::sync::atomic::Ordering::Relaxed)
 }
 
+// ---------------------------------------------------------------------------
+// The ONE static file walk. Every `static/*` handler consumes it, so the
+// skip set, the read cap, the `--languages` globs, the vendor / generated
+// path policy and the generated-content marker are applied in exactly one
+// place; a handler owns only what it does with the bytes.
+// ---------------------------------------------------------------------------
+
 /// Upper bound for a single source file on the static path (64 MiB). No
 /// legitimate source file approaches this; without a bound, a pathological
 /// file is fully read, tree-sitter-parsed (tree several times the source
 /// size), lowered to a UAST, and — on the complexity path — deep-copied
 /// again, so peak RSS is a large multiple of the largest file encountered.
 /// Oversized files are skipped exactly like unreadable ones.
-pub(crate) const MAX_STATIC_FILE_SIZE: u64 = 64 * 1024 * 1024;
+pub const MAX_STATIC_FILE_SIZE: u64 = 64 * 1024 * 1024;
 
-/// Count of files the static walks skipped (unreadable, oversized, or
-/// unparseable). Skips used to be completely silent, so a permissions
-/// failure across half a tree produced a plausible-looking but wrong report
-/// with no signal; the run summary now surfaces the count on stderr.
-static SKIPPED_FILES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// Bytes read per file by [`walk_all_files`]: the classification header
+/// (binary sniffing, generated markers, shebangs and modelines all live
+/// there), so classifying a tree never reads whole binaries.
+pub const ALL_FILES_HEADER_BYTES: usize = 8192;
 
-/// Records one skipped file for the end-of-run summary.
-pub(crate) fn note_skipped_file() {
-    SKIPPED_FILES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+/// Why the static walk (or a handler's parse step) left a file out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkipReason {
+    /// The file (or its metadata) could not be read.
+    Unreadable,
+    /// The file is larger than [`MAX_STATIC_FILE_SIZE`].
+    Oversized,
+    /// The parser has no usable grammar for the file.
+    Unparseable,
 }
 
-/// Number of files skipped so far in this run.
+impl SkipReason {
+    /// The reason as the stderr warning prints it.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unreadable => "unreadable",
+            Self::Oversized => "larger than 64 MiB",
+            Self::Unparseable => "unparseable",
+        }
+    }
+}
+
+/// Every path skipped in this run. Keyed by path so a file is counted ONCE
+/// however many analyzers walk it (a `-a 'static/*'` run walks the tree once
+/// per analyzer) and the unreadable / oversized warning is printed once.
+/// Skips used to be completely silent, so a permissions failure across half
+/// a tree produced a plausible-looking but wrong report with no signal.
+static SKIPPED_FILES: std::sync::Mutex<std::collections::BTreeSet<PathBuf>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+/// Records a skipped file for the end-of-run summary. The first skip of a
+/// path for an I/O reason (unreadable, oversized) prints
+/// `warning: skipped <path>: <reason>` on stderr; a parse failure is only
+/// counted, because the handlers that hit it either list the file as empty
+/// or drop it by design. Returns `true` when this call recorded the path
+/// (and so printed its warning), `false` for a repeat.
+pub(crate) fn note_skipped(path: &Path, reason: SkipReason) -> bool {
+    let newly_recorded = SKIPPED_FILES
+        .lock()
+        .expect("skipped-file registry poisoned")
+        .insert(path.to_path_buf());
+    if newly_recorded && reason != SkipReason::Unparseable {
+        eprintln!("warning: skipped {}: {}", path.display(), reason.as_str());
+    }
+    newly_recorded
+}
+
+/// Number of distinct files skipped so far in this run.
 pub(crate) fn skipped_file_count() -> u64 {
-    SKIPPED_FILES.load(std::sync::atomic::Ordering::Relaxed)
+    SKIPPED_FILES
+        .lock()
+        .expect("skipped-file registry poisoned")
+        .len() as u64
 }
 
-/// Reads a source file for static analysis, refusing oversized files
-/// (see [`MAX_STATIC_FILE_SIZE`]). `None` mirrors the walkers' existing
-/// skip-on-unreadable behavior.
-pub(crate) fn read_source_capped(path: &std::path::Path) -> Option<Vec<u8>> {
-    let read = || -> Option<Vec<u8>> {
-        let meta = std::fs::metadata(path).ok()?;
-        if meta.len() > MAX_STATIC_FILE_SIZE {
+/// True once `path` has been recorded as skipped in this process.
+#[cfg(test)]
+fn was_skipped(path: &Path) -> bool {
+    SKIPPED_FILES
+        .lock()
+        .expect("skipped-file registry poisoned")
+        .contains(path)
+}
+
+/// Reads a source file whole, refusing files over [`MAX_STATIC_FILE_SIZE`]
+/// before any byte is read.
+fn read_source_capped(path: &Path) -> Result<Vec<u8>, SkipReason> {
+    let meta = std::fs::metadata(path).map_err(|_| SkipReason::Unreadable)?;
+    if meta.len() > MAX_STATIC_FILE_SIZE {
+        return Err(SkipReason::Oversized);
+    }
+    std::fs::read(path).map_err(|_| SkipReason::Unreadable)
+}
+
+/// Reads at most `limit` leading bytes of `path`; empty when the file cannot
+/// be read (the all-files walk then classifies on the path alone).
+fn read_header(path: &Path, limit: usize) -> Vec<u8> {
+    use std::io::Read as _;
+    let Ok(file) = std::fs::File::open(path) else {
+        return Vec::new();
+    };
+    let mut buf = Vec::new();
+    if file.take(limit as u64).read_to_end(&mut buf).is_err() {
+        return Vec::new();
+    }
+    buf
+}
+
+/// One file admitted by the static walk.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceFile {
+    /// The file's path as the walk reached it (the root joined with the
+    /// relative components; the root itself for a FILE root).
+    pub path: PathBuf,
+    /// Slash-joined path relative to the walk root. A FILE root stamps the
+    /// file's name, so `codefang run -a static/comments src/a.go` reports
+    /// `a.go`, never `.`.
+    pub rel_path: String,
+    /// The file's bytes: the whole file under [`walk_source_files`], the
+    /// first [`ALL_FILES_HEADER_BYTES`] under [`walk_all_files`].
+    pub bytes: Vec<u8>,
+    /// The parser's language name for the file (empty under
+    /// [`walk_all_files`], whose consumer classifies the language itself).
+    pub language: String,
+}
+
+impl SourceFile {
+    /// Directory portion of [`Self::rel_path`] (`.` for a top-level file).
+    #[must_use]
+    pub fn directory(&self) -> String {
+        parent_dir(&self.rel_path)
+    }
+}
+
+/// Which files a [`StaticWalk`] admits.
+enum WalkMode<'a> {
+    /// Files the parser supports that pass the whole run filter — the
+    /// `--languages` globs, the vendor / generated path policy and the
+    /// generated-content marker — read whole.
+    Source(&'a Parser),
+    /// Every regular file that passes the `--languages` globs and
+    /// `--extra-excluded-prefixes`; vendored, generated and binary files are
+    /// admitted (composition exists to report them) and only the header is
+    /// read.
+    AllFiles,
+}
+
+/// The lazy static file walk. The candidate paths are gathered up front
+/// (lexical, depth-first); each [`Iterator::next`] reads, filters and stamps
+/// one file, so one file's bytes are live at a time however large the tree.
+pub struct StaticWalk<'a> {
+    root: PathBuf,
+    mode: WalkMode<'a>,
+    filter: StaticFilter,
+    pending: std::vec::IntoIter<PathBuf>,
+}
+
+/// The source walk every UAST-backed static analyzer runs on. `root` is a
+/// directory or a single file. The walk:
+///
+///  1. visits directories in lexical order, depth-first, skipping `.git`,
+///     cache-tagged directories ([`should_skip_walk_dir`]) and symlinked
+///     directories (never followed, so a symlink loop cannot recurse and the
+///     walk cannot escape the root); symlinked regular files are read;
+///  2. admits only files the parser supports and the `--languages` basename
+///     globs keep;
+///  3. applies the vendor / generated / `--extra-excluded-prefixes` policy to
+///     the ROOT-RELATIVE path, so `--extra-excluded-prefixes gen/` works
+///     whatever the root spelling;
+///  4. reads each file once, refusing files over [`MAX_STATIC_FILE_SIZE`];
+///     an unreadable or oversized file is skipped and reported once on
+///     stderr for the whole run ([`note_skipped`]);
+///  5. applies the generated-content marker over the first 512 bytes
+///     ([`StaticFilter::skips_with_header`]) unless `--include-generated`.
+///
+/// # Errors
+///
+/// [`HandlerError::PathNotFound`] when `root` does not exist.
+pub fn walk_source_files<'a>(
+    root: &str,
+    parser: &'a Parser,
+    filter: &StaticFilter,
+) -> Result<StaticWalk<'a>, HandlerError> {
+    StaticWalk::new(root, WalkMode::Source(parser), filter.clone())
+}
+
+/// The classification walk `static/composition` runs on: the same traversal
+/// as [`walk_source_files`] but EVERY regular file is admitted — vendored,
+/// generated, binary, unsupported — with only `--languages` and
+/// `--extra-excluded-prefixes` narrowing it. Each file carries its first
+/// [`ALL_FILES_HEADER_BYTES`]; an unreadable file carries no bytes and is
+/// still admitted (it classifies on its path).
+///
+/// # Errors
+///
+/// [`HandlerError::PathNotFound`] when `root` does not exist.
+pub fn walk_all_files(
+    root: &str,
+    filter: &StaticFilter,
+) -> Result<StaticWalk<'static>, HandlerError> {
+    let relaxed = StaticFilter {
+        policy: cf_pathpolicy::Options {
+            include_vendored: true,
+            include_generated: true,
+            extra_excluded_prefixes: filter.policy.extra_excluded_prefixes.clone(),
+        },
+        language_globs: filter.language_globs.clone(),
+    };
+    StaticWalk::new(root, WalkMode::AllFiles, relaxed)
+}
+
+impl<'a> StaticWalk<'a> {
+    fn new(root: &str, mode: WalkMode<'a>, filter: StaticFilter) -> Result<Self, HandlerError> {
+        let root_path = PathBuf::from(root);
+        if !root_path.exists() {
+            return Err(HandlerError::PathNotFound(root.to_string()));
+        }
+        let mut pending = Vec::new();
+        collect_candidates(&root_path, &mut pending);
+        Ok(StaticWalk {
+            root: root_path,
+            mode,
+            filter,
+            pending: pending.into_iter(),
+        })
+    }
+
+    /// Filters, reads and stamps one candidate; `None` when the run filter
+    /// drops it or it cannot be read.
+    fn admit(&self, path: &Path) -> Option<SourceFile> {
+        let rel_path = make_relative_path(path, &self.root);
+        match self.mode {
+            WalkMode::Source(parser) => self.admit_source(parser, path, rel_path),
+            WalkMode::AllFiles => self.admit_any(path, rel_path),
+        }
+    }
+
+    fn admit_source(&self, parser: &Parser, path: &Path, rel_path: String) -> Option<SourceFile> {
+        if !parser.is_supported(&rel_path) || self.filter.skips(&rel_path) {
             return None;
         }
-        std::fs::read(path).ok()
-    };
-    let content = read();
-    if content.is_none() {
-        note_skipped_file();
+        let bytes = match read_source_capped(path) {
+            Ok(bytes) => bytes,
+            Err(reason) => {
+                note_skipped(path, reason);
+                return None;
+            }
+        };
+        if self.filter.skips_with_header(&rel_path, &bytes) {
+            return None;
+        }
+        Some(SourceFile {
+            path: path.to_path_buf(),
+            language: parser.get_language(&rel_path),
+            rel_path,
+            bytes,
+        })
     }
-    content
+
+    fn admit_any(&self, path: &Path, rel_path: String) -> Option<SourceFile> {
+        if self.filter.skips(&rel_path) {
+            return None;
+        }
+        Some(SourceFile {
+            path: path.to_path_buf(),
+            rel_path,
+            bytes: read_header(path, ALL_FILES_HEADER_BYTES),
+            language: String::new(),
+        })
+    }
 }
 
-/// Directory-level skip predicate for the static folder walks. The reference
-/// pipeline only does `filepath.SkipDir` on `.git`; this EXTENDS that to also
-/// skip any directory carrying a `CACHEDIR.TAG` — the BSD cache-directory
-/// convention Cargo writes into `target/` (and that ripgrep/fd/tar honor). A
-/// bare `codefang run .` in a built Rust repo would otherwise descend into a
+impl Iterator for StaticWalk<'_> {
+    type Item = SourceFile;
+
+    /// The next admitted file; the walk ends early (and stays ended) once
+    /// SIGINT/SIGTERM was received.
+    fn next(&mut self) -> Option<SourceFile> {
+        loop {
+            if run_cancelled() {
+                return None;
+            }
+            let path = self.pending.next()?;
+            if let Some(file) = self.admit(&path) {
+                return Some(file);
+            }
+        }
+    }
+}
+
+/// What a directory entry contributes to the walk.
+enum CandidateKind {
+    /// A directory to recurse into (unless skipped).
+    Dir,
+    /// A regular file (or a symlink resolving to one) to analyze.
+    File,
+    /// Anything else: a symlinked or dangling directory, a socket, a FIFO…
+    Other,
+}
+
+/// Classifies a directory entry WITHOUT following directory symlinks: a
+/// symlink to a regular file is a file; a symlink to a directory — or a
+/// dangling one — contributes nothing.
+fn candidate_kind(entry: &std::fs::DirEntry) -> CandidateKind {
+    let Ok(file_type) = entry.file_type() else {
+        return CandidateKind::Other;
+    };
+    if file_type.is_dir() {
+        return CandidateKind::Dir;
+    }
+    if file_type.is_file() {
+        return CandidateKind::File;
+    }
+    if file_type.is_symlink() && std::fs::metadata(entry.path()).is_ok_and(|m| m.is_file()) {
+        return CandidateKind::File;
+    }
+    CandidateKind::Other
+}
+
+/// Gathers the candidate files under `root` in lexical depth-first order: a
+/// FILE root is the single candidate; directories are recursed except the
+/// [`should_skip_walk_dir`] set; symlinked directories are never followed.
+/// Stops promptly on SIGINT/SIGTERM.
+fn collect_candidates(root: &Path, out: &mut Vec<PathBuf>) {
+    if root.is_file() {
+        out.push(root.to_path_buf());
+        return;
+    }
+    let Ok(read) = std::fs::read_dir(root) else {
+        return;
+    };
+    let mut entries: Vec<_> = read.filter_map(Result::ok).collect();
+    entries.sort_by_key(std::fs::DirEntry::file_name);
+    for entry in entries {
+        if run_cancelled() {
+            return;
+        }
+        let path = entry.path();
+        match candidate_kind(&entry) {
+            CandidateKind::Dir => {
+                if !should_skip_walk_dir(&path, &entry.file_name()) {
+                    collect_candidates(&path, out);
+                }
+            }
+            CandidateKind::File => out.push(path),
+            CandidateKind::Other => {}
+        }
+    }
+}
+
+/// The slash-joined path of `path` relative to `root`. A FILE root (the
+/// path IS the root) stamps the file's name, as does a path outside the
+/// root, so a stamp is never `.` or empty.
+#[must_use]
+pub fn make_relative_path(path: &Path, root: &Path) -> String {
+    if let Ok(rel) = path.strip_prefix(root) {
+        if !rel.as_os_str().is_empty() {
+            return rel.to_string_lossy().into_owned();
+        }
+    }
+    path.file_name().map_or_else(
+        || path.to_string_lossy().into_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    )
+}
+
+/// Directory portion of a relative stamp (`.` for a bare filename, `/` for
+/// a root-anchored one).
+#[must_use]
+pub fn parent_dir(relative: &str) -> String {
+    match relative.rfind('/') {
+        Some(0) => "/".to_string(),
+        Some(pos) => relative[..pos].to_string(),
+        None => ".".to_string(),
+    }
+}
+
+/// Directory-level skip predicate for the static folder walks: `.git` and any
+/// directory carrying a `CACHEDIR.TAG` — the BSD cache-directory convention
+/// Cargo writes into `target/` (and that ripgrep/fd/tar honor). A bare
+/// `codefang run .` in a built Rust repo would otherwise descend into a
 /// multi-gigabyte `target/` tree and parse its generated sources, which looks
 /// like a hang. The tag check has effectively zero false positives (a real
-/// source directory never carries the signature), so analysis is unchanged on
-/// repos without such dirs — including the parity gate's kubernetes checkout.
+/// source directory never carries the signature).
 pub(crate) fn should_skip_walk_dir(path: &std::path::Path, name: &std::ffi::OsStr) -> bool {
     name == ".git" || is_cache_tagged_dir(path)
 }
@@ -172,13 +512,11 @@ fn is_cache_tagged_dir(dir: &std::path::Path) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Shared pipeline helpers (path resolution, tick floor, RFC3339 formatting).
-// These mirror the reference implementation / plumbing helpers and are shared by the static
-// and history handlers.
+// Shared pipeline helpers (path resolution, commit window, RFC3339 formatting).
 // ---------------------------------------------------------------------------
 
 /// Resolves the repository path from `run`'s positional arg or `-p/--path`
-/// (the reference implementation: the positional wins when present, else `--path`, default `.`).
+/// (the positional wins when present, else `--path`, default `.`).
 #[must_use]
 pub fn run_repo_path(sub: &clap::ArgMatches) -> String {
     if let Some(p) = sub.get_one::<String>("path-positional") {
@@ -191,41 +529,11 @@ pub fn run_repo_path(sub: &clap::ArgMatches) -> String {
         .unwrap_or_else(|| ".".to_string())
 }
 
-/// The effective first-parent mode for the shared history revwalk, mirroring
-/// the reference `initHistoryPipeline`: when the resolved leaf set contains
-/// `burndown` and `--first-parent` is off, first-parent is forced on.
-///
-/// The reference implementation forces first-parent for the WHOLE history run (the single shared revwalk
-/// that feeds every selected history analyzer) whenever `history/burndown` is in
-/// the resolved leaf set, regardless of the `--first-parent` flag. Because every
-/// history analyzer in one `run` shares that revwalk, the window selection — and
-/// therefore each analyzer's tick assignment and commit set — must observe the
-/// same forced flag. A handler that read only `--first-parent` would diverge from
-/// the reference implementation whenever burndown is co-selected (e.g. `--analyzers history/devs,history/burndown`,
-/// `history/*`, or `*`), even though it is not the burndown handler.
-///
-/// The burndown membership is computed over the RESOLVED leaf set, so literal ids
-/// and globs (`history/*`, `*`) that select burndown all force the flag, exactly
-/// as the reference implementation's `slices.Contains(analyzerKeys, "burndown")` does after glob expansion.
-#[must_use]
-pub fn effective_first_parent(sub: &clap::ArgMatches) -> bool {
-    if sub.get_flag("first-parent") {
-        return true;
-    }
-    let patterns: Vec<String> = sub
-        .get_many::<String>("analyzers")
-        .map(|vals| vals.cloned().collect())
-        .unwrap_or_default();
-    let pats: Vec<&str> = patterns.iter().map(String::as_str).collect();
-    let (_static_ids, history_ids) = expand_combined_ids(&pats);
-    history_ids.iter().any(|id| id == "history/burndown")
-}
-
 /// The `--since` state of a history run: raw spec text, resolved against the
 /// repository when the walk is built.
 ///
 /// Accepted forms, in precedence order:
-///  1. a Go-style duration (`24h`, `1h30m`) subtracted from "now" — units are
+///  1. a duration (`24h`, `1h30m`) subtracted from "now" — units are
 ///     `h`/`m`/`s` only, so `m` means MINUTES and there is no `d`/`w` unit;
 ///     "now" honors `CODEFANG_NOW` so duration-relative runs stay reproducible
 ///     (DESIGN §2.8);
@@ -241,7 +549,7 @@ pub fn effective_first_parent(sub: &clap::ArgMatches) -> bool {
 ///
 /// Parsing lives in [`cf_gitlib::helpers::parse_time`] /
 /// [`cf_gitlib::Repository::resolve_time`] — ONE parser shared by the CLI and
-/// the library, instead of a second CLI-only copy.
+/// the library.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SinceSpec {
     /// `--since` absent or empty: the walk is unfiltered.
@@ -259,60 +567,63 @@ pub fn history_since_spec(sub: &clap::ArgMatches) -> SinceSpec {
     }
 }
 
-/// The commit window selected by `--limit` / `--since` / `--first-parent`.
+/// The commit window of a history run, as selected by `--head`, `--limit`,
+/// `--since` and the walk's first-parent mode.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoryWindow {
+    /// `--head`: the window is exactly `[HEAD]`; the other bounds are ignored.
+    pub head: bool,
+    /// `--limit N`: the N **newest** reachable commits; `0` = the whole walk.
+    pub limit: usize,
+    /// Follow only the first parent of merge commits.
+    pub first_parent: bool,
+    /// `--since`: every commit with author time >= the cutoff.
+    pub since: SinceSpec,
+}
+
+/// The commit window selected by a [`HistoryWindow`].
 ///
 /// Returns hashes in the **oldest-first** order the history analyzers consume
 /// (tick assignment, burndown line survival and identity ids are all
 /// order-dependent). Window semantics:
-///  - `--limit N` → the N **newest** reachable commits (the `git log -n`
-///    convention); `limit <= 0` → the whole walk;
-///  - `--since C` → every commit with author time >= C. A cutoff after HEAD
+///  - `head` → exactly `[HEAD]`, the same single-commit window `--limit 1`
+///    selects, so the two are byte-identical for every analyzer and format;
+///  - `limit N` → the N **newest** reachable commits (the `git log -n`
+///    convention); `0` → the whole walk;
+///  - `since C` → every commit with author time >= C. A cutoff after HEAD
 ///    yields an EMPTY window (analyzers emit their empty report); a cutoff at
-///    or before the root commit filters nothing;
-///  - both → the newest `N` commits *inside* the `--since` window.
+///    or before the root commit filters nothing. Author time can be skewed
+///    against the committer-time walk order, so the cutoff is a SKIP filter
+///    over the whole walk, never a stop condition;
+///  - both → the newest `N` commits *inside* the `since` window.
 ///
-/// Both bounds come from ONE newest-first pass: the walk is sorted
-/// `TIME|TOPOLOGICAL` newest-first, so [`cf_gitlib::CommitIter`]'s author-time
-/// *stop* filter cuts exactly at the cutoff and `limit` caps that prefix.
-///
-/// KNOWN RISK (inherited, not introduced here): the walk is ordered by
-/// committer time while the filter compares AUTHOR time, so a history whose
-/// author dates are skewed against its commit dates (bulk `git commit --date`
-/// rewrites) can be cut short. Mitigation if it ever bites: turn
-/// `CommitIter`'s stop filter into a skip filter, which costs a full walk.
-///
-/// DIVERGENCE (deliberate — see `specs/frds/FRD-newest-commit-window.md`): the
-/// retired Go reference selected the N OLDEST commits and aborted with empty
-/// stdout on a *partial* `--since` window. Both are corrected here; captures
-/// bounded by `--limit` against that binary no longer apply.
-///
-/// Returns `None` (⇒ the run aborts with empty stdout) when the repository
-/// cannot be walked or `--since` cannot be resolved against it — the CLI
-/// pre-checks the latter, so this is the library-level contract.
+/// Returns `None` (⇒ the run aborts) when the repository cannot be walked or
+/// `since` cannot be resolved against it — the CLI preflight reports the
+/// latter by name, so this is the library-level contract.
 #[must_use]
 pub fn load_history_commit_hashes(
     repo: &cf_gitlib::Repository,
-    limit: i64,
-    first_parent: bool,
-    since: SinceSpec,
+    window: &HistoryWindow,
 ) -> Option<Vec<cf_gitlib::Hash>> {
     use cf_gitlib::repository::{time_from_unix_secs, LogOptions};
 
-    // Resolve the spec against THIS repository so revisions are usable and
-    // duration forms honor CODEFANG_NOW (shared parser; see [`SinceSpec`]).
-    let since_secs = match since {
+    if window.head {
+        return Some(vec![repo.head().ok()?]);
+    }
+
+    let since_secs = match &window.since {
         SinceSpec::Inactive => None,
-        SinceSpec::Active(spec) => Some(repo.resolve_time(&spec).ok()?),
+        SinceSpec::Active(spec) => Some(repo.resolve_time(spec).ok()?),
     };
 
     let log_opts = LogOptions {
         since: since_secs.map(time_from_unix_secs),
-        first_parent,
+        first_parent: window.first_parent,
         reverse: false,
     };
     let mut iter = repo.log(&log_opts).ok()?;
     let mut hashes = Vec::new();
-    while limit <= 0 || (hashes.len() as i64) < limit {
+    while window.limit == 0 || hashes.len() < window.limit {
         match iter.next_commit() {
             Some(c) => hashes.push(c.hash()),
             None => break,
@@ -322,97 +633,8 @@ pub fn load_history_commit_hashes(
     Some(hashes)
 }
 
-/// Returns the reference implementation's streaming-pipeline *consume* order for an oldest-first commit
-/// window: the IDENTITY (oldest-first revwalk order).
-///
-/// At `--workers 1` (the only config the differential gate exercises) every
-/// stage of the reference coordinator pipeline preserves input order, so the leaf
-/// analyzers consume commits in exactly the oldest-first order they are fed:
-///
-/// * the reference `Stream` emits contiguous oldest-first
-///   batches (`commits[i:end]`) from a single goroutine.
-/// * the reference blob and diff pipelines use
-///   `pipeline.RunPC`: a single producer emits jobs
-///   in input order onto one FIFO channel, and a single consumer reads and
-///   emits them in that same order — the parallel blob/diff prefetch only
-///   shares one batched worker request, it never resequences commits.
-/// * the reference `Process` is explicitly order-preserving
-///   ("Output order matches input order via a slot-based approach"): the
-///   `emit` goroutine waits on each slot's `done` in dispatch order.
-/// * the reference coordinator `Process` and drain stage
-///   `SignalOnDrain` each forward items one-for-one from a single worker.
-/// * the reference `processCommitsSerial`/`hybridCommitLoop` range over
-///   the coordinator's `dataChan` in arrival order, and the per-commit `Index`
-///   carried through is the plain oldest-first revwalk index
-///   (`batch.StartIndex + job.index`).
-///
-/// So the order in which the COORDINATOR pipeline yields commits is the identity
-/// of the oldest-first window. Earlier code reordered into round-robin
-/// `PIPELINE_CHUNK` blocks here; that was incorrect — no pipeline stage performs
-/// that reordering.
-///
-/// This is the order the CORE (plumbing) analyzers consume — notably the
-/// `IdentityDetector`, which assigns loose author ids strictly oldest-first. It
-/// is NOT necessarily the order in which a LEAF analyzer's order-sensitive state
-/// is updated: at the default `LeafWorkers = max(NumCPU / 3, 4)` (which
-/// `--workers` does NOT override — that flag only sets the blob/diff `Workers`
-/// pool), the reference implementation's hybrid leaf path (the reference `processCommitsHybrid`) forks the
-/// leaf across workers, dispatching consume position `p` to worker `p % W`. The
-/// effect is leaf-specific and handled at the leaf consumer, not here:
-///   - couples: each fork has an INDEPENDENT seen-files Bloom; commits stay in
-///     oldest-first order WITHIN a worker (see `couples_run`).
-///   - file-history: forked TCs are drained worker-by-worker into one aggregator
-///     whose insert handling resets a path's hash list, so its add-order is the
-///     commits stably reordered by `(p % W, p)` (see `file_history_run`).
-///
-/// Both use [`leaf_worker_count`] for `W`, reproducing the reference binary on
-/// this machine.
-#[must_use]
-pub fn pipeline_consume_order(hashes: Vec<cf_gitlib::Hash>) -> Vec<cf_gitlib::Hash> {
-    hashes
-}
-
-/// Reference leaf-worker divisor (`framework` `leafWorkerDivisor`): `LeafWorkers =
-/// NumCPU / divisor`.
-const LEAF_WORKER_DIVISOR: usize = 3;
-/// Reference minimum leaf-worker count (`framework` `minLeafWorkers`).
-const MIN_LEAF_WORKERS: usize = 4;
-
-/// Number of forked leaf-analyzer workers the reference implementation dispatches commits across, mirroring
-/// `framework.DefaultCoordinatorConfig`: `max(NumCPU / 3, 4)`, where `NumCPU` is
-/// the machine's logical CPU count.
-///
-/// The reference implementation's hybrid leaf path (the reference `processCommitsHybrid`, taken for a single
-/// non-`SequentialOnly` leaf when `0 < CoreCount < len(Analyzers)`) forks the
-/// leaf across this many workers and dispatches consume position `p` to worker
-/// `p % count`, each worker holding INDEPENDENT analyzer state (e.g. couples'
-/// seen-files Bloom, file-history's per-path map). That makes the order-sensitive
-/// parts of those analyzers depend on this count, so a byte-exact port must use
-/// the same value as the live binary on this machine (which the oracle also runs
-/// on). The `--workers` flag only overrides `Workers` (the blob/diff pool), never
-/// `LeafWorkers`, so this is unaffected by `--workers 1`.
-#[must_use]
-pub fn leaf_worker_count() -> usize {
-    let num_cpu = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
-    (num_cpu / LEAF_WORKER_DIVISOR).max(MIN_LEAF_WORKERS)
-}
-
-/// Rounds Unix `secs` down to the start of its 24-hour tick (reference:
-/// `plumbing.FloorTime(when, 24h)`). `time.Round` rounds half away from zero;
-/// the post-round correction yields the floor.
-#[must_use]
-pub fn floor_tick_secs(secs: i64) -> i64 {
-    const PERIOD: i64 = 86_400;
-    let rounded = ((secs + PERIOD / 2).div_euclid(PERIOD)) * PERIOD;
-    if rounded > secs {
-        rounded - PERIOD
-    } else {
-        rounded
-    }
-}
-
-/// Formats Unix seconds as the reference `time.RFC3339` in the zone given by
-/// `offset_minutes`; a zero offset prints the literal `Z`.
+/// Formats Unix seconds as RFC3339 in the zone given by `offset_minutes`; a
+/// zero offset prints the literal `Z`.
 #[must_use]
 pub fn format_rfc3339_offset(unix_secs: i64, offset_minutes: i32) -> String {
     let local = unix_secs + i64::from(offset_minutes) * 60;
@@ -433,33 +655,36 @@ pub fn format_rfc3339_offset(unix_secs: i64, offset_minutes: i32) -> String {
 }
 
 /// Serializes a history analyzer's report value across the json/yaml/bin
-/// machine formats, mirroring the reference `OutputHistoryResults` +
-/// `BaseHistoryAnalyzer.Serialize` (`writeMetricsToFormat`): the *same* report
-/// value is encoded each way, so a handler computes the value once and routes
-/// it here rather than re-deriving per format.
+/// machine formats: the *same* report value is encoded each way, so a handler
+/// computes the value once and routes it here rather than re-deriving per
+/// format.
 ///
-/// - `json` (a "raw" format): `json.Marshal(metrics.ToJSON())` — `json_value`,
-///   no header, no trailing newline (cf-gojson `marshal`).
-/// - `binary` (a "raw" format): `reportutil.EncodeBinaryEnvelope(metrics)` — a
-///   CFB1 envelope wrapping the same `json_value` bytes (no header).
-/// - `yaml` (non-raw): `PrintHeader` (`codefang (v2):` / version / hash) then
-///   `<analyzer_name>:\n` then `yaml.Marshal(metrics.ToYAML())` — `yaml_value`.
+/// - `json`: `json_value`, no header, no trailing newline (cf-gojson `marshal`).
+/// - `binary`: a CFB1 envelope wrapping the same `json_value` bytes.
+/// - `yaml`: the `codefang (v2):` / version / hash header, then
+///   `<analyzer_name>:\n`, then the yaml body of `yaml_value`.
 ///
-/// `analyzer_name` is the history analyzer's `Name()` (the YAML section header,
-/// e.g. `ImportsPerDeveloper`). Returns `None` for any non-machine format, so
-/// the caller surfaces the same dispatch error the reference implementation does.
-#[must_use]
+/// `analyzer_name` is the history analyzer's display name (the YAML section
+/// header); `analyzer_id` names the analyzer in the error.
+///
+/// # Errors
+///
+/// [`HandlerError::FormatNotSupported`] for any other format.
 pub fn serialize_history_metrics(
     format: &str,
+    analyzer_id: &str,
     analyzer_name: &str,
     json_value: &cf_gojson::GoValue,
     yaml_value: &cf_gojson::GoValue,
-) -> Option<Vec<u8>> {
+) -> Result<Vec<u8>, HandlerError> {
     match format {
-        // Raw formats: no version header, no per-analyzer section name.
-        "json" => Some(cf_gojson::marshal(json_value)),
-        "binary" | "bin" => cf_reportutil::encode_binary_envelope(json_value).ok(),
-        // Non-raw: PrintHeader + "<Name>:\n" + yaml body.
+        "json" => Ok(cf_gojson::marshal(json_value)),
+        "binary" | "bin" => {
+            cf_reportutil::encode_binary_envelope(json_value).map_err(|_| HandlerError::NoReport {
+                analyzer: analyzer_id.to_string(),
+                format: format.to_string(),
+            })
+        }
         "yaml" => {
             let mut out = Vec::new();
             out.extend_from_slice(b"codefang (v2):\n");
@@ -469,10 +694,30 @@ pub fn serialize_history_metrics(
             out.extend_from_slice(format!("  hash: {}\n", cf_version::BINARY_GIT_HASH).as_bytes());
             out.extend_from_slice(format!("{analyzer_name}:\n").as_bytes());
             out.extend_from_slice(&cf_goyaml::marshal(yaml_value));
-            Some(out)
+            Ok(out)
         }
-        _ => None,
+        _ => Err(format_not_supported(format, analyzer_id)),
     }
+}
+
+/// The [`HandlerError::FormatNotSupported`] for `(format, analyzer)`.
+fn format_not_supported(format: &str, analyzer: &str) -> HandlerError {
+    HandlerError::FormatNotSupported {
+        format: format.to_string(),
+        analyzer: analyzer.to_string(),
+    }
+}
+
+/// Maps a report builder's `None` to the generic [`HandlerError::NoReport`].
+fn report_or_err(
+    bytes: Option<Vec<u8>>,
+    analyzer: &str,
+    format: &str,
+) -> Result<Vec<u8>, HandlerError> {
+    bytes.ok_or_else(|| HandlerError::NoReport {
+        analyzer: analyzer.to_string(),
+        format: format.to_string(),
+    })
 }
 
 /// Civil date from a day count since the Unix epoch (Howard Hinnant's algorithm).
@@ -491,14 +736,133 @@ pub fn civil_from_days(z: i64) -> (i64, u32, u32) {
 }
 
 // ---------------------------------------------------------------------------
+// Run preflight: ONE place that validates the path, the repository, the
+// flags and the format before any walk starts.
+// ---------------------------------------------------------------------------
+
+/// Every `--format` value codefang knows, across all phases.
+const KNOWN_FORMATS: &[&str] = &[
+    crate::formats::FORMAT_JSON,
+    crate::formats::FORMAT_YAML,
+    crate::formats::FORMAT_PLOT,
+    crate::formats::FORMAT_BINARY,
+    crate::formats::FORMAT_TIMESERIES,
+    crate::formats::FORMAT_NDJSON,
+    crate::formats::FORMAT_COMPACT,
+    crate::formats::FORMAT_TEXT,
+    crate::formats::FORMAT_TIMESERIES_NDJSON,
+];
+
+/// Validates a run BEFORE any walk: the path exists; a history selection
+/// opens the repository, resolves `--since`, reads `--people-dict` and
+/// validates `--limit` / `--tick-size` / `--max-changes-per-commit`; both
+/// phases validate `--languages`; and the `--format` value is one every
+/// selected phase can render. `static_ids` / `history_ids` are the resolved
+/// selection (either may be empty).
+///
+/// # Errors
+///
+/// The [`HandlerError`] naming the first failing input.
+pub fn preflight(
+    ctx: &RunContext,
+    static_ids: &[String],
+    history_ids: &[String],
+) -> Result<(), HandlerError> {
+    if !std::path::Path::new(&ctx.path).exists() {
+        return Err(HandlerError::PathNotFound(ctx.path.clone()));
+    }
+    if !static_ids.is_empty() {
+        static_filter(ctx).map_err(HandlerError::InvalidFlag)?;
+    }
+    if !history_ids.is_empty() {
+        history::limit_native_memory(ctx.matches);
+        history::validate_history_run(ctx.matches)?;
+    }
+    preflight_format(ctx, static_ids, history_ids)?;
+    if let Some(note) = per_file_ignored_note(
+        !static_ids.is_empty(),
+        ctx.matches.get_flag("per-file"),
+        &ctx.raw_format(),
+    ) {
+        warn_once(&note);
+    }
+    Ok(())
+}
+
+/// The stderr note for a `--per-file` run whose format cannot carry per-file
+/// entries: the flag is a `--format json` enrichment, and every other format
+/// (`yaml`, `bin`, `text`, `compact`, `plot`) silently rendered without it.
+/// `None` when no static analyzer is selected, the flag is off, or the
+/// format is json.
+#[must_use]
+pub fn per_file_ignored_note(
+    static_selected: bool,
+    per_file: bool,
+    format: &str,
+) -> Option<String> {
+    let is_json = crate::formats::normalize_format(format) == crate::formats::FORMAT_JSON;
+    (static_selected && per_file && !is_json).then(|| {
+        format!(
+            "--per-file applies to --format json only; ignored for {}",
+            format.trim()
+        )
+    })
+}
+
+/// Prints `note` on stderr once per process: the preflight runs in the CLI
+/// entry point AND inside the library pipeline, and a multi-analyzer run
+/// must not repeat the note per analyzer.
+fn warn_once(note: &str) {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| eprintln!("{note}"));
+}
+
+/// The format leg of [`preflight`]: `--ndjson` modifies `timeseries` only;
+/// `plot` is routed by the command itself; everything else must resolve for
+/// the selected phases.
+fn preflight_format(
+    ctx: &RunContext,
+    static_ids: &[String],
+    history_ids: &[String],
+) -> Result<(), HandlerError> {
+    let raw = ctx.raw_format();
+    let normalized = crate::formats::normalize_format(&raw);
+    if ctx.ndjson() && normalized != crate::formats::FORMAT_TIMESERIES {
+        return Err(HandlerError::InvalidFlag(format!(
+            "invalid --ndjson: requires --format timeseries, got --format {}",
+            raw.trim()
+        )));
+    }
+    if normalized == crate::formats::FORMAT_PLOT {
+        return Ok(());
+    }
+    if !KNOWN_FORMATS.contains(&normalized.as_str()) {
+        return Err(HandlerError::UnsupportedFormat(raw));
+    }
+    let has_static = !static_ids.is_empty();
+    let has_history = !history_ids.is_empty();
+    if crate::formats::resolve_formats(&raw, has_static, has_history).is_ok() {
+        return Ok(());
+    }
+    let analyzer = if has_static && has_history {
+        "a mixed static+history selection".to_string()
+    } else {
+        static_ids
+            .iter()
+            .chain(history_ids.iter())
+            .next()
+            .cloned()
+            .unwrap_or_default()
+    };
+    Err(format_not_supported(&raw, &analyzer))
+}
+
+// ---------------------------------------------------------------------------
 // Static analyzer glob/bin helpers (registry-ordered multi-analyzer bin output).
 // ---------------------------------------------------------------------------
 
-/// The static analyzers in registry order (reference `defaultUASTAnalyzers ++
-/// defaultRawFileAnalyzers`). `bin_ported` is true for the analyzers whose
-/// `--format bin` payload is reproduced byte-for-byte; cohesion is not yet
-/// ported. clones IS ported: its bin payload is the CFB1 envelope of
-/// `computeMetricsFromReport` over the cross-file aggregate report.
+/// The static analyzers in registry order. The `bool` records whether the
+/// analyzer's `--format bin` payload is produced (all are).
 pub const STATIC_BIN_ANALYZERS: &[(&str, bool)] = &[
     ("static/clones", true),
     ("static/complexity", true),
@@ -526,25 +890,14 @@ pub fn is_static_id_or_glob(pat: &str) -> bool {
 /// True when the glob matches any known history analyzer ID.
 #[must_use]
 pub fn history_glob_matches(pat: &str) -> bool {
-    const HISTORY_IDS: &[&str] = &[
-        "history/burndown",
-        "history/couples",
-        "history/devs",
-        "history/file-history",
-        "history/imports",
-        "history/shotness",
-        "history/typos",
-        "history/sentiment",
-        "history/quality",
-        "history/anomaly",
-    ];
-    HISTORY_IDS.iter().any(|id| go_path_match(pat, id))
+    HISTORY_COMBINED_ORDER
+        .iter()
+        .any(|id| go_path_match(pat, id))
 }
 
 /// Expands the requested patterns over the registry-ordered static analyzers and
-/// concatenates each selected analyzer's CFB1 bin envelope (reference:
-/// `FormatPerAnalyzer(FormatBinary)`). Returns `None` if any selected analyzer
-/// is not ported (clones/cohesion) or any folder walk fails.
+/// concatenates each selected analyzer's CFB1 bin envelope. Returns `None` if
+/// any selected analyzer cannot produce its envelope or any folder walk fails.
 #[must_use]
 pub fn static_multi_bin(patterns: &[&str], path: &str, filter: &StaticFilter) -> Option<Vec<u8>> {
     let mut selected: Vec<(&str, bool)> = Vec::new();
@@ -575,27 +928,18 @@ pub fn static_multi_bin(patterns: &[&str], path: &str, filter: &StaticFilter) ->
 }
 
 // ---------------------------------------------------------------------------
-// Static analyzer multi-analyzer JSON merge (the reference `renderer.SectionsToJSON` over
-// several analyzers). For `codefang run --format json` with more than one static
-// analyzer (or a glob that selects several), the reference implementation renders ONE `renderer.JSONReport`
-// whose `sections` are the per-analyzer sections in REGISTRY order and whose
-// `overall_score` is the executive-summary average of the scored sections
-// (info-only sections, score < 0, are excluded; all-info ⇒ overall is -1 / Info).
-// Each analyzer's section value comes from its own crate-owned report builder
-// (the same GoValue the single-analyzer JSON path serializes), so the merge owns
-// no analyzer math and every format follows the same report value.
+// Static analyzer multi-analyzer JSON merge. For `codefang run --format json`
+// with more than one static analyzer (or a glob that selects several), ONE
+// merged report is rendered whose `sections` are the per-analyzer sections in
+// REGISTRY order and whose `overall_score` is the executive-summary average of
+// the scored sections (info-only sections, score < 0, are excluded; all-info ⇒
+// overall is -1 / Info). Each analyzer's section value comes from its own
+// crate-owned report builder, so the merge owns no analyzer math.
 // ---------------------------------------------------------------------------
 
-/// Registry-ordered map of
-/// static analyzer id → the crate-owned builder of that analyzer's single-section
-/// `renderer.JSONReport` GoValue. Used by [`static_multi_json`] to merge several
-/// analyzers' sections; the merge never branches per format — the same GoValue
-/// feeds the serializer. The `bool` is the run's `--per-file` flag: every
-/// builder owns its section's `files` enrichment (the reference
-/// `EnrichWithPerFileData` gives EVERY section at least an empty `files` array
-/// under the flag, so no post-processing happens in the merge). The
-/// [`StaticFilter`] is the run's shared walk filter (`--languages` + path
-/// policy), applied by every builder's folder walk.
+/// Registry-ordered map of static analyzer id → the crate-owned builder of
+/// that analyzer's single-section report GoValue. The `bool` is the run's
+/// `--per-file` flag; the [`StaticFilter`] is the run's shared walk filter.
 type ReportValueFn = fn(&str, &StaticFilter, bool) -> Option<GoValue>;
 
 use cf_gojson::{GoMap, GoValue, MapOrigin};
@@ -625,13 +969,8 @@ const STATIC_JSON_VALUE_BUILDERS: &[(&str, ReportValueFn)] = &[
     ),
 ];
 
-/// Pulls the `sections` array and `overall_score` out of a single-analyzer
-/// `renderer.JSONReport` GoValue (`{overall_score_label, sections, overall_score}`).
-/// Returns the section GoValues and the contained `overall_score` (each section's
-/// own `score` field is what the merge re-averages, but the single-analyzer
-/// `overall_score` equals that section's score for one section, so we read the
-/// per-section `score` directly for robustness against future multi-section
-/// analyzers).
+/// Pulls the `sections` array out of a single-analyzer report GoValue
+/// (`{overall_score_label, sections, overall_score}`).
 fn extract_sections(report: &GoValue) -> Vec<GoValue> {
     report
         .as_map()
@@ -643,8 +982,8 @@ fn extract_sections(report: &GoValue) -> Vec<GoValue> {
         .unwrap_or_default()
 }
 
-/// Reads a section's numeric `score` field, defaulting
-/// to the info-only sentinel `-1.0` when absent.
+/// Reads a section's numeric `score` field, defaulting to the info-only
+/// sentinel `-1.0` when absent.
 fn section_score(section: &GoValue) -> f64 {
     match section.as_map().and_then(|m| m.get("score")) {
         Some(GoValue::Float(f)) => *f,
@@ -653,8 +992,8 @@ fn section_score(section: &GoValue) -> f64 {
     }
 }
 
-/// The reference `terminal.FormatScore`: `round(score*10)/10` → `"N/10"`; a negative score
-/// (info-only) renders `"Info"`.
+/// `round(score*10)/10` → `"N/10"`; a negative score (info-only) renders
+/// `"Info"`.
 fn overall_score_label(score: f64) -> String {
     if score < 0.0 {
         return "Info".to_string();
@@ -664,11 +1003,10 @@ fn overall_score_label(score: f64) -> String {
 }
 
 /// Expands `patterns` over the registry-ordered static analyzers and renders ONE
-/// merged `renderer.JSONReport`: sections in
-/// registry order, `overall_score` the average of the scored (`score >= 0`)
-/// sections (or `-1` when none are scored). `None` if no static analyzer is
-/// selected or any selected analyzer cannot produce a report (the caller then
-/// falls through to the same error path the reference implementation takes).
+/// merged report: sections in registry order, `overall_score` the average of
+/// the scored (`score >= 0`) sections (or `-1` when none are scored). `None`
+/// if no static analyzer is selected or any selected analyzer cannot produce a
+/// report.
 #[must_use]
 pub fn static_multi_json(
     patterns: &[&str],
@@ -683,18 +1021,15 @@ pub fn static_multi_json(
     Some(bytes)
 }
 
-/// The merged multi-static-analyzer `--format text` render (the reference
-/// `FormatText` over ALL selected sections at once): a ≥2-section selection
-/// carries the executive-summary header (`CODE ANALYSIS REPORT` + per-analyzer
-/// score table) followed by each analyzer's section rendered EXACTLY as its
-/// solo `--format text` body — the sections come from the same per-analyzer
-/// TEXT-shaped section values the solo text handlers feed the renderer (NOT
-/// the JSON report values, whose extra `distribution`/`issues` data the
-/// reference text sections for e.g. complexity do not carry).
+/// The merged multi-static-analyzer `--format text` render: a ≥2-section
+/// selection carries the executive-summary header followed by each analyzer's
+/// section rendered EXACTLY as its solo `--format text` body — the sections
+/// come from the same per-analyzer TEXT-shaped section values the solo text
+/// handlers feed the renderer.
 #[must_use]
 pub fn static_multi_text(patterns: &[&str], path: &str, filter: &StaticFilter) -> Option<Vec<u8>> {
     type TextValueFn = fn(&str, &StaticFilter) -> Option<GoValue>;
-    // Registry order (the reference registry / summary-table order).
+    // Registry order (the summary-table order).
     const TEXT_VALUE_BUILDERS: &[(&str, TextValueFn)] = &[
         ("static/clones", |p, f| {
             static_clones::clones_report_value_flags(p, f, false)
@@ -748,10 +1083,9 @@ pub fn static_multi_text(patterns: &[&str], path: &str, filter: &StaticFilter) -
     Some(section_render::render_text_report(&GoValue::Map(root)))
 }
 
-/// Builds the ONE merged `renderer.JSONReport` GoValue for a multi-static
-/// selection: sections in registry order, `overall_score` the executive-summary
-/// average of the scored sections. Every output format renders from this same
-/// value (rule: one report value, many encodings).
+/// Builds the ONE merged report GoValue for a multi-static selection: sections
+/// in registry order, `overall_score` the executive-summary average of the
+/// scored sections. Every output format renders from this same value.
 #[must_use]
 fn static_multi_report_value(
     patterns: &[&str],
@@ -806,49 +1140,6 @@ fn static_multi_report_value(
     Some(GoValue::Map(root))
 }
 
-/// The reference `EnrichWithPerFileData` INITIALIZATION step: under
-/// `--per-file` every section gets at least an EMPTY `files` array (inserted
-/// between `issues` and `score`, the renderer.JSONSection field order), even
-/// when its analyzer retains no per-file snapshots (clones is not
-/// `PerFileModeEnabled`). Sections that already carry `files` are unchanged.
-pub(crate) fn ensure_sections_files_key(report: GoValue) -> GoValue {
-    let GoValue::Map(root) = report else {
-        return report;
-    };
-    let mut new_root = GoMap::new(MapOrigin::Struct);
-    for (key, value) in root.iter() {
-        if key != "sections" {
-            new_root.push(key, value.clone());
-            continue;
-        }
-        let GoValue::Array(sections) = value else {
-            new_root.push(key, value.clone());
-            continue;
-        };
-        let enriched: Vec<GoValue> = sections
-            .iter()
-            .map(|section| {
-                let GoValue::Map(m) = section else {
-                    return section.clone();
-                };
-                if m.get("files").is_some() {
-                    return section.clone();
-                }
-                let mut out = GoMap::new(MapOrigin::Struct);
-                for (k, v) in m.iter() {
-                    if k == "score" {
-                        out.push("files", GoValue::Array(Vec::new()));
-                    }
-                    out.push(k, v.clone());
-                }
-                GoValue::Map(out)
-            })
-            .collect();
-        new_root.push(key, GoValue::Array(enriched));
-    }
-    GoValue::Map(new_root)
-}
-
 /// True when `patterns` select MORE THAN ONE static analyzer (a literal multi-id
 /// list or a glob matching several), so the JSON path must merge sections rather
 /// than emit a single-analyzer document.
@@ -888,9 +1179,8 @@ pub fn static_single_bin(id: &str, path: &str, filter: &StaticFilter) -> Option<
     }
 }
 
-/// The history analyzers in the reference implementation phase/registry order (the reference `defaultHistoryLeaves`
-/// as emitted by the combined unified-model path). Used to expand `*`/globs and
-/// to order the history phase of the combined static+history render.
+/// The history analyzers in combined-model order (the order the combined
+/// static+history render lists them). Used to expand `*`/globs.
 pub const HISTORY_COMBINED_ORDER: &[&str] = &[
     "history/typos",
     "history/file-history",
@@ -904,14 +1194,9 @@ pub const HISTORY_COMBINED_ORDER: &[&str] = &[
     "history/sentiment",
 ];
 
-/// The history analyzers in the reference implementation's *separate-phase* per-analyzer emit order — the
-/// order `runHistoryPhase` writes each leaf's standalone report when the run is
-/// NOT a mixed static+history combined render (i.e. a history-only selection,
-/// literal list or glob, in a machine format). This is the pipeline leaf order
-/// (`pl.Leaves` → `selectLeaves`), which differs from both the registry id sort
-/// and [`HISTORY_COMBINED_ORDER`]. Verified against the live reference binary
-/// (`--analyzers history/* --format json`): the concatenated per-analyzer reports
-/// appear in exactly this sequence.
+/// The history analyzers in the *separate-phase* per-analyzer emit order — the
+/// order a history-only selection (literal list or glob) writes each leaf's
+/// standalone report.
 pub const HISTORY_PHASE_EMIT_ORDER: &[&str] = &[
     "history/quality",
     "history/sentiment",
@@ -925,20 +1210,10 @@ pub const HISTORY_PHASE_EMIT_ORDER: &[&str] = &[
     "history/file-history",
 ];
 
-/// Expands a requested pattern list into the concrete history leaf ids it
-/// selects, in the reference implementation's separate-phase emit order ([`HISTORY_PHASE_EMIT_ORDER`]).
-/// Literal ids match exactly; globs use the reference `path.Match` semantics. Used by the
-/// history-only-glob per-analyzer concatenation path (the reference `runHistoryPhase` over a
-/// glob-expanded selection), so a `history/*` or multi-id history selection emits
-/// each leaf's standalone report in the same order the reference implementation does.
-/// Whether any requested pattern selects the analyzer `id`, mirroring the reference
-/// `Registry.resolvePattern`: a bare `*` matches EVERY id (reference:
-/// special-cases `pattern == "*"` to `allIDs()` BEFORE `path.Match`, because
-/// `path.Match("*", "history/typos")` is false — `*` does not cross `/`); other
-/// globs use the reference `path.Match` semantics ([`go_path_match`]); a literal id matches
-/// exactly. Without the `*` special case, `--analyzers '*'` would select nothing,
-/// while `--analyzers 'history/*'` would still work (the literal `history/`
-/// prefix anchors the match).
+/// Whether any requested pattern selects the analyzer `id`: a bare `*`
+/// matches EVERY id (`path.Match("*", "history/typos")` is false — `*` does
+/// not cross `/`); other globs use [`go_path_match`]; a literal id matches
+/// exactly.
 #[must_use]
 fn pattern_selects_id(patterns: &[&str], id: &str) -> bool {
     let is_glob = |p: &str| p.contains(['*', '?', '[']);
@@ -954,7 +1229,7 @@ fn pattern_selects_id(patterns: &[&str], id: &str) -> bool {
 }
 
 /// Expands a requested pattern list into the concrete history leaf ids it
-/// selects, in the reference implementation's separate-phase emit order ([`HISTORY_PHASE_EMIT_ORDER`]).
+/// selects, in the separate-phase emit order ([`HISTORY_PHASE_EMIT_ORDER`]).
 #[must_use]
 pub fn expand_history_phase_ids(patterns: &[&str]) -> Vec<String> {
     let selected = |id: &str| pattern_selects_id(patterns, id);
@@ -966,12 +1241,10 @@ pub fn expand_history_phase_ids(patterns: &[&str]) -> Vec<String> {
 }
 
 /// Expands the requested analyzer patterns into concrete (static, history) id
-/// lists in the reference implementation SELECTION order — the `registry.ExpandPatterns` semantics the
-/// run command applies before `registry.Split`: patterns
-/// resolve IN ORDER (a literal id to itself, a glob to the matching registry
-/// ids in registration order), duplicates dropped first-wins, then ids are
-/// divided by mode preserving that order. The plot path needs this order:
-/// The reference implementation renders pages (and the index cards) in the resolved id order.
+/// lists in SELECTION order: patterns resolve IN ORDER (a literal id to
+/// itself, a glob to the matching registry ids in registration order),
+/// duplicates dropped first-wins, then ids are divided by mode preserving that
+/// order. The plot path renders pages (and the index cards) in this order.
 #[must_use]
 pub fn expand_selection_ids(patterns: &[&str]) -> (Vec<String>, Vec<String>) {
     let is_glob = |p: &str| p.contains(['*', '?', '[']);
@@ -984,8 +1257,6 @@ pub fn expand_selection_ids(patterns: &[&str]) -> (Vec<String>, Vec<String>) {
     };
     for pat in patterns {
         if is_glob(pat) {
-            // Glob: the full registry in registration order (statics, then
-            // history leaves), filtered by the reference `path.Match` semantics.
             for (id, _) in STATIC_BIN_ANALYZERS {
                 if *pat == "*" || go_path_match(pat, id) {
                     push_unique(&mut statics, id);
@@ -999,7 +1270,7 @@ pub fn expand_selection_ids(patterns: &[&str]) -> (Vec<String>, Vec<String>) {
             continue;
         }
         // Literal id: itself, in its pattern position (unknown ids are kept
-        // out; the caller surfaces the dispatch diagnostic).
+        // out; the caller surfaces the diagnostic).
         if STATIC_BIN_ANALYZERS.iter().any(|(id, _)| id == pat) {
             push_unique(&mut statics, pat);
         } else if HISTORY_COMBINED_ORDER.iter().any(|id| id == pat) {
@@ -1010,11 +1281,8 @@ pub fn expand_selection_ids(patterns: &[&str]) -> (Vec<String>, Vec<String>) {
 }
 
 /// Expands the requested analyzer patterns into concrete (static, history) id
-/// lists in the reference implementation combined-model order: static analyzers in [`STATIC_BIN_ANALYZERS`]
-/// registry order, then history analyzers in [`HISTORY_COMBINED_ORDER`]. Literal
-/// (non-glob) ids are matched exactly; globs use the reference `path.Match` semantics. This
-/// mirrors the reference `registry.Split` + `combinedIDsAndModes` ordering used by the
-/// combined render.
+/// lists in combined-model order: static analyzers in [`STATIC_BIN_ANALYZERS`]
+/// registry order, then history analyzers in [`HISTORY_COMBINED_ORDER`].
 #[must_use]
 pub fn expand_combined_ids(patterns: &[&str]) -> (Vec<String>, Vec<String>) {
     let matches = |id: &str| pattern_selects_id(patterns, id);
@@ -1031,55 +1299,61 @@ pub fn expand_combined_ids(patterns: &[&str]) -> (Vec<String>, Vec<String>) {
     (statics, history)
 }
 
-/// Renders the combined static+history run as the single `codefang.run.v1`
-/// unified-model envelope, the Rust analogue of the reference `renderCombinedDirect`
-///. Each selected analyzer is dispatched through its registry
-/// handler with `--format bin`, producing a CFB1 envelope whose payload is the
+/// Renders a multi-analyzer run as the single `codefang.run.v1` unified-model
+/// document. Each selected analyzer is dispatched through its registry handler
+/// with `--format bin`, producing a CFB1 envelope whose payload is the
 /// analyzer's raw report JSON. The concatenated envelopes are decoded into a
-/// [`cf_analyze::conversion::UnifiedModel`],
-/// stamped with run metadata, and re-serialized in the
-/// requested `output_format` via [`cf_analyze::conversion::write_converted_output`]
-/// so every machine format (json/yaml/bin/ndjson/timeseries) follows from the
-/// one model value.
+/// [`cf_analyze::conversion::UnifiedModel`], stamped with run metadata, and
+/// re-serialized in the requested `output_format` via
+/// [`cf_analyze::conversion::write_converted_output`] so every machine format
+/// (json/yaml/bin/ndjson/timeseries) follows from the one model value.
 ///
-/// Returns `None` if any selected analyzer cannot produce its bin payload (e.g.
-/// an unported history analyzer), so the caller can fall back to the per-analyzer
-/// pipeline rather than emit a partial envelope.
-#[must_use]
+/// Used for the mixed static+history selection AND for a history-only
+/// selection of several analyzers in `json`/`yaml`, so a multi-analyzer run
+/// always emits ONE document (`{version, metadata, analyzers: [{id, mode,
+/// report}]}`), never a concatenation.
+///
+/// # Errors
+///
+/// The first failing analyzer's [`HandlerError`], or a [`HandlerError::NoReport`]
+/// when the model cannot be decoded / encoded.
 pub fn render_combined(
     ctx: &RunContext,
     static_ids: &[String],
     history_ids: &[String],
     output_format: &str,
-) -> Option<Vec<u8>> {
+) -> Result<Vec<u8>, HandlerError> {
     let registry = default_registry();
-    let mut raw: Vec<u8> = Vec::new();
     let mut ids: Vec<String> = Vec::new();
     let mut modes: Vec<cf_analyze::AnalyzerMode> = Vec::new();
 
     // Pre-compute the ONE shared UAST walk for the co-selected heavy history
-    // analyzers (imports/quality/sentiment/shotness/typos) before fanning out,
-    // so it runs as a single task instead of N tasks blocking on its store.
+    // analyzers before fanning out, so it runs as a single task.
     uast_walk::prewarm(ctx.matches);
 
-    // Static phase, then history phase — the reference `renderCombinedDirect` order. Each
-    // handler is dispatched with the literal "bin" format; its CFB1 envelope is
-    // appended to the combined buffer (reference: staticExec/historyExec into &raw).
-    // Each leaf's raw report is gathered via its CFB1 bin envelope. Handlers
-    // match on the NORMALIZED format name (the reference `ValidateFormat` maps the `bin`
-    // alias to `binary`), so pass the normalized name here — passing the bare
-    // `bin` alias would miss any handler that only accepts `binary` (e.g.
-    // static/halstead), aborting the whole combined render.
-    //
-    // The per-analyzer envelopes are independent (each handler owns its own
-    // repository handle and parsers), so they are COMPUTED concurrently and
-    // then appended in the same deterministic static-then-history order.
+    // Static phase, then history phase. Each handler is dispatched with the
+    // normalized `binary` format; its CFB1 envelope is appended to the
+    // combined buffer. The per-analyzer envelopes are independent, so they
+    // are COMPUTED concurrently and appended in the deterministic
+    // static-then-history order.
     let all_ids: Vec<&String> = static_ids.iter().chain(history_ids.iter()).collect();
-    let envelopes: Vec<Option<Vec<u8>>> =
+    let envelopes: Vec<Result<Vec<u8>, HandlerError>> =
         run_concurrent(all_ids.len(), ANALYZER_CONCURRENCY, |i| {
-            let entry = registry.lookup(all_ids[i])?;
-            (entry.run)(ctx, "binary")
+            let entry = registry
+                .lookup(all_ids[i])
+                .ok_or_else(|| HandlerError::NoReport {
+                    analyzer: all_ids[i].clone(),
+                    format: crate::formats::FORMAT_BINARY.to_string(),
+                })?;
+            (entry.run)(ctx, crate::formats::FORMAT_BINARY)
         });
+    // Sized once: a large report (538 MB of json for kubernetes history/*)
+    // must not be copied while the buffer doubles.
+    let total = envelopes
+        .iter()
+        .map(|env| env.as_ref().map_or(0, Vec::len))
+        .sum();
+    let mut raw: Vec<u8> = Vec::with_capacity(total);
     for (i, (id, env)) in all_ids.iter().zip(envelopes).enumerate() {
         raw.extend_from_slice(&env?);
         ids.push((*id).clone());
@@ -1090,27 +1364,88 @@ pub fn render_combined(
         });
     }
 
-    let mut model =
-        cf_analyze::conversion::decode_combined_binary_reports(&raw, &ids, &modes).ok()?;
+    let no_report = || HandlerError::NoReport {
+        analyzer: ids.join(","),
+        format: output_format.to_string(),
+    };
+    let mut model = cf_analyze::conversion::decode_combined_binary_reports(&raw, &ids, &modes)
+        .map_err(|_| no_report())?;
+    drop(raw);
     model.metadata = Some(cf_analyze::metadata::new_analysis_metadata(&ctx.path));
 
-    // Normalize the requested format to the canonical name the conversion
-    // serializer matches on (reference `ValidateUniversalFormat`: "bin" -> "binary",
-    // case-folded), then apply the --ndjson modifier on timeseries exactly as
-    // the reference `renderCombinedDirect` does.
     let normalized = crate::formats::normalize_format(output_format);
-    let render_format = if ctx.ndjson() && normalized == "timeseries" {
-        "timeseries+ndjson".to_string()
-    } else {
-        normalized
-    };
+    let render_format = crate::formats::apply_ndjson_modifier(&normalized, ctx.ndjson());
 
-    let mut out: Vec<u8> = Vec::new();
-    cf_analyze::conversion::write_converted_output(&model, &render_format, &mut out, None).ok()?;
-    Some(out)
+    // The model is not needed after rendering: render it in place.
+    cf_analyze::conversion::render_converted_output(model, &render_format, None)
+        .map_err(|_| no_report())
 }
 
-/// The reference `path.Match` semantics over an analyzer ID (`*`, `?`, `[...]`).
+/// Renders a MIXED static+history selection. The formats whose content is
+/// per-phase render each phase with its own renderer: `text` is the static
+/// text sections followed by the history text, `compact` is every analyzer's
+/// compact output (static first), and `timeseries` (with or without
+/// `--ndjson`) is the history time series — static analyzers have no
+/// per-commit data, so they are named once on stderr. Every other format is
+/// the unified `codefang.run.v1` document ([`render_combined`]).
+///
+/// # Errors
+///
+/// Propagates the first phase renderer's [`HandlerError`].
+pub fn render_mixed(
+    ctx: &RunContext,
+    static_ids: &[String],
+    history_ids: &[String],
+    output_format: &str,
+) -> Result<Vec<u8>, HandlerError> {
+    use crate::formats::{
+        FORMAT_COMPACT, FORMAT_TEXT, FORMAT_TIMESERIES, FORMAT_TIMESERIES_NDJSON,
+    };
+    let normalized = crate::formats::normalize_format(output_format);
+    let format = crate::formats::apply_ndjson_modifier(&normalized, ctx.ndjson());
+    match format.as_str() {
+        FORMAT_TEXT => {
+            let patterns: Vec<&str> = static_ids.iter().map(String::as_str).collect();
+            let filter = static_filter(ctx).map_err(HandlerError::InvalidFlag)?;
+            let mut out = static_multi_text(&patterns, &ctx.path, &filter).ok_or_else(|| {
+                HandlerError::NoReport {
+                    analyzer: static_ids.join(","),
+                    format: format.clone(),
+                }
+            })?;
+            out.extend(history_formats::history_text(ctx, history_ids)?);
+            Ok(out)
+        }
+        FORMAT_COMPACT => {
+            let registry = default_registry();
+            let mut out = Vec::new();
+            for id in static_ids {
+                let entry = registry.lookup(id).ok_or_else(|| HandlerError::NoReport {
+                    analyzer: id.clone(),
+                    format: format.clone(),
+                })?;
+                out.extend((entry.run)(ctx, FORMAT_COMPACT)?);
+            }
+            out.extend(history_formats::history_compact(ctx, history_ids)?);
+            Ok(out)
+        }
+        FORMAT_TIMESERIES | FORMAT_TIMESERIES_NDJSON => {
+            eprintln!(
+                "warning: static analyzers have no per-commit time series; omitted: {}",
+                static_ids.join(", ")
+            );
+            history_formats::history_timeseries(
+                ctx,
+                history_ids,
+                format == FORMAT_TIMESERIES_NDJSON,
+            )
+        }
+        _ => render_combined(ctx, static_ids, history_ids, output_format),
+    }
+}
+
+/// `path.Match` semantics over an analyzer ID (`*`, `?`, `[...]`; `*` does not
+/// cross `/`).
 #[must_use]
 pub fn go_path_match(pattern: &str, name: &str) -> bool {
     go_path_match_inner(pattern.as_bytes(), name.as_bytes())
@@ -1197,62 +1532,53 @@ fn match_class(pat: &[u8], ch: u8) -> (bool, &[u8]) {
 }
 
 // ---------------------------------------------------------------------------
-// Per-analyzer registry handlers. Each owns its own `match format`; this is the
-// ONE place that knows how to format a given analyzer (reference: each analyzer's
-// FormatReport* family). One handler per analyzer id — NOT one per (id,format).
+// Walk filters shared by both phases.
 // ---------------------------------------------------------------------------
 
-fn h_static_clones(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    let path = &ctx.path;
-    let filter = static_filter(ctx).ok()?;
-    // `format` is the resolved/normalized value: `--format bin` arrives here as
-    // `"binary"` (the reference `ValidateFormat` maps the `bin` alias to `binary`); accept
-    // both spellings for robustness.
-    match format {
-        "json" => {
-            static_clones::clones_report_json_flags(path, &filter, ctx.matches.get_flag("per-file"))
-        }
-        "yaml" => static_clones::clones_report_yaml(path, &filter),
-        "binary" | "bin" => static_clones::clones_report_bin(path, &filter),
-        "compact" => static_clones::clones_report_compact(path, &filter),
-        "text" => Some(section_render::render_text_report(
-            &static_clones::clones_report_value_flags(path, &filter, false)?,
-        )),
-        _ => None,
+/// The vendor / generated path policy from the run flags
+/// (`--include-vendored`, `--include-generated`, `--extra-excluded-prefixes`),
+/// applied identically by both phases.
+#[must_use]
+pub fn path_policy_from_flags(sub: &clap::ArgMatches) -> cf_pathpolicy::Options {
+    let extra: Vec<String> = sub
+        .get_many::<String>("extra-excluded-prefixes")
+        .map(|vals| vals.filter(|p| !p.is_empty()).cloned().collect())
+        .unwrap_or_default();
+    cf_pathpolicy::Options {
+        include_vendored: sub.get_flag("include-vendored"),
+        include_generated: sub.get_flag("include-generated"),
+        extra_excluded_prefixes: extra,
     }
 }
 
-/// The shared static-phase path-policy options from the run flags
-/// (the reference `pathPolicyFromFlags`: `--include-vendored` /
-/// `--include-generated`; `--extra-excluded-prefixes` is not exposed on `run`).
+/// The static-phase path-policy options from the run flags.
 pub(crate) fn static_path_policy(ctx: &RunContext) -> cf_pathpolicy::Options {
-    cf_pathpolicy::Options {
-        include_vendored: ctx.matches.get_flag("include-vendored"),
-        include_generated: ctx.matches.get_flag("include-generated"),
-        ..cf_pathpolicy::Options::default()
-    }
+    path_policy_from_flags(ctx.matches)
 }
+
+/// Number of leading bytes scanned for a generated-file marker (`DO NOT
+/// EDIT`, `Code generated`, `@generated`, …).
+pub const GENERATED_MARKER_HEADER_BYTES: usize = 512;
 
 /// The static-phase file filter shared by EVERY output format of every static
-/// analyzer, mirroring the reference `StaticService` walk callback:
+/// analyzer:
 ///
-/// 1. `matchesLanguageGlobs(path, svc.LanguageGlobs)` — the `--languages`
-///    restriction, fnmatch globs over the file BASENAME (built from the flag
-///    via `langpath.Globs`; `None` ⇔ empty/`all` → no restriction);
-/// 2. `pathpolicy.Exclude(path, nil, svc.PathPolicy)` — the
-///    `--include-vendored` / `--include-generated` policy.
+/// 1. the `--languages` restriction — fnmatch globs over the file BASENAME
+///    (`None` ⇔ empty/`all` → no restriction);
+/// 2. the `--include-vendored` / `--include-generated` /
+///    `--extra-excluded-prefixes` policy over the path and, through
+///    [`StaticFilter::skips_with_header`], over the file's first
+///    [`GENERATED_MARKER_HEADER_BYTES`] bytes.
 #[derive(Debug, Clone, Default)]
 pub struct StaticFilter {
-    /// Vendor / generated exclusion policy (`pathPolicyFromFlags`).
+    /// Vendor / generated exclusion policy.
     pub policy: cf_pathpolicy::Options,
-    /// Basename globs from `--languages`; `None` disables the filter
-    /// (the reference `LanguageGlobs == nil`).
+    /// Basename globs from `--languages`; `None` disables the filter.
     pub language_globs: Option<Vec<String>>,
 }
 
 impl StaticFilter {
-    /// Filter with the given path policy and no language restriction (the
-    /// pre-`--languages` behavior; used by legacy no-flag wrappers).
+    /// Filter with the given path policy and no language restriction.
     #[must_use]
     pub fn from_policy(policy: cf_pathpolicy::Options) -> Self {
         StaticFilter {
@@ -1261,12 +1587,12 @@ impl StaticFilter {
         }
     }
 
-    /// Reports whether the walk must skip `path` — the reference walk callback's
-    /// `!matchesLanguageGlobs(...) || pathpolicy.Exclude(...)`.
+    /// Reports whether the walk must skip `path` on path evidence alone (the
+    /// language globs, then the path policy).
     #[must_use]
     pub fn skips(&self, path: &str) -> bool {
         if let Some(globs) = &self.language_globs {
-            // filepath.Base: the final path element.
+            // The final path element.
             let base = path.rsplit('/').next().unwrap_or(path);
             if !globs.iter().any(|g| go_path_match(g, base)) {
                 return true;
@@ -1274,16 +1600,30 @@ impl StaticFilter {
         }
         cf_pathpolicy::exclude(path, None, &self.policy)
     }
+
+    /// [`StaticFilter::skips`] plus the generated-content marker over the
+    /// file's leading bytes (`header`, at most
+    /// [`GENERATED_MARKER_HEADER_BYTES`] are consulted): a file whose header
+    /// carries a generated-file marker is skipped unless
+    /// `--include-generated`. This is the check every static walk must apply
+    /// once it has read the file.
+    #[must_use]
+    pub fn skips_with_header(&self, path: &str, header: &[u8]) -> bool {
+        if self.skips(path) {
+            return true;
+        }
+        let head = &header[..header.len().min(GENERATED_MARKER_HEADER_BYTES)];
+        cf_pathpolicy::exclude(path, Some(head), &self.policy)
+    }
 }
 
-/// Builds the [`StaticFilter`] from the run flags: the path policy
-/// (`static_path_policy`) plus the `--languages` globs (the reference
-/// `applyStaticLanguageFilter` → `langpath.Globs`).
+/// Builds the [`StaticFilter`] from the run flags: the path policy plus the
+/// `--languages` globs.
 ///
 /// # Errors
 ///
-/// Returns the reference error message (`static --languages: unknown language:
-/// "<token>"`) when a `--languages` token resolves to no Linguist language.
+/// Returns `static --languages: unknown language: "<token>"` when a
+/// `--languages` token resolves to no Linguist language.
 pub(crate) fn static_filter(ctx: &RunContext) -> Result<StaticFilter, String> {
     let policy = static_path_policy(ctx);
     let tokens = language_tokens(ctx.matches);
@@ -1298,34 +1638,21 @@ pub(crate) fn static_filter(ctx: &RunContext) -> Result<StaticFilter, String> {
     })
 }
 
-/// The history-phase change filter shared by EVERY history analyzer,
-/// mirroring the reference `TreeDiffAnalyzer.shouldIncludeChange`:
+/// The history-phase change filter shared by EVERY history analyzer:
 ///
-/// 1. `pathpolicy.Exclude(name, nil, t.PathPolicy)` — vendor / generated
-///    exclusion, ALWAYS with the DEFAULT options: although the reference run
-///    command wires `rc.buildPathPolicy()` into `TreeDiff.PathPolicy`, the
-///    `--include-vendored` / `--include-generated` flags are empirically
-///    INERT for the history run (oracle-verified: `.gitignore` + vendor-tree
-///    changes on hercules/kubernetes produce byte-identical output with and
-///    without the flags — the flag channel never reaches the pipeline);
-/// 2. `t.checkLanguage(name, hash)` — the `--languages` restriction (enry
-///    language detection on the BASENAME, with a blob-content fallback when
-///    the path alone is undetermined), applied only when the set restricts
-///    (the reference `!t.Languages[allLanguages]` gate).
-///
-/// The reference blacklist (`--blacklisted-prefixes`) and whitelist
-/// (`--whitelist` regex) are not exposed on `codefang run`, so this struct
-/// has no corresponding legs.
+/// 1. the vendor / generated / extra-prefix policy from the run flags, over
+///    the change's path and over the blob's leading
+///    [`GENERATED_MARKER_HEADER_BYTES`] bytes (the generated-file marker);
+/// 2. the `--languages` restriction — the full enry cascade over the basename
+///    AND the blob content (so `.h` resolves to C/C++/Objective-C by content
+///    and an extensionless script by its shebang), applied only when the set
+///    restricts.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HistoryFilter {
-    /// Vendor / generated exclusion policy — always the default (see the
-    /// struct doc: the reference history run ignores the include flags).
+    /// Vendor / generated exclusion policy from the run flags.
     pub policy: cf_pathpolicy::Options,
     /// Lowercased canonical Linguist names from `--languages`; `None` disables
-    /// the filter (flag absent / the `all` token — the reference
-    /// `Languages[allLanguages]`). An EMPTY set restricts everything away
-    /// (the reference `--languages ""` → an empty `Languages` map, so every
-    /// change's detected language misses the set).
+    /// the filter (flag absent, empty, or the `all` token).
     pub languages: Option<std::collections::BTreeSet<String>>,
 }
 
@@ -1339,14 +1666,8 @@ impl HistoryFilter {
         }
     }
 
-    /// Reports whether one tree-diff change survives
-    /// `shouldIncludeChange`. `name`/`hash` are the `changeNameHash` pair the
-    /// caller derived (Delete → `from`, otherwise `to`).
-    ///
-    /// Language detection (`checkLanguage` parity): enry on the basename with
-    /// NO content first; only when that yields no language is the blob looked
-    /// up and enry re-run over its contents. An undetermined language
-    /// excludes the change.
+    /// Reports whether one tree-diff change survives the filter. `name`/`hash`
+    /// are the change's path and blob (Delete → `from`, otherwise `to`).
     #[must_use]
     pub fn includes_change(
         &self,
@@ -1354,33 +1675,36 @@ impl HistoryFilter {
         name: &str,
         hash: cf_gitlib::hash::Hash,
     ) -> bool {
-        // shouldIncludeChange step 1: shared vendor / generated policy.
+        // 1. path policy on the path alone.
         if cf_pathpolicy::exclude(name, None, &self.policy) {
             return false;
         }
-
-        // step 2: `!t.Languages[allLanguages]` → checkLanguage.
+        // The blob is read only when a content check is needed.
+        let needs_content = !self.policy.include_generated || self.languages.is_some();
+        if !needs_content || hash.is_zero() {
+            return true;
+        }
+        let Ok(blob) = repo.lookup_blob(hash) else {
+            return self.languages.is_none();
+        };
+        let content = blob.content();
+        if !self.policy.include_generated {
+            let head = &content[..content.len().min(GENERATED_MARKER_HEADER_BYTES)];
+            if cf_pathpolicy::exclude(name, Some(head), &self.policy) {
+                return false;
+            }
+        }
+        // 2. the `--languages` set, by basename + content.
         let Some(languages) = &self.languages else {
             return true;
         };
-        // path.Base(fileName).
         let base = name.rsplit('/').next().unwrap_or(name);
-        let mut lang = cf_langpath::language_by_path(base);
-        if lang.is_none() {
-            // Content detection: LookupBlob failure (incl. a zero hash) and an
-            // EMPTY blob both leave the language undetermined, exactly as the
-            // reference `len(contents) > 0` guard does.
-            if let Ok(blob) = cf_gitlib::blob::CachedBlob::from_repo(repo, hash) {
-                if !blob.data.is_empty() {
-                    lang = cf_langpath::language_by_path_with_content(base, &blob.data);
-                }
-            }
-        }
-        lang.is_some_and(|l| languages.contains(l.to_lowercase().as_str()))
+        cf_langpath::language_by_path_with_content(base, content)
+            .is_some_and(|l| languages.contains(l.to_lowercase().as_str()))
     }
 
-    /// Retains only the changes `shouldIncludeChange` admits, deriving the
-    /// `changeNameHash` pair per change (Delete → `from`, otherwise `to`).
+    /// Retains only the changes the filter admits, deriving the path/blob per
+    /// change (Delete → `from`, otherwise `to`).
     pub fn retain_changes(
         &self,
         repo: &cf_gitlib::Repository,
@@ -1397,30 +1721,22 @@ impl HistoryFilter {
     }
 }
 
-/// Reads the `--languages` flag, applying the STATIC-phase collapse-to-empty
-/// parity rule.
-///
-/// cobra's `GetStringSlice` runs the raw value through encoding/csv, and
-/// csv.Read on an empty string yields an EMPTY slice (no filter) — while
-/// clap's value_delimiter yields one empty token, which would error as an
-/// unknown language. A value like ",Go" still carries a non-empty token
-/// alongside the empty one and errors on the empty token in BOTH
-/// implementations, so only the all-empty case collapses. (The HISTORY phase
-/// does NOT use this helper: for TreeDiff the explicit empty value configures
-/// an EMPTY language set — restrict-everything — not no-filter.)
-fn language_tokens(sub: &clap::ArgMatches) -> Vec<String> {
+/// Reads the `--languages` tokens — the ONE parser both phases share: an
+/// absent flag, an explicit empty value (`--languages ""`) and the `all`
+/// token all mean "no restriction"; every other token is validated against
+/// the Linguist tables by the caller.
+#[must_use]
+pub fn language_tokens(sub: &clap::ArgMatches) -> Vec<String> {
     let mut tokens: Vec<String> = sub
         .get_many::<String>("languages")
         .map(|vals| vals.cloned().collect())
         .unwrap_or_default();
-    if tokens.iter().all(String::is_empty) {
-        tokens.clear();
-    }
+    tokens.retain(|t| !t.trim().is_empty());
     tokens
 }
 
 /// The canonical lowercase language set for the validated `tokens`, or `None`
-/// when the tokens do not restrict (empty / `all` — `wants_all`).
+/// when the tokens do not restrict (empty / `all`).
 fn language_token_set(tokens: &[String]) -> Option<std::collections::BTreeSet<String>> {
     if tokens.is_empty() {
         return None;
@@ -1429,8 +1745,7 @@ fn language_token_set(tokens: &[String]) -> Option<std::collections::BTreeSet<St
     for raw in tokens {
         let token = raw.trim();
         if token.eq_ignore_ascii_case("all") {
-            // The reference `t.Languages[allLanguages] = true` disables the
-            // filter even alongside other tokens.
+            // `all` disables the filter even alongside other tokens.
             return None;
         }
         // globs() validated every token before this is called.
@@ -1440,46 +1755,17 @@ fn language_token_set(tokens: &[String]) -> Option<std::collections::BTreeSet<St
     Some(set)
 }
 
-/// Builds the [`HistoryFilter`] from the run flags: the DEFAULT path policy
-/// (the reference history run ignores `--include-vendored` /
-/// `--include-generated` — empirically byte-verified on hercules/kubernetes;
-/// see the [`HistoryFilter`] docs) plus the `--languages` canonical-name set
-/// (the reference `TreeDiffAnalyzer.Configure` → `applyLanguageConfig` →
-/// `langpath.Globs`).
-///
-/// Differences from the static [`static_filter`] semantics (both oracle-
-/// verified): the flag being ABSENT means no restriction, while an explicit
-/// EMPTY value (`--languages ""`) restricts everything away — cobra's csv
-/// read of `""` yields an empty slice, so the reference `Languages` map is
-/// configured EMPTY (no `all` key) and `checkLanguage` rejects every change.
+/// Builds the [`HistoryFilter`] from the run flags: the shared path policy
+/// plus the `--languages` canonical-name set.
 ///
 /// # Errors
 ///
-/// Returns the reference error message (`failed to configure TreeDiff:
-/// tree-diff pathspec: unknown language: "<token>"`) when a `--languages`
-/// token resolves to no Linguist language.
+/// Returns `history --languages: unknown language: "<token>"` when a
+/// `--languages` token resolves to no Linguist language.
 pub(crate) fn history_filter(sub: &clap::ArgMatches) -> Result<HistoryFilter, String> {
-    let policy = cf_pathpolicy::Options::default();
-    let Some(vals) = sub.get_many::<String>("languages") else {
-        // Flag absent: Languages == {"all"} → no restriction.
-        return Ok(HistoryFilter {
-            policy,
-            languages: None,
-        });
-    };
-    let tokens: Vec<String> = vals.cloned().collect();
-    if tokens.iter().all(String::is_empty) {
-        // Explicit empty value: cobra csv.Read("") → EMPTY slice → the config
-        // EXISTS with no tokens → Languages = {} (no `all`) → every change's
-        // detected language misses the set. clap yields one empty token here,
-        // so construct the empty-set restriction explicitly.
-        return Ok(HistoryFilter {
-            policy,
-            languages: Some(std::collections::BTreeSet::new()),
-        });
-    }
-    let globs = cf_langpath::globs(&tokens)
-        .map_err(|e| format!("failed to configure TreeDiff: tree-diff pathspec: {e}"))?;
+    let policy = path_policy_from_flags(sub);
+    let tokens = language_tokens(sub);
+    let globs = cf_langpath::globs(&tokens).map_err(|e| format!("history --languages: {e}"))?;
     Ok(HistoryFilter {
         policy,
         languages: if globs.wants_all {
@@ -1490,354 +1776,295 @@ pub(crate) fn history_filter(sub: &clap::ArgMatches) -> Result<HistoryFilter, St
     })
 }
 
-fn h_static_complexity(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    let path = &ctx.path;
-    // `format` is the resolved/normalized format from `resolve_formats`, where the
-    // `bin` CLI alias has already been normalized to `binary` (formats.rs
-    // `normalize_format`). Match the normalized name so `--format bin` dispatches
-    // to the CFB1 envelope builder rather than falling through to `None`.
-    let filter = static_filter(ctx).ok()?;
-    match format {
-        "json" => static_complexity::complexity_report_flags(
-            path,
-            &filter,
-            ctx.matches.get_flag("per-file"),
-        ),
-        "yaml" => static_complexity_yaml::complexity_report_yaml(path, &filter),
-        "binary" | "bin" => static_complexity_bin::complexity_report_bin(path, &filter),
-        "compact" => Some(section_render::render_compact_report(
-            &static_complexity::complexity_report_value_summary(path, &filter)?,
-        )),
-        "text" => Some(section_render::render_text_report(
-            &static_complexity::complexity_report_value_summary(path, &filter)?,
-        )),
-        _ => None,
+// ---------------------------------------------------------------------------
+// Per-analyzer registry handlers. Each owns its own `match format`; this is the
+// ONE place that knows how to format a given analyzer. One handler per
+// analyzer id — NOT one per (id,format).
+// ---------------------------------------------------------------------------
+
+/// The shared static dispatch shape: build the walk filter, run the
+/// per-format report builder, map a missing report to [`HandlerError`].
+fn static_dispatch(
+    ctx: &RunContext,
+    id: &str,
+    format: &str,
+    build: impl FnOnce(&str, &StaticFilter) -> Option<Option<Vec<u8>>>,
+) -> Result<Vec<u8>, HandlerError> {
+    let filter = static_filter(ctx).map_err(HandlerError::InvalidFlag)?;
+    match build(&ctx.path, &filter) {
+        Some(bytes) => report_or_err(bytes, id, format),
+        None => Err(format_not_supported(format, id)),
     }
 }
 
-fn h_static_cohesion(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    let path = &ctx.path;
-    // `format` is the resolved/normalized format from `resolve_formats`, where the
-    // `bin` CLI alias has already been normalized to `binary` (formats.rs
-    // `normalize_format`). Match the normalized name (accept the raw alias too).
-    let filter = static_filter(ctx).ok()?;
-    match format {
-        "json" => static_cohesion::cohesion_report_json_flags(
-            path,
-            &filter,
-            ctx.matches.get_flag("per-file"),
+fn h_static_clones(ctx: &RunContext, format: &str) -> Result<Vec<u8>, HandlerError> {
+    const ID: &str = "static/clones";
+    let per_file = ctx.matches.get_flag("per-file");
+    static_dispatch(ctx, ID, format, |path, filter| match format {
+        "json" => Some(static_clones::clones_report_json_flags(
+            path, filter, per_file,
+        )),
+        "yaml" => Some(static_clones::clones_report_yaml(path, filter)),
+        "binary" | "bin" => Some(static_clones::clones_report_bin(path, filter)),
+        "compact" => Some(static_clones::clones_report_compact(path, filter)),
+        "text" => Some(
+            static_clones::clones_report_value_flags(path, filter, false)
+                .map(|v| section_render::render_text_report(&v)),
         ),
-        "yaml" => static_cohesion::cohesion_report_yaml(path, &filter),
-        "binary" | "bin" => static_cohesion::cohesion_report_bin(path, &filter),
-        "compact" => Some(section_render::render_compact_report(
-            &static_cohesion::cohesion_report_value_summary(path, &filter)?,
-        )),
-        "text" => Some(section_render::render_text_report(
-            &static_cohesion::cohesion_report_value_summary(path, &filter)?,
-        )),
         _ => None,
-    }
+    })
 }
 
-fn h_static_composition(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    let path = &ctx.path;
-    // The reference static walk filters files through the language globs +
-    // pathpolicy.Exclude with the RUN flags (`--languages`,
-    // `--include-vendored` / `--include-generated`), so every encoding of the
-    // aggregated report must honor them.
-    let filter = static_filter(ctx).ok()?;
-    match format {
-        "json" => static_json::composition_report_opts_flags(
-            path,
-            &filter,
-            ctx.matches.get_flag("per-file"),
+fn h_static_complexity(ctx: &RunContext, format: &str) -> Result<Vec<u8>, HandlerError> {
+    const ID: &str = "static/complexity";
+    let per_file = ctx.matches.get_flag("per-file");
+    static_dispatch(ctx, ID, format, |path, filter| match format {
+        "json" => Some(static_complexity::complexity_report_flags(
+            path, filter, per_file,
+        )),
+        "yaml" => Some(static_complexity_yaml::complexity_report_yaml(path, filter)),
+        "binary" | "bin" => Some(static_complexity_bin::complexity_report_bin(path, filter)),
+        "compact" => Some(
+            static_complexity::complexity_report_value_summary(path, filter)
+                .map(|v| section_render::render_compact_report(&v)),
         ),
-        "yaml" => static_json::composition_yaml_opts(path, &filter),
-        // The pipeline resolves the `bin` alias to the canonical `binary`
-        // (formats::normalize_format) before dispatch, so match that; accept the
-        // raw alias too for direct callers.
-        "binary" | "bin" => static_json::composition_bin_opts(path, &filter),
-        "compact" => Some(section_render::render_compact_report(
-            &static_json::composition_report_value_opts(path, &filter)?,
-        )),
-        "text" => Some(section_render::render_text_report(
-            &static_json::composition_report_value_opts(path, &filter)?,
-        )),
+        "text" => Some(
+            static_complexity::complexity_report_value_summary(path, filter)
+                .map(|v| section_render::render_text_report(&v)),
+        ),
         _ => None,
-    }
+    })
 }
 
-fn h_static_halstead(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    let path = &ctx.path;
-    // `format` is the resolved/normalized format from `resolve_formats`, where the
-    // `bin` CLI alias has already been normalized to `binary` (formats.rs
-    // `normalize_format`). Match the normalized name so `--format bin` dispatches
-    // to the CFB1 envelope builder rather than falling through to `None`.
-    let filter = static_filter(ctx).ok()?;
-    match format {
-        "json" => static_halstead::halstead_json_report_flags(
-            path,
-            &filter,
-            ctx.matches.get_flag("per-file"),
+fn h_static_cohesion(ctx: &RunContext, format: &str) -> Result<Vec<u8>, HandlerError> {
+    const ID: &str = "static/cohesion";
+    let per_file = ctx.matches.get_flag("per-file");
+    static_dispatch(ctx, ID, format, |path, filter| match format {
+        "json" => Some(static_cohesion::cohesion_report_json_flags(
+            path, filter, per_file,
+        )),
+        "yaml" => Some(static_cohesion::cohesion_report_yaml(path, filter)),
+        "binary" | "bin" => Some(static_cohesion::cohesion_report_bin(path, filter)),
+        "compact" => Some(
+            static_cohesion::cohesion_report_value_summary(path, filter)
+                .map(|v| section_render::render_compact_report(&v)),
         ),
-        "yaml" => static_halstead::halstead_yaml_report(path, &filter),
-        "binary" => static_halstead::halstead_bin_report(path, &filter),
-        "compact" => Some(section_render::render_compact_report(
-            &static_halstead::halstead_report_value_summary(path, &filter)?,
-        )),
-        "text" => Some(section_render::render_text_report(
-            &static_halstead::halstead_report_value_summary(path, &filter)?,
-        )),
+        "text" => Some(
+            static_cohesion::cohesion_report_value_summary(path, filter)
+                .map(|v| section_render::render_text_report(&v)),
+        ),
         _ => None,
-    }
+    })
 }
 
-fn h_static_imports(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    let path = &ctx.path;
-    // `format` is the resolved/normalized format from `resolve_formats`, where the
-    // `bin` CLI alias has already been normalized to `binary` (formats.rs
-    // `normalize_format`). Match the normalized name so `--format bin` dispatches
-    // to the CFB1 envelope builder rather than falling through to `None`.
-    let filter = static_filter(ctx).ok()?;
-    match format {
-        "json" => static_imports::imports_report_json_flags(
-            path,
-            &filter,
-            ctx.matches.get_flag("per-file"),
+fn h_static_composition(ctx: &RunContext, format: &str) -> Result<Vec<u8>, HandlerError> {
+    const ID: &str = "static/composition";
+    let per_file = ctx.matches.get_flag("per-file");
+    static_dispatch(ctx, ID, format, |path, filter| match format {
+        "json" => Some(static_json::composition_report_opts_flags(
+            path, filter, per_file,
+        )),
+        "yaml" => Some(static_json::composition_yaml_opts(path, filter)),
+        "binary" | "bin" => Some(static_json::composition_bin_opts(path, filter)),
+        "compact" => Some(
+            static_json::composition_report_value_opts(path, filter)
+                .map(|v| section_render::render_compact_report(&v)),
         ),
-        "yaml" => static_imports::imports_report_yaml(path, &filter),
-        "binary" => static_imports::imports_report_bin(path, &filter),
-        "compact" => Some(section_render::render_compact_report(
-            &static_imports::imports_report_value_flags(path, &filter, false)?,
-        )),
-        "text" => Some(section_render::render_text_report(
-            &static_imports::imports_report_value_flags(path, &filter, false)?,
-        )),
+        "text" => Some(
+            static_json::composition_report_value_opts(path, filter)
+                .map(|v| section_render::render_text_report(&v)),
+        ),
         _ => None,
-    }
+    })
 }
 
-fn h_static_comments(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    let path = &ctx.path;
-    let filter = static_filter(ctx).ok()?;
-    match format {
-        "json" => static_comments::comments_report_json_flags(
-            path,
-            &filter,
-            ctx.matches.get_flag("per-file"),
+fn h_static_halstead(ctx: &RunContext, format: &str) -> Result<Vec<u8>, HandlerError> {
+    const ID: &str = "static/halstead";
+    let per_file = ctx.matches.get_flag("per-file");
+    static_dispatch(ctx, ID, format, |path, filter| match format {
+        "json" => Some(static_halstead::halstead_json_report_flags(
+            path, filter, per_file,
+        )),
+        "yaml" => Some(static_halstead::halstead_yaml_report(path, filter)),
+        "binary" | "bin" => Some(static_halstead::halstead_bin_report(path, filter)),
+        "compact" => Some(
+            static_halstead::halstead_report_value_summary(path, filter)
+                .map(|v| section_render::render_compact_report(&v)),
         ),
-        "yaml" => static_comments::comments_report_yaml(path, &filter),
-        // The pipeline resolves the `bin` alias to the canonical `binary`
-        // (formats::normalize_format) before dispatch, so match that; accept the
-        // raw alias too for direct callers.
-        "binary" | "bin" => static_comments::comments_report_bin(path, &filter),
-        "compact" => Some(section_render::render_compact_report(
-            &static_comments::comments_report_value_summary(path, &filter)?,
-        )),
-        "text" => Some(section_render::render_text_report(
-            &static_comments::comments_report_value_summary(path, &filter)?,
-        )),
+        "text" => Some(
+            static_halstead::halstead_report_value_summary(path, filter)
+                .map(|v| section_render::render_text_report(&v)),
+        ),
         _ => None,
-    }
+    })
 }
 
-fn h_history_imports(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    // `timeseries+ndjson` (the `--ndjson` modifier) is NOT an encoding of the
-    // report value: the reference implementation streams per-commit lines
-    // through the per-chunk TimeSeriesChunkFlusher (DrainCommitStats), so it
-    // has its own emitter over the same memoized walk.
-    if format == "timeseries+ndjson" {
-        return history::imports_timeseries_ndjson(ctx.matches);
-    }
-    // One report value, encoded per format by the shared history serializer
-    //. The YAML section header is the reference implementation
-    // analyzer Name() (`imports.HistoryAnalyzer.Name` == "ImportsPerDeveloper").
-    let metrics = history::imports_run_metrics(ctx.matches)?;
+fn h_static_imports(ctx: &RunContext, format: &str) -> Result<Vec<u8>, HandlerError> {
+    const ID: &str = "static/imports";
+    let per_file = ctx.matches.get_flag("per-file");
+    static_dispatch(ctx, ID, format, |path, filter| match format {
+        "json" => Some(static_imports::imports_report_json_flags(
+            path, filter, per_file,
+        )),
+        "yaml" => Some(static_imports::imports_report_yaml(path, filter)),
+        "binary" | "bin" => Some(static_imports::imports_report_bin(path, filter)),
+        "compact" => Some(
+            static_imports::imports_report_value_flags(path, filter, false)
+                .map(|v| section_render::render_compact_report(&v)),
+        ),
+        "text" => Some(
+            static_imports::imports_report_value_flags(path, filter, false)
+                .map(|v| section_render::render_text_report(&v)),
+        ),
+        _ => None,
+    })
+}
+
+fn h_static_comments(ctx: &RunContext, format: &str) -> Result<Vec<u8>, HandlerError> {
+    const ID: &str = "static/comments";
+    let per_file = ctx.matches.get_flag("per-file");
+    static_dispatch(ctx, ID, format, |path, filter| match format {
+        "json" => Some(static_comments::comments_report_json_flags(
+            path, filter, per_file,
+        )),
+        "yaml" => Some(static_comments::comments_report_yaml(path, filter)),
+        "binary" | "bin" => Some(static_comments::comments_report_bin(path, filter)),
+        "compact" => Some(
+            static_comments::comments_report_value_summary(path, filter)
+                .map(|v| section_render::render_compact_report(&v)),
+        ),
+        "text" => Some(
+            static_comments::comments_report_value_summary(path, filter)
+                .map(|v| section_render::render_text_report(&v)),
+        ),
+        _ => None,
+    })
+}
+
+fn h_history_imports(ctx: &RunContext, format: &str) -> Result<Vec<u8>, HandlerError> {
+    const ID: &str = "history/imports";
+    let metrics =
+        history::imports_run_metrics(ctx.matches).ok_or_else(|| HandlerError::NoReport {
+            analyzer: ID.to_string(),
+            format: format.to_string(),
+        })?;
     serialize_history_metrics(
         format,
+        ID,
         "ImportsPerDeveloper",
         &metrics.to_go_value(),
         &metrics.to_go_value_yaml(),
     )
 }
 
-fn h_history_typos(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    match format {
+fn h_history_typos(ctx: &RunContext, format: &str) -> Result<Vec<u8>, HandlerError> {
+    const ID: &str = "history/typos";
+    let bytes = match format {
         "json" => history::typos_run_report(ctx.matches),
         "yaml" => history::typos_run_report_yaml(ctx.matches),
-        "binary" => history::typos_run_report_bin(ctx.matches),
-        _ => None,
-    }
+        "binary" | "bin" => history::typos_run_report_bin(ctx.matches),
+        _ => return Err(format_not_supported(format, ID)),
+    };
+    report_or_err(bytes, ID, format)
 }
 
-fn h_history_couples(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    // One report value (the reference `ComputedMetrics`, behind ToJSON/ToYAML); every
-    // machine format is a serializer over it. ToJSON == ToYAML for couples, so
-    // json_value and yaml_value share the same tree. The YAML section name is
-    // the analyzer's the reference `Name()` ("Couples").
-    let value = couples_run::couples_run_value(ctx.matches)?;
-    serialize_history_metrics(format, "Couples", &value, &value)
+fn h_history_couples(ctx: &RunContext, format: &str) -> Result<Vec<u8>, HandlerError> {
+    const ID: &str = "history/couples";
+    let value =
+        couples_run::couples_run_value(ctx.matches).ok_or_else(|| HandlerError::NoReport {
+            analyzer: ID.to_string(),
+            format: format.to_string(),
+        })?;
+    serialize_history_metrics(format, ID, "Couples", &value, &value)
 }
 
-fn h_history_shotness(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    // One report value (the reference `ComputedMetrics`, the value behind ToJSON/ToYAML);
-    // every machine format is just a serializer over it. ToJSON == ToYAML for
-    // shotness, so json_value and yaml_value share `to_go_value()`. The YAML
-    // section name is the analyzer's the reference `Name()` ("Shotness").
-    let metrics = shotness_run::shotness_run_metrics(ctx.matches)?;
+fn h_history_shotness(ctx: &RunContext, format: &str) -> Result<Vec<u8>, HandlerError> {
+    const ID: &str = "history/shotness";
+    let metrics =
+        shotness_run::shotness_run_metrics(ctx.matches).ok_or_else(|| HandlerError::NoReport {
+            analyzer: ID.to_string(),
+            format: format.to_string(),
+        })?;
     let value = metrics.to_go_value();
-    serialize_history_metrics(format, "Shotness", &value, &value)
+    serialize_history_metrics(format, ID, "Shotness", &value, &value)
 }
 
-fn h_history_devs(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
+fn h_history_devs(ctx: &RunContext, format: &str) -> Result<Vec<u8>, HandlerError> {
+    const ID: &str = "history/devs";
     let sub = ctx.matches;
-    let head = ctx.head();
-    match (format, head) {
-        ("json", true) => history::devs_head_report(sub),
-        ("json", false) => history::devs_run_report(sub),
-        ("yaml", true) => history::devs_head_report_yaml(sub),
-        ("yaml", false) => history::devs_run_report_yaml(sub),
-        ("timeseries+ndjson", false) => history::devs_run_timeseries_ndjson(sub),
-        // The pipeline resolves the `bin` alias to canonical `binary`
-        // (formats::normalize_format) before dispatch; accept the raw alias too
-        // for direct callers.
-        ("binary" | "bin", false) => history::devs_run_report_bin(sub),
-        ("binary" | "bin", true) => {
-            let metrics = history::devs_head_metrics(sub)?;
-            let payload = cf_devs::serialize::computed_metrics_to_go(&metrics);
-            cf_reportutil::encode_binary_envelope(&payload).ok()
-        }
-        _ => None,
-    }
+    let bytes = match format {
+        "json" => history::devs_run_report(sub),
+        "yaml" => history::devs_run_report_yaml(sub),
+        "binary" | "bin" => history::devs_run_report_bin(sub),
+        _ => return Err(format_not_supported(format, ID)),
+    };
+    report_or_err(bytes, ID, format)
 }
 
-fn h_history_anomaly(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
+fn h_history_anomaly(ctx: &RunContext, format: &str) -> Result<Vec<u8>, HandlerError> {
     use cf_anomaly::model::ToGoValue;
-    if ctx.head() {
-        // Closed-form merge-HEAD path (analyzer's deterministic head case): ONE
-        // report value, every machine format an encoding of it via the shared
-        // serializer — so the combined `*` model can request `binary` here too.
-        let metrics = history::anomaly_head_report(ctx.matches)?;
-        let value = metrics.to_go_value();
-        return serialize_history_metrics(format, "TemporalAnomaly", &value, &value);
-    }
-    // Full revwalk (no --head): one report value (reference `ComputeAllMetrics` →
-    // ComputedMetrics), every machine format an encoding of it via the shared
-    // history serializer. ToJSON == ToYAML for anomaly, so json/yaml share the
-    // same GoValue. The YAML section name is the analyzer's the reference `Name()`
-    // ("TemporalAnomaly").
-    let metrics = history::anomaly_run_metrics(ctx.matches)?;
+    const ID: &str = "history/anomaly";
+    let metrics =
+        history::anomaly_run_metrics(ctx.matches).ok_or_else(|| HandlerError::NoReport {
+            analyzer: ID.to_string(),
+            format: format.to_string(),
+        })?;
     let value = metrics.to_go_value();
-    serialize_history_metrics(format, "TemporalAnomaly", &value, &value)
+    serialize_history_metrics(format, ID, "TemporalAnomaly", &value, &value)
 }
 
-fn h_history_quality(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    // `timeseries+ndjson` (the `--ndjson` modifier) is NOT an encoding of the
-    // report value: the reference implementation streams per-commit lines
-    // through the per-chunk TimeSeriesChunkFlusher (DrainCommitStats), so it
-    // has its own emitter over the same memoized walk.
-    if format == "timeseries+ndjson" {
-        return history::quality_timeseries_ndjson(ctx.matches);
-    }
-    // `--head` is handled inside `quality_metrics` (single HEAD-commit window),
-    // so every format is the same encoding of one computed value — including the
-    // `binary` payload the combined `*` model gathers.
-    // One computed report value, three encodings routed
-    // through the shared serializer (reference: FormatReportJSON/YAML/Binary): json/bin
-    // marshal the encoding/json value tree; yaml wraps the same struct-origin
-    // value tree in the `codefang (v2)` envelope under `history/quality:`.
-    let metrics = history::quality_metrics(ctx.matches)?;
+fn h_history_quality(ctx: &RunContext, format: &str) -> Result<Vec<u8>, HandlerError> {
+    const ID: &str = "history/quality";
+    let metrics = history::quality_metrics(ctx.matches).ok_or_else(|| HandlerError::NoReport {
+        analyzer: ID.to_string(),
+        format: format.to_string(),
+    })?;
     let value = cf_quality::serialize::computed_metrics_value(&metrics);
-    serialize_history_metrics(format, "history/quality", &value, &value)
+    serialize_history_metrics(format, ID, ID, &value, &value)
 }
 
-fn h_history_sentiment(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
+fn h_history_sentiment(ctx: &RunContext, format: &str) -> Result<Vec<u8>, HandlerError> {
     use cf_sentiment::ToGoValue;
-    // `timeseries+ndjson` (the `--ndjson` modifier) is NOT an encoding of the
-    // report value: the reference implementation streams per-commit lines
-    // through the per-chunk TimeSeriesChunkFlusher (DrainCommitStats), so it
-    // has its own emitter over the same memoized walk.
-    if format == "timeseries+ndjson" {
-        return history::sentiment_timeseries_ndjson(ctx.matches);
-    }
-    // `--head` is handled inside `sentiment_metrics` (single HEAD-commit window),
-    // so every format (including the combined `*` model's `binary`) is one
-    // encoding of the same computed value.
-    // One computed report value, three encodings (reference `ComputeAllMetrics` →
-    // FormatReportJSON/YAML/Binary): json/bin marshal the encoding/json value
-    // tree (nil slice → null); yaml wraps the yaml.v3 value tree (nil → []) in
-    // the `codefang (v2)` envelope. Routed through the shared serializer so every
-    // format follows the one computation (same path as the other history leaves).
-    let metrics = history::sentiment_metrics(ctx.matches)?;
+    const ID: &str = "history/sentiment";
+    let metrics =
+        history::sentiment_metrics(ctx.matches).ok_or_else(|| HandlerError::NoReport {
+            analyzer: ID.to_string(),
+            format: format.to_string(),
+        })?;
     serialize_history_metrics(
         format,
-        "history/sentiment",
+        ID,
+        ID,
         &metrics.to_go_value(),
         &metrics.to_go_value_yaml(),
     )
 }
 
-fn h_history_file_history(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    // One computed report value, three machine
-    // encodings (json/bin/yaml). The crate's `computed_metrics_to_go` is the
-    // single `ToJSON`/`ToYAML` value tree (file_history's ToJSON == ToYAML);
-    // route it through the shared history-metrics serializer so all formats are
-    // encodings of THE SAME value. The YAML
-    // section header is the analyzer's Name(): `FileHistoryAnalysis`.
-    // `timeseries+ndjson` (the `--ndjson` modifier) is NOT an encoding of the
-    // report value: the reference implementation streams per-commit lines
-    // through the per-chunk TimeSeriesChunkFlusher (DrainCommitStats), so it
-    // has its own emitter over the same walk (`--head` loads the single HEAD
-    // commit inside `file_history_run`, matching the reference head window).
-    if format == "timeseries+ndjson" {
-        return history::file_history_timeseries_ndjson(ctx.matches);
-    }
-    let value = history::file_history_report_value(ctx.matches)?;
-    serialize_history_metrics(format, "FileHistoryAnalysis", &value, &value)
+fn h_history_file_history(ctx: &RunContext, format: &str) -> Result<Vec<u8>, HandlerError> {
+    const ID: &str = "history/file-history";
+    let value =
+        history::file_history_report_value(ctx.matches).ok_or_else(|| HandlerError::NoReport {
+            analyzer: ID.to_string(),
+            format: format.to_string(),
+        })?;
+    serialize_history_metrics(format, ID, "FileHistoryAnalysis", &value, &value)
 }
 
-fn h_history_burndown(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
+fn h_history_burndown(ctx: &RunContext, format: &str) -> Result<Vec<u8>, HandlerError> {
+    const ID: &str = "history/burndown";
     let sub = ctx.matches;
-    let head = ctx.head();
-    let ndjson = ctx.ndjson();
-    match (format, head, ndjson) {
-        ("timeseries", true, false) => history::burndown_head_timeseries(sub),
-        ("timeseries+ndjson", false, _) => burndown_ndjson::burndown_timeseries_ndjson(sub),
-        ("ndjson", false, _) => burndown_ndjson::burndown_record_ndjson(sub),
-        ("json", false, _) => burndown_ndjson::burndown_run_report(sub),
-        ("yaml", false, _) => burndown_ndjson::burndown_run_report_yaml(sub),
-        ("binary" | "bin", false, _) => burndown_ndjson::burndown_run_report_bin(sub),
-        ("json" | "yaml" | "binary" | "bin", true, _) => {
-            let metrics = history::burndown_head_metrics(sub)?;
-            let bytes = match format {
-                "json" => cf_gojson::marshal(&metrics.to_go_value()),
-                "binary" | "bin" => {
-                    cf_reportutil::encode_binary_envelope(&metrics.to_go_value()).ok()?
-                }
-                _ => {
-                    let mut out = Vec::new();
-                    out.extend_from_slice(b"codefang (v2):\n");
-                    out.extend_from_slice(
-                        format!("  version: {}\n", cf_version::DEFAULT_BINARY).as_bytes(),
-                    );
-                    out.extend_from_slice(
-                        format!("  hash: {}\n", cf_version::BINARY_GIT_HASH).as_bytes(),
-                    );
-                    out.extend_from_slice(b"history/burndown:\n");
-                    out.extend_from_slice(&cf_goyaml::marshal(&metrics.to_go_value_yaml()));
-                    out
-                }
-            };
-            Some(bytes)
-        }
-        _ => None,
-    }
+    let bytes = match format {
+        "json" => burndown_ndjson::burndown_run_report(sub),
+        "yaml" => burndown_ndjson::burndown_run_report_yaml(sub),
+        "binary" | "bin" => burndown_ndjson::burndown_run_report_bin(sub),
+        _ => return Err(format_not_supported(format, ID)),
+    };
+    report_or_err(bytes, ID, format)
 }
 
-/// Builds the single default analyzer [`Registry`] — the Rust analogue of the reference implementation
-/// `defaultRegistry()` (`analyze.NewRegistry(defaultUASTAnalyzers,
-/// defaultRawFileAnalyzers, defaultHistoryLeaves)`). One registry insertion per
-/// analyzer; dispatch is a keyed lookup by id, not a per-format match ladder.
+/// Builds the single default analyzer [`Registry`]. One registry insertion
+/// per analyzer; dispatch is a keyed lookup by id, not a per-format match
+/// ladder.
 #[must_use]
 pub fn default_registry() -> Registry {
     let mut r = Registry::new();
@@ -1909,8 +2136,7 @@ mod static_filter_tests {
 
     #[test]
     fn skips_matches_language_globs_on_basename() {
-        // The reference matchesLanguageGlobs runs fnmatch over filepath.Base,
-        // so a `*.go` glob must match a NESTED path's basename.
+        // A `*.go` glob must match a NESTED path's basename.
         let filter = StaticFilter {
             policy: permissive_policy(),
             language_globs: Some(vec!["*.go".to_string()]),
@@ -1921,9 +2147,6 @@ mod static_filter_tests {
 
     #[test]
     fn skips_language_filter_applies_before_path_policy() {
-        // A language-mismatched path is skipped even under the fully
-        // permissive policy: the glob leg decides first, independent of the
-        // vendored/generated leg.
         let filter = StaticFilter {
             policy: permissive_policy(),
             language_globs: Some(vec!["*.py".to_string()]),
@@ -1940,8 +2163,6 @@ mod static_filter_tests {
 
     #[test]
     fn skips_none_globs_means_no_language_restriction() {
-        // `LanguageGlobs == nil` (flag absent / `all`): only the path policy
-        // decides.
         let filter = StaticFilter {
             policy: permissive_policy(),
             language_globs: None,
@@ -1962,6 +2183,19 @@ mod static_filter_tests {
         assert!(filter.skips("a.py"));
     }
 
+    /// The generated-content marker in the file header excludes the file
+    /// under the default policy and is ignored with `--include-generated`.
+    #[test]
+    fn skips_with_header_applies_the_generated_marker() {
+        let marked = b"// Code generated by protoc-gen-go. DO NOT EDIT.\npackage main\n";
+        let plain = b"package main\n";
+        let default = StaticFilter::default();
+        assert!(default.skips_with_header("a.go", marked));
+        assert!(!default.skips_with_header("a.go", plain));
+        let permissive = StaticFilter::from_policy(permissive_policy());
+        assert!(!permissive.skips_with_header("a.go", marked));
+    }
+
     #[test]
     fn static_filter_parses_languages_into_basename_globs() {
         let filter = filter_for(&["--languages", "Go"]).expect("Go resolves");
@@ -1976,8 +2210,6 @@ mod static_filter_tests {
 
     #[test]
     fn static_filter_all_token_disables_the_restriction() {
-        // The `all` sentinel (langpath wants_all) maps to `None` — the same
-        // no-restriction state as an absent flag.
         let filter = filter_for(&["--languages", "all"]).expect("all resolves");
         assert!(filter.language_globs.is_none());
         let filter = filter_for(&[]).expect("absent flag resolves");
@@ -1992,6 +2224,18 @@ mod static_filter_tests {
             err.contains("unknown language"),
             "error must carry the CLI contract wording, got {err:?}"
         );
+    }
+
+    /// `--extra-excluded-prefixes` reaches the path policy of both phases.
+    #[test]
+    fn extra_excluded_prefixes_reach_the_policy() {
+        let filter = filter_for(&["--extra-excluded-prefixes", "gen/,build/"]).expect("parses");
+        assert_eq!(
+            filter.policy.extra_excluded_prefixes,
+            vec!["gen/".to_string(), "build/".to_string()]
+        );
+        assert!(filter.skips("gen/a.go"));
+        assert!(!filter.skips("src/a.go"));
     }
 }
 
@@ -2023,8 +2267,6 @@ mod per_file_multi_tests {
         )
         .unwrap();
         let json = String::from_utf8(bytes).unwrap();
-        // Every merged section gets a files key — the retaining analyzers with
-        // real entries, clones with the initialized empty array.
         let sections = json.matches("\"title\"").count();
         let files_keys = json.matches("\"files\"").count();
         assert_eq!(
@@ -2053,16 +2295,388 @@ mod per_file_multi_tests {
             "files key must be omitted:\n{json}"
         );
     }
+
+    /// The merged `overall_score` reads a report's top-level score.
+    fn overall_score(report: &GoValue) -> f64 {
+        match report.as_map().and_then(|m| m.get("overall_score")) {
+            Some(GoValue::Float(f)) => *f,
+            other => panic!("overall_score missing: {other:?}"),
+        }
+    }
+
+    /// Info-only sections (imports, composition: score `-1`) are left out of
+    /// the executive-summary average instead of dragging it toward `-1`; an
+    /// all-info selection is `-1` / `Info`.
+    #[test]
+    fn info_only_sections_do_not_drag_the_overall_score() {
+        let dir = fixture();
+        let path = dir.path().to_str().unwrap();
+        let filter = StaticFilter::default();
+        let scored = static_multi_report_value(&["static/complexity"], path, &filter, false)
+            .expect("complexity report");
+        let mixed = static_multi_report_value(
+            &["static/complexity", "static/imports", "static/composition"],
+            path,
+            &filter,
+            false,
+        )
+        .expect("mixed report");
+        assert!(
+            overall_score(&scored) >= 0.0,
+            "complexity is a scored section"
+        );
+        assert!(
+            (overall_score(&mixed) - overall_score(&scored)).abs() < f64::EPSILON,
+            "info-only sections changed the average: {} vs {}",
+            overall_score(&mixed),
+            overall_score(&scored)
+        );
+        let info_only = static_multi_report_value(
+            &["static/imports", "static/composition"],
+            path,
+            &filter,
+            false,
+        )
+        .expect("info report");
+        assert!((overall_score(&info_only) - (-1.0)).abs() < f64::EPSILON);
+        assert_eq!(
+            info_only
+                .as_map()
+                .and_then(|m| m.get("overall_score_label"))
+                .and_then(GoValue::as_str),
+            Some("Info")
+        );
+    }
+}
+
+#[cfg(test)]
+mod per_file_note_tests {
+    use super::per_file_ignored_note;
+
+    #[test]
+    fn note_names_every_non_json_format_and_is_silent_for_json() {
+        for format in ["yaml", "bin", "binary", "text", "compact", "plot"] {
+            assert_eq!(
+                per_file_ignored_note(true, true, format),
+                Some(format!(
+                    "--per-file applies to --format json only; ignored for {format}"
+                ))
+            );
+        }
+        assert_eq!(per_file_ignored_note(true, true, "json"), None);
+        assert_eq!(per_file_ignored_note(true, true, " JSON "), None);
+    }
+
+    #[test]
+    fn note_needs_the_flag_and_a_static_selection() {
+        assert_eq!(per_file_ignored_note(true, false, "yaml"), None);
+        assert_eq!(per_file_ignored_note(false, true, "yaml"), None);
+    }
+}
+
+#[cfg(test)]
+mod static_walk_tests {
+    //! The ONE static walk: file selection, reading, stamping and the skip
+    //! registry, exercised on real tempdir trees.
+
+    use super::*;
+
+    const PLAIN_GO: &str = "package main\n\nfunc f() {}\n";
+    const MARKED_GO: &str =
+        "// Code generated by protoc-gen-go. DO NOT EDIT.\npackage main\n\nfunc g() {}\n";
+
+    fn write(dir: &Path, rel: &str, content: &[u8]) {
+        let path = dir.join(rel);
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+        std::fs::write(path, content).expect("write fixture");
+    }
+
+    fn permissive() -> StaticFilter {
+        StaticFilter::from_policy(cf_pathpolicy::Options {
+            include_vendored: true,
+            include_generated: true,
+            ..cf_pathpolicy::Options::default()
+        })
+    }
+
+    /// The admitted root-relative paths of the source walk, in walk order.
+    fn source_paths(root: &Path, filter: &StaticFilter) -> Vec<String> {
+        let parser = Parser::new();
+        walk_source_files(root.to_str().unwrap(), &parser, filter)
+            .expect("root exists")
+            .map(|f| f.rel_path)
+            .collect()
+    }
+
+    /// The admitted root-relative paths of the all-files walk, in walk order.
+    fn all_paths(root: &Path, filter: &StaticFilter) -> Vec<String> {
+        walk_all_files(root.to_str().unwrap(), filter)
+            .expect("root exists")
+            .map(|f| f.rel_path)
+            .collect()
+    }
+
+    #[test]
+    fn file_root_yields_the_file_stamped_with_its_name() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "pkg/a.go", PLAIN_GO.as_bytes());
+        let file = dir.path().join("pkg/a.go");
+        let parser = Parser::new();
+        let files: Vec<SourceFile> =
+            walk_source_files(file.to_str().unwrap(), &parser, &permissive())
+                .expect("file root")
+                .collect();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].rel_path, "a.go");
+        assert_eq!(files[0].path, file);
+        assert_eq!(files[0].bytes, PLAIN_GO.as_bytes());
+        assert_eq!(files[0].language, "go");
+        assert_eq!(files[0].directory(), ".");
+    }
+
+    #[test]
+    fn nested_directories_walk_lexically_and_skip_git_and_cache_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "b.go", PLAIN_GO.as_bytes());
+        write(dir.path(), "a/z.go", PLAIN_GO.as_bytes());
+        write(dir.path(), "a/y.go", PLAIN_GO.as_bytes());
+        write(dir.path(), ".git/x.go", PLAIN_GO.as_bytes());
+        write(
+            dir.path(),
+            "target/CACHEDIR.TAG",
+            b"Signature: 8a477f597d28d172789f06886806bc55\n",
+        );
+        write(dir.path(), "target/t.go", PLAIN_GO.as_bytes());
+        write(dir.path(), "notes.txt", b"not source\n");
+        assert_eq!(
+            source_paths(dir.path(), &permissive()),
+            vec!["a/y.go", "a/z.go", "b.go"]
+        );
+        let parser = Parser::new();
+        let nested = walk_source_files(dir.path().to_str().unwrap(), &parser, &permissive())
+            .unwrap()
+            .next()
+            .unwrap();
+        assert_eq!(nested.directory(), "a");
+        // The all-files walk skips the same directories.
+        assert_eq!(
+            all_paths(dir.path(), &StaticFilter::default()),
+            vec!["a/y.go", "a/z.go", "b.go", "notes.txt"]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_loop_terminates_and_symlinked_dirs_are_never_files() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "sub/c.go", PLAIN_GO.as_bytes());
+        // sub/loop -> .. (the root): following it would recurse forever.
+        std::os::unix::fs::symlink("..", dir.path().join("sub/loop")).unwrap();
+        // A symlink to a regular file is read through.
+        std::os::unix::fs::symlink("sub/c.go", dir.path().join("link.go")).unwrap();
+        // A dangling symlink contributes nothing.
+        std::os::unix::fs::symlink("nowhere.go", dir.path().join("dangling.go")).unwrap();
+        assert_eq!(
+            source_paths(dir.path(), &permissive()),
+            vec!["link.go", "sub/c.go"]
+        );
+        assert_eq!(
+            all_paths(dir.path(), &StaticFilter::default()),
+            vec!["link.go", "sub/c.go"],
+            "a symlinked directory must not be counted as a file"
+        );
+    }
+
+    #[test]
+    fn oversized_file_is_skipped_and_recorded_once() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "a.go", PLAIN_GO.as_bytes());
+        let big = dir.path().join("big.go");
+        // A sparse file: the size is what the cap reads, no bytes are written.
+        std::fs::File::create(&big)
+            .unwrap()
+            .set_len(MAX_STATIC_FILE_SIZE + 1)
+            .unwrap();
+        assert!(!was_skipped(&big));
+        assert_eq!(source_paths(dir.path(), &permissive()), vec!["a.go"]);
+        assert!(was_skipped(&big), "the oversized file must be recorded");
+        // A second walk skips it again without re-recording (or re-printing)
+        // it: the registry already holds the path.
+        assert_eq!(source_paths(dir.path(), &permissive()), vec!["a.go"]);
+        assert!(
+            !note_skipped(&big, SkipReason::Oversized),
+            "a repeat skip must not be recorded (or warned about) twice"
+        );
+        // The all-files walk still classifies it (header only).
+        let all = walk_all_files(dir.path().to_str().unwrap(), &StaticFilter::default())
+            .unwrap()
+            .find(|f| f.rel_path == "big.go")
+            .expect("composition sees the oversized file");
+        assert_eq!(all.bytes.len(), ALL_FILES_HEADER_BYTES);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_file_is_skipped_and_recorded() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "a.go", PLAIN_GO.as_bytes());
+        let secret = dir.path().join("secret.go");
+        write(dir.path(), "secret.go", PLAIN_GO.as_bytes());
+        std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read(&secret).is_ok() {
+            // Running as root: nothing is unreadable.
+            return;
+        }
+        assert_eq!(source_paths(dir.path(), &permissive()), vec!["a.go"]);
+        assert!(was_skipped(&secret));
+        // Composition still classifies it, on its path alone.
+        let all = walk_all_files(dir.path().to_str().unwrap(), &StaticFilter::default())
+            .unwrap()
+            .find(|f| f.rel_path == "secret.go")
+            .expect("composition sees the unreadable file");
+        assert!(all.bytes.is_empty());
+    }
+
+    #[test]
+    fn generated_marker_excludes_by_default_and_include_generated_admits() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "a.go", PLAIN_GO.as_bytes());
+        write(dir.path(), "gen.go", MARKED_GO.as_bytes());
+        write(dir.path(), "gen.pb.go", PLAIN_GO.as_bytes());
+        assert_eq!(
+            source_paths(dir.path(), &StaticFilter::default()),
+            vec!["a.go"]
+        );
+        assert_eq!(
+            source_paths(dir.path(), &permissive()),
+            vec!["a.go", "gen.go", "gen.pb.go"]
+        );
+    }
+
+    #[test]
+    fn vendored_paths_follow_the_policy() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "a.go", PLAIN_GO.as_bytes());
+        write(dir.path(), "vendor/dep.go", PLAIN_GO.as_bytes());
+        write(dir.path(), "node_modules/m/i.js", b"export const x = 1;\n");
+        assert_eq!(
+            source_paths(dir.path(), &StaticFilter::default()),
+            vec!["a.go"]
+        );
+        assert_eq!(
+            source_paths(dir.path(), &permissive()),
+            vec!["a.go", "node_modules/m/i.js", "vendor/dep.go"]
+        );
+    }
+
+    /// `--extra-excluded-prefixes` matches the ROOT-RELATIVE path, so an
+    /// absolute (tempdir) root does not defeat a `gen/` prefix.
+    #[test]
+    fn extra_excluded_prefixes_apply_to_the_root_relative_path() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "a.go", PLAIN_GO.as_bytes());
+        write(dir.path(), "gen/a.go", PLAIN_GO.as_bytes());
+        assert!(dir.path().is_absolute());
+        let filter = StaticFilter::from_policy(cf_pathpolicy::Options {
+            extra_excluded_prefixes: vec!["gen/".to_string()],
+            ..cf_pathpolicy::Options::default()
+        });
+        assert_eq!(source_paths(dir.path(), &filter), vec!["a.go"]);
+        assert_eq!(all_paths(dir.path(), &filter), vec!["a.go"]);
+    }
+
+    #[test]
+    fn languages_globs_restrict_by_basename() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "a.go", PLAIN_GO.as_bytes());
+        write(dir.path(), "deep/b.py", b"def f():\n    return 1\n");
+        let py_only = StaticFilter {
+            language_globs: Some(vec!["*.py".to_string()]),
+            ..permissive()
+        };
+        assert_eq!(source_paths(dir.path(), &py_only), vec!["deep/b.py"]);
+        assert_eq!(all_paths(dir.path(), &py_only), vec!["deep/b.py"]);
+        assert_eq!(
+            source_paths(dir.path(), &permissive()),
+            vec!["a.go", "deep/b.py"]
+        );
+    }
+
+    /// Composition's walk admits vendored, generated, binary and unsupported
+    /// files with their header bytes; only the language globs narrow it.
+    #[test]
+    fn all_files_walk_sees_everything_with_header_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "a.go", PLAIN_GO.as_bytes());
+        write(dir.path(), "vendor/v.go", PLAIN_GO.as_bytes());
+        write(dir.path(), "gen.go", MARKED_GO.as_bytes());
+        write(dir.path(), "data.bin", b"\x00\x01\x02\xff");
+        write(dir.path(), "notes.txt", b"plain text\n");
+        let long = vec![b'x'; ALL_FILES_HEADER_BYTES + 100];
+        write(dir.path(), "long.txt", &long);
+        let files: Vec<SourceFile> =
+            walk_all_files(dir.path().to_str().unwrap(), &StaticFilter::default())
+                .unwrap()
+                .collect();
+        let paths: Vec<&str> = files.iter().map(|f| f.rel_path.as_str()).collect();
+        assert_eq!(
+            paths,
+            vec![
+                "a.go",
+                "data.bin",
+                "gen.go",
+                "long.txt",
+                "notes.txt",
+                "vendor/v.go"
+            ]
+        );
+        let bin = files.iter().find(|f| f.rel_path == "data.bin").unwrap();
+        assert_eq!(bin.bytes, b"\x00\x01\x02\xff");
+        assert!(bin.language.is_empty());
+        let capped = files.iter().find(|f| f.rel_path == "long.txt").unwrap();
+        assert_eq!(capped.bytes.len(), ALL_FILES_HEADER_BYTES);
+        // The source walk over the same tree admits only the plain Go file.
+        assert_eq!(
+            source_paths(dir.path(), &StaticFilter::default()),
+            vec!["a.go"]
+        );
+    }
+
+    #[test]
+    fn missing_root_is_path_not_found() {
+        let parser = Parser::new();
+        let missing = "/nonexistent/codefang-static-walk";
+        assert_eq!(
+            walk_source_files(missing, &parser, &StaticFilter::default())
+                .err()
+                .map(|e| e.to_string()),
+            Some(format!("path not found: {missing}"))
+        );
+        assert!(walk_all_files(missing, &StaticFilter::default()).is_err());
+    }
+
+    #[test]
+    fn relative_paths_and_parent_dirs() {
+        let rel = |p: &str, r: &str| make_relative_path(Path::new(p), Path::new(r));
+        assert_eq!(rel("/r/a/b.go", "/r"), "a/b.go");
+        assert_eq!(rel("/r/b.go", "/r/"), "b.go");
+        assert_eq!(rel("./b.go", "."), "b.go");
+        // A FILE root stamps the file's name, never `.`.
+        assert_eq!(rel("/r/b.go", "/r/b.go"), "b.go");
+        // A path outside the root stamps its name too.
+        assert_eq!(rel("/x/b.go", "/r"), "b.go");
+        assert_eq!(parent_dir("a/b.go"), "a");
+        assert_eq!(parent_dir("b.go"), ".");
+        assert_eq!(parent_dir("/b.go"), "/");
+    }
 }
 
 #[cfg(test)]
 mod dispatch_flag_tests {
     //! Walk-filter flags exercised through the REAL registry dispatch
     //! (`default_registry().lookup(id).run`), NOT by calling the report
-    //! builders with a hand-made filter. This is the layer the original
-    //! regression lived in: `h_static_*` built the filter for the json arm but
-    //! passed a default filter on the text/compact arms — a bug the
-    //! builder-level tests cannot see.
+    //! builders with a hand-made filter.
 
     use super::*;
 
@@ -2139,9 +2753,6 @@ mod dispatch_flag_tests {
                 &["--include-generated", "--include-vendored"],
                 dir.path(),
             ));
-            // Default policy: a.go + b.py = 2; permissive adds gen.pb.go +
-            // vendor/dep/d.go = 4. `>` (not the exact figures) is the
-            // regression guard: the flags must REACH the text-format walk.
             assert!(
                 permissive_total > default_total,
                 "{id}: text dispatch dropped the include flags \
@@ -2173,9 +2784,6 @@ mod dispatch_flag_tests {
     #[test]
     fn compact_dispatch_applies_language_filter() {
         let dir = fixture();
-        // Ruby matches no fixture file, so the compact render must collapse to
-        // the empty-report section — byte-different from the unfiltered one.
-        // Under a dispatch that drops the filter both renders are identical.
         let unfiltered = dispatch("static/complexity", "compact", &[], dir.path());
         let ruby_only = dispatch(
             "static/complexity",
@@ -2191,9 +2799,6 @@ mod dispatch_flag_tests {
 
     #[test]
     fn empty_languages_value_means_no_filter() {
-        // `--languages ""` parity with the reference CLI: cobra's csv reader
-        // yields an empty slice for an explicit empty value, so the run
-        // proceeds unfiltered instead of failing on an unknown "" language.
         let dir = fixture();
         let empty = text_total_functions(&dispatch(
             "static/complexity",
@@ -2204,24 +2809,43 @@ mod dispatch_flag_tests {
         let absent = text_total_functions(&dispatch("static/complexity", "text", &[], dir.path()));
         assert_eq!(empty, absent, "--languages \"\" must behave as no filter");
     }
+
+    /// An unsupported format for a static analyzer names the format and the
+    /// analyzer instead of silently producing nothing.
+    #[test]
+    fn unsupported_static_format_is_a_named_error() {
+        let dir = fixture();
+        let root = dir.path().to_str().unwrap();
+        let matches = crate::build_codefang_command()
+            .try_get_matches_from(["codefang", "run", "-a", "static/complexity", root])
+            .expect("parse");
+        let sub = matches.subcommand_matches("run").expect("run");
+        let ctx = RunContext::from_matches(sub);
+        let registry = default_registry();
+        let entry = registry.lookup("static/complexity").expect("registered");
+        let err = (entry.run)(&ctx, "ndjson").expect_err("ndjson is not a static format");
+        assert_eq!(
+            err.to_string(),
+            "format ndjson is not supported for static/complexity"
+        );
+    }
 }
 
 #[cfg(test)]
 mod history_filter_tests {
-    //! The history-phase `--languages` filter (TreeDiffAnalyzer
-    //! `shouldIncludeChange` → `checkLanguage`) — exercised both at the
+    //! The history-phase change filter (`--languages`, the vendor/generated
+    //! policy and the generated-content marker) — exercised both at the
     //! filter level on a real multi-language git fixture and through the REAL
-    //! registry dispatch (the bug this guards: history walks consumed
-    //! `--languages` NOWHERE, and the error path silently succeeded).
+    //! registry dispatch.
 
     use super::*;
 
     /// A two-commit repo exercising every leg of the filter: a Go file
     /// (insert + modify), a Python file (insert + delete — the delete-side
     /// name leg), an EXTENSIONLESS script whose language is detectable only
-    /// from blob content (the `checkLanguage` content fallback), a
-    /// vendor-classified dotfile (the always-default policy leg), and a
-    /// Markdown doc (neither set member).
+    /// from blob content, a vendor-classified dotfile (the policy leg), a
+    /// Markdown doc (neither set member), and a Go file carrying the
+    /// generated-content marker (the header leg).
     fn history_fixture() -> tempfile::TempDir {
         let dir = tempfile::tempdir().expect("tempdir");
         let repo = git2::Repository::init(dir.path()).expect("git init");
@@ -2260,7 +2884,8 @@ mod history_filter_tests {
                 .expect("commit");
         };
         // main.go: 5 lines; app.py: 2; deploy (extensionless python): 2;
-        // .gitignore (vendor-classified): 2; README.md: 1.
+        // .gitignore (vendor-classified): 2; README.md: 1; marked.go: 3
+        // (generated marker in the header).
         commit(
             "init",
             &[
@@ -2272,6 +2897,10 @@ mod history_filter_tests {
                 ("deploy", Some("#!/usr/bin/env python3\nprint('d')\n")),
                 (".gitignore", Some("target/\nbuild/\n")),
                 ("README.md", Some("# docs\n")),
+                (
+                    "marked.go",
+                    Some("// Code generated by gen. DO NOT EDIT.\npackage main\n\nfunc g() {}\n"),
+                ),
             ],
         );
         // main.go grows by one line; app.py is deleted.
@@ -2323,28 +2952,34 @@ mod history_filter_tests {
         );
     }
 
+    /// `--languages ""` means NO filter in the history phase, exactly as in
+    /// the static phase (one shared token parser).
     #[test]
-    fn explicit_empty_languages_restricts_everything() {
-        // The reference: cobra csv.Read("") → EMPTY slice → TreeDiff.Configure
-        // runs with a present-but-empty token list → Languages = {} (no
-        // "all") → checkLanguage rejects every change. NOT no-filter (that is
-        // the STATIC phase's semantics for the same flag value).
+    fn explicit_empty_languages_means_no_restriction() {
         let filter = filter_from_run_args(&["--languages", ""]).expect("parses");
-        let set = filter.languages.expect("empty set still restricts");
-        assert!(set.is_empty());
+        assert_eq!(filter.languages, None);
     }
 
     #[test]
-    fn unknown_language_errors_with_tree_diff_message() {
+    fn unknown_language_errors_with_history_message() {
         let err =
             filter_from_run_args(&["--languages", "notalang"]).expect_err("unknown token errors");
-        assert_eq!(
-            err,
-            r#"failed to configure TreeDiff: tree-diff pathspec: unknown language: "notalang""#
-        );
+        assert_eq!(err, r#"history --languages: unknown language: "notalang""#);
     }
 
-    /// Walks the fixture and returns the retained change (name, action-debug)
+    /// The include flags reach the history policy (they were inert before).
+    #[test]
+    fn include_flags_reach_the_history_policy() {
+        let filter =
+            filter_from_run_args(&["--include-vendored", "--include-generated"]).expect("parses");
+        assert!(filter.policy.include_vendored);
+        assert!(filter.policy.include_generated);
+        let default = filter_from_run_args(&[]).expect("parses");
+        assert!(!default.policy.include_vendored);
+        assert!(!default.policy.include_generated);
+    }
+
+    /// Walks the fixture and returns the retained change (name, action)
     /// pairs under `filter` — the exact `retain_changes` path every history
     /// walk shares.
     fn retained_names(
@@ -2352,18 +2987,20 @@ mod history_filter_tests {
         filter: &HistoryFilter,
     ) -> Vec<(String, cf_gitlib::changes::ChangeAction)> {
         let repo = cf_gitlib::Repository::open(dir.to_str().unwrap()).expect("open");
-        let hashes = crate::handlers::load_history_commit_hashes(
+        let hashes = load_history_commit_hashes(
             &repo,
-            0,
-            false,
-            crate::handlers::SinceSpec::Inactive,
+            &HistoryWindow {
+                head: false,
+                limit: 0,
+                first_parent: false,
+                since: SinceSpec::Inactive,
+            },
         )
         .expect("history");
         let mut out = Vec::new();
         for hash in hashes {
             let commit = repo.lookup_commit(hash).expect("commit");
-            let mut changes =
-                crate::handlers::history::commit_tree_changes(&repo, &commit).expect("diff");
+            let mut changes = history::commit_tree_changes(&repo, &commit).expect("diff");
             filter.retain_changes(&repo, &mut changes);
             out.extend(changes.into_iter().map(|c| {
                 let name = if matches!(c.action, cf_gitlib::changes::ChangeAction::Delete) {
@@ -2382,9 +3019,9 @@ mod history_filter_tests {
         let dir = history_fixture();
         let filter = filter_from_run_args(&["--languages", "Go"]).expect("parses");
         let retained = retained_names(dir.path(), &filter);
-        // Two main.go changes survive; the Python files, README.md, and the
-        // vendor-classified .gitignore do NOT (policy is ALWAYS the default —
-        // the reference history run never exposes the include flags).
+        // Two main.go changes survive; the Python files, README.md, the
+        // vendor-classified .gitignore and the generated-marked marked.go do
+        // NOT.
         assert_eq!(
             retained,
             vec![
@@ -2406,9 +3043,8 @@ mod history_filter_tests {
         let filter = filter_from_run_args(&["--languages", "Python"]).expect("parses");
         let retained = retained_names(dir.path(), &filter);
         let names: Vec<&str> = retained.iter().map(|(n, _)| n.as_str()).collect();
-        // app.py by extension; `deploy` by SHEBANG content detection (the
-        // reference GetLanguage(basename, nil) → blob-content fallback leg);
-        // the app.py delete keeps the FROM-side name (changeNameHash).
+        // app.py by extension; `deploy` by SHEBANG content detection; the
+        // app.py delete keeps the FROM-side name.
         assert_eq!(names, vec!["app.py", "deploy", "app.py"]);
         assert!(matches!(
             retained[2].1,
@@ -2416,16 +3052,47 @@ mod history_filter_tests {
         ));
     }
 
+    /// An empty language SET (constructible only in code) retains nothing —
+    /// the filter-level invariant behind `languages: None` meaning "no
+    /// filter".
     #[test]
     fn empty_language_set_retains_nothing() {
         let dir = history_fixture();
-        let filter = filter_from_run_args(&["--languages", ""]).expect("parses");
+        let filter = HistoryFilter {
+            policy: cf_pathpolicy::Options::default(),
+            languages: Some(std::collections::BTreeSet::new()),
+        };
         assert!(retained_names(dir.path(), &filter).is_empty());
     }
 
+    /// The generated-content marker (first 512 bytes) excludes a change under
+    /// the default policy; `--include-generated` keeps it.
+    #[test]
+    fn generated_marker_in_blob_header_is_applied() {
+        let dir = history_fixture();
+        let default = filter_from_run_args(&[]).expect("parses");
+        let names: Vec<String> = retained_names(dir.path(), &default)
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect();
+        assert!(
+            !names.iter().any(|n| n == "marked.go"),
+            "the generated marker must exclude marked.go by default, got {names:?}"
+        );
+        let permissive = filter_from_run_args(&["--include-generated"]).expect("parses");
+        let names: Vec<String> = retained_names(dir.path(), &permissive)
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect();
+        assert!(
+            names.iter().any(|n| n == "marked.go"),
+            "--include-generated must keep marked.go, got {names:?}"
+        );
+    }
+
     /// Runs `codefang run --analyzers <id> --format json <extra..> <root>`
-    /// through the real argv parse + registry handler (same harness as
-    /// `dispatch_flag_tests`), returning the parsed json aggregate.
+    /// through the real argv parse + registry handler, returning the parsed
+    /// json aggregate.
     fn dispatch_aggregate(id: &str, extra: &[&str], root: &std::path::Path, key: &str) -> i64 {
         let root = root.to_str().unwrap();
         let mut argv = vec!["codefang", "run", "--analyzers", id, "--format", "json"];
@@ -2453,9 +3120,6 @@ mod history_filter_tests {
 
     #[test]
     fn dispatch_history_devs_applies_language_filter() {
-        // The exact regression class of the static fix, on the history side:
-        // dispatch through the registry, not the filter helpers — if a walk
-        // silently lost the filter, totals would equal the unfiltered run.
         let dir = history_fixture();
         let root = dir.path();
 
@@ -2465,7 +3129,8 @@ mod history_filter_tests {
             root,
             "total_lines_added",
         );
-        // main.go insert (+5) + modify (+1); everything else filtered away.
+        // main.go insert (+5) + modify (+1); everything else filtered away
+        // (marked.go carries the generated marker).
         assert_eq!(added_go, 6);
 
         let (added_py, removed_py) = (
@@ -2487,14 +3152,23 @@ mod history_filter_tests {
 
         let all_added = dispatch_aggregate("history/devs", &[], root, "total_lines_added");
         // Unfiltered: 6 (Go) + 2 (app.py) + 2 (deploy) + 1 (README.md);
-        // .gitignore is vendor-classified and excluded even unfiltered.
+        // .gitignore is vendor-classified and marked.go generated — both
+        // excluded even unfiltered.
         assert_eq!(all_added, 11);
 
-        // The TreeDiff restrict-everything case: no commit survives, so devs
-        // attributes zero commits (reference-observed empty devs report).
+        // `--include-generated` adds marked.go's 4 lines.
+        let with_generated = dispatch_aggregate(
+            "history/devs",
+            &["--include-generated"],
+            root,
+            "total_lines_added",
+        );
+        assert_eq!(with_generated, 15);
+
+        // `--languages ""` is no filter: both commits are attributed.
         let empty_commits =
             dispatch_aggregate("history/devs", &["--languages", ""], root, "total_commits");
-        assert_eq!(empty_commits, 0);
+        assert_eq!(empty_commits, 2);
     }
 }
 
@@ -2507,15 +3181,13 @@ mod history_window_tests {
 
     /// Base instant of the fixture history: 2021-01-01T00:00:00Z.
     const T0: i64 = 1_609_459_200;
-    /// Spacing between fixture commits (one hour), so author-time order is
-    /// strictly increasing and every cutoff can land between two commits.
+    /// Spacing between fixture commits (one hour).
     const STEP: i64 = 3_600;
     /// Fixture length: five linear commits; `hashes[0]` is the oldest.
     const N_COMMITS: usize = 5;
-    /// The 3rd commit's instant as an RFC3339 cutoff (T0 + 2*STEP), i.e.
-    /// `2021-01-01T02:00:00Z`; excluded from a window whose cutoff equals it.
+    /// The 3rd commit's instant as an RFC3339 cutoff (T0 + 2*STEP).
     const CUTOFF_3RD: &str = "2021-01-01T02:00:00Z";
-    /// The newest commit's instant as a UTC date (2021-01-01T04:00:00Z).
+    /// A date after the newest commit.
     const DATE_AFTER_HEAD: &str = "2021-01-02";
     /// A date at/before the fixture root, so `--since` filters nothing.
     const DATE_BEFORE_ROOT: &str = "2020-01-01";
@@ -2547,36 +3219,56 @@ mod history_window_tests {
         (test, hashes)
     }
 
+    fn window(limit: usize, since: SinceSpec) -> HistoryWindow {
+        HistoryWindow {
+            head: false,
+            limit,
+            first_parent: false,
+            since,
+        }
+    }
+
     /// `--limit N` selects the N NEWEST commits, delivered oldest-first.
     #[test]
     fn limit_selects_the_newest_commits_oldest_first() {
         let (test, hashes) = linear_repo();
         let got =
-            load_history_commit_hashes(&test.repo, 2, false, SinceSpec::Inactive).expect("loads");
+            load_history_commit_hashes(&test.repo, &window(2, SinceSpec::Inactive)).expect("loads");
+        assert_eq!(got.as_slice(), &hashes[3..]);
+    }
+
+    /// `--limit 0` (unset) is "no limit".
+    #[test]
+    fn limit_zero_loads_whole_history() {
+        let (test, hashes) = linear_repo();
+        let got =
+            load_history_commit_hashes(&test.repo, &window(0, SinceSpec::Inactive)).expect("loads");
+        assert_eq!(got.as_slice(), &hashes[..]);
+    }
+
+    /// `--head` is exactly `[HEAD]`, whatever the other bounds say.
+    #[test]
+    fn head_is_exactly_the_head_commit() {
+        let (test, hashes) = linear_repo();
+        let got = load_history_commit_hashes(
+            &test.repo,
+            &HistoryWindow {
+                head: true,
+                limit: 3,
+                first_parent: false,
+                since: SinceSpec::Active(DATE_BEFORE_ROOT.to_owned()),
+            },
+        )
+        .expect("loads");
+        assert_eq!(got, vec![hashes[4]]);
         assert_eq!(
-            got.as_slice(),
-            &hashes[3..],
-            "--limit 2 must be the two NEWEST commits, oldest-first"
+            got,
+            load_history_commit_hashes(&test.repo, &window(1, SinceSpec::Inactive)).expect("loads"),
+            "--head and --limit 1 select the same window"
         );
     }
 
-    /// `--limit 0` (unset) and a negative limit are both "no limit".
-    #[test]
-    fn limit_zero_or_negative_loads_whole_history() {
-        let (test, hashes) = linear_repo();
-        for limit in [0, -1] {
-            let got = load_history_commit_hashes(&test.repo, limit, false, SinceSpec::Inactive)
-                .unwrap_or_else(|| panic!("limit {limit} loads"));
-            assert_eq!(
-                got.as_slice(),
-                &hashes[..],
-                "limit {limit} must load all commits"
-            );
-        }
-    }
-
-    /// The cutoff literal must mean exactly the 3rd fixture instant, or every
-    /// cutoff-based expectation below drifts silently.
+    /// The cutoff literal must mean exactly the 3rd fixture instant.
     #[test]
     fn cutoff_literal_matches_the_fixture_clock() {
         assert_eq!(
@@ -2586,128 +3278,250 @@ mod history_window_tests {
         );
     }
 
-    /// A `--since` cutoff that excludes only part of the history yields exactly
-    /// that window oldest-first. (The reference-parity loader aborted here.)
     #[test]
     fn since_partial_window_yields_the_window() {
         let (test, hashes) = linear_repo();
         let got = load_history_commit_hashes(
             &test.repo,
-            0,
-            false,
-            SinceSpec::Active(CUTOFF_3RD.to_owned()),
+            &window(0, SinceSpec::Active(CUTOFF_3RD.to_owned())),
         )
         .expect("a partial --since window must load, not abort");
-        assert_eq!(
-            got.as_slice(),
-            &hashes[2..],
-            "--since must yield the in-window commits, oldest-first"
-        );
+        assert_eq!(got.as_slice(), &hashes[2..]);
     }
 
-    /// A cutoff newer than every commit plans an EMPTY window (analyzers then
-    /// emit their empty report) rather than aborting.
     #[test]
     fn since_cutoff_after_head_yields_empty_window() {
         let (test, _hashes) = linear_repo();
         let got = load_history_commit_hashes(
             &test.repo,
-            0,
-            false,
-            SinceSpec::Active(DATE_AFTER_HEAD.to_owned()),
+            &window(0, SinceSpec::Active(DATE_AFTER_HEAD.to_owned())),
         )
         .expect("a fully-excluded window is empty, not an error");
         assert!(got.is_empty(), "window must be empty, got {got:?}");
     }
 
-    /// A cutoff at/before the root commit filters nothing: same window, same
-    /// order as an unfiltered run.
     #[test]
     fn since_cutoff_at_or_before_root_yields_whole_history() {
         let (test, hashes) = linear_repo();
         let got = load_history_commit_hashes(
             &test.repo,
-            0,
-            false,
-            SinceSpec::Active(DATE_BEFORE_ROOT.to_owned()),
+            &window(0, SinceSpec::Active(DATE_BEFORE_ROOT.to_owned())),
         )
         .expect("loads");
-        assert_eq!(
-            got.as_slice(),
-            &hashes[..],
-            "cutoff before root filters nothing"
-        );
+        assert_eq!(got.as_slice(), &hashes[..]);
     }
 
-    /// `--limit` caps the NEWEST end of the `--since` window: the window is
-    /// `hashes[1..]`, so the newest two of those are `hashes[3..]`.
+    /// `--limit` caps the NEWEST end of the `--since` window.
     #[test]
     fn limit_caps_the_newest_end_of_the_since_window() {
         let (test, hashes) = linear_repo();
         let cutoff = CUTOFF_3RD.to_owned();
         let unbounded =
-            load_history_commit_hashes(&test.repo, 0, false, SinceSpec::Active(cutoff.clone()))
+            load_history_commit_hashes(&test.repo, &window(0, SinceSpec::Active(cutoff.clone())))
                 .expect("window loads");
         assert_eq!(unbounded.as_slice(), &hashes[2..]);
-        let capped = load_history_commit_hashes(&test.repo, 2, false, SinceSpec::Active(cutoff))
+        let capped = load_history_commit_hashes(&test.repo, &window(2, SinceSpec::Active(cutoff)))
             .expect("window loads");
-        assert_eq!(
-            capped.as_slice(),
-            &hashes[3..],
-            "--limit inside a --since window keeps its newest commits"
-        );
+        assert_eq!(capped.as_slice(), &hashes[3..]);
     }
 
-    /// `--since` accepts a git revision, using that commit's author time.
     #[test]
     fn since_accepts_a_git_revision() {
         let (test, hashes) = linear_repo();
         let got = load_history_commit_hashes(
             &test.repo,
-            0,
-            false,
-            SinceSpec::Active("HEAD~2".to_owned()),
+            &window(0, SinceSpec::Active("HEAD~2".to_owned())),
         )
         .expect("--since must resolve a revision like `HEAD~2`");
-        assert_eq!(
-            got.as_slice(),
-            &hashes[2..],
-            "`--since HEAD~2` must start the window at that commit"
-        );
+        assert_eq!(got.as_slice(), &hashes[2..]);
     }
 
     /// Duration forms resolve against the injectable clock (DESIGN §2.8), not
-    /// the wall clock. The fixture dates are years behind the real clock, so
-    /// this window can only appear if `CODEFANG_NOW` is honored.
+    /// the wall clock.
     #[test]
     fn duration_since_uses_the_injected_clock() {
         let _guard = NowGuard;
-        // Now == the newest-but-one commit's instant; `1h` back == CUTOFF_3RD.
         std::env::set_var("CODEFANG_NOW", (T0 + 3 * STEP).to_string());
         let (test, hashes) = linear_repo();
         let got =
-            load_history_commit_hashes(&test.repo, 0, false, SinceSpec::Active("1h".to_owned()))
+            load_history_commit_hashes(&test.repo, &window(0, SinceSpec::Active("1h".to_owned())))
                 .expect("`--since 1h` must resolve against CODEFANG_NOW");
-        assert_eq!(
-            got.as_slice(),
-            &hashes[2..],
-            "`--since 1h` must cut at CODEFANG_NOW minus one hour"
-        );
+        assert_eq!(got.as_slice(), &hashes[2..]);
     }
 
-    /// A `--since` that is neither a time form nor a revision aborts the run.
     #[test]
     fn unresolvable_since_aborts_the_run() {
         let (test, _hashes) = linear_repo();
         assert!(
             load_history_commit_hashes(
                 &test.repo,
-                0,
-                false,
-                SinceSpec::Active("not-a-time-or-ref".to_owned())
+                &window(0, SinceSpec::Active("not-a-time-or-ref".to_owned()))
             )
             .is_none(),
-            "an unresolvable --since must yield None (empty stdout, exit 1)"
+            "an unresolvable --since must yield None"
+        );
+    }
+}
+
+#[cfg(test)]
+mod preflight_tests {
+    //! The shared run validation: every user error has a named message.
+
+    use super::*;
+
+    fn ctx_err(args: &[&str], static_ids: &[&str], history_ids: &[&str]) -> Option<String> {
+        let mut argv = vec!["codefang", "run"];
+        argv.extend_from_slice(args);
+        let matches = crate::build_codefang_command()
+            .try_get_matches_from(argv)
+            .expect("run args parse");
+        let sub = matches.subcommand_matches("run").expect("run subcommand");
+        let ctx = RunContext::from_matches(sub);
+        let s: Vec<String> = static_ids.iter().map(|s| (*s).to_string()).collect();
+        let h: Vec<String> = history_ids.iter().map(|s| (*s).to_string()).collect();
+        preflight(&ctx, &s, &h).err().map(|e| e.to_string())
+    }
+
+    #[test]
+    fn missing_path_is_named() {
+        assert_eq!(
+            ctx_err(&["/no/such/dir"], &["static/complexity"], &[]),
+            Some("path not found: /no/such/dir".to_string())
+        );
+    }
+
+    #[test]
+    fn non_repository_is_named_for_history_only() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let p = dir.path().to_str().unwrap();
+        assert_eq!(
+            ctx_err(&[p], &[], &["history/devs"]),
+            Some(format!("cannot open repository: {p}"))
+        );
+        // A static selection never needs a repository.
+        assert_eq!(ctx_err(&[p], &["static/complexity"], &[]), None);
+    }
+
+    #[test]
+    fn formats_are_validated_per_phase() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        git2::Repository::init(dir.path()).expect("git init");
+        let p = dir.path().to_str().unwrap();
+        assert_eq!(
+            ctx_err(&["--format", "bogus", p], &["static/complexity"], &[]),
+            Some("unsupported format: bogus".to_string())
+        );
+        assert_eq!(
+            ctx_err(&["--format", "ndjson", p], &["static/complexity"], &[]),
+            Some("format ndjson is not supported for static/complexity".to_string())
+        );
+        for format in ["compact", "text"] {
+            assert_eq!(
+                ctx_err(
+                    &["--format", format, p],
+                    &["static/complexity"],
+                    &["history/devs"]
+                ),
+                None,
+                "a mixed selection renders --format {format} phase by phase"
+            );
+        }
+        assert_eq!(
+            ctx_err(&["--format", "compact", p], &[], &["history/devs"]),
+            None
+        );
+        assert_eq!(
+            ctx_err(&["--format", "plot", p], &[], &["history/devs"]),
+            None
+        );
+    }
+
+    #[test]
+    fn numeric_history_flags_are_validated() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        git2::Repository::init(dir.path()).expect("git init");
+        let p = dir.path().to_str().unwrap();
+        assert_eq!(
+            ctx_err(&["--limit=-5", p], &[], &["history/devs"]),
+            Some("invalid --limit: must be >= 0, got -5".to_string())
+        );
+        assert_eq!(
+            ctx_err(&["--tick-size", "0", p], &[], &["history/devs"]),
+            Some("invalid --tick-size: must be > 0, got 0".to_string())
+        );
+        assert_eq!(
+            ctx_err(&["--max-changes-per-commit=-1", p], &[], &["history/devs"]),
+            Some("invalid --max-changes-per-commit: must be >= 0, got -1".to_string())
+        );
+        assert_eq!(
+            ctx_err(&["--people-dict", "/no/such/people.txt", p], &[], &["history/devs"]),
+            Some(
+                "cannot read --people-dict /no/such/people.txt: No such file or directory (os error 2)"
+                    .to_string()
+            )
+        );
+        // A static selection ignores the history flags entirely.
+        assert_eq!(
+            ctx_err(&["--limit=-5", p], &["static/complexity"], &[]),
+            None
+        );
+    }
+
+    /// A non-positive band, sample or typo distance was silently replaced by
+    /// the default; it is an error now.
+    #[test]
+    fn non_positive_analyzer_sizes_are_rejected() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        git2::Repository::init(dir.path()).expect("git init");
+        let p = dir.path().to_str().unwrap();
+        for (flag, value) in [
+            ("--granularity", "0"),
+            ("--sampling", "0"),
+            ("--granularity", "-3"),
+            ("--typos-max-distance", "0"),
+        ] {
+            let arg = format!("{flag}={value}");
+            assert_eq!(
+                ctx_err(&[&arg, p], &[], &["history/burndown"]),
+                Some(format!("invalid {flag}: must be > 0, got {value}"))
+            );
+        }
+        assert_eq!(
+            ctx_err(
+                &["--granularity", "1", "--sampling", "1", p],
+                &[],
+                &["history/burndown"]
+            ),
+            None
+        );
+    }
+
+    /// `--ndjson` only modifies `--format timeseries`; with any other format
+    /// it was accepted and ignored.
+    #[test]
+    fn ndjson_requires_the_timeseries_format() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        git2::Repository::init(dir.path()).expect("git init");
+        let p = dir.path().to_str().unwrap();
+        assert_eq!(
+            ctx_err(&["--ndjson", p], &[], &["history/devs"]),
+            Some("invalid --ndjson: requires --format timeseries, got --format json".to_string())
+        );
+        assert_eq!(
+            ctx_err(
+                &["--ndjson", "--format", "ndjson", p],
+                &[],
+                &["history/devs"]
+            ),
+            Some("invalid --ndjson: requires --format timeseries, got --format ndjson".to_string())
+        );
+        assert_eq!(
+            ctx_err(
+                &["--ndjson", "--format", "timeseries", p],
+                &[],
+                &["history/devs"]
+            ),
+            None
         );
     }
 }

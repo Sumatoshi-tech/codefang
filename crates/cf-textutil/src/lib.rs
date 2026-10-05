@@ -14,7 +14,7 @@
 //!    [`gocompat`] for the encoder re-exports ([`GoValue`] / [`Encoder`]).
 //!
 //! Compatibility: machine-format report bytes are pinned against the reference
-//! implementation by the differential gate in `tests/compat`.
+//! implementation by the report e2e suites (`bins/codefang/tests`).
 //!
 //! # Examples
 //!

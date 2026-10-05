@@ -1,21 +1,20 @@
 //! Self-contained VADER (Valence Aware Dictionary and sEntiment Reasoner)
 //! scoring engine.
 //!
-//! # Numeric parity (report compatibility)
+//! # Fidelity
 //!
 //! VADER compound scores are floats that reach machine reports, so this is a
-//! bit-faithful implementation of the reference engine, not an approximation
-//! (pinned by the differential gate):
+//! faithful implementation of the published algorithm (Hutto & Gilbert), not
+//! an approximation; the published example sentences score as published
+//! (see the tests):
 //!
-//! * The base lexicon and emoji table are **vendored byte-for-byte**
-//!   (`data/vaderLexicon.txt`, `data/emojiUTF8Lexicon.txt`) and parsed exactly
-//!   as the reference does (line split, tab split, field 0 = word, field 1 =
-//!   64-bit float).
-//! * Float arithmetic matches operation-for-operation: the valence sum is a
-//!   plain left-to-right `f64` sum, and `normalize` uses
+//! * The base lexicon and emoji table are **vendored** (`data/vaderLexicon.txt`,
+//!   `data/emojiUTF8Lexicon.txt`) and parsed as the reference does (line
+//!   split, tab split, field 0 = word, field 1 = 64-bit float).
+//! * The valence sum is a plain left-to-right `f64` sum, and `normalize` uses
 //!   `score / sqrt(score*score + alpha)`.
 //! * Tokenization splits on single spaces keeping empty tokens, and
-//!   punctuation stripping / ALLCAPS detection reproduce the reference's
+//!   punctuation stripping / ALLCAPS detection follow the reference's
 //!   Python-style string semantics.
 
 use std::collections::HashMap;
@@ -756,5 +755,124 @@ mod tests {
         assert!(normalize_default(0.0).abs() < 1e-12);
         assert!(normalize_default(1000.0) <= 1.0);
         assert!(normalize_default(-1000.0) >= -1.0);
+    }
+
+    const COMPOUND_DELTA: f64 = 1e-4;
+
+    fn compound(text: &str) -> f64 {
+        SentimentIntensityAnalyzer::new()
+            .polarity_scores(text)
+            .compound
+    }
+
+    fn assert_compound(text: &str, expected: f64) {
+        let got = compound(text);
+        assert!(
+            (got - expected).abs() < COMPOUND_DELTA,
+            "{text:?}: compound {got}, expected {expected}"
+        );
+    }
+
+    /// The published VADER example sentences (Hutto & Gilbert, the
+    /// vaderSentiment README) with their published compound scores.
+    #[test]
+    fn published_examples_score_as_published() {
+        for (text, expected) in [
+            ("VADER is smart, handsome, and funny.", 0.8316),
+            ("VADER is smart, handsome, and funny!", 0.8439),
+            ("VADER is very smart, handsome, and funny.", 0.8545),
+            ("VADER is VERY SMART, handsome, and FUNNY.", 0.9227),
+            ("VADER is VERY SMART, handsome, and FUNNY!!!", 0.9342),
+            (
+                "VADER is VERY SMART, uber handsome, and FRIGGIN FUNNY!!!",
+                0.9469,
+            ),
+            ("VADER is not smart, handsome, nor funny.", -0.7424),
+            ("The book was good.", 0.4404),
+            ("At least it isn't a horrible book.", 0.431),
+            ("The book was only kind of good.", 0.3832),
+            (
+                "The plot was good, but the characters are uncompelling and the dialog is not great.",
+                -0.7042,
+            ),
+            ("Today SUX!", -0.5461),
+            ("Today only kinda sux! But I'll get by, lol", 0.5249),
+            ("Make sure you :) or :D today!", 0.8633),
+            ("Not bad at all", 0.431),
+        ] {
+            assert_compound(text, expected);
+        }
+    }
+
+    /// `negation_check`: a negator before a lexicon word scales its valence
+    /// by `N_SCALAR`: good (1.9) → -1.406 → -1.406/√(1.406²+15).
+    #[test]
+    fn negation_flips_and_damps_the_valence() {
+        assert_compound("good", 0.4404);
+        assert_compound("not good", -0.3412);
+        // The negator may sit up to three words back.
+        assert_compound("not very good", -0.3865);
+    }
+
+    /// `but_check`: valence before `but` is halved, after it is multiplied by
+    /// 1.5: good 1.9·0.5 + bad −2.5·1.5 = −2.8 → −2.8/√(2.8²+15) = −0.5859;
+    /// bad −2.5·0.5 + good 1.9·1.5 = 1.6 → 1.6/√(1.6²+15) = 0.3818.
+    #[test]
+    fn but_shifts_weight_to_the_second_clause() {
+        assert_compound("good but bad", -0.5859);
+        assert_compound("bad but good", 0.3818);
+    }
+
+    /// `special_idioms_check`: `the shit` overrides shit's −2.6 with +3.0
+    /// (3.0/√(9+15) = 0.6124); in `bad ass` BOTH lexicon words (bad −2.5,
+    /// ass −2.5) are overridden with +1.5 — the idiom is looked up around
+    /// every scored word — so the sum is 3.0 as well.
+    #[test]
+    fn special_idioms_override_the_word_valence() {
+        assert_compound("this is the shit", 0.6124);
+        assert_compound("this is shit", -0.5574);
+        assert_compound("he is a bad ass", 0.6124);
+    }
+
+    /// `least_check`: `least good` negates, `at least good` does not, and
+    /// `very least good` keeps the booster: 1.9 + 0.293·0.95 = 2.178 →
+    /// 2.178/√(2.178²+15) = 0.4902.
+    #[test]
+    fn least_negates_unless_preceded_by_at_or_very() {
+        assert_compound("least good", -0.3412);
+        assert_compound("at least good", 0.4404);
+        assert_compound("very least good", 0.4902);
+    }
+
+    /// `amplify_ep` / `amplify_qm`: `!` adds 0.292 each (at most four), one
+    /// `?` adds nothing, two or three add 0.18 each, more add 0.96.
+    #[test]
+    fn exclamation_and_question_marks_amplify() {
+        assert_compound("good!", 0.4926);
+        assert_compound("good!!!!!", 0.6209);
+        assert_compound("good?", 0.4404);
+        assert_compound("good??", 0.5040);
+        assert_compound("good?????", 0.5940);
+        // Amplification follows the sign of the valence sum.
+        assert_compound("bad!", -0.5848);
+    }
+
+    /// ALLCAPS emphasis adds `C_INCR` (0.733) only when SOME words are
+    /// capitalized (`is_cap_diff`): GOOD 1.9 + 0.733 = 2.633 → 0.5622;
+    /// BAD −2.5 − 0.733 = −3.233 → −0.6408; an all-caps text gets none.
+    #[test]
+    fn allcaps_emphasis_requires_a_capitalization_difference() {
+        assert_compound("GOOD day", 0.5622);
+        assert_compound("GOOD DAY", 0.4404);
+        assert_compound("BAD day", -0.6408);
+    }
+
+    /// Emoji are replaced by their textual description before scoring.
+    #[test]
+    fn emoji_are_replaced_by_their_description() {
+        assert_compound("Catch utf-8 emoji such as such as 💘 and 💋 and 😁", 0.7003);
+        // A lone emoji scores exactly as its vendored description.
+        assert!(compound("😁") > 0.0);
+        assert!((compound("😁") - compound("beaming face with smiling eyes")).abs() < 1e-12);
     }
 }

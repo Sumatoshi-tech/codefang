@@ -35,9 +35,9 @@ impl GobCodec {
 }
 
 impl Codec for GobCodec {
-    fn encode<W: Write, T: Serialize>(&self, mut w: W, state: &T) -> Result<(), PersistError> {
-        let bytes = bincode::serialize(state).map_err(PersistError::GobEncode)?;
-        w.write_all(&bytes).map_err(PersistError::Io)
+    fn encode<W: Write, T: Serialize>(&self, w: W, state: &T) -> Result<(), PersistError> {
+        // Streams into the writer: no in-memory copy of the encoded state.
+        bincode::serialize_into(w, state).map_err(PersistError::GobEncode)
     }
 
     fn decode<R: Read, T: DeserializeOwned>(

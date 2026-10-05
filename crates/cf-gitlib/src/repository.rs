@@ -6,6 +6,8 @@
 //! and future-proof. RAII [`Drop`] frees the handle.
 
 use std::marker::PhantomData;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Once;
 
 use crate::blob::Blob;
 use crate::commit::{Commit, CommitIter};
@@ -45,15 +47,78 @@ pub fn time_from_unix_secs(secs: i64) -> git2::Time {
 /// output** (it only skips an integrity assertion, never changes which bytes are
 /// read or diffed).
 ///
+/// **The memory limits** registered with [`limit_native_memory`]: libgit2
+/// maps pack files in windows and keeps up to 8 GiB of them mapped on 64-bit
+/// hosts, every touched page resident (a one-worker `history/devs` walk over
+/// 31,923 kubernetes commits held 383 MB of mapped pack pages); and its object
+/// cache, shared by every repository handle of the process, defaults to
+/// 256 MiB, which the parallel walks' handles overflow (the five non-UAST
+/// history walks over those commits ran 183 s with it, 109 s with 512 MiB).
+///
 /// The options are libgit2 process-global state, so they are set once under a
 /// [`std::sync::Once`] on the first repository open.
 fn tune_libgit2() {
-    static TUNE: std::sync::Once = std::sync::Once::new();
     TUNE.call_once(|| {
         // `git2::opts` calls `crate::init()` internally, so libgit2 is initialized
         // before the option is applied.
         git2::opts::strict_hash_verification(false);
+        let mapped_pack = MAPPED_PACK_LIMIT.load(Ordering::Acquire);
+        if mapped_pack > 0 {
+            // SAFETY: runs once, inside the `Once` the first repository open
+            // waits on; no repository exists yet, so no libgit2 operation
+            // reads the option while it changes. A refused option leaves
+            // libgit2's default in place.
+            let _ = unsafe { git2::opts::set_mwindow_mapped_limit(mapped_pack) };
+        }
+        let object_cache = OBJECT_CACHE_LIMIT.load(Ordering::Acquire);
+        if let Ok(bytes) = isize::try_from(object_cache) {
+            if bytes > 0 {
+                // SAFETY: as above; `GIT_OPT_SET_CACHE_MAX_SIZE` takes one
+                // `ssize_t` and only stores it.
+                unsafe {
+                    libgit2_sys::git_libgit2_opts(
+                        libgit2_sys::GIT_OPT_SET_CACHE_MAX_SIZE as std::os::raw::c_int,
+                        bytes,
+                    );
+                }
+            }
+        }
     });
+}
+
+/// Guards [`tune_libgit2`].
+static TUNE: Once = Once::new();
+
+/// The mapped-pack limit the first repository open applies (`0` keeps
+/// libgit2's default).
+static MAPPED_PACK_LIMIT: AtomicUsize = AtomicUsize::new(0);
+
+/// The object-cache limit the first repository open applies (`0` keeps
+/// libgit2's default).
+static OBJECT_CACHE_LIMIT: AtomicUsize = AtomicUsize::new(0);
+
+/// Process-wide libgit2 memory limits, in bytes (`0` keeps a default).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct NativeLimits {
+    /// Pack-file memory kept mapped at once.
+    pub mapped_pack: usize,
+    /// Decoded objects (commits, trees) cached across every repository
+    /// handle.
+    pub object_cache: usize,
+}
+
+/// Sets libgit2's process-wide memory limits.
+///
+/// The limits take effect at the process's first [`Repository::open`];
+/// libgit2 options must not change while repositories are in use, so a call
+/// after that open is refused. Returns whether the limits will take effect.
+pub fn limit_native_memory(limits: NativeLimits) -> bool {
+    if TUNE.is_completed() {
+        return false;
+    }
+    MAPPED_PACK_LIMIT.store(limits.mapped_pack, Ordering::Release);
+    OBJECT_CACHE_LIMIT.store(limits.object_cache, Ordering::Release);
+    true
 }
 
 /// A libgit2 repository.
@@ -221,10 +286,15 @@ impl Repository {
         Ok(count)
     }
 
-    /// Computes the diff between two trees.
+    /// Computes the diff between two trees, with rename detection.
     ///
     /// Either side may be `None` (an added/removed whole tree). Uses libgit2's
-    /// default diff options.
+    /// default diff options, then `git_diff_find_similar` with renames
+    /// enabled (libgit2's default 50 % similarity threshold, the `git diff -M`
+    /// behaviour) so a moved file surfaces as ONE [`git2::Delta::Renamed`]
+    /// delta instead of a Delete + Add pair. File identity across renames is
+    /// a documented contract of the history analyzers (burndown line
+    /// survival, couples coupling chains, file-history commit lists).
     ///
     /// # Errors
     ///
@@ -234,9 +304,13 @@ impl Repository {
         old_tree: Option<&Tree<'_>>,
         new_tree: Option<&Tree<'_>>,
     ) -> Result<Diff<'_>> {
-        let diff = self
+        let mut diff = self
             .repo
             .diff_tree_to_tree(old_tree.map(Tree::native), new_tree.map(Tree::native), None)
+            .map_err(GitError::DiffTrees)?;
+        let mut find = git2::DiffFindOptions::new();
+        find.renames(true);
+        diff.find_similar(Some(&mut find))
             .map_err(GitError::DiffTrees)?;
         Ok(Diff::new(diff))
     }

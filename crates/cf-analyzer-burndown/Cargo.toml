@@ -10,6 +10,6 @@ publish.workspace = true
 [dependencies]
 # Report serialization routes exclusively through cf-gojson (JSON/bin) and
 # cf-goyaml (YAML); the burndown ComputedMetrics output bytes are pinned
-# against the reference binary by tests/compat.
+# by the report e2e suites in bins/codefang/tests.
 cf-gojson = { path = "../cf-gojson" }
 cf-goyaml = { path = "../cf-goyaml" }

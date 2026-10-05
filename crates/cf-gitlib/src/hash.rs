@@ -9,7 +9,7 @@
 //!
 //! [`Hash::to_hex`] renders a 40-character, lowercase, fixed-width hex string.
 //! Hashes surface into machine reports as these strings, so the rendering is
-//! part of the report contract (pinned by `tests/compat`).
+//! part of the report contract (pinned by the report e2e suites (`bins/codefang/tests`)).
 //!
 //! ```
 //! use cf_gitlib::Hash;

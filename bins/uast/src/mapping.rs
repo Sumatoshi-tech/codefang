@@ -1,43 +1,45 @@
 //! `uast mapping` — UAST mapping helpers (port of `cmd/uast/mapping.go`).
 //!
-//! Analyzes `node-types.json`, classifies nodes, computes mapping coverage,
-//! generates `.uastmap` DSL, or shows the raw tree-sitter JSON structure of an
-//! input file. JSON output (`{node_count, categories, nodes[, coverage]}`) routes
-//! through [`cf_textutil::write_json`] (DESIGN rule 1); `text` is human output.
+//! Analyzes and classifies `node-types.json`, generates `.uastmap` DSL from
+//! it, or shows the raw tree-sitter JSON structure of input files. JSON output
+//! (`{node_count, categories, nodes}`, the tree-sitter dump) routes through
+//! [`cf_textutil::write_json`] (DESIGN rule 1); `text` is human output.
+//!
+//! The Go-era `--mapping` / `--coverage` pair is gone: the reference parsed
+//! the mapping file and discarded the rules, so the coverage was never
+//! computed (`specs/bugs/BUG-cli-inert-surface.md`).
 
 use std::io::{self, Write};
 
 use cf_textutil::{GoMap, GoValue};
 use cf_uast_mapping::grammar_analysis::{
-    apply_heuristic_classification, coverage_analysis, generate_mapping_dsl, parse_node_types,
+    apply_heuristic_classification, generate_mapping_dsl, parse_node_types,
 };
-use cf_uast_mapping::{NodeTypeInfo, Parser as MappingParser, Rule};
+use cf_uast_mapping::NodeTypeInfo;
 use clap::{Arg, ArgAction, ArgMatches, Command};
 
-use crate::{COVERAGE_PERCENT, FORMAT_JSON};
+use crate::FORMAT_JSON;
 
 /// Builds the `mapping` subcommand (mapping.go:38-69).
 pub fn command() -> Command {
     Command::new("mapping")
-        .about("UAST mapping helpers: grammar analysis, classification, coverage")
+        .about("UAST mapping helpers: grammar analysis, classification, DSL generation")
         .long_about(
-            "Analyze node-types.json, classify nodes, compute mapping coverage, and show tree-sitter JSON structure.",
+            "Analyze and classify node-types.json, generate .uastmap DSL from it, and show the tree-sitter JSON structure of input files.",
         )
-        // Go's `mapping` command sets no cobra `Args`, so its `--help` Usage line
-        // is `uast mapping [flags]` with NO positional placeholder (the
-        // cli-surface positional shape is `[]`). The body still consumes free
-        // arguments as input files (`--show-treesitter`), so we keep the
-        // positional but `.hide(true)` it: clap then omits it from the Usage
-        // line (matching Go's empty positional shape) while still parsing it.
-        .arg(Arg::new("files").num_args(0..).index(1).hide(true))
+        // The positional files are the inputs of `--show-treesitter`.
+        .arg(
+            Arg::new("files")
+                .num_args(0..)
+                .index(1)
+                .help("Input source files for --show-treesitter"),
+        )
         .arg(long_opt("node-types", "", "Path to node-types.json (required for non-treesitter operations)"))
-        .arg(long_opt("mapping", "", "Path to mapping DSL file (optional)"))
-        .arg(long_opt("format", "text", "Output format: text or json"))
-        .arg(long_flag("coverage", "Compute mapping coverage if mapping is provided"))
+        .arg(long_opt("format", "text", "Output format of the node-types summary: text or json"))
         .arg(long_flag("generate", "Generate .uastmap DSL from node-types.json"))
         .arg(long_flag("show-treesitter", "Show original tree-sitter JSON structure for input files"))
-        .arg(long_opt("language", "", "Language for tree-sitter parsing (language name or grammar file path)"))
-        .arg(long_opt("extensions", "", "Comma-separated list of file extensions for language declaration"))
+        .arg(long_opt("language", "", "Tree-sitter language name (e.g. go) for --show-treesitter and the --generate header"))
+        .arg(long_opt("extensions", "", "Comma-separated file extensions for the --generate language header"))
 }
 
 /// Runs `mapping` (mapping.go `runMappingHelper`).
@@ -46,15 +48,10 @@ pub fn run(m: &ArgMatches) -> Result<(), String> {
         .get_one::<String>("node-types")
         .map(String::as_str)
         .unwrap_or("");
-    let mapping_path = m
-        .get_one::<String>("mapping")
-        .map(String::as_str)
-        .unwrap_or("");
     let format = m
         .get_one::<String>("format")
         .map(String::as_str)
         .unwrap_or("text");
-    let coverage = m.get_flag("coverage");
     let generate = m.get_flag("generate");
     let show_treesitter = m.get_flag("show-treesitter");
     let language = m
@@ -90,12 +87,10 @@ pub fn run(m: &ArgMatches) -> Result<(), String> {
         return Ok(());
     }
 
-    let rules = load_mapping_rules(mapping_path)?;
-
     if format == FORMAT_JSON {
-        return output_json(&nodes, &rules, coverage);
+        return output_json(&nodes);
     }
-    output_text(&nodes, &rules, coverage)
+    output_text(&nodes)
 }
 
 /// Loads + classifies `node-types.json` (mapping.go `loadNodeTypes`). Errors
@@ -111,33 +106,13 @@ fn load_node_types(path: &str) -> Result<Vec<NodeTypeInfo>, String> {
     Ok(apply_heuristic_classification(nodes))
 }
 
-/// Loads mapping rules from a DSL file (mapping.go `loadMappingRules`). The Go
-/// code parses the DSL only for validation and returns an empty rule list, which
-/// is reproduced here.
-fn load_mapping_rules(path: &str) -> Result<Vec<Rule>, String> {
-    if path.is_empty() {
-        return Ok(Vec::new());
-    }
-    let data =
-        std::fs::read_to_string(path).map_err(|e| format!("failed to open mapping DSL: {e}"))?;
-    MappingParser::new()
-        .parse_mapping(&data)
-        .map_err(|e| format!("failed to load mapping DSL: {e}"))?;
-    Ok(Vec::new())
-}
-
 /// Outputs the JSON summary (mapping.go `outputMappingJSON`).
-fn output_json(nodes: &[NodeTypeInfo], rules: &[Rule], coverage: bool) -> Result<(), String> {
-    let mut entries: Vec<(String, GoValue)> = vec![
+fn output_json(nodes: &[NodeTypeInfo]) -> Result<(), String> {
+    let entries: Vec<(String, GoValue)> = vec![
         ("node_count".to_string(), GoValue::Int(nodes.len() as i64)),
         ("categories".to_string(), categories_value(nodes)),
         ("nodes".to_string(), nodes_value(nodes)),
     ];
-
-    if coverage && !rules.is_empty() {
-        let cov = coverage_analysis(rules, nodes).map_err(|e| e.to_string())?;
-        entries.push(("coverage".to_string(), GoValue::Float(cov)));
-    }
 
     // Go builds `map[string]any{...}` (map-origin, byte-sorted keys).
     let value = GoValue::object(GoMap::from_map(entries));
@@ -146,16 +121,12 @@ fn output_json(nodes: &[NodeTypeInfo], rules: &[Rule], coverage: bool) -> Result
 }
 
 /// Outputs the text summary (mapping.go `outputMappingText`).
-fn output_text(nodes: &[NodeTypeInfo], rules: &[Rule], coverage: bool) -> Result<(), String> {
+fn output_text(nodes: &[NodeTypeInfo]) -> Result<(), String> {
     let out = io::stdout();
     let mut out = out.lock();
     let _ = writeln!(out, "Node types: {}", nodes.len());
     for (cat, count) in summarize_categories(nodes) {
         let _ = writeln!(out, "  {cat}: {count}");
-    }
-    if coverage && !rules.is_empty() {
-        let cov = coverage_analysis(rules, nodes).map_err(|e| e.to_string())?;
-        let _ = writeln!(out, "Coverage: {:.2}%", cov * COVERAGE_PERCENT);
     }
     Ok(())
 }
@@ -244,34 +215,94 @@ fn nodes_value(nodes: &[NodeTypeInfo]) -> GoValue {
 }
 
 /// Shows the raw tree-sitter JSON for input files (mapping.go
-/// `showTreeSitterJSON`). The grammar wiring lives in `cf-uast` (DESIGN §5); this
-/// reproduces the control flow and sentinel errors. Until grammars are vendored
-/// the parse step is unavailable, so an unset/unknown language yields the same
-/// `unsupported language` sentinel.
+/// `showTreeSitterJSON`): for each file, a `=== Tree-sitter JSON for <file>
+/// (language: <lang>) ===` header, the pretty-printed tree, and a blank line.
+/// The first failing file aborts with `failed to process <file>: <cause>`.
 fn show_tree_sitter(files: &[String], language: &str) -> Result<(), String> {
     if files.is_empty() {
         return Err("no input files provided".to_string());
     }
-    // The reference loops over every input file, but every path below returns,
-    // so only the first file is ever reached while grammar wiring is pending in
-    // cf-uast (DESIGN §5). Stated as an explicit first-file bail instead of a
-    // loop that cannot iterate twice; the sentinel strings are unchanged.
-    if let Some(filename) = files.first() {
-        let _ = std::fs::read(filename)
-            .map_err(|e| format!("failed to process {filename}: failed to read file: {e}"))?;
-        // Language resolution mirrors mapping.go: an unknown/empty language is an
-        // `unsupported language` error (the grammar dispatch is owned by cf-uast
-        // and not yet wired; see cf-uast todos / DESIGN §5).
-        if language.is_empty() {
-            return Err(format!(
-                "failed to process {filename}: tree-sitter parsing requires a language to be set"
-            ));
-        }
-        return Err(format!(
-            "failed to process {filename}: unsupported language: {language}"
-        ));
+    let stdout = io::stdout();
+    let mut out = stdout.lock();
+    for filename in files {
+        write_tree_sitter_json(&mut out, filename, language)
+            .map_err(|e| format!("failed to process {filename}: {e}"))?;
     }
     Ok(())
+}
+
+/// Parses `filename` with the vendored `language` grammar and writes its
+/// header + tree JSON (mapping.go `processFileForTreeSitterJSON`).
+fn write_tree_sitter_json(
+    out: &mut dyn Write,
+    filename: &str,
+    language: &str,
+) -> Result<(), String> {
+    let content = std::fs::read(filename).map_err(|e| format!("failed to read file: {e}"))?;
+    if language.is_empty() {
+        return Err(
+            "tree-sitter parsing requires a language to be set; use --language <name>".to_string(),
+        );
+    }
+    let grammar = cf_uast::languages::get_language(language)
+        .ok_or_else(|| format!("unsupported language: {language}"))?;
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(&grammar)
+        .map_err(|e| format!("failed to load the {language} grammar: {e}"))?;
+    let tree = parser
+        .parse(&content, None)
+        .ok_or_else(|| "failed to parse with tree-sitter".to_string())?;
+    let value = tree_sitter_node_value(tree.root_node(), &content);
+    writeln!(
+        out,
+        "=== Tree-sitter JSON for {filename} (language: {language}) ==="
+    )
+    .map_err(|e| e.to_string())?;
+    cf_textutil::write_json(&mut *out, &value, true).map_err(|e| e.to_string())?;
+    writeln!(out).map_err(|e| e.to_string())
+}
+
+/// One tree-sitter node as JSON (mapping.go `convertTreeSitterNodeToJSON`):
+/// `type`, `named`, `start_pos` / `end_pos` (`row`, `column`), `start_byte` /
+/// `end_byte`, `text` when non-empty, and `children` (the NAMED children) when
+/// there are any. Keys are map-origin (byte-sorted), like the Go `map`.
+fn tree_sitter_node_value(node: tree_sitter::Node<'_>, source: &[u8]) -> GoValue {
+    let position = |p: tree_sitter::Point| {
+        GoValue::object(GoMap::from_map(vec![
+            ("row".to_string(), usize_value(p.row)),
+            ("column".to_string(), usize_value(p.column)),
+        ]))
+    };
+    let mut entries = vec![
+        ("type".to_string(), GoValue::Str(node.kind().to_string())),
+        ("named".to_string(), GoValue::Bool(node.is_named())),
+        ("start_pos".to_string(), position(node.start_position())),
+        ("end_pos".to_string(), position(node.end_position())),
+        ("start_byte".to_string(), usize_value(node.start_byte())),
+        ("end_byte".to_string(), usize_value(node.end_byte())),
+    ];
+    let text = source
+        .get(node.start_byte()..node.end_byte())
+        .map(String::from_utf8_lossy)
+        .unwrap_or_default();
+    if !text.is_empty() {
+        entries.push(("text".to_string(), GoValue::Str(text.into_owned())));
+    }
+    let mut cursor = node.walk();
+    let children: Vec<GoValue> = node
+        .named_children(&mut cursor)
+        .map(|child| tree_sitter_node_value(child, source))
+        .collect();
+    if !children.is_empty() {
+        entries.push(("children".to_string(), GoValue::Array(children)));
+    }
+    GoValue::object(GoMap::from_map(entries))
+}
+
+/// A tree-sitter offset as a JSON integer.
+fn usize_value(v: usize) -> GoValue {
+    GoValue::Int(i64::try_from(v).unwrap_or(i64::MAX))
 }
 
 fn long_opt(name: &'static str, default: &'static str, help: &'static str) -> Arg {
@@ -306,10 +337,5 @@ mod tests {
     fn show_treesitter_no_files_error() {
         let err = show_tree_sitter(&[], "go").unwrap_err();
         assert_eq!(err, "no input files provided");
-    }
-
-    #[test]
-    fn empty_mapping_path_is_empty_rules() {
-        assert!(load_mapping_rules("").unwrap().is_empty());
     }
 }

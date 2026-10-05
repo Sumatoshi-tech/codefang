@@ -84,10 +84,17 @@ impl SectionRenderer {
     #[must_use]
     pub fn render_compact(&self, section: &dyn ReportSection) -> String {
         let title = terminal::pad_right(&section.section_title(), COMPACT_TITLE_WIDTH);
+        let message = section.status_message();
+        // Info-only sections carry no score: print the label instead of a
+        // negative "N/10" bar.
+        if section.score() < 0.0 {
+            let empty_bar = terminal::format_empty_bar(COMPACT_BAR_WIDTH);
+            let label = section.score_label();
+            return format!("{title} {empty_bar} {label}  {message}");
+        }
         let score_bar = terminal::format_score_bar(section.score(), COMPACT_BAR_WIDTH);
         let score_color = terminal::color_for_score(section.score());
         let score_bar = self.config.colorize(&score_bar, score_color);
-        let message = section.status_message();
         format!("{title} {score_bar}  {message}")
     }
 
@@ -239,7 +246,9 @@ impl SectionRenderer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analyze::{severity, BaseReportSection, DistributionItem, Issue, Metric};
+    use crate::analyze::{
+        severity, BaseReportSection, DistributionItem, Issue, Metric, SCORE_INFO_ONLY,
+    };
 
     struct Mock {
         base: BaseReportSection,
@@ -308,6 +317,24 @@ mod tests {
     }
 
     /// Mirrors reference test `TestRenderCompact_*`.
+    /// An info-only section (score below zero) must print the `Info` label,
+    /// never a negative `N/10` score.
+    #[test]
+    fn render_compact_info_only_section_prints_info_label() {
+        let r = SectionRenderer::new(80, false, true);
+        let out = r.render_compact(&Mock::new(
+            "IMPORTS",
+            SCORE_INFO_ONLY,
+            "Found 3 unique imports",
+        ));
+        assert!(out.contains("Info"), "missing Info label: {out}");
+        assert!(
+            !out.contains("/10"),
+            "info section must not carry a score: {out}"
+        );
+        assert!(out.contains("Found 3 unique imports"));
+    }
+
     #[test]
     fn render_compact_contents() {
         let r = SectionRenderer::new(80, false, true);

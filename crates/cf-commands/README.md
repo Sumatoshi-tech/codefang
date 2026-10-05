@@ -10,8 +10,8 @@ to the reference cobra surface), drives the analysis pipeline, and routes report
 serialization through the shared report-format crates (`cf-gojson` /
 `cf-goyaml`) — never raw `serde`.
 
-Every machine-report surface this crate emits is pinned byte-for-byte against
-the reference binary by the differential gate in `tests/compat`.
+Every machine-report surface this crate emits is pinned byte-for-byte by the
+CLI-level end-to-end tests under `bins/codefang/tests`.
 
 The major pieces:
 

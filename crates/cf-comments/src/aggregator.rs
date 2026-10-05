@@ -1,158 +1,174 @@
-//! Result aggregation across multiple comment analyses: sum of count keys,
-//! average of numeric keys.
+//! Cross-file aggregation of per-file comment metrics.
 //!
-//! Detailed-table merging (the `comments`/`functions` tables) is provided by
-//! `cf-analyzers-common` and is wired in by the framework layer, not here.
+//! Counters are summed and every ratio is computed from the sums: coverage is
+//! Σdocumented / Σfunctions and the good-comment ratio is Σgood / Σcomments.
+//! A file without declarations (or without comments) therefore never dilutes
+//! the respective ratio — there is no per-file mean anywhere.
 
-use std::collections::BTreeMap;
+use crate::types::{CommentCounts, CommentDetail, CommentMetrics, FunctionInfo};
 
-use cf_gojson::{GoMap, GoValue, MapOrigin};
+/// Where a file's rows come from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileStamp {
+    /// Path relative to the analyzed root.
+    pub source_file: String,
+    /// Language name (empty when unknown).
+    pub language: String,
+    /// Directory part of `source_file` (`.` at the root).
+    pub directory: String,
+}
 
-/// Numeric keys that are averaged across files.
-const NUMERIC_KEYS: &[&str] = &[
-    "overall_score",
-    "good_comments_ratio",
-    "documentation_coverage",
-];
+/// One file's metrics with its stamp.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FileReport {
+    /// Where the rows come from.
+    pub stamp: FileStamp,
+    /// The file's metrics.
+    pub metrics: CommentMetrics,
+}
 
-/// Count keys that are summed across files.
-const COUNT_KEYS: &[&str] = &[
-    "total_comments",
-    "good_comments",
-    "bad_comments",
-    "total_functions",
-    "documented_functions",
-    "total_comment_details",
-];
-
-/// A single file's report as a key→numeric map (the slice of a `Report` the
-/// aggregator consumes).
-pub type NumericReport = BTreeMap<String, f64>;
-
-/// Aggregates comment results across files.
+/// Accumulates per-file metrics in insertion order.
 #[derive(Debug, Default)]
 pub struct Aggregator {
-    sums: BTreeMap<String, f64>,
-    numeric_totals: BTreeMap<String, f64>,
-    file_count: i64,
+    files: Vec<FileReport>,
+    counts: CommentCounts,
 }
 
 impl Aggregator {
-    /// Creates a new aggregator.
+    /// Creates an empty aggregator.
+    #[must_use]
     pub fn new() -> Self {
         Aggregator::default()
     }
 
-    /// Aggregates a batch of per-file numeric reports.
-    ///
-    /// Count keys are summed; numeric keys are averaged over the number of
-    /// files. Iteration order over `results` does not affect the result
-    /// (sums/averages are commutative).
-    pub fn aggregate(&mut self, results: &BTreeMap<String, NumericReport>) {
-        for report in results.values() {
-            self.file_count += 1;
-            for &k in COUNT_KEYS {
-                if let Some(v) = report.get(k) {
-                    *self.sums.entry(k.to_string()).or_insert(0.0) += v;
-                }
-            }
-            for &k in NUMERIC_KEYS {
-                if let Some(v) = report.get(k) {
-                    *self.numeric_totals.entry(k.to_string()).or_insert(0.0) += v;
-                }
-            }
-        }
+    /// Adds one file's metrics.
+    pub fn add(&mut self, stamp: FileStamp, metrics: CommentMetrics) {
+        self.counts.add(&metrics.counts);
+        self.files.push(FileReport { stamp, metrics });
     }
 
-    /// Returns the aggregated result as a [`GoValue`].
-    ///
-    /// Empty aggregation yields zeros.
-    pub fn get_result(&self) -> GoValue {
-        let mut m = GoMap::new(MapOrigin::Map);
-        for &k in COUNT_KEYS {
-            let v = self.sums.get(k).copied().unwrap_or(0.0);
-            m.push(k, GoValue::Int(v as i64));
-        }
-        for &k in NUMERIC_KEYS {
-            let total = self.numeric_totals.get(k).copied().unwrap_or(0.0);
-            let avg = if self.file_count > 0 {
-                total / self.file_count as f64
-            } else {
-                0.0
-            };
-            m.push(k, GoValue::Float(avg));
-        }
-        GoValue::Map(m)
+    /// Adds a file that produced no metrics (an unparsable file): it is
+    /// listed, with all counters at zero.
+    pub fn add_empty(&mut self, stamp: FileStamp) {
+        self.add(stamp, CommentMetrics::default());
+    }
+
+    /// The files added so far, in insertion order.
+    #[must_use]
+    pub fn files(&self) -> &[FileReport] {
+        &self.files
+    }
+
+    /// Number of files added.
+    #[must_use]
+    pub fn file_count(&self) -> usize {
+        self.files.len()
+    }
+
+    /// The summed counters; their ratios and message are the aggregate's.
+    #[must_use]
+    pub fn counts(&self) -> CommentCounts {
+        self.counts
+    }
+
+    /// Every comment row with its file stamp, in file then line order.
+    pub fn comments(&self) -> impl Iterator<Item = (&FileStamp, &CommentDetail)> {
+        self.files
+            .iter()
+            .flat_map(|f| f.metrics.comments.iter().map(move |c| (&f.stamp, c)))
+    }
+
+    /// Every declaration row with its file stamp, in file then document
+    /// order.
+    pub fn functions(&self) -> impl Iterator<Item = (&FileStamp, &FunctionInfo)> {
+        self.files
+            .iter()
+            .flat_map(|f| f.metrics.functions.iter().map(move |fun| (&f.stamp, fun)))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::NO_COMMENTS_MESSAGE;
 
-    fn report(pairs: &[(&str, f64)]) -> NumericReport {
-        pairs.iter().map(|(k, v)| (k.to_string(), *v)).collect()
+    fn stamp(name: &str) -> FileStamp {
+        FileStamp {
+            source_file: name.to_string(),
+            language: "go".to_string(),
+            directory: ".".to_string(),
+        }
     }
 
-    fn get<'a>(v: &'a GoValue, key: &str) -> &'a GoValue {
-        match v {
-            GoValue::Map(m) => &m.entries().iter().find(|(k, _)| k == key).unwrap().1,
-            other => panic!("not a map: {other:?}"),
+    fn metrics(counts: CommentCounts) -> CommentMetrics {
+        CommentMetrics {
+            counts,
+            ..CommentMetrics::default()
         }
     }
 
     #[test]
-    fn aggregate_sums_and_averages() {
+    fn ratios_are_computed_from_the_sums() {
         let mut agg = Aggregator::new();
-        let mut results: BTreeMap<String, NumericReport> = BTreeMap::new();
-        results.insert(
-            "file1".to_string(),
-            report(&[
-                ("total_comments", 2.0),
-                ("good_comments", 1.0),
-                ("bad_comments", 1.0),
-                ("total_functions", 3.0),
-                ("documented_functions", 1.0),
-                ("overall_score", 0.5),
-            ]),
+        agg.add(
+            stamp("a.go"),
+            metrics(CommentCounts {
+                total_comments: 1,
+                good_comments: 1,
+                bad_comments: 0,
+                total_functions: 1,
+                documented_functions: 1,
+            }),
         );
-        results.insert(
-            "file2".to_string(),
-            report(&[
-                ("total_comments", 1.0),
-                ("good_comments", 1.0),
-                ("bad_comments", 0.0),
-                ("total_functions", 2.0),
-                ("documented_functions", 1.0),
-                ("overall_score", 1.0),
-            ]),
+        agg.add(
+            stamp("b.go"),
+            metrics(CommentCounts {
+                total_comments: 1,
+                good_comments: 1,
+                bad_comments: 0,
+                total_functions: 4,
+                documented_functions: 1,
+            }),
         );
-        agg.aggregate(&results);
-
-        let res = agg.get_result();
-        assert_eq!(get(&res, "total_comments"), &GoValue::Int(3));
-        assert_eq!(get(&res, "good_comments"), &GoValue::Int(2));
-        assert_eq!(get(&res, "bad_comments"), &GoValue::Int(1));
-        assert_eq!(get(&res, "total_functions"), &GoValue::Int(5));
-        assert_eq!(get(&res, "documented_functions"), &GoValue::Int(2));
-        match get(&res, "overall_score") {
-            GoValue::Float(f) => assert!((f - 0.75).abs() < 1e-9),
-            other => panic!("overall_score not float: {other:?}"),
-        }
+        let counts = agg.counts();
+        assert_eq!(counts.total_functions, 5);
+        assert_eq!(counts.documented_functions, 2);
+        // 2/5, not the mean of 1/1 and 1/4 (0.625).
+        assert!((counts.documentation_coverage() - 0.4).abs() < 1e-9);
+        assert!((counts.overall_score() - 1.0).abs() < 1e-9);
     }
 
     #[test]
-    fn empty_result_is_zero() {
+    fn a_file_without_declarations_does_not_dilute_coverage() {
+        let mut agg = Aggregator::new();
+        agg.add(
+            stamp("a.go"),
+            metrics(CommentCounts {
+                total_comments: 1,
+                good_comments: 1,
+                bad_comments: 0,
+                total_functions: 1,
+                documented_functions: 1,
+            }),
+        );
+        agg.add_empty(stamp("README.md"));
+        assert_eq!(agg.file_count(), 2);
+        assert!((agg.counts().documentation_coverage() - 1.0).abs() < 1e-9);
+        assert_eq!(
+            agg.counts().message(),
+            "Excellent comment quality and placement"
+        );
+    }
+
+    #[test]
+    fn empty_aggregation_is_the_empty_report() {
         let agg = Aggregator::new();
-        let res = agg.get_result();
-        assert_eq!(get(&res, "total_comments"), &GoValue::Int(0));
-        assert_eq!(get(&res, "good_comments"), &GoValue::Int(0));
-        assert_eq!(get(&res, "bad_comments"), &GoValue::Int(0));
-        assert_eq!(get(&res, "total_functions"), &GoValue::Int(0));
-        assert_eq!(get(&res, "documented_functions"), &GoValue::Int(0));
-        match get(&res, "overall_score") {
-            GoValue::Float(f) => assert_eq!(*f, 0.0),
-            other => panic!("overall_score not float: {other:?}"),
-        }
+        assert_eq!(agg.file_count(), 0);
+        assert_eq!(agg.counts(), CommentCounts::default());
+        assert_eq!(agg.counts().overall_score(), 0.0);
+        assert_eq!(agg.counts().documentation_coverage(), 0.0);
+        assert_eq!(agg.counts().message(), NO_COMMENTS_MESSAGE);
+        assert_eq!(agg.comments().count(), 0);
+        assert_eq!(agg.functions().count(), 0);
     }
 }

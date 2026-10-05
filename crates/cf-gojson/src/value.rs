@@ -8,7 +8,7 @@
 //! # The dual-mode container is load-bearing
 //!
 //! The report format has two object-ordering rules, decided by the *origin* of
-//! the JSON object (report-format contract; pinned by `tests/compat`):
+//! the JSON object (report-format contract; pinned by the report e2e suites (`bins/codefang/tests`)):
 //!
 //! * a **struct-origin** object serializes its fields in **declaration
 //!   order** (each field pushed once, in order; empty fields may be skipped by

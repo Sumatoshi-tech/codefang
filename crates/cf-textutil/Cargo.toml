@@ -11,7 +11,7 @@ description = "Byte-level text utilities and the canonical report JSON writer fo
 [dependencies]
 # Report serialization routes through the shared contract encoder, NEVER
 # serde_json, so machine-format report bytes stay pinned (DESIGN.md §1.1, §2;
-# differential gate: tests/compat). `write_json` wraps `cf-gojson`
+# the report e2e suites in bins/codefang/tests). `write_json` wraps `cf-gojson`
 # directly.
 cf-gojson = { path = "../cf-gojson" }
 # Error enums derive Display/Error via thiserror; the error strings are part of

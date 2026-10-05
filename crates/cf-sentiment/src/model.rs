@@ -3,8 +3,8 @@
 //! The output structs (`TimeSeriesData`, `TrendData`, `LowSentimentPeriodData`,
 //! `AggregateData`, `ComputedMetrics`). Each provides
 //! [`ToGoValue::to_go_value`] so it serializes through [`cf_gojson`] (and
-//! `cf-goyaml`) per the report-format compatibility contract (pinned by
-//! `tests/compat`).
+//! `cf-goyaml`) per the report-format contract (pinned by the CLI-level
+//! end-to-end tests).
 //!
 //! # Ordering
 //!
@@ -15,11 +15,11 @@
 //! # `f32` field precision
 //!
 //! Several fields are 32-bit floats in the report contract (`sentiment`,
-//! `average_sentiment`, `start_sentiment`, `end_sentiment`). The reference
-//! encoder formats such fields with 32-bit shortest precision, which differs
-//! from 64-bit shortest. [`f32_float`] reproduces this by rounding the value to
-//! its `f32`-shortest decimal before handing it to `cf-gojson`'s 64-bit float
-//! formatter, so the rendered digits match the contract.
+//! `average_sentiment`, `start_sentiment`, `end_sentiment`) and render with
+//! 32-bit shortest precision, which differs from 64-bit shortest.
+//! [`f32_float`] rounds the value to its `f32`-shortest decimal before handing
+//! it to `cf-gojson`'s 64-bit float formatter, so the rendered digits are the
+//! short form (`0.6`, never `0.6000000238418579`).
 
 use cf_gojson::{GoMap, GoValue};
 
@@ -149,7 +149,7 @@ impl LowSentimentPeriodData {
         m.push("tick", GoValue::Int(self.tick));
         m.push("sentiment", f32_float(self.sentiment));
         // `comments` has no omitempty. An absent list renders as JSON `null`
-        // but as YAML `[]` (report-format contract; pinned by tests/compat).
+        // but as YAML `[]` (report-format contract).
         if self.comments.is_empty() {
             m.push(
                 "comments",

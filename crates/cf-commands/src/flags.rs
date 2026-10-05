@@ -1,31 +1,28 @@
-//! The `run` and `render` clap command trees, reproducing the reference
-//! binary's flag wiring.
+//! The `run` and `completion` clap command trees.
 //!
 //! Built with clap's **builder API** (not derive) so every flag's long name,
-//! short, default, and help string matches cobra byte-for-byte (DESIGN §4).
+//! short, default, and help string is declared explicitly. The help text is a
+//! contract: every flag it lists is read by the pipeline (an accepted-and-
+//! ignored flag is a bug), and `site/guide/cli-reference.md` documents each
+//! one.
 //!
 //! # `run` flags
 //!
-//! [`build_run_command`] registers the reference `run` command's ~45 literal
-//! flags (the main flag block + `registerPersistenceFlags` + `registerExclusionFlags`),
-//! then the deprecated hidden flags ([`mark_deprecated_exclusion_flags`]), then
-//! the dynamic per-analyzer flags ([`register_analyzer_flags`]). The help
-//! strings are copied verbatim from the reference source.
+//! [`build_run_command`] registers the `run` command's literal flags (the
+//! selection / format / window / exclusion / configuration blocks), then the
+//! dynamic per-analyzer flags ([`register_analyzer_flags`]).
 //!
-//! # Tri-state `--checkpoint` / `--resume`
+//! # Configuration defaults
 //!
-//! Both default `true`, but the reference implementation reads them via `Flags().Changed(name)` so a
-//! config-file default only applies when the CLI flag was *not* supplied
-//! (`parseBoolFlag`). clap models this with [`clap::ArgAction::SetTrue`]/`SetFalse`
-//! is not enough for tri-state; instead these two flags take an explicit
-//! `bool` value (`--checkpoint=false`) and the caller checks
-//! [`clap::ArgMatches::value_source`] for [`clap::parser::ValueSource::CommandLine`]
-//! to decide whether the user set it — the Rust analogue of `Changed`.
+//! [`CONFIG_KEY_FLAGS`] maps every `cf-config` key to the `run` flag it
+//! defaults, and [`with_config_defaults`] installs the configured values as
+//! those flags' defaults. clap then resolves the precedence itself: a value
+//! given on the command line wins over the configured default, which wins
+//! over the compiled one.
 //!
 //! # Dynamic per-analyzer flags
 //!
-//! [`register_analyzer_flags`] mirrors the reference `registerAnalyzerFlags` /
-//! `registerConfigFlag`: it walks the supplied
+//! [`register_analyzer_flags`] walks the supplied
 //! [`crate::registry::ConfigOptionProvider`]s, dedupes by flag name, and adds one
 //! clap flag per [`cf_pipeline::ConfigurationOption`] keyed by its
 //! [`cf_pipeline::ConfigurationOptionType`].
@@ -33,26 +30,11 @@
 use cf_pipeline::{ConfigurationOption, ConfigurationOptionType, DefaultValue};
 use clap::{Arg, ArgAction, Command};
 
-use crate::formats::{FORMAT_JSON, INPUT_FORMAT_AUTO};
+use crate::formats::FORMAT_JSON;
 use crate::registry::ConfigOptionProvider;
 
-/// Render-command constants, mirroring the reference implementation consts.
-mod render_consts {
-    /// `render <store-dir>` — the cobra `Use` string.
-    pub const USE: &str = "render";
-    /// Short help for the render command.
-    pub const SHORT: &str = "Render stored analysis results as multi-page HTML";
-    /// `--output` long flag name.
-    pub const OUTPUT_FLAG: &str = "output";
-    /// `-o` short flag.
-    pub const OUTPUT_SHORT: char = 'o';
-    /// `--output` help text.
-    pub const OUTPUT_USAGE: &str = "output directory for HTML files";
-}
-
-/// Build the `run [path]` [`clap::Command`] with every literal flag, the
-/// deprecated hidden flags, and the dynamic per-analyzer flags from
-/// `providers`. Mirrors the reference `newRunCommandWithAllDeps`.
+/// Build the `run [path]` [`clap::Command`] with every literal flag and the
+/// dynamic per-analyzer flags from `providers`.
 ///
 /// `providers` supplies the analyzer configuration options (the reference implementation's
 /// `buildPipeline(nil)` Core + Leaves). In the default (non-`runtime`) build the
@@ -73,9 +55,7 @@ pub fn build_run_command_with(providers: &[&dyn ConfigOptionProvider]) -> Comman
         );
 
     cmd = add_literal_run_flags(cmd);
-    cmd = mark_deprecated_exclusion_flags(cmd);
-    cmd = register_analyzer_flags(cmd, providers);
-    cmd
+    register_analyzer_flags(cmd, providers)
 }
 
 /// The `run --help` trailer: the available analyzer ids (grouped by phase) plus
@@ -123,9 +103,10 @@ pub fn build_run_command() -> Command {
     build_run_command_with(&[provider])
 }
 
-/// Adds the ~45 literal `run` flags in the reference implementation declaration order, with verbatim help
-/// strings and defaults (the reference `run` flag block, plus `registerPersistenceFlags`
-/// and `registerExclusionFlags`).
+/// Adds the literal `run` flags in declaration order: analyzer selection and
+/// output format, the commit window (`--limit`, `--first-parent`, `--head`,
+/// `--since`), the exclusion flags, `--max-changes-per-commit`, `--chunk-size`,
+/// `--config`, `--list-analyzers` and `--output`.
 #[allow(clippy::too_many_lines)]
 fn add_literal_run_flags(cmd: Command) -> Command {
     cmd.arg(str_slice_arg(
@@ -143,52 +124,17 @@ fn add_literal_run_flags(cmd: Command) -> Command {
         "ndjson",
         "With --format timeseries: emit one JSON line per commit (NDJSON)",
     ))
-    .arg(str_arg(
-        "input",
-        None,
-        "",
-        "Input report path for cross-format conversion",
-    ))
-    .arg(str_arg(
-        "input-format",
-        None,
-        INPUT_FORMAT_AUTO,
-        "Input format: auto, json, bin",
-    ))
-    .arg(int_arg(
-        "gogc",
-        0,
-        "GC percent for history pipeline (0 = auto, >0 = exact)",
-    ))
-    .arg(str_arg(
-        "ballast-size",
-        None,
-        "0",
-        "Optional GC ballast size for history pipeline (0 = disabled)",
-    ))
-    .arg(bool_arg("silent", "Disable progress output"))
-    .arg(bool_arg("no-color", "Disable colored static output"))
+    .arg(bool_arg("no-color", "Disable colored text/compact output"))
     .arg(str_arg(
         "path",
         Some('p'),
         ".",
         "Folder/repository path to analyze",
     ))
-    .arg(bool_arg(
-        "debug-trace",
-        "Enable 100% trace sampling for debugging",
-    ))
-    .arg(str_arg("cpuprofile", None, "", "Write CPU profile to file"))
-    .arg(str_arg(
-        "heapprofile",
-        None,
-        "",
-        "Write heap profile to file",
-    ))
     .arg(int_arg(
         "limit",
         0,
-        "Limit number of commits to analyze (0 = no limit)",
+        "Analyze only the N newest commits (0 = no limit)",
     ))
     .arg(bool_arg(
         "first-parent",
@@ -199,19 +145,9 @@ fn add_literal_run_flags(cmd: Command) -> Command {
         "since",
         None,
         "",
-        "Only analyze commits after this time (e.g., '24h', '2024-01-01', RFC3339)",
+        "Only analyze commits authored at/after this time or revision (e.g., '24h', '2024-01-01', RFC3339, 'v1.2.0')",
     ))
-    .arg(int_arg(
-        "workers",
-        0,
-        "Number of parallel workers (0 = use CPU count)",
-    ))
-    .arg(int_arg(
-        "static-workers",
-        0,
-        "Number of parallel static analysis workers (0 = min(CPU count, 8))",
-    ))
-    // registerExclusionFlags
+    // Exclusion flags
     .arg(bool_arg(
         "include-vendored",
         "Re-include vendored dependencies (detected by enry / Linguist) in analysis. \
@@ -237,152 +173,131 @@ first 512 bytes contain a generated-file marker (\"DO NOT EDIT\", \"Code generat
         .short('F'),
     )
     .arg(int_arg(
-        "buffer-size",
-        0,
-        "Size of internal pipeline channels (0 = workers*2)",
-    ))
-    .arg(int_arg(
-        "commit-batch-size",
-        0,
-        "Commits per processing batch (0 = default 100)",
-    ))
-    .arg(str_arg(
-        "blob-cache-size",
-        None,
-        "",
-        "Max blob cache size (e.g., '256MB', '1GB'; empty = default 1GB)",
-    ))
-    .arg(int_arg(
-        "diff-cache-size",
-        0,
-        "Max diff cache entries (0 = default 10000)",
-    ))
-    .arg(str_arg(
-        "blob-arena-size",
-        None,
-        "",
-        "Memory arena size for blob loading (e.g., '4MB'; empty = default 4MB)",
-    ))
-    .arg(str_arg(
-        "memory-budget",
-        None,
-        "",
-        "Memory budget for auto-tuning (e.g., '512MB', '2GB')",
-    ))
-    .arg(int_arg(
         "max-changes-per-commit",
         0,
         "Skip commits whose tree diff exceeds this many changes (0 = default 10000). \
-Commits over the cap are silently dropped from history, which can desync \
-burndown's tracked state for affected files. Raise on monorepos with \
-legitimate large commits (Pods updates, generated code dumps).",
+Dropped commits are invisible to every analyzer; burndown re-inserts an affected \
+file whole the next time it is touched. Raise on monorepos with legitimate large \
+commits (Pods updates, generated code dumps).",
     ))
-    // registerPersistenceFlags (tri-state checkpoint/resume default true)
-    .arg(tristate_bool_arg(
-        "checkpoint",
-        true,
-        "Enable checkpointing for crash recovery",
-    ))
-    .arg(str_arg(
-        "checkpoint-dir",
-        None,
-        "",
-        "Checkpoint directory (default: ~/.codefang/checkpoints)",
-    ))
-    .arg(tristate_bool_arg(
-        "resume",
-        true,
-        "Resume from checkpoint if available",
-    ))
-    .arg(bool_arg(
-        "clear-checkpoint",
-        "Clear existing checkpoint before run",
-    ))
-    .arg(str_arg(
-        "cache-dir",
-        None,
-        "",
-        "Incremental analysis cache directory (skip already-processed commits)",
-    ))
-    .arg(bool_arg(
-        "no-cache",
-        "Force full re-analysis, overwriting any existing cache",
-    ))
+    .arg(
+        Arg::new("chunk-size")
+            .long("chunk-size")
+            .help(
+                "Commits per history chunk; per-commit work for at most this many commits is \
+held in memory at once. Overrides the chunk size --memory-budget plans",
+            )
+            .action(ArgAction::Set)
+            .value_parser(clap::value_parser!(i64))
+            // cobra pflag last-wins on repeated flags.
+            .overrides_with("chunk-size"),
+    )
+    .arg(
+        Arg::new("memory-budget")
+            .long("memory-budget")
+            .value_name("SIZE")
+            .help(
+                "Memory a history run plans its chunk sizes and worker counts against, e.g. \
+512MB, 2GB, 1.5GiB (default: half the physical RAM, at most 2 GiB; minimum 256 MiB)",
+            )
+            .action(ArgAction::Set)
+            .overrides_with("memory-budget"),
+    )
     .arg(str_arg(
         "config",
         None,
         "",
-        "Configuration file path (default: .codefang.yaml in CWD or $HOME)",
+        "Configuration file (default: ./.codefang.yaml, else $HOME/.codefang.yaml); \
+its keys default the matching flags",
     ))
     .arg(bool_arg(
         "list-analyzers",
         "List all available analyzer IDs and exit",
     ))
     .arg(str_arg(
-        "diagnostics-addr",
-        None,
-        "",
-        "Start diagnostics HTTP server (health/metrics) at this address (e.g., :6060)",
-    ))
-    .arg(str_arg(
         "output",
         Some('o'),
         "",
-        "Output directory for plot HTML files (required with --format plot)",
-    ))
-    .arg(bool_arg(
-        "keep-store",
-        "Keep temp ReportStore directory after rendering (with --format plot)",
-    ))
-    .arg(str_arg(
-        "tmp-dir",
-        None,
-        "",
-        "Directory for temporary spill files (default: system temp)",
+        "Write the report to this file instead of stdout; with --format plot, the \
+output directory for the HTML pages (required)",
     ))
 }
 
-/// Marks the two legacy exclusion flags as deprecated and hidden, with the exact
-/// reference deprecation messages. clap has no
-/// first-class "deprecated" attribute, so we register them hidden and surface
-/// the message through [`deprecated_flag_message`] for the caller to emit when
-/// the flag is used (mirroring cobra's deprecation warning behavior).
+/// The `run` flag each `cf-config` key defaults, in [`cf_config::KEYS`]
+/// order. Every key has exactly one flag (pinned by a test).
+pub const CONFIG_KEY_FLAGS: &[(&str, &str)] = &[
+    (cf_config::keys::ANALYZERS, "analyzers"),
+    (
+        cf_config::keys::MAX_CHANGES_PER_COMMIT,
+        "max-changes-per-commit",
+    ),
+    (cf_config::keys::MEMORY_BUDGET, "memory-budget"),
+    (cf_config::keys::CHUNK_SIZE, "chunk-size"),
+    (cf_config::keys::TICK_SIZE, "tick-size"),
+    (cf_config::keys::BURNDOWN_GRANULARITY, "granularity"),
+    (cf_config::keys::BURNDOWN_SAMPLING, "sampling"),
+    (cf_config::keys::BURNDOWN_TRACK_FILES, "burndown-files"),
+    (cf_config::keys::BURNDOWN_TRACK_PEOPLE, "burndown-people"),
+    (
+        cf_config::keys::DEVS_CONSIDER_EMPTY_COMMITS,
+        "empty-commits",
+    ),
+    (cf_config::keys::DEVS_ANONYMIZE, "anonymize"),
+    (
+        cf_config::keys::SENTIMENT_MIN_COMMENT_LENGTH,
+        "min-comment-len",
+    ),
+    (cf_config::keys::SHOTNESS_DSL_STRUCT, "shotness-dsl-struct"),
+    (cf_config::keys::SHOTNESS_DSL_NAME, "shotness-dsl-name"),
+    (cf_config::keys::SHOTNESS_KEEP_ENDED, "shotness-keep-ended"),
+    (cf_config::keys::TYPOS_MAX_DISTANCE, "typos-max-distance"),
+    (cf_config::keys::ANOMALY_THRESHOLD, "anomaly-threshold"),
+    (cf_config::keys::ANOMALY_WINDOW_SIZE, "anomaly-window"),
+];
+
+/// The `run` flag the configuration key `key` defaults.
+///
+/// ```
+/// use cf_commands::flags::flag_for_config_key;
+///
+/// assert_eq!(flag_for_config_key("history.anomaly.window_size"), Some("anomaly-window"));
+/// assert_eq!(flag_for_config_key("pipeline.workers"), None);
+/// ```
 #[must_use]
-pub fn mark_deprecated_exclusion_flags(cmd: Command) -> Command {
-    cmd.arg(bool_arg("skip-blacklist", "DEPRECATED").hide(true))
-        .arg(str_slice_arg("blacklisted-prefixes", None, "DEPRECATED").hide(true))
+pub fn flag_for_config_key(key: &str) -> Option<&'static str> {
+    CONFIG_KEY_FLAGS
+        .iter()
+        .find(|(k, _)| *k == key)
+        .map(|(_, flag)| *flag)
 }
 
-/// Returns the exact cobra deprecation message for a deprecated flag, or `None`
-/// if the flag is not deprecated. Messages copied verbatim from
-/// `markDeprecatedExclusionFlags`.
-///
-/// ```
-/// use cf_commands::deprecated_flag_message;
-///
-/// // The two legacy exclusion flags carry migration guidance.
-/// assert!(deprecated_flag_message("skip-blacklist")
-///     .unwrap()
-///     .contains("--include-vendored=false"));
-/// assert!(deprecated_flag_message("blacklisted-prefixes")
-///     .unwrap()
-///     .contains("--extra-excluded-prefixes"));
-/// // Any other flag is not deprecated.
-/// assert_eq!(deprecated_flag_message("workers"), None);
-/// ```
+/// Installs every configured `setting` as the default of its `run` flag in
+/// the root `codefang` command `cmd`. A value given on the command line still
+/// wins: clap only falls back to a default when the flag is absent.
 #[must_use]
-pub fn deprecated_flag_message(flag: &str) -> Option<&'static str> {
-    match flag {
-        "skip-blacklist" => Some(
-            "use --include-vendored=false and --include-generated=false \
-(the new defaults). See CHANGELOG for migration.",
-        ),
-        "blacklisted-prefixes" => Some(
-            "use --extra-excluded-prefixes; the old flag name is preserved \
-for back-compat but will be removed in the next minor release.",
-        ),
-        _ => None,
+pub fn with_config_defaults(cmd: Command, settings: &[cf_config::Setting]) -> Command {
+    let defaults: Vec<(&'static str, Vec<&'static str>)> = settings
+        .iter()
+        .filter_map(|s| {
+            let flag = flag_for_config_key(s.key)?;
+            let values = s
+                .value
+                .to_args()
+                .iter()
+                .map(|v| string_to_static_leak(v))
+                .collect();
+            Some((flag, values))
+        })
+        .collect();
+    if defaults.is_empty() {
+        return cmd;
     }
+    cmd.mut_subcommand("run", |mut run| {
+        for (flag, values) in defaults {
+            run = run.mut_arg(flag, |a| a.default_values(values));
+        }
+        run
+    })
 }
 
 /// Registers one clap flag per configuration option exposed by `providers`,
@@ -484,41 +399,15 @@ fn format_go_float_default(v: f64) -> String {
     }
 }
 
-/// `runtime.NumCPU()` analogue — the per-machine goroutine-count default the reference implementation
-/// analyzers derive their `*-goroutines` defaults from (`runtime.NumCPU()` and
-/// `max(NumCPU()/4, 1)`). The live reference binary bakes the host CPU count into its
-/// `--help` defaults, so the Rust surface must compute the same number for the
-/// cli-surface comparison (and for runtime parity) to match.
-fn num_cpu() -> i64 {
-    std::thread::available_parallelism()
-        .map(std::num::NonZeroUsize::get)
-        .unwrap_or(1) as i64
-}
-
-/// The default analyzer configuration options: the FULL reference analyzer option set
-/// produced by `registerAnalyzerFlags` walking `buildPipeline(nil)` Core +
-/// Leaves (every analyzer's `ListConfigurationOptions`). Each entry mirrors the
-/// the reference `ConfigurationOption` (Name / Flag / Type / Default / Description) so the
-/// dynamic clap registration in [`register_analyzer_flags`] reproduces cobra's
-/// flag surface byte-for-byte, and every value lands in the parsed matches that
-/// `cf_commands::run` threads into the handlers via [`crate::pipeline::RunContext`].
-///
-/// The `*-goroutines` defaults are derived from [`num_cpu`] exactly as the reference implementation derives
-/// them from `runtime.NumCPU()`.
+/// The default analyzer configuration options: every per-analyzer option
+/// registered as a `run` flag (Name / Flag / Type / Default / Description).
+/// Every value lands in the parsed matches that `cf_commands::run` threads
+/// into the handlers via [`crate::pipeline::RunContext`].
 #[must_use]
 #[allow(clippy::too_many_lines)]
 pub fn default_analyzer_options() -> Vec<ConfigurationOption> {
-    let ncpu = num_cpu();
-    let uast_goroutines = (ncpu / 4).max(1);
     vec![
-        // --- plumbing/tree_diff ---
-        ConfigurationOption {
-            name: "TreeDiff.FilteredRegexes".into(),
-            flag: "whitelist".into(),
-            description: "Whitelist regexp to determine which files to analyze.".into(),
-            option_type: ConfigurationOptionType::String,
-            default: DefaultValue::String(String::new()),
-        },
+        // --- shared change filter ---
         ConfigurationOption {
             name: "TreeDiff.Languages".into(),
             flag: "languages".into(),
@@ -526,7 +415,7 @@ pub fn default_analyzer_options() -> Vec<ConfigurationOption> {
             option_type: ConfigurationOptionType::Strings,
             default: DefaultValue::Strings(Vec::new()),
         },
-        // --- plumbing/ticks ---
+        // --- shared ticks ---
         ConfigurationOption {
             name: "TicksSinceStart.TickSize".into(),
             flag: "tick-size".into(),
@@ -534,7 +423,7 @@ pub fn default_analyzer_options() -> Vec<ConfigurationOption> {
             option_type: ConfigurationOptionType::Int,
             default: DefaultValue::Int(24),
         },
-        // --- plumbing/identity ---
+        // --- shared identity ---
         ConfigurationOption {
             name: "IdentityDetector.PeopleDictPath".into(),
             flag: "people-dict".into(),
@@ -548,58 +437,6 @@ pub fn default_analyzer_options() -> Vec<ConfigurationOption> {
             description: "Disable separate name/email matching. This will lead to considerably more identities and should not be normally used.".into(),
             option_type: ConfigurationOptionType::Bool,
             default: DefaultValue::Bool(false),
-        },
-        // --- plumbing/blob_cache ---
-        ConfigurationOption {
-            name: "BlobCache.FailOnMissingSubmodules".into(),
-            flag: "fail-on-missing-submodules".into(),
-            description: "Specifies whether to panic if any referenced submodule does not exist in .gitmodules and thus the corresponding Git object cannot be loaded. Override this if you want to ensure that your repository is integral.".into(),
-            option_type: ConfigurationOptionType::Bool,
-            default: DefaultValue::Bool(false),
-        },
-        ConfigurationOption {
-            name: "BlobCache.Goroutines".into(),
-            flag: "blob-cache-goroutines".into(),
-            description: "Number of goroutines to use for parallel blob loading.".into(),
-            option_type: ConfigurationOptionType::Int,
-            default: DefaultValue::Int(ncpu),
-        },
-        // --- plumbing/file_diff ---
-        ConfigurationOption {
-            name: "FileDiff.NoCleanup".into(),
-            flag: "no-diff-cleanup".into(),
-            description: "Do not apply additional heuristics to improve diffs.".into(),
-            option_type: ConfigurationOptionType::Bool,
-            default: DefaultValue::Bool(false),
-        },
-        ConfigurationOption {
-            name: "FileDiff.WhitespaceIgnore".into(),
-            flag: "no-diff-whitespace".into(),
-            description: "Ignore whitespace when computing diffs.".into(),
-            option_type: ConfigurationOptionType::Bool,
-            default: DefaultValue::Bool(false),
-        },
-        ConfigurationOption {
-            name: "FileDiff.Timeout".into(),
-            flag: "diff-timeout".into(),
-            description: "Maximum time in milliseconds a single diff calculation may elapse.".into(),
-            option_type: ConfigurationOptionType::Int,
-            default: DefaultValue::Int(1000),
-        },
-        ConfigurationOption {
-            name: "FileDiff.Goroutines".into(),
-            flag: "diff-goroutines".into(),
-            description: "Number of goroutines to use for diff calculation.".into(),
-            option_type: ConfigurationOptionType::Int,
-            default: DefaultValue::Int(ncpu),
-        },
-        // --- plumbing/uast ---
-        ConfigurationOption {
-            name: "UASTChanges.Goroutines".into(),
-            flag: "uast-changes-goroutines".into(),
-            description: "Number of goroutines to use for parallel UAST parsing (fallback when pipeline is not available).".into(),
-            option_type: ConfigurationOptionType::Int,
-            default: DefaultValue::Int(uast_goroutines),
         },
         // --- burndown ---
         ConfigurationOption {
@@ -630,48 +467,20 @@ pub fn default_analyzer_options() -> Vec<ConfigurationOption> {
             option_type: ConfigurationOptionType::Bool,
             default: DefaultValue::Bool(false),
         },
-        ConfigurationOption {
-            name: "Burndown.HibernationThreshold".into(),
-            flag: "burndown-hibernation-threshold".into(),
-            description: "The minimum size for the allocated memory in each branch to be compressed.".into(),
-            option_type: ConfigurationOptionType::Int,
-            default: DefaultValue::Int(1000),
-        },
-        ConfigurationOption {
-            name: "Burndown.HibernationOnDisk".into(),
-            flag: "burndown-hibernation-disk".into(),
-            description: "If true, save hibernated state to disk (no-op with default treap timeline).".into(),
-            option_type: ConfigurationOptionType::Bool,
-            default: DefaultValue::Bool(true),
-        },
-        ConfigurationOption {
-            name: "Burndown.HibernationDirectory".into(),
-            flag: "burndown-hibernation-dir".into(),
-            description: "Temporary directory for hibernated state (no-op with default treap timeline).".into(),
-            option_type: ConfigurationOptionType::Path,
-            default: DefaultValue::Path(String::new()),
-        },
-        ConfigurationOption {
-            name: "Burndown.Debug".into(),
-            flag: "burndown-debug".into(),
-            description: "Validate the trees at each step.".into(),
-            option_type: ConfigurationOptionType::Bool,
-            default: DefaultValue::Bool(false),
-        },
-        ConfigurationOption {
-            name: "Burndown.Goroutines".into(),
-            flag: "burndown-goroutines".into(),
-            description: "Number of goroutines to use for parallel processing.".into(),
-            option_type: ConfigurationOptionType::Int,
-            default: DefaultValue::Int(ncpu),
-        },
         // --- anomaly ---
         ConfigurationOption {
             name: "TemporalAnomaly.WindowSize".into(),
             flag: "anomaly-window".into(),
-            description: "Sliding window size in ticks for computing rolling statistics.".into(),
+            description: "Trailing window size in ticks for the rolling mean and standard deviation (>= 2).".into(),
             option_type: ConfigurationOptionType::Int,
             default: DefaultValue::Int(20),
+        },
+        ConfigurationOption {
+            name: "TemporalAnomaly.Threshold".into(),
+            flag: "anomaly-threshold".into(),
+            description: "Z-score threshold, in standard deviations, above which a tick is flagged (> 0).".into(),
+            option_type: ConfigurationOptionType::Float,
+            default: DefaultValue::Float(2.0),
         },
         // --- devs ---
         ConfigurationOption {
@@ -694,7 +503,7 @@ pub fn default_analyzer_options() -> Vec<ConfigurationOption> {
             flag: "shotness-dsl-struct".into(),
             description: "UAST DSL query to use for filtering the nodes.".into(),
             option_type: ConfigurationOptionType::String,
-            default: DefaultValue::String("filter(.roles has \"Function\")".into()),
+            default: DefaultValue::String("rfilter(.roles has \"Function\")".into()),
         },
         ConfigurationOption {
             name: "Shotness.DSLName".into(),
@@ -702,6 +511,15 @@ pub fn default_analyzer_options() -> Vec<ConfigurationOption> {
             description: "UAST DSL query to determine the names of the filtered nodes.".into(),
             option_type: ConfigurationOptionType::String,
             default: DefaultValue::String(".props.name".into()),
+        },
+        ConfigurationOption {
+            name: "Shotness.KeepEnded".into(),
+            flag: "shotness-keep-ended".into(),
+            description: "Keep entities whose declaration or file was removed in the report, \
+marked ended, with their counts and couplings (default: drop them)."
+                .into(),
+            option_type: ConfigurationOptionType::Bool,
+            default: DefaultValue::Bool(false),
         },
         // --- typos ---
         ConfigurationOption {
@@ -720,29 +538,6 @@ pub fn default_analyzer_options() -> Vec<ConfigurationOption> {
             default: DefaultValue::Int(20),
         },
     ]
-}
-
-/// Build the `render <store-dir>` [`clap::Command`]. mirrors the reference implementation
-/// `buildRenderCommand`: `Args = ExactArgs(1)` and the `--output`/`-o` flag.
-#[must_use]
-pub fn build_render_command() -> Command {
-    Command::new(render_consts::USE)
-        .about(render_consts::SHORT)
-        .arg(
-            Arg::new("store-dir")
-                .value_name("store-dir")
-                .required(true)
-                .num_args(1)
-                .help("Directory containing stored analysis results"),
-        )
-        .arg(
-            Arg::new(render_consts::OUTPUT_FLAG)
-                .long(render_consts::OUTPUT_FLAG)
-                .short(render_consts::OUTPUT_SHORT)
-                .action(ArgAction::Set)
-                .default_value("")
-                .help(render_consts::OUTPUT_USAGE),
-        )
 }
 
 /// Build the `completion` [`clap::Command`] with the four shell subcommands
@@ -803,33 +598,6 @@ fn bool_arg(name: &'static str, help: &'static str) -> Arg {
         .action(ArgAction::SetTrue)
         // cobra pflag accepts repeated flags (last occurrence wins); clap
         // errors on duplicates unless the arg overrides itself.
-        .overrides_with(name)
-}
-
-/// A tri-state boolean flag, the Rust analogue of cobra's `Flags().Bool(..)`
-/// read through `Changed` (`parseBoolFlag`): default `default`, the bare
-/// `--flag` form sets `true`, `--flag=false` negates, and the caller
-/// distinguishes "set by user" from "default" via
-/// [`clap::ArgMatches::value_source`] (cobra `Changed`).
-///
-/// `require_equals(true)` is load-bearing for surface parity: a cobra `Bool`
-/// flag advertises NO value placeholder in `--help` (it is `takes_value=false`
-/// in the cli-surface comparison), and `require_equals` makes clap render
-/// `--flag[=<flag>]` — the `[=<` form the surface extractor reads as
-/// value-less — instead of the `[<flag>]` (value-taking) form a plain
-/// `num_args(0..=1)` would print. The explicit `--flag=false` value still
-/// parses, matching cobra (the analyzer matrix passes `--checkpoint=false`).
-fn tristate_bool_arg(name: &'static str, default: bool, help: &'static str) -> Arg {
-    Arg::new(name)
-        .long(name)
-        .help(help)
-        .action(ArgAction::Set)
-        .num_args(0..=1)
-        .require_equals(true)
-        .default_value(if default { "true" } else { "false" })
-        .default_missing_value("true")
-        .value_parser(clap::value_parser!(bool))
-        // cobra pflag last-wins on repeated flags.
         .overrides_with(name)
 }
 
@@ -901,37 +669,86 @@ mod tests {
         build_run_command()
     }
 
-    // --- TestRunCommandConfig_Defaults ---
     #[test]
-    fn run_defaults_format_gogc_ballast() {
+    fn run_defaults_format_json() {
         let m = run().try_get_matches_from(["run"]).expect("defaults parse");
         assert_eq!(m.get_one::<String>("format").unwrap(), "json");
-        assert_eq!(*m.get_one::<i64>("gogc").unwrap(), 0);
-        assert_eq!(m.get_one::<String>("ballast-size").unwrap(), "0");
     }
 
-    // --- TestRunCommandConfig_PathFlag ---
+    /// Flags with no effect on any report are not accepted: an accepted-and-
+    /// ignored flag is a bug.
+    #[test]
+    fn inert_flags_are_rejected() {
+        for flag in [
+            "--workers=1",
+            "--static-workers=1",
+            "--input=x",
+            "--input-format=json",
+            "--gogc=1",
+            "--ballast-size=1",
+            "--cpuprofile=x",
+            "--heapprofile=x",
+            "--buffer-size=1",
+            "--commit-batch-size=1",
+            "--blob-cache-size=1",
+            "--diff-cache-size=1",
+            "--blob-arena-size=1",
+            "--diagnostics-addr=:1",
+            "--keep-store",
+            "--tmp-dir=x",
+            "--whitelist=x",
+            "--fail-on-missing-submodules",
+            "--blob-cache-goroutines=1",
+            "--no-diff-cleanup",
+            "--no-diff-whitespace",
+            "--diff-timeout=1",
+            "--diff-goroutines=1",
+            "--uast-changes-goroutines=1",
+            "--burndown-hibernation-threshold=1",
+            "--burndown-hibernation-disk",
+            "--burndown-hibernation-dir=x",
+            "--burndown-debug",
+            "--burndown-goroutines=1",
+            // No checkpoint store, incremental cache or trace exporter is
+            // linked into the binary.
+            "--checkpoint",
+            "--checkpoint=false",
+            "--checkpoint-dir=x",
+            "--resume",
+            "--resume=false",
+            "--clear-checkpoint",
+            "--cache-dir=x",
+            "--no-cache",
+            "--debug-trace",
+            // The hidden deprecated spellings were accepted and ignored.
+            "--skip-blacklist",
+            "--blacklisted-prefixes=x",
+        ] {
+            assert!(
+                run().try_get_matches_from(["run", flag]).is_err(),
+                "{flag} must not be accepted"
+            );
+        }
+    }
+
     #[test]
     fn run_default_path_is_dot() {
         let m = run().try_get_matches_from(["run"]).unwrap();
         assert_eq!(m.get_one::<String>("path").unwrap(), ".");
     }
 
-    // --- TestRunCommandConfig_OutputFlag ---
     #[test]
     fn run_default_output_is_empty() {
         let m = run().try_get_matches_from(["run"]).unwrap();
         assert_eq!(m.get_one::<String>("output").unwrap(), "");
     }
 
-    // --- TestRunCommandConfig_NDJSONFlag ---
     #[test]
     fn run_default_ndjson_false() {
         let m = run().try_get_matches_from(["run"]).unwrap();
         assert!(!m.get_flag("ndjson"));
     }
 
-    // --- TestRunCommandConfig_PerFileFlag ---
     #[test]
     fn run_default_per_file_false_with_short_flag() {
         let m = run().try_get_matches_from(["run", "-F"]).unwrap();
@@ -940,7 +757,6 @@ mod tests {
         assert!(!m2.get_flag("per-file"));
     }
 
-    // --- TestRunCommandConfig_ExclusionFlags ---
     #[test]
     fn run_default_exclusion_flags_false() {
         let m = run().try_get_matches_from(["run"]).unwrap();
@@ -948,44 +764,14 @@ mod tests {
         assert!(!m.get_flag("include-generated"));
     }
 
-    // --- TestRunCommandConfig_PersistenceFlags (defaults true) ---
-    #[test]
-    fn run_persistence_defaults_true() {
-        let m = run().try_get_matches_from(["run"]).unwrap();
-        assert!(*m.get_one::<bool>("checkpoint").unwrap());
-        assert!(*m.get_one::<bool>("resume").unwrap());
-    }
-
-    // --- Tri-state: --checkpoint=false sets value AND marks as user-supplied ---
-    #[test]
-    fn checkpoint_tristate_distinguishes_user_set() {
-        let m = run()
-            .try_get_matches_from(["run", "--checkpoint=false"])
-            .unwrap();
-        assert!(!*m.get_one::<bool>("checkpoint").unwrap());
-        assert_eq!(
-            m.value_source("checkpoint"),
-            Some(clap::parser::ValueSource::CommandLine),
-            "explicit --checkpoint should report CommandLine (reference: Changed==true)"
-        );
-        // Not supplied -> DefaultValue (reference: Changed==false -> parseBoolFlag nil).
-        let m2 = run().try_get_matches_from(["run"]).unwrap();
-        assert_eq!(
-            m2.value_source("checkpoint"),
-            Some(clap::parser::ValueSource::DefaultValue)
-        );
-    }
-
-    // --- TestRunCommandConfig_AnalyzerFlags (burndown --granularity registered) ---
-    // the reference implementation renamed --burndown-granularity to --granularity (the cobra flag is
-    // "granularity"); the dynamic registration must expose that name.
+    /// `--granularity` is the flag name (the Go-era `--burndown-granularity`
+    /// spelling is gone).
     #[test]
     fn run_registers_dynamic_burndown_flag() {
         let m = run()
             .try_get_matches_from(["run", "--granularity", "60"])
             .unwrap();
         assert_eq!(*m.get_one::<i64>("granularity").unwrap(), 60);
-        // The old name must be gone (reference: dropped it).
         assert!(
             run()
                 .try_get_matches_from(["run", "--burndown-granularity", "60"])
@@ -994,52 +780,34 @@ mod tests {
         );
     }
 
-    // The new analyzer flags are registered with reference-exact names/defaults.
     #[test]
-    fn run_registers_new_analyzer_flags() {
+    fn run_registers_analyzer_flags() {
         let m = run().try_get_matches_from(["run"]).unwrap();
         assert_eq!(*m.get_one::<i64>("anomaly-window").unwrap(), 20);
+        assert!((*m.get_one::<f64>("anomaly-threshold").unwrap() - 2.0).abs() < f64::EPSILON);
         assert_eq!(*m.get_one::<i64>("sampling").unwrap(), 30);
         assert_eq!(*m.get_one::<i64>("tick-size").unwrap(), 24);
         assert_eq!(*m.get_one::<i64>("typos-max-distance").unwrap(), 4);
         assert_eq!(*m.get_one::<i64>("min-comment-len").unwrap(), 20);
-        assert_eq!(*m.get_one::<i64>("diff-timeout").unwrap(), 1000);
-        assert_eq!(
-            *m.get_one::<i64>("burndown-hibernation-threshold").unwrap(),
-            1000
-        );
-        assert!(*m.get_one::<bool>("burndown-hibernation-disk").unwrap());
         assert!(!m.get_flag("anonymize"));
+        assert!(!*m.get_one::<bool>("exact-signatures").unwrap());
+        assert_eq!(
+            m.get_one::<String>("shotness-dsl-struct").unwrap(),
+            "rfilter(.roles has \"Function\")"
+        );
         assert_eq!(
             m.get_one::<String>("shotness-dsl-name").unwrap(),
             ".props.name"
         );
         assert_eq!(m.get_one::<String>("people-dict").unwrap(), "");
-        assert_eq!(m.get_one::<String>("whitelist").unwrap(), "");
     }
 
-    // --checkpoint=false still parses (the analyzer matrix passes it) and reports
-    // a CommandLine source (reference: Changed==true) — surface is value-less.
-    #[test]
-    fn checkpoint_value_form_still_parses() {
-        let m = run()
-            .try_get_matches_from(["run", "--checkpoint=false"])
-            .unwrap();
-        assert!(!*m.get_one::<bool>("checkpoint").unwrap());
-        assert_eq!(
-            m.value_source("checkpoint"),
-            Some(clap::parser::ValueSource::CommandLine)
-        );
-    }
-
-    // --- TestRunCommandConfig_DryRunOmitted ---
     #[test]
     fn run_has_no_dry_run_flag() {
         let parsed = run().try_get_matches_from(["run", "--dry-run"]);
         assert!(parsed.is_err(), "--dry-run must not exist");
     }
 
-    // --- analyzers short -a, comma-split ---
     #[test]
     fn analyzers_short_and_comma_split() {
         let m = run()
@@ -1049,7 +817,6 @@ mod tests {
         assert_eq!(vals, vec!["history/anomaly", "history/devs"]);
     }
 
-    // --- positional [path] (MaximumNArgs(1)) ---
     #[test]
     fn run_accepts_one_positional_path() {
         let m = run().try_get_matches_from(["run", "/repo"]).unwrap();
@@ -1062,38 +829,9 @@ mod tests {
     #[test]
     fn run_rejects_two_positionals() {
         let parsed = run().try_get_matches_from(["run", "/a", "/b"]);
-        assert!(parsed.is_err(), "MaximumNArgs(1) must reject 2 positionals");
+        assert!(parsed.is_err(), "at most one positional path");
     }
 
-    // --- deprecated flags exist (hidden) with exact messages ---
-    #[test]
-    fn deprecated_flags_present_and_hidden() {
-        let m = run()
-            .try_get_matches_from(["run", "--skip-blacklist"])
-            .unwrap();
-        assert!(m.get_flag("skip-blacklist"));
-    }
-
-    #[test]
-    fn deprecated_messages_are_verbatim() {
-        assert_eq!(
-            deprecated_flag_message("skip-blacklist"),
-            Some(
-                "use --include-vendored=false and --include-generated=false \
-(the new defaults). See CHANGELOG for migration."
-            )
-        );
-        assert_eq!(
-            deprecated_flag_message("blacklisted-prefixes"),
-            Some(
-                "use --extra-excluded-prefixes; the old flag name is preserved \
-for back-compat but will be removed in the next minor release."
-            )
-        );
-        assert_eq!(deprecated_flag_message("nope"), None);
-    }
-
-    // --- register_analyzer_flags dedupes by flag name ---
     #[test]
     fn dynamic_flags_dedupe_by_flag_name() {
         let a = vec![ConfigurationOption {
@@ -1105,7 +843,7 @@ for back-compat but will be removed in the next minor release."
         }];
         let b = vec![ConfigurationOption {
             name: "Other".into(),
-            flag: "g".into(), // duplicate flag -> ignored (reference: registeredFlags set)
+            flag: "g".into(),
             description: "second".into(),
             option_type: ConfigurationOptionType::Int,
             default: DefaultValue::Int(2),
@@ -1118,7 +856,6 @@ for back-compat but will be removed in the next minor release."
         assert_eq!(*m.get_one::<i64>("g").unwrap(), 1);
     }
 
-    // --- kind/default mismatch is skipped ---
     #[test]
     fn dynamic_flag_kind_mismatch_skipped() {
         let bad = vec![ConfigurationOption {
@@ -1130,38 +867,100 @@ for back-compat but will be removed in the next minor release."
         }];
         let p: &dyn ConfigOptionProvider = &bad;
         let cmd = register_analyzer_flags(Command::new("t"), &[p]);
-        // The flag must not have been added.
         let parsed = cmd.try_get_matches_from(["t", "--x", "1"]);
         assert!(parsed.is_err());
     }
 
-    // --- render command: ExactArgs(1) + --output/-o ---
+    /// Every supported configuration key defaults exactly one existing `run`
+    /// flag, in key order.
     #[test]
-    fn render_requires_store_dir_and_has_output() {
-        let m = build_render_command()
-            .try_get_matches_from(["render", "/store", "-o", "/out"])
+    fn every_config_key_maps_to_a_run_flag() {
+        let keys: Vec<&str> = CONFIG_KEY_FLAGS.iter().map(|(k, _)| *k).collect();
+        assert_eq!(keys, cf_config::KEYS);
+        let cmd = run();
+        for (key, flag) in CONFIG_KEY_FLAGS {
+            assert!(
+                cmd.get_arguments().any(|a| a.get_id() == *flag),
+                "{key} maps to the missing flag --{flag}"
+            );
+        }
+    }
+
+    /// The root command with `settings` installed, parsed from `args`.
+    fn root_with(settings: &[cf_config::Setting], args: &[&str]) -> clap::ArgMatches {
+        let root = Command::new("codefang").subcommand(run());
+        let m = with_config_defaults(root, settings)
+            .try_get_matches_from(args)
             .unwrap();
-        assert_eq!(m.get_one::<String>("store-dir").unwrap(), "/store");
-        assert_eq!(m.get_one::<String>("output").unwrap(), "/out");
+        m.subcommand_matches("run").unwrap().clone()
     }
 
     #[test]
-    fn render_rejects_missing_store_dir() {
-        let parsed = build_render_command().try_get_matches_from(["render"]);
-        assert!(parsed.is_err(), "render requires exactly one store-dir arg");
+    fn configured_values_become_flag_defaults_and_explicit_flags_win() {
+        use cf_config::{keys, Setting, Value};
+        let settings = [
+            Setting {
+                key: keys::ANALYZERS,
+                value: Value::List(vec!["history/devs".into(), "history/anomaly".into()]),
+            },
+            Setting {
+                key: keys::ANOMALY_WINDOW_SIZE,
+                value: Value::Int(3),
+            },
+            Setting {
+                key: keys::ANOMALY_THRESHOLD,
+                value: Value::Float(1.5),
+            },
+            Setting {
+                key: keys::DEVS_ANONYMIZE,
+                value: Value::Bool(true),
+            },
+            Setting {
+                key: keys::SHOTNESS_DSL_NAME,
+                value: Value::Text(".props.id".into()),
+            },
+        ];
+        let m = root_with(&settings, &["codefang", "run"]);
+        let ids: Vec<&String> = m.get_many::<String>("analyzers").unwrap().collect();
+        assert_eq!(ids, vec!["history/devs", "history/anomaly"]);
+        assert_eq!(*m.get_one::<i64>("anomaly-window").unwrap(), 3);
+        assert!((*m.get_one::<f64>("anomaly-threshold").unwrap() - 1.5).abs() < f64::EPSILON);
+        assert!(*m.get_one::<bool>("anonymize").unwrap());
+        assert_eq!(
+            m.get_one::<String>("shotness-dsl-name").unwrap(),
+            ".props.id"
+        );
+        assert_eq!(
+            m.value_source("anomaly-window"),
+            Some(clap::parser::ValueSource::DefaultValue)
+        );
+
+        let m = root_with(
+            &settings,
+            &[
+                "codefang",
+                "run",
+                "-a",
+                "static/complexity",
+                "--anomaly-window",
+                "9",
+                "--anonymize=false",
+            ],
+        );
+        let ids: Vec<&String> = m.get_many::<String>("analyzers").unwrap().collect();
+        assert_eq!(ids, vec!["static/complexity"]);
+        assert_eq!(*m.get_one::<i64>("anomaly-window").unwrap(), 9);
+        assert!(!*m.get_one::<bool>("anonymize").unwrap());
+        assert_eq!(
+            m.value_source("anomaly-window"),
+            Some(clap::parser::ValueSource::CommandLine)
+        );
     }
 
     #[test]
-    fn render_rejects_two_args() {
-        let parsed = build_render_command().try_get_matches_from(["render", "/a", "/b"]);
-        assert!(parsed.is_err(), "render ExactArgs(1)");
-    }
-
-    #[test]
-    fn render_default_output_empty() {
-        let m = build_render_command()
-            .try_get_matches_from(["render", "/store"])
-            .unwrap();
-        assert_eq!(m.get_one::<String>("output").unwrap(), "");
+    fn no_settings_leave_the_command_unchanged() {
+        let m = root_with(&[], &["codefang", "run"]);
+        assert_eq!(*m.get_one::<i64>("anomaly-window").unwrap(), 20);
+        assert!(m.get_many::<String>("analyzers").is_none());
     }
 }

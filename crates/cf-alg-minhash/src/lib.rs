@@ -110,7 +110,28 @@ impl Signature {
     /// each function the running minimum is lowered if the mixed value is
     /// smaller. An empty token is valid and still updates the minimums.
     pub fn add(&mut self, token: &[u8]) {
-        let base_hash = fnv64a(token);
+        self.add_hash(fnv64a(token));
+    }
+
+    /// Updates all hash function minimums with a pre-computed FNV-1a base
+    /// hash — the value [`cf_alg_hashutil::fnv64a`] returns for a token.
+    ///
+    /// [`Signature::add`] is exactly `add_hash(fnv64a(token))`; callers that
+    /// already hash every token once for their own bookkeeping (e.g. an exact
+    /// shingle set kept next to the signature) use this to avoid hashing
+    /// twice.
+    ///
+    /// ```
+    /// use cf_alg_hashutil::fnv64a;
+    /// use cf_alg_minhash::Signature;
+    ///
+    /// let mut by_token = Signature::new(16).unwrap();
+    /// let mut by_hash = Signature::new(16).unwrap();
+    /// by_token.add(b"shingle");
+    /// by_hash.add_hash(fnv64a(b"shingle"));
+    /// assert_eq!(by_token.bytes(), by_hash.bytes());
+    /// ```
+    pub fn add_hash(&mut self, base_hash: u64) {
         for (min, &seed) in self.mins.iter_mut().zip(self.seeds.iter()) {
             let h = mix_hash(base_hash, seed);
             if h < *min {

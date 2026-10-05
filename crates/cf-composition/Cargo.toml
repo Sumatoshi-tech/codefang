@@ -8,18 +8,10 @@ repository.workspace = true
 publish = false
 
 [dependencies]
-# Report-format JSON serialization (byte-identity contract, pinned by
-# tests/compat). NEVER serde_json for output.
+# Report-format JSON values (GoValue / GoMap). Never serde_json for output.
 cf-gojson = { workspace = true }
-# Report-format YAML serialization (same contract). NEVER serde_yaml for output.
-cf-goyaml = { workspace = true }
-# enry v2.1.0 language data (languages-by-extension) — drives the
-# configuration-file predicate byte-for-byte instead of a hand-rolled
-# extension list.
+# enry v2.1.0 language data: drives the configuration / prose / source
+# predicates from the real extension and filename tables.
 cf-langpath = { path = "../cf-langpath" }
-# enry v2.1.0 vendor regex table (`enry.IsVendor` reproduction) — drives the
-# vendor predicate byte-for-byte instead of a hand-rolled prefix subset.
+# enry v2.1.0 vendor regex table (`enry.IsVendor` reproduction).
 cf-pathfilter = { path = "../cf-pathfilter" }
-
-[dev-dependencies]
-serde_json = { workspace = true }

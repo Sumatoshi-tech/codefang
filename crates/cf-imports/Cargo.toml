@@ -6,20 +6,24 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "Import/dependency analysis: static import IDs (`imports`) plus per-developer/per-language import usage history (`ImportsPerDeveloper`, id `history/imports`, additive merge)."
+description = "Import/dependency analysis: language-aware import extraction over the UAST (`static/imports`) plus per-developer/per-language import usage history (`history/imports`, additive merge)."
 
 [dependencies]
-# Report-format JSON encoder: models struct-declaration key order vs byte-sorted
-# map keys and nil-slice -> JSON `null`. `ComputedMetrics::to_go_value` builds a
-# struct-origin `GoValue` so json/bin output keeps the pinned report contract
-# (e.g. `dependencies:null` for the empty report, and declaration field order
-# import_list/categories/dependencies/aggregate rather than byte-sorted order).
-# Pinned by the differential gate in tests/compat.
+# Spill encoding of finished history results (cf-commands `spill`).
+serde = { workspace = true }
+# Report-format JSON encoder: `ComputedMetrics::to_go_value` builds a
+# struct-origin `GoValue` so json/yaml/bin output keeps declaration field order
+# (import_list/categories/dependencies/aggregate) and `dependencies: null` for
+# the empty report.
 cf-gojson = { workspace = true }
-# CFB1 `bin` envelope: "CFB1" + LE u32 len + compact JSON payload. Routes
-# through cf-gojson internally.
-cf-reportutil = { path = "../cf-reportutil" }
-#
-# This crate intentionally carries minimal local shims (`node`, `report`) so the
-# analyzer logic and its tests stand alone and verifiable; the canonical types
-# live in cf-uast-node / cf-reportutil and the pipeline crates.
+# The canonical UAST node the extractor walks (type, token, roles, positions,
+# children). The parser facade (cf-uast) is only needed to BUILD trees, which
+# the callers and the tests do.
+cf-uast-node = { path = "../cf-uast-node" }
+
+[dev-dependencies]
+# Real tree-sitter parses for the per-language extraction tests: every
+# expectation is asserted against the tree the production parser produces.
+cf-uast = { path = "../cf-uast" }
+# The yaml rendering of the history report is asserted alongside the json one.
+cf-goyaml = { path = "../cf-goyaml" }

@@ -3,7 +3,7 @@
 //! Field declaration order is part of the report-format contract: the wrapper
 //! structs are emitted in source order by [`cf_gojson`] (a `GoMap` built
 //! field-by-field reproduces struct-origin ordering, while dynamic map
-//! payloads are byte-sorted on encode). Pinned by `tests/compat`.
+//! payloads are byte-sorted on encode). Pinned by the report e2e suites (`bins/codefang/tests`).
 
 use std::collections::BTreeMap;
 
@@ -201,8 +201,9 @@ pub struct BusFactorData {
     pub primary_dev_email: String,
     /// Primary contributor percentage of total contribution.
     pub primary_pct: f64,
-    /// Secondary contributor id (omitted when zero).
-    pub secondary_dev_id: i64,
+    /// Secondary contributor id; `None` when the language has one
+    /// contributor. Emitted whenever present — id 0 is a real developer.
+    pub secondary_dev_id: Option<i64>,
     /// Secondary contributor name (omitted when empty).
     pub secondary_dev_name: String,
     /// Secondary contributor email (omitted when empty).

@@ -26,7 +26,7 @@
 //! Parsing on read uses `serde_json` (decoding never affects output bytes).
 //!
 //! Compatibility: output bytes are pinned against the reference implementation
-//! by `tests/compat`.
+//! by the report e2e suites (`bins/codefang/tests`).
 //!
 //! # Example
 //!

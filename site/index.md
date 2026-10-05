@@ -86,11 +86,11 @@ analysis of entire repositories. One tool, one config, complete understanding.
   Capabilities
   ──────────────────────────────────────────────────────────────────────────────
   UAST Parsing         ████████████████████  60+ languages via Tree-sitter
-  Static Analysis      ████████████████████  5 analyzers (complexity, cohesion, …)
-  History Analysis     ████████████████████  9 analyzers (burndown, devs, …)
-  Output Formats       ████████████████████  JSON, YAML, text, compact, plot, binary
-  Streaming Pipeline   ████████████████████  Bounded-memory, checkpointed
-  Observability        ████████████████████  OpenTelemetry traces + metrics
+  Static Analysis      ████████████████████  7 analyzers (complexity, cohesion, …)
+  History Analysis     ████████████████████  10 analyzers (burndown, devs, …)
+  Output Formats       ████████████████████  JSON, YAML, NDJSON, time series, text, compact, plot, binary
+  History Pipeline     ████████████████████  Parallel per-commit work, one chronological reduce
+  Determinism          ████████████████████  Byte-identical output across runs and machines
 ```
 
 ---
@@ -212,7 +212,7 @@ codefang (v2):
 
     [Overview](architecture/overview.md) ·
     [UAST System](architecture/uast.md) ·
-    [Streaming Pipeline](architecture/streaming-pipeline.md)
+    [History Pipeline](architecture/streaming-pipeline.md)
 
 - :material-puzzle-outline:{ .lg .middle } **Integrations**
 

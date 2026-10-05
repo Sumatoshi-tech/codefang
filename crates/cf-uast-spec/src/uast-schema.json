@@ -98,7 +98,16 @@
         "Match",
         "Return",
         "Break",
-        "Continue"
+        "Continue",
+        "Case",
+        "Cast",
+        "Defer",
+        "Else",
+        "EnumMember",
+        "Export",
+        "For",
+        "Method",
+        "Switch"
       ]
     },
     "NodeType": {
@@ -163,6 +172,11 @@
         "Comprehension",
         "Pattern",
         "Match",
+        "Annotation",
+        "Defer",
+        "Export",
+        "MemberAccess",
+        "TypeDeclaration",
         "Synthetic"
       ]
     }

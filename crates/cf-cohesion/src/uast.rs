@@ -1,14 +1,23 @@
-//! UAST node abstraction used by the cohesion analyzer.
+//! UAST node inspection for the cohesion analyzer.
 //!
-//! This module defines the **minimal trait surface** the cohesion analyzer
-//! needs; the production implementation is provided for `cf_uast_node::Node`
-//! below, and tests use [`TestNode`].
+//! Everything the analyzer needs to know about a [`Node`] lives here: which
+//! nodes are functions, which are identifiers, how an identifier's name is
+//! resolved, and the small structural predicates (type-role identifiers,
+//! declarations, calls, class-like scopes) the variable rules are written in.
 //!
-//! # Constants
+//! # Name resolution
 //!
-//! The string constants below are the canonical UAST type/role names. They
-//! must match `cf-uast-node` exactly because they select which AST nodes count
-//! as functions / variables, which in turn determines the report bytes.
+//! Mappings differ in where an identifier's text ends up. Most grammars put it
+//! in the node's `token`; some carry it only as `props["name"]`; and a few
+//! (the Rust mapping in its current form) leave identifier nodes token-less
+//! while an ancestor — the function, a field access — carries the full source
+//! text of its span. The resolver tries, in order: `props["name"]`, the token,
+//! and finally the identifier's source text sliced out of the nearest enclosing
+//! [`Anchor`] by byte offsets. An anchor is only taken from a node whose token
+//! is exactly its source span, so slicing can never produce text from
+//! somewhere else.
+
+use cf_uast_node::Node;
 
 /// UAST node *type* names referenced by cohesion.
 pub mod ty {
@@ -20,8 +29,20 @@ pub mod ty {
     pub const VARIABLE: &str = "Variable";
     /// `Parameter` type.
     pub const PARAMETER: &str = "Parameter";
+    /// `Field` type.
+    pub const FIELD: &str = "Field";
     /// `Identifier` type.
     pub const IDENTIFIER: &str = "Identifier";
+    /// `Call` type.
+    pub const CALL: &str = "Call";
+    /// `Class` type.
+    pub const CLASS: &str = "Class";
+    /// `Struct` type.
+    pub const STRUCT: &str = "Struct";
+    /// `Interface` type.
+    pub const INTERFACE: &str = "Interface";
+    /// `Enum` type.
+    pub const ENUM: &str = "Enum";
 }
 
 /// UAST *role* names referenced by cohesion.
@@ -34,181 +55,244 @@ pub mod role {
     pub const VARIABLE: &str = "Variable";
     /// `Name` role.
     pub const NAME: &str = "Name";
+    /// `Reference` role.
+    pub const REFERENCE: &str = "Reference";
+    /// `Type` role.
+    pub const TYPE: &str = "Type";
+    /// `Call` role.
+    pub const CALL: &str = "Call";
 }
 
-/// The subset of UAST node behavior the cohesion analyzer relies on.
-///
-/// Implementations come from the UAST parser; tests use [`TestNode`].
-pub trait Node {
-    /// Child nodes, in source order.
-    fn children(&self) -> &[Self]
-    where
-        Self: Sized;
+/// The `props` key carrying a node's declared name.
+pub const NAME_PROP: &str = "name";
 
-    /// True if the node's type is any of `types`.
-    fn has_any_type(&self, types: &[&str]) -> bool;
+/// Identifier spellings of the implicit method receiver. They are shared by
+/// every method by construction, so counting them would inflate cohesion
+/// uniformly; they are never variables.
+pub const RECEIVER_KEYWORDS: [&str; 2] = ["self", "this"];
 
-    /// True if the node has any of `roles`.
-    fn has_any_role(&self, roles: &[&str]) -> bool;
-
-    /// True if the node has *all* of `roles`.
-    fn has_all_roles(&self, roles: &[&str]) -> bool;
-
-    /// The entity name carried by this node, if any. Empty string means
-    /// "no name".
-    ///
-    /// Returns an owned `String` because the real UAST implementation derives
-    /// the name from props/token/child, which is not a borrow of any single
-    /// field.
-    fn entity_name(&self) -> String;
-
-    /// Number of source lines spanned by the node (recursive; see the
-    /// `cf_uast_node::Node` impl).
-    fn count_lines(&self) -> i64;
+/// Source text of a node whose token is exactly its span, used to recover the
+/// text of token-less identifiers below it by byte offsets.
+#[derive(Debug, Clone, Copy)]
+pub struct Anchor<'a> {
+    text: &'a str,
+    start: u64,
 }
 
-/// A simple in-memory [`Node`] implementation for unit tests, covering enough
-/// of the UAST node shape to drive the cohesion algorithm.
-#[derive(Debug, Clone, Default)]
-pub struct TestNode {
-    /// Node type names.
-    pub types: Vec<String>,
-    /// Node role names.
-    pub roles: Vec<String>,
-    /// Entity name (empty = none).
-    pub name: String,
-    /// Source line span.
-    pub lines: i64,
-    /// Children.
-    pub children: Vec<TestNode>,
-}
-
-impl TestNode {
-    /// Builds a function node of the given name with the given child nodes.
+impl<'a> Anchor<'a> {
+    /// An anchor over `n`, when `n` has a position and its token is exactly
+    /// as long as its byte span (i.e. the token *is* the source text).
     #[must_use]
-    pub fn function(name: &str, lines: i64, children: Vec<TestNode>) -> Self {
-        TestNode {
-            types: vec![ty::FUNCTION.to_string()],
-            roles: vec![role::FUNCTION.to_string()],
-            name: name.to_string(),
-            lines,
-            children,
+    pub fn of(n: &'a Node) -> Option<Self> {
+        let pos = n.pos.as_ref()?;
+        let span = pos.end_offset.checked_sub(pos.start_offset)?;
+        if n.token.is_empty() || n.token.len() as u64 != span {
+            return None;
         }
+        Some(Anchor {
+            text: &n.token,
+            start: pos.start_offset,
+        })
     }
 
-    /// Builds a variable-declaration node.
+    /// The source text of `n` inside this anchor, when `n` lies within it.
     #[must_use]
-    pub fn variable(name: &str) -> Self {
-        TestNode {
-            types: vec![ty::VARIABLE.to_string()],
-            roles: vec![role::DECLARATION.to_string()],
-            name: name.to_string(),
-            lines: 1,
-            children: vec![],
-        }
-    }
-
-    /// Builds a variable *identifier* node.
-    #[must_use]
-    pub fn identifier(name: &str) -> Self {
-        TestNode {
-            types: vec![ty::IDENTIFIER.to_string()],
-            roles: vec![role::VARIABLE.to_string()],
-            name: name.to_string(),
-            lines: 1,
-            children: vec![],
-        }
-    }
-
-    /// Builds a plain container node with children.
-    #[must_use]
-    pub fn block(children: Vec<TestNode>) -> Self {
-        TestNode {
-            children,
-            ..Default::default()
-        }
+    pub fn slice(&self, n: &Node) -> Option<&'a str> {
+        let pos = n.pos.as_ref()?;
+        let lo = usize::try_from(pos.start_offset.checked_sub(self.start)?).ok()?;
+        let hi = usize::try_from(pos.end_offset.checked_sub(self.start)?).ok()?;
+        self.text.get(lo..hi).filter(|s| !s.is_empty())
     }
 }
 
-// === Real UAST node adapter ===
-//
-// Implements the cohesion [`Node`] surface for the shared `cf_uast_node::Node`,
-// so the static pipeline can drive the analyzer over parsed source.
-
-impl Node for cf_uast_node::Node {
-    fn children(&self) -> &[Self] {
-        &self.children
-    }
-
-    fn has_any_type(&self, types: &[&str]) -> bool {
-        cf_uast_node::Node::has_any_type(self, types)
-    }
-
-    fn has_any_role(&self, roles: &[&str]) -> bool {
-        cf_uast_node::Node::has_any_role(self, roles)
-    }
-
-    fn has_all_roles(&self, roles: &[&str]) -> bool {
-        cf_uast_node::Node::has_all_roles(self, roles)
-    }
-
-    fn entity_name(&self) -> String {
-        extract_entity_name(self).unwrap_or_default()
-    }
-
-    fn count_lines(&self) -> i64 {
-        // (end_line - start_line + 1) for this node when a position is
-        // present, plus the recursive sum over children (report contract:
-        // nested spans are double-counted on purpose).
-        let mut total: i64 = 0;
-        if let Some(pos) = &self.pos {
-            total = pos.end_line as i64 - pos.start_line as i64 + 1;
-        }
-        for child in &self.children {
-            total += Node::count_lines(child);
-        }
-        total
-    }
-}
-
-/// The shared entity-name chain: try the `name` prop, then a non-empty token,
-/// then the first child's token / `name` prop.
-fn extract_entity_name(n: &cf_uast_node::Node) -> Option<String> {
-    if let Some(name) = n.props.get("name") {
+/// Resolves the name an identifier node stands for: `props["name"]`, else
+/// its token, else its source text under `anchor`. `None` when the node
+/// carries no recoverable name.
+#[must_use]
+pub fn identifier_name(n: &Node, anchor: Option<Anchor<'_>>) -> Option<String> {
+    if let Some(name) = n.props.get(NAME_PROP) {
         return Some(name.clone());
     }
     if !n.token.is_empty() {
         return Some(n.token.clone());
     }
-    let child = n.children.first()?;
-    if !child.token.is_empty() {
-        return Some(child.token.clone());
-    }
-    child.props.get("name").cloned()
+    anchor.and_then(|a| a.slice(n)).map(str::to_owned)
 }
 
-impl Node for TestNode {
-    fn children(&self) -> &[Self] {
-        &self.children
+/// The declared name a node carries in its props, if any.
+#[must_use]
+pub fn declared_name(n: &Node) -> Option<&str> {
+    n.props.get(NAME_PROP).map(String::as_str)
+}
+
+/// True for function nodes: type `Function`/`Method`, or the role pair
+/// `{Function, Declaration}`.
+#[must_use]
+pub fn is_function(n: &Node) -> bool {
+    n.has_any_type(&[ty::FUNCTION, ty::METHOD])
+        || n.has_all_roles(&[role::FUNCTION, role::DECLARATION])
+}
+
+/// True for `Method` nodes (functions that may carry a receiver).
+#[must_use]
+pub fn is_method(n: &Node) -> bool {
+    n.has_any_type(&[ty::METHOD])
+}
+
+/// True for `Identifier` nodes.
+#[must_use]
+pub fn is_identifier(n: &Node) -> bool {
+    n.has_any_type(&[ty::IDENTIFIER])
+}
+
+/// True for identifiers that name a type (role `Type`): `int`, `Config`,
+/// `i32`, `Self`.
+#[must_use]
+pub fn is_type_identifier(n: &Node) -> bool {
+    is_identifier(n) && n.has_any_role(&[role::TYPE])
+}
+
+/// True for identifiers in a variable position: role `Variable`, `Reference`
+/// or `Name`, excluding type identifiers.
+#[must_use]
+pub fn is_variable_identifier(n: &Node) -> bool {
+    is_identifier(n)
+        && !n.has_any_role(&[role::TYPE])
+        && n.has_any_role(&[role::VARIABLE, role::REFERENCE, role::NAME])
+}
+
+/// True for `Parameter` nodes.
+#[must_use]
+pub fn is_parameter(n: &Node) -> bool {
+    n.has_any_type(&[ty::PARAMETER])
+}
+
+/// True for declaration nodes whose `props["name"]` names a variable:
+/// `Variable`, `Parameter`, `Field`.
+#[must_use]
+pub fn is_named_declaration(n: &Node) -> bool {
+    n.has_any_type(&[ty::VARIABLE, ty::PARAMETER, ty::FIELD])
+}
+
+/// True for call nodes (type `Call` or role `Call`): the first child is the
+/// callee expression.
+#[must_use]
+pub fn is_call(n: &Node) -> bool {
+    n.has_any_type(&[ty::CALL]) || n.has_any_role(&[role::CALL])
+}
+
+/// True for class-like scopes whose name qualifies the functions inside.
+#[must_use]
+pub fn is_scope(n: &Node) -> bool {
+    n.has_any_type(&[ty::CLASS, ty::STRUCT, ty::INTERFACE, ty::ENUM])
+}
+
+/// The direct child carrying a node's own name: the first `Identifier` child
+/// with role `Name` that is not a type identifier.
+#[must_use]
+pub fn name_child(n: &Node) -> Option<&Node> {
+    n.children
+        .iter()
+        .find(|c| is_identifier(c) && c.has_any_role(&[role::NAME]) && !is_type_identifier(c))
+}
+
+/// A node's own name: `props["name"]`, else its name child resolved under
+/// `anchor`.
+#[must_use]
+pub fn own_name(n: &Node, anchor: Option<Anchor<'_>>) -> Option<String> {
+    declared_name(n)
+        .map(str::to_owned)
+        .or_else(|| name_child(n).and_then(|c| identifier_name(c, anchor)))
+}
+
+/// The first descendant (preorder, `n` excluded) matching `pred`.
+#[must_use]
+pub fn find_descendant<'a>(n: &'a Node, pred: &dyn Fn(&Node) -> bool) -> Option<&'a Node> {
+    for child in &n.children {
+        if pred(child) {
+            return Some(child);
+        }
+        if let Some(found) = find_descendant(child, pred) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+/// The 1-based `(start_line, end_line)` of a node; `(0, 0)` without position.
+#[must_use]
+pub fn line_span(n: &Node) -> (u64, u64) {
+    n.pos
+        .as_ref()
+        .map_or((0, 0), |p| (p.start_line, p.end_line))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cf_uast_node::{Builder, Positions};
+
+    fn positioned(node_type: &str, token: &str, start: u64, end: u64) -> Node {
+        let mut n = Builder::new()
+            .with_type(node_type)
+            .with_token(token)
+            .with_roles(vec![role::NAME.to_string()])
+            .build();
+        n.pos = Some(Positions {
+            start_offset: start,
+            end_offset: end,
+            ..Positions::default()
+        });
+        n
     }
 
-    fn has_any_type(&self, types: &[&str]) -> bool {
-        types.iter().any(|t| self.types.iter().any(|s| s == t))
+    #[test]
+    fn anchor_requires_token_equal_to_span() {
+        let exact = positioned("Field", "self.a", 10, 16);
+        assert!(Anchor::of(&exact).is_some());
+        let shorter = positioned("Variable", "total", 10, 25);
+        assert!(
+            Anchor::of(&shorter).is_none(),
+            "token shorter than span must not anchor"
+        );
+        let no_pos = Builder::new()
+            .with_type("Field")
+            .with_token("self.a")
+            .build();
+        assert!(Anchor::of(&no_pos).is_none());
     }
 
-    fn has_any_role(&self, roles: &[&str]) -> bool {
-        roles.iter().any(|r| self.roles.iter().any(|s| s == r))
+    #[test]
+    fn token_less_identifier_resolves_through_the_anchor() {
+        let field = positioned("Field", "self.a", 10, 16);
+        let anchor = Anchor::of(&field);
+        let ident = positioned(ty::IDENTIFIER, "", 15, 16);
+        assert_eq!(identifier_name(&ident, anchor), Some("a".to_string()));
+        let outside = positioned(ty::IDENTIFIER, "", 2, 4);
+        assert_eq!(identifier_name(&outside, anchor), None);
     }
 
-    fn has_all_roles(&self, roles: &[&str]) -> bool {
-        roles.iter().all(|r| self.roles.iter().any(|s| s == r))
+    #[test]
+    fn props_name_wins_over_token_and_anchor() {
+        let mut ident = positioned(ty::IDENTIFIER, "tok", 0, 3);
+        ident.props.insert(NAME_PROP.into(), "declared".into());
+        assert_eq!(identifier_name(&ident, None), Some("declared".to_string()));
     }
 
-    fn entity_name(&self) -> String {
-        self.name.clone()
-    }
-
-    fn count_lines(&self) -> i64 {
-        self.lines
+    #[test]
+    fn type_role_identifiers_are_not_variables() {
+        let t = Builder::new()
+            .with_type(ty::IDENTIFIER)
+            .with_token("int")
+            .with_roles(vec![role::NAME.into(), role::TYPE.into()])
+            .build();
+        assert!(is_type_identifier(&t));
+        assert!(!is_variable_identifier(&t));
+        let v = Builder::new()
+            .with_type(ty::IDENTIFIER)
+            .with_token("x")
+            .with_roles(vec![role::REFERENCE.into()])
+            .build();
+        assert!(is_variable_identifier(&v));
     }
 }

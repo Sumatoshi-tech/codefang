@@ -385,29 +385,47 @@ fn aggregate_by_year(data: &ChartData) -> Option<(Vec<i64>, Vec<Vec<f64>>)> {
     Some((years, year_data))
 }
 
-/// The reference `bandLabel`.
+/// The label of band `band_idx`: its age at the end of the window — band 0
+/// is the oldest, the newest band is one granularity old — in months, or in
+/// years once it reaches a year.
 fn band_label(band_idx: i64, data: &ChartData) -> String {
-    let upper_ticks = (band_idx + 1) * data.granularity;
-    let age_ns = upper_ticks * data.tick_size_ns;
-    let age_days = age_ns as f64 / NS_PER_HOUR as f64 / HOURS_PER_DAY as f64;
-    let age_months = ((age_days as i64) / DAYS_PER_MONTH).max(1);
-
-    let max_band_idx = data.global_history[0].len() as i64 - 1;
-    let max_days = ((max_band_idx + 1) * data.granularity * data.tick_size_ns) as f64
-        / NS_PER_HOUR as f64
-        / HOURS_PER_DAY as f64;
-    let max_months = (max_days as i64) / DAYS_PER_MONTH;
-
-    if max_months >= MONTHS_PER_YEAR && data.end_time_ns != 0 {
-        return year_of_ns(data.end_time_ns - age_ns).to_string();
+    let num_bands = data.global_history[0].len() as i64;
+    let age_ticks = (num_bands - band_idx) * data.granularity;
+    let age_days = age_ticks * data.tick_size_ns / NS_PER_HOUR / HOURS_PER_DAY;
+    let age_months = (age_days / DAYS_PER_MONTH).max(1);
+    if age_months >= MONTHS_PER_YEAR {
+        return format!("{}y", age_months / MONTHS_PER_YEAR);
     }
+    format!("{age_months}mo")
+}
 
-    if max_months >= MONTHS_PER_YEAR {
-        let y = age_months / MONTHS_PER_YEAR;
-        if y > 0 {
-            return format!("{y}y");
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn chart(bands: usize, granularity: i64) -> ChartData {
+        ChartData {
+            global_history: vec![vec![1; bands]],
+            sampling: granularity,
+            granularity,
+            tick_size_ns: 24 * NS_PER_HOUR,
+            end_time_ns: 0,
+            project_name: String::new(),
         }
     }
 
-    format!("{age_months}mo")
+    /// Band 0 is the oldest code and the last band the newest.
+    #[test]
+    fn band_labels_age_from_oldest_to_newest() {
+        let data = chart(11, 30);
+        assert_eq!(band_label(0, &data), "11mo");
+        assert_eq!(band_label(5, &data), "6mo");
+        assert_eq!(band_label(10, &data), "1mo");
+        let yearly = chart(30, 30);
+        assert_eq!(band_label(0, &yearly), "2y");
+        assert_eq!(band_label(29, &yearly), "1mo");
+        // A sub-month band still reads as one month.
+        let fine = chart(3, 5);
+        assert_eq!(band_label(2, &fine), "1mo");
+    }
 }

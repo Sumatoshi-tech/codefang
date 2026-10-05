@@ -6,45 +6,18 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "Analyzer-registration + clap command construction for codefang: the run/render/version command tree and dynamic per-analyzer flags."
+description = "Analyzer-registration + clap command construction for codefang: the run/version/completion command tree, the configuration-file layer, and dynamic per-analyzer flags."
 
 # cf-commands is the tier-8 analyzer-registration + clap command-construction
-# aggregation point (DESIGN §1 tier 8, §4): it builds the run/render/version
+# aggregation point (DESIGN §1 tier 8, §4): it builds the run/version/completion
 # clap commands, registers every analyzer and its dynamic per-analyzer flags,
 # and routes all report serialization through the shared report-format crates
 # (never raw serde). Output bytes are pinned against the reference binary by
-# the differential gate in tests/compat.
-
-[features]
-# Default builds only the parts that do NOT depend on unported sibling crates:
-# the clap command tree, format validation, and the version command.
-default = []
-
-# `runtime` pulls in the remaining execution crates (framework runner,
-# checkpoint/cache, observability, plot/store) for the not-yet-wired streaming
-# pipeline paths. The core run pipeline + registry (this crate's `pipeline` and
-# `handlers` modules) now depend on the analyzer + git crates unconditionally,
-# so they are no longer behind this feature.
-runtime = [
-    "dep:cf-framework",
-    "dep:cf-config",
-    "dep:cf-checkpoint",
-    "dep:cf-budget",
-    "dep:cf-observability",
-    "dep:cf-storage",
-]
-
-# The reference `mcp` command is not shipped by default (DESIGN §4.1).
-# Mirror it as a non-default feature.
-mcp = ["dep:cf-mcp"]
+# the report e2e suites in bins/codefang/tests.
 
 [dependencies]
 clap = { workspace = true }
 thiserror = "1"
-# On-demand stack growth for the recursive UAST deep-copy in the complexity
-# handler — mirrors cf-uast's lowering walk, which needs a segmented stack on
-# real >10k-deep sources.
-stacker = "0.1.24"
 # SIGINT/SIGTERM → cooperative cancellation of the static folder walks.
 signal-hook = { workspace = true }
 # Generates the shell-completion scripts for the `completion` subcommand, the
@@ -54,6 +27,8 @@ clap_complete = "4"
 
 # Real, compiling sibling crates depended on unconditionally.
 cf-version = { path = "../cf-version" }
+# The `.codefang.yaml` / CODEFANG_* layer that defaults the run flags.
+cf-config = { path = "../cf-config" }
 cf-pipeline = { path = "../cf-pipeline" }
 
 # --- Run-pipeline execution crates (the general run pipeline + registry) ---
@@ -68,13 +43,30 @@ cf-uast-node = { path = "../cf-uast-node" }
 cf-pathpolicy = { path = "../cf-pathpolicy", features = ["default-deps"] }
 # libgit2-backed repository/commit access for the single history revwalk.
 cf-gitlib = { path = "../cf-gitlib" }
+# Returns freed heap pages to the OS between history chunks.
+cf-meminfo = { path = "../cf-meminfo" }
+# The history memory budget: size parsing + RAM detection, chunk planning.
+cf-framework = { path = "../cf-framework" }
+cf-budget = { path = "../cf-budget" }
+cf-streaming = { path = "../cf-streaming" }
+cf-units = { path = "../cf-units" }
+# Finished results spilled to disk while other walks run: the binary codec,
+# serde for the records, and unlinked temporary files.
+cf-persist = { path = "../cf-persist" }
+# `codefang mcp`: the MCP server and its tool contracts.
+cf-mcp = { path = "../cf-mcp", features = ["mcp"] }
+# Reads report bytes back: the MCP tools hand the CLI's json reports to the
+# client, and the cross-analyzer parity tests compare them. Report OUTPUT
+# never routes through serde.
+serde_json = { workspace = true }
+serde = { workspace = true }
+tempfile = { workspace = true }
 # Pinned RFC3339 formatting + metadata for history tick bounds / timeseries.
 cf-analyze = { path = "../cf-analyze" }
 cf-textutil = { path = "../cf-textutil" }
 cf-langpath = { path = "../cf-langpath" }
 # Line-mode diff (diffmatchpatch parity) for history per-file line stats.
 cf-godiff = { path = "../cf-godiff" }
-cf-alg-bloom = { path = "../cf-alg-bloom" }
 cf-alg-levenshtein = { path = "../cf-alg-levenshtein" }
 cf-analyzers-plumbing = { path = "../cf-analyzers-plumbing" }
 cf-burndown-core = { path = "../cf-burndown-core" }
@@ -101,18 +93,7 @@ cf-sentiment = { path = "../cf-sentiment" }
 cf-file-history = { path = "../cf-file-history" }
 cf-terminal = { path = "../cf-terminal" }
 
-# Scaffold / not-yet-wired sibling crates -- optional, gated behind the
-# `runtime` / `mcp` features (streaming framework runner, persistence, plot).
-cf-framework = { path = "../cf-framework", optional = true }
-cf-config = { path = "../cf-config", optional = true }
-cf-checkpoint = { path = "../cf-checkpoint", optional = true }
-cf-budget = { path = "../cf-budget", optional = true }
-cf-observability = { path = "../cf-observability", optional = true }
-cf-storage = { path = "../cf-storage", optional = true }
-cf-mcp = { path = "../cf-mcp", optional = true }
-
 [dev-dependencies]
-tempfile = "3"
 # Test fixtures build tiny multi-language git repositories in memory-backed
 # tempdirs (history-filter oracle tests) — write access comes straight from
 # git2, the same libgit2 vendoring cf-gitlib is pinned to.

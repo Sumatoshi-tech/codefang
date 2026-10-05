@@ -1,32 +1,42 @@
-//! Static comment density / quality analysis (analyzer id: `static/comments`).
+//! Static comment placement / documentation coverage analysis (analyzer id:
+//! `static/comments`).
 //!
-//! The analyzer walks a parsed UAST, groups consecutive `Comment` nodes into
-//! blocks (sorted by line), scores each block by its placement relative to the
-//! closest function/class/method/interface/struct, and computes aggregate
-//! metrics (good/bad counts, overall score, documentation coverage). It is also
-//! consumed by the `quality` analyzer.
+//! The analyzer walks a parsed UAST, groups adjacent `Comment` nodes into
+//! blocks, places every block against the file's declarations (function,
+//! method, class, interface, struct) and derives the per-file metrics. It is
+//! also consumed by the history `quality` analyzer.
 //!
-//! # Byte-identity
+//! # Placement rules
 //!
-//! Per DESIGN §2, all report serialization is routed through
-//! [`cf_gojson::GoValue`] — never `serde_json`. The analyzer returns a
-//! *map-origin* [`cf_gojson::GoValue::Map`] whose keys the `cf-gojson` encoder
-//! byte-sorts at encode time (report-format contract).
+//! * **above** — the block ends on the line directly above a declaration
+//!   (attribute / decorator lines belong to the declaration): it documents
+//!   that declaration and is a good comment;
+//! * **inline** — the block lies inside a declaration's span: a body comment;
+//! * **unassociated** — anything else (file headers, orphans, a comment
+//!   separated from the declaration by a blank line).
+//!
+//! Documentation is keyed by declaration identity (line + type + name), so
+//! same-named declarations are documented independently; a nameless
+//! class/struct/interface node is not a declaration; nested comment pieces
+//! count as one comment.
+//!
+//! # Serialization
+//!
+//! All report serialization is routed through [`cf_gojson::GoValue`] — never
+//! `serde_json`. The analyzer returns a *map-origin*
+//! [`cf_gojson::GoValue::Map`] whose keys the `cf-gojson` encoder byte-sorts at
+//! encode time.
 //!
 //! # Module map
 //!
-//! [`analyzer`] (scoring + report building), [`types`] (data types),
-//! [`aggregator`] (cross-file numeric aggregation), [`traverse`] (UAST
-//! traversal helpers). The static-pipeline metric view and the terminal/HTML
-//! sections (non-binding per DESIGN §2.7) live in the command layer.
-//!
-//! Compatibility: output bytes are pinned against the reference implementation
-//! by the differential gate in `tests/compat`.
+//! [`analyzer`] (discovery, metrics, report building), [`placement`] (the
+//! pure line rules), [`types`] (data types), [`aggregator`] (cross-file
+//! sums), [`traverse`] (UAST traversal helpers). The terminal/HTML sections
+//! live in the command layer.
 //!
 //! # Example
 //!
-//! A comment placed immediately above a function is scored "good" and counts
-//! that function as documented:
+//! A comment placed directly above a function documents it:
 //!
 //! ```
 //! use cf_comments::Analyzer;
@@ -70,14 +80,15 @@
 
 pub mod aggregator;
 pub mod analyzer;
+pub mod placement;
 pub mod traverse;
 pub mod types;
 
-pub use aggregator::{Aggregator, NumericReport};
-pub use analyzer::{Analyzer, NilRootNode};
+pub use aggregator::{Aggregator, FileReport, FileStamp};
+pub use analyzer::{build_report, comment_preview, Analyzer, NilRootNode};
 pub use types::{
-    CommentBlock, CommentConfig, CommentDetail, CommentMetrics, CommentReportItem, FunctionInfo,
-    FunctionReportItem,
+    quality_message, CommentConfig, CommentCounts, CommentDetail, CommentMetrics, FunctionInfo,
+    Placement, NO_COMMENTS_MESSAGE,
 };
 
 #[cfg(test)]
@@ -133,17 +144,22 @@ mod tests {
             .with_position(Some(pos(start, end)))
             .build()
     }
-    fn named(node_type: &str, name: &str, start: u64, end: u64) -> Node {
-        let ident = Builder::new()
+    fn ident(name: &str, roles: &[&str]) -> Node {
+        Builder::new()
             .with_type("Identifier")
             .with_token(name)
-            .with_roles(vec!["Name".into()])
-            .build();
-        let mut n = Builder::new()
+            .with_roles(roles.iter().map(|r| (*r).to_string()).collect())
+            .build()
+    }
+    fn positioned(node_type: &str, start: u64, end: u64) -> Node {
+        Builder::new()
             .with_type(node_type)
             .with_position(Some(pos(start, end)))
-            .build();
-        n.add_child(ident);
+            .build()
+    }
+    fn named(node_type: &str, name: &str, start: u64, end: u64) -> Node {
+        let mut n = positioned(node_type, start, end);
+        n.add_child(ident(name, &["Name"]));
         n
     }
     fn function(name: &str, start: u64, end: u64) -> Node {
@@ -155,6 +171,25 @@ mod tests {
     fn method(name: &str, start: u64, end: u64) -> Node {
         named("Method", name, start, end)
     }
+    fn analyze(root: &Node) -> CommentMetrics {
+        Analyzer::new()
+            .analyze_metrics(Some(root), None)
+            .expect("analysis")
+    }
+    fn names(metrics: &CommentMetrics) -> Vec<(&str, bool)> {
+        metrics
+            .functions
+            .iter()
+            .map(|f| (f.name.as_str(), f.is_documented()))
+            .collect()
+    }
+    fn placements(metrics: &CommentMetrics) -> Vec<(i64, Placement, &str)> {
+        metrics
+            .comments
+            .iter()
+            .map(|c| (c.line, c.placement, c.target_name.as_str()))
+            .collect()
+    }
 
     #[test]
     fn analyzer_name() {
@@ -165,7 +200,6 @@ mod tests {
     fn default_config() {
         let cfg = Analyzer::new().default_config();
         assert!((cfg.reward_score - 1.0).abs() < 1e-9);
-        assert_eq!(cfg.max_comment_length, 500);
         assert_eq!(cfg.penalty_scores.get("Function"), Some(&-0.5));
         assert_eq!(cfg.penalty_scores.get("Method"), Some(&-0.5));
         assert_eq!(cfg.penalty_scores.get("Class"), Some(&-0.3));
@@ -182,6 +216,10 @@ mod tests {
         assert_eq!(get_float(&res, "overall_score"), 0.0);
         assert_eq!(get_int(&res, "total_functions"), 0);
         assert_eq!(get_int(&res, "documented_functions"), 0);
+        assert_eq!(
+            get(&res, "message"),
+            &GoValue::Str(NO_COMMENTS_MESSAGE.to_string())
+        );
     }
 
     // analyze must reject a missing root.
@@ -202,14 +240,12 @@ mod tests {
         assert!((get_float(&res, "overall_score") - 1.0).abs() < 1e-9);
         assert_eq!(get_int(&res, "total_functions"), 1);
         assert_eq!(get_int(&res, "documented_functions"), 1);
+        assert!((get_float(&res, "documentation_coverage") - 1.0).abs() < 1e-9);
     }
 
     #[test]
     fn analyze_bad_comment_placement() {
-        let mut body = Builder::new()
-            .with_type("Block")
-            .with_position(Some(pos(2, 4)))
-            .build();
+        let mut body = positioned("Block", 2, 4);
         body.add_child(comment("// This is a bad comment", 3, 3));
         let mut func = function("testFunction", 1, 5);
         func.add_child(body);
@@ -248,13 +284,18 @@ mod tests {
         let mut root = file();
         root.add_child(comment("// This is a class", 1, 1));
         root.add_child(cls);
-        let res = Analyzer::new().analyze(Some(&root)).unwrap();
-        assert_eq!(get_int(&res, "total_comments"), 2);
-        assert_eq!(get_int(&res, "good_comments"), 2);
-        assert_eq!(get_int(&res, "bad_comments"), 0);
-        assert!((get_float(&res, "overall_score") - 1.0).abs() < 1e-9);
-        assert_eq!(get_int(&res, "total_functions"), 2);
-        assert_eq!(get_int(&res, "documented_functions"), 2);
+        let metrics = analyze(&root);
+        assert_eq!(
+            placements(&metrics),
+            vec![
+                (1, Placement::Above, "TestClass"),
+                (4, Placement::Above, "testMethod")
+            ]
+        );
+        assert_eq!(
+            names(&metrics),
+            vec![("TestClass", true), ("testMethod", true)]
+        );
     }
 
     #[test]
@@ -274,29 +315,253 @@ mod tests {
         assert_eq!(get_int(&res, "documented_functions"), 0);
     }
 
-    // Function/method/class only; variable excluded.
     #[test]
-    fn find_functions_excludes_variable() {
+    fn zero_comments_keep_the_functions() {
+        let mut root = file();
+        root.add_child(function("Add", 3, 5));
+        root.add_child(function("Sub", 7, 9));
+        let metrics = analyze(&root);
+        assert_eq!(metrics.counts.total_comments, 0);
+        assert_eq!(names(&metrics), vec![("Add", false), ("Sub", false)]);
+        assert_eq!(
+            metrics.counts.message(),
+            "Poor comment quality - significant improvement needed"
+        );
+    }
+
+    #[test]
+    fn same_named_functions_are_documented_independently() {
+        let mut root = file();
+        root.add_child(comment("// String renders A.", 6, 6));
+        root.add_child(method("String", 7, 9));
+        root.add_child(method("String", 11, 13));
+        let metrics = analyze(&root);
+        assert_eq!(names(&metrics), vec![("String", true), ("String", false)]);
+        assert_eq!(metrics.counts.documented_functions, 1);
+        assert_eq!(metrics.functions[0].doc_line, Some(6));
+        assert_eq!(metrics.functions[1].doc_line, None);
+    }
+
+    #[test]
+    fn nested_comment_pieces_count_once_and_document_the_next_item() {
+        // The Rust mapping lowers `/// Documents foo.` on line 3 as a Comment
+        // spanning 3-4 with two nested Comment pieces; the function starts
+        // on line 4.
+        let mut outer = comment("", 3, 4);
+        outer.add_child(comment("/", 3, 3));
+        outer.add_child(comment(" Documents foo.", 3, 4));
+        let mut root = file();
+        root.add_child(outer);
+        root.add_child(function("foo", 4, 7));
+        let metrics = analyze(&root);
+        assert_eq!(metrics.counts.total_comments, 1);
+        assert_eq!(placements(&metrics), vec![(3, Placement::Above, "foo")]);
+        assert_eq!(metrics.comments[0].text, "/ Documents foo.");
+        assert_eq!(names(&metrics), vec![("foo", true)]);
+    }
+
+    #[test]
+    fn anonymous_struct_is_not_a_declaration() {
+        let anonymous = Builder::new()
+            .with_type("Struct")
+            .with_token("struct{}")
+            .with_position(Some(pos(3, 3)))
+            .build();
+        let mut root = file();
+        root.add_child(anonymous);
+        root.add_child(named("Struct", "Named", 5, 7));
+        let metrics = analyze(&root);
+        assert_eq!(names(&metrics), vec![("Named", false)]);
+    }
+
+    #[test]
+    fn a_multi_line_token_is_never_a_name() {
+        let func = Builder::new()
+            .with_type("Function")
+            .with_token("int f() {\n    return 1;\n}")
+            .with_position(Some(pos(1, 3)))
+            .build();
+        let mut root = file();
+        root.add_child(func);
+        let metrics = analyze(&root);
+        assert_eq!(names(&metrics), vec![("unknown", false)]);
+    }
+
+    #[test]
+    fn a_type_identifier_is_not_a_name() {
+        let mut func = positioned("Function", 1, 3);
+        func.add_child(ident("int", &["Type", "Name"]));
+        func.add_child(ident("add", &["Name"]));
+        let mut root = file();
+        root.add_child(func);
+        assert_eq!(names(&analyze(&root)), vec![("add", false)]);
+    }
+
+    #[test]
+    fn a_same_line_child_declaration_names_its_nameless_parent() {
+        // C: function_definition (nameless, lines 2-4) over function_declarator
+        // (line 2, names `add`).
+        let mut outer = positioned("Function", 2, 4);
+        outer.add_child(ident("int", &["Type", "Name"]));
+        outer.add_child(named("Function", "add", 2, 2));
+        let mut root = file();
+        root.add_child(comment("/* adds */", 1, 1));
+        root.add_child(outer);
+        let metrics = analyze(&root);
+        assert_eq!(names(&metrics), vec![("add", true)]);
+    }
+
+    #[test]
+    fn a_named_parent_keeps_its_same_line_nested_declaration() {
+        let mut outer = class("A", 1, 1);
+        outer.add_child(method("m", 1, 1));
+        let mut root = file();
+        root.add_child(outer);
+        assert_eq!(names(&analyze(&root)), vec![("A", false), ("m", false)]);
+    }
+
+    #[test]
+    fn body_comment_is_inline_for_the_enclosing_function() {
+        let mut add = function("Add", 3, 6);
+        add.add_child(comment("// inline comment", 4, 4));
+        let mut root = file();
+        root.add_child(add);
+        root.add_child(function("Sub", 8, 10));
+        let metrics = analyze(&root);
+        assert_eq!(placements(&metrics), vec![(4, Placement::Inline, "Add")]);
+        assert_eq!(names(&metrics), vec![("Add", false), ("Sub", false)]);
+    }
+
+    #[test]
+    fn trailing_comment_on_the_declaration_line_is_inline() {
+        let mut root = file();
+        root.add_child(function("f", 1, 1));
+        root.add_child(comment("// trailing", 1, 1));
+        let metrics = analyze(&root);
+        assert_eq!(placements(&metrics), vec![(1, Placement::Inline, "f")]);
+    }
+
+    #[test]
+    fn a_blank_line_breaks_documentation() {
+        let mut root = file();
+        root.add_child(comment("// Mul multiplies.", 14, 14));
+        root.add_child(function("Mul", 16, 18));
+        let metrics = analyze(&root);
+        assert_eq!(
+            placements(&metrics),
+            vec![(14, Placement::Unassociated, "")]
+        );
+        assert_eq!(names(&metrics), vec![("Mul", false)]);
+    }
+
+    #[test]
+    fn attribute_lines_belong_to_the_declaration() {
+        let attribute = Builder::new()
+            .with_type("Attribute")
+            .with_roles(vec!["Attribute".into()])
+            .with_position(Some(pos(2, 2)))
+            .build();
+        let mut root = file();
+        root.add_child(comment("/// Doc f.", 1, 1));
+        root.add_child(attribute);
+        root.add_child(function("f", 3, 5));
+        let metrics = analyze(&root);
+        assert_eq!(names(&metrics), vec![("f", true)]);
+    }
+
+    #[test]
+    fn adjacent_comments_form_one_block() {
+        let mut root = file();
+        root.add_child(comment("// line 1", 1, 1));
+        root.add_child(comment("// line 2", 2, 2));
+        root.add_child(function("f", 3, 5));
+        let metrics = analyze(&root);
+        assert_eq!(metrics.counts.total_comments, 2);
+        assert_eq!(metrics.counts.good_comments, 2);
+        assert_eq!(metrics.functions[0].doc_line, Some(1));
+    }
+
+    #[test]
+    fn report_tables_carry_placement_and_assessment() {
+        let mut root = file();
+        root.add_child(comment("// doc", 1, 1));
+        root.add_child(function("f", 2, 4));
+        let res = Analyzer::new().analyze(Some(&root)).unwrap();
+        let comments = match get(&res, "comments") {
+            GoValue::Array(rows) => rows.clone(),
+            other => panic!("comments not an array: {other:?}"),
+        };
+        assert_eq!(
+            get(&comments[0], "placement"),
+            &GoValue::Str("above".to_string())
+        );
+        assert_eq!(get(&comments[0], "target"), &GoValue::Str("f".to_string()));
+        let functions = match get(&res, "functions") {
+            GoValue::Array(rows) => rows.clone(),
+            other => panic!("functions not an array: {other:?}"),
+        };
+        assert_eq!(get_int(&functions[0], "line"), 2);
+        assert_eq!(get_int(&functions[0], "lines"), 3);
+        assert_eq!(get_int(&functions[0], "doc_line"), 1);
+        assert_eq!(
+            get(&functions[0], "assessment"),
+            &GoValue::Str("✅ Well Documented".to_string())
+        );
+    }
+
+    #[test]
+    fn comment_preview_shortens_long_text() {
+        let long = "x".repeat(60);
+        assert_eq!(comment_preview(&long), format!("{}...", "x".repeat(47)));
+        assert_eq!(comment_preview("short"), "short");
+    }
+
+    // Declarations are found at any depth; a variable is not one.
+    #[test]
+    fn find_declarations_excludes_variable() {
         let mut root = file();
         root.add_child(typed("Function"));
         root.add_child(typed("Method"));
         root.add_child(typed("Class"));
         root.add_child(typed("Variable"));
-        let funcs = traverse::find_nodes_by_type(&root, &["Function", "Method", "Class"]);
-        assert_eq!(funcs.len(), 3);
+        let found = traverse::find_nodes_by_type(
+            &root,
+            &["Function", "Method", "Class"],
+            None,
+            traverse::MatchDescent::Continue,
+        );
+        assert_eq!(found.len(), 3);
     }
 
-    // Comments are found at any depth, in document order.
+    // Comments are found at any depth, in document order, stopping at each.
     #[test]
-    fn find_comments_in_document_order() {
+    fn find_comments_in_document_order_without_descending() {
         let mut func = typed("Function");
         func.add_child(comment("// Function comment", 5, 5));
+        let mut nested = comment("", 1, 1);
+        nested.add_child(comment("// piece", 1, 1));
         let mut root = file();
-        root.add_child(comment("// Root comment", 1, 1));
+        root.add_child(nested);
         root.add_child(func);
-        let comments = traverse::find_nodes_by_type(&root, &["Comment"]);
+        let comments =
+            traverse::find_nodes_by_type(&root, &["Comment"], None, traverse::MatchDescent::Stop);
         assert_eq!(comments.len(), 2);
-        assert_eq!(comments[0].token, "// Root comment");
+        assert_eq!(traverse::comment_text(comments[0]), "// piece");
         assert_eq!(comments[1].token, "// Function comment");
+    }
+
+    #[test]
+    fn depth_cap_limits_discovery() {
+        let mut inner = typed("Block");
+        inner.add_child(function("deep", 2, 3));
+        let mut outer = function("shallow", 1, 4);
+        outer.add_child(inner);
+        let mut root = file();
+        root.add_child(outer);
+        let capped = Analyzer::new()
+            .analyze_metrics(Some(&root), Some(1))
+            .expect("analysis");
+        assert_eq!(names(&capped), vec![("shallow", false)]);
+        assert_eq!(analyze(&root).functions.len(), 2);
     }
 }

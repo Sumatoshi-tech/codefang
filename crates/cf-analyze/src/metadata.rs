@@ -35,7 +35,7 @@ pub struct AnalysisMetadata {
 }
 
 /// An injectable wall clock. The default ([`SystemClock`]) reads
-/// `time.Now().UTC().Format(time.RFC3339)`; tests/golden runs substitute a fixed
+/// `time.Now().UTC().Format(time.RFC3339)`; tests substitute a fixed
 /// clock so the `analyzed_at` envelope field is reproducible (DESIGN §2.8).
 pub trait Clock {
     /// Returns the current time as contract RFC3339 UTC
@@ -58,7 +58,7 @@ impl Clock for SystemClock {
 impl AnalysisMetadata {
     /// Creates metadata for `repo_path`, stamping `analyzed_at` from the supplied
     /// [`Clock`]. Equivalent to [`new_analysis_metadata`] but with the time
-    /// source injected (used by tests/golden runs for determinism).
+    /// source injected (used by tests for determinism).
     pub fn with_clock(repo_path: &str, clock: &dyn Clock) -> Self {
         Self {
             repo_path: repo_path.to_string(),
@@ -239,6 +239,14 @@ fn parse_rfc3339_utc_secs(s: &str) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Report metadata names the same version `codefang version` prints:
+    /// the workspace crate version unless a build injects another.
+    #[test]
+    fn metadata_names_the_crate_version() {
+        let meta = new_analysis_metadata("/tmp/repo");
+        assert_eq!(meta.codefang_version, env!("CARGO_PKG_VERSION"));
+    }
     use std::sync::Mutex;
 
     // Serialize tests that mutate the global pinned clock.

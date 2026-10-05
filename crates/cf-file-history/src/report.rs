@@ -1,23 +1,14 @@
 //! Report-format rendering of the file-history metrics.
 //!
-//! All machine-format report bytes are produced through [`cf_gojson`] (never
-//! raw serde); the bytes are pinned against the reference binary by
-//! `tests/compat`.
-//!
-//! The wrapper structs ([`ComputedMetrics`] and its fields) are emitted in
+//! The report value is a [`cf_gojson::GoValue`] tree the command layer
+//! serializes through `cf-gojson` / `cf-goyaml` (never raw serde). The
+//! wrapper structs ([`ComputedMetrics`] and its fields) are emitted in
 //! **declaration order** (a struct-origin [`cf_gojson::GoMap`]). The
 //! composition `breakdown` / `percentages` maps and the per-tick composition
-//! `breakdown` are emitted as map-origin `GoMap`s (byte-sorted keys), per the
-//! report-format contract for string-keyed maps. Empty `start_time` /
-//! `end_time` are omitted (`omitempty`).
-//!
-//! The compact form here ([`to_compact_json`]) is the `bin`/ndjson payload
-//! shape (no indent, HTML-escape on, no trailing newline). The indented `json`
-//! run/render form (two-space indent) is produced by the cross-format
-//! conversion hub (`cf-analyze`) over the same [`GoValue`] tree returned by
-//! [`computed_metrics_to_go`].
+//! `breakdown` are emitted as map-origin `GoMap`s (byte-sorted keys). Empty
+//! `start_time` / `end_time` are omitted (`omitempty`).
 
-use cf_gojson::{marshal, Encoder, GoMap, GoValue};
+use cf_gojson::{GoMap, GoValue};
 
 use crate::metrics::{
     AggregateData, CompositionData, CompositionTimeSeriesEntry, ComputedMetrics, ContributorEntry,
@@ -50,8 +41,8 @@ pub fn computed_metrics_to_go(m: &ComputedMetrics) -> GoValue {
     );
     obj.push("aggregate", aggregate_to_go(&m.aggregate));
     obj.push("composition", composition_to_go(&m.composition));
-    // Reference: `composition_ts` is a `var`-declared append target — an
-    // empty-walk run leaves it nil (JSON `null`, YAML `[]`), never `[]`.
+    // `composition_ts` renders as JSON `null` (YAML `[]`) for an empty walk,
+    // never `[]`.
     obj.push(
         "composition_ts",
         if m.composition_ts.is_empty() {
@@ -159,34 +150,24 @@ fn composition_ts_to_go(e: &CompositionTimeSeriesEntry) -> GoValue {
     GoValue::Object(o)
 }
 
-/// Renders [`ComputedMetrics`] to compact report-format JSON bytes (the
-/// `bin` / ndjson payload form: no indent, HTML-escape on, no trailing
-/// newline).
-#[must_use]
-pub fn to_compact_json(m: &ComputedMetrics) -> Vec<u8> {
-    marshal(&computed_metrics_to_go(m))
-}
-
-/// Renders [`ComputedMetrics`] to a compact report-format JSON string
-/// (convenience over [`to_compact_json`], using the [`Encoder`] builder).
-#[must_use]
-pub fn to_compact_json_string(m: &ComputedMetrics) -> String {
-    Encoder::marshal().encode_to_string(&computed_metrics_to_go(m))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cf_gojson::Encoder;
+
+    /// The compact JSON form of `m` (no indent, HTML-escape on).
+    fn compact(m: &ComputedMetrics) -> String {
+        Encoder::marshal().encode_to_string(&computed_metrics_to_go(m))
+    }
 
     #[test]
     fn empty_metrics_compact_json_field_order() {
         // Field declaration order must be preserved in compact output, and
         // empty slices render as [] (report contract), empty maps as {}.
-        // `composition_ts` is the exception: the reference leaves it a nil
-        // append target on an empty walk, so it renders as `null` (see
-        // `computed_metrics_to_go`).
+        // `composition_ts` is the exception: it renders as `null` for an
+        // empty walk (see `computed_metrics_to_go`).
         let m = ComputedMetrics::default();
-        let s = to_compact_json_string(&m);
+        let s = compact(&m);
         assert_eq!(
             s,
             "{\"file_churn\":[],\"file_contributors\":[],\"hotspots\":[],\
@@ -210,15 +191,9 @@ mod tests {
             },
             ..Default::default()
         };
-        let s = to_compact_json_string(&m);
+        let s = compact(&m);
         assert!(s.contains("\"avg_commits_per_file\":15"), "{s}");
         assert!(s.contains("\"avg_contributors_per_file\":2"), "{s}");
         assert!(!s.contains("15.0"), "{s}");
-    }
-
-    #[test]
-    fn compact_bytes_match_string() {
-        let m = ComputedMetrics::default();
-        assert_eq!(to_compact_json(&m), to_compact_json_string(&m).into_bytes());
     }
 }

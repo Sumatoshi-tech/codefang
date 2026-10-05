@@ -4,7 +4,7 @@
 #
 # This crate is INTERNAL numeric behavior: per DESIGN.md §2.6 ("Sketch/hash
 # determinism") its estimates are a frozen contract because they appear in
-# MACHINE-format reports pinned by the differential gate (tests/compat).
+# MACHINE-format reports pinned by the report e2e suites (bins/codefang/tests).
 # The hashing kernel is the shared cf-alg-hashutil (FNV-1a -> Mix64), so the
 # same byte input always maps to the same register. This crate emits no report
 # serialization itself, so it does NOT depend on cf-gojson / cf-goyaml. Its

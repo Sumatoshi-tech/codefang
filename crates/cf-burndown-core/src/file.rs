@@ -6,7 +6,7 @@
 use crate::range_query::RangeIndex;
 use crate::timeline::{TimeKey, Timeline};
 use crate::timeline_treap::{Segment, TreapTimeline};
-use crate::{TREE_END, TREE_MERGE_MARK};
+use crate::TREE_END;
 
 /// Callback invoked on [`File::update`] with `(current, previous, delta)`.
 ///
@@ -89,20 +89,11 @@ impl File {
         }
     }
 
+    /// Broadcasts one `(current, previous, delta)` report to every updater.
+    /// Every value is a legitimate segment value: no tick or packed
+    /// `(person, tick)` pair is reserved, so no repository content can be
+    /// silently dropped or rejected here.
     fn update_time(&mut self, current_time: i64, previous_time: i64, delta: i64) {
-        let mark = i64::from(TREE_MERGE_MARK);
-        if previous_time & mark == mark {
-            if current_time == previous_time {
-                return;
-            }
-            panic!("previousTime cannot be TreeMergeMark");
-        }
-
-        if current_time & mark == mark {
-            // Merge mode - we have already updated in one of the branches.
-            return;
-        }
-
         for update in &mut self.updaters {
             update(current_time, previous_time, delta);
         }
@@ -223,28 +214,6 @@ impl File {
         self.timeline.merge_adjacent_same_value();
     }
 
-    /// Combine several prepared files together.
-    ///
-    /// # Panics
-    ///
-    /// Panics if a line-count mismatch is detected between this file and any
-    /// other (file corruption).
-    pub fn merge(&mut self, day: i64, others: &[&File]) {
-        let mut myself = self.timeline.flatten();
-        merge_other_files(&mut myself, others);
-        self.resolve_merge_conflicts(&mut myself, day);
-        self.timeline.reconstruct(&myself);
-    }
-
-    fn resolve_merge_conflicts(&mut self, lines: &mut [i64], day: i64) {
-        for line in lines.iter_mut() {
-            if is_merge_marked(*line) {
-                *line = day;
-                self.update_time(day, day, 1);
-            }
-        }
-    }
-
     /// Format the underlying line interval tree into a string. Useful for error
     /// messages and debugging.
     pub fn dump(&self) -> String {
@@ -278,41 +247,6 @@ impl File {
 
     pub(crate) fn index_mut(&mut self) -> &mut Option<RangeIndex> {
         &mut self.index
-    }
-}
-
-/// Check whether a line value has the merge mark bit set.
-fn is_merge_marked(value: i64) -> bool {
-    value & i64::from(TREE_MERGE_MARK) == i64::from(TREE_MERGE_MARK)
-}
-
-/// Merge the flattened lines of `others` into `myself`.
-///
-/// # Panics
-///
-/// Panics on a line-count mismatch between `myself` and any other file.
-fn merge_other_files(myself: &mut [i64], others: &[&File]) {
-    let mark = i64::from(TREE_MERGE_MARK);
-    for other in others {
-        let lines = other.timeline.flatten();
-
-        if myself.len() != lines.len() {
-            panic!(
-                "file corruption, lines number mismatch during merge {} != {}",
-                myself.len(),
-                lines.len()
-            );
-        }
-
-        for (my_line, &other_line) in myself.iter_mut().zip(lines.iter()) {
-            if is_merge_marked(other_line) {
-                continue;
-            }
-
-            if is_merge_marked(*my_line) || (*my_line & mark) > (other_line & mark) {
-                *my_line = other_line;
-            }
-        }
     }
 }
 
@@ -454,18 +388,47 @@ mod tests {
         assert_eq!(file.dump(), "0 0\n50 1\n60 0\n");
     }
 
-    /// `merge` resolves merge-marked lines to `day` and reconstructs cleanly
-    /// (equal-length files).
+    /// Tick 16383 (the former merge-mark sentinel, reached by a 45-year daily
+    /// history) is an ordinary tick: insertions at it are reported, and a
+    /// later deletion of those lines reports it as `previous` without
+    /// panicking.
     #[test]
-    fn merge_two_files() {
-        let mut file1 = File::new(0, 1000, Vec::new());
-        let mut file2 = File::new(0, 1000, Vec::new());
-        // Grow both equally so merge's equal-length invariant holds.
-        file1.update(1, 100, 50, 0);
-        file2.update(1, 100, 50, 0);
-        file1.merge(2, &[&file2]);
-        file1.validate();
-        assert_eq!(file1.len(), 1050);
+    fn tick_16383_is_an_ordinary_tick() {
+        const FORMER_MERGE_MARK: i64 = 16_383;
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let c = calls.clone();
+        let updater: Updater =
+            Box::new(move |cur, prev, delta| c.borrow_mut().push((cur, prev, delta)));
+        let mut file = File::new(0, 2, vec![updater]);
+        file.update(FORMER_MERGE_MARK, 2, 2, 0);
+        file.update(FORMER_MERGE_MARK + 1, 2, 0, 2);
+        assert_eq!(
+            *calls.borrow(),
+            vec![
+                (0, 0, 2),
+                (FORMER_MERGE_MARK, FORMER_MERGE_MARK, 2),
+                (FORMER_MERGE_MARK + 1, FORMER_MERGE_MARK, -2),
+            ]
+        );
+        assert_eq!(file.len(), 2);
+        file.validate();
+    }
+
+    /// A zero-length file (an empty blob) is tracked, fires no report on
+    /// construction, and grows through a later insertion like any other.
+    #[test]
+    fn empty_file_grows_through_update() {
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let c = calls.clone();
+        let updater: Updater =
+            Box::new(move |cur, prev, delta| c.borrow_mut().push((cur, prev, delta)));
+        let mut file = File::new(0, 0, vec![updater]);
+        assert!(file.is_empty());
+        assert!(calls.borrow().is_empty());
+        file.update(3, 0, 2, 0);
+        assert_eq!(file.len(), 2);
+        assert_eq!(*calls.borrow(), vec![(3, 3, 2)]);
+        file.validate();
     }
 
     /// Node-pool shrink integration via `File`.

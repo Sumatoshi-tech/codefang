@@ -83,16 +83,15 @@ docker run --rm \
     --format json --silent /workspace
 ```
 
-#### With observability
+#### Writing the report to a file
 
-Export traces to an OTLP collector:
+`-o` writes the report into the mounted directory instead of stdout (the
+mount must then be writable):
 
 ```bash
 docker run --rm \
-  -e OTEL_EXPORTER_OTLP_ENDPOINT=host.docker.internal:4317 \
-  -e OTEL_EXPORTER_OTLP_INSECURE=true \
-  -v "/path/to/repo:/workspace:ro" \
-  codefang run -a history/* --format json --silent /workspace
+  -v "/path/to/repo:/workspace" \
+  codefang run -a history/* --format json -o /workspace/report.json --silent /workspace
 ```
 
 #### Using the UAST CLI
@@ -377,7 +376,7 @@ jobs:
 
 ### Common issues
 
-!!! failure "Error: repository path does not exist"
+!!! failure "Error: path not found: <path>"
     The checkout step did not run, or the `path` input points to a
     non-existent directory. Verify your `actions/checkout` configuration.
 
@@ -385,10 +384,10 @@ jobs:
     Your checkout used the default `fetch-depth: 1` (shallow clone).
     Set `fetch-depth: 0` for full history or use `--since` to limit the range.
 
-!!! failure "Error: out of memory"
-    For large repositories in CI, add `--memory-budget 2GiB` to constrain
-    memory usage. The streaming pipeline will automatically chunk the
-    commit history.
+!!! failure "Out of memory"
+    There is no memory-budget flag: a history run costs what its commit
+    window costs. For large repositories in CI, bound the window with
+    `--limit`, `--since`, `--first-parent` or `--max-changes-per-commit`.
 
 ### Self-test workflow
 

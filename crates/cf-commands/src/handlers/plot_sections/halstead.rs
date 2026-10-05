@@ -7,13 +7,15 @@
 //! `ErrInvalidFunctionsData` — the empty-result report).
 
 use cf_gojson::{GoMap, GoValue};
+use cf_halstead::thresholds::{
+    VolumeLevel, BUGS_FAIR, BUGS_POOR, DIFFICULTY_COMPLEX, EFFORT_HIGH, EFFORT_MEDIUM, VOLUME_HIGH,
+    VOLUME_VERY_HIGH,
+};
 use cf_plotpage::echarts::{
     AxisLabel, AxisLine, BarData, Chart, ChartKind, ItemStyle, LineStyle, ScatterData, SplitLine,
     XAxis, YAxis,
 };
 use cf_plotpage::{build_pie_chart, get_chart_palette, ChartOpts, Hint, Section, Theme};
-
-use crate::handlers::go_sort;
 
 /// Reference plot-section constants.
 const TOP_FUNCTIONS_LIMIT: usize = 12;
@@ -23,13 +25,15 @@ const PIE_RADIUS: &str = "60%";
 const SCATTER_SYMBOL_SIZE: i64 = 12;
 const MAX_SYMBOL_SIZE: i64 = 45;
 const BUGS_MULTIPLIER: f64 = 10.0;
-const VOLUME_LOW: f64 = 100.0;
-const VOLUME_MEDIUM: f64 = 1000.0;
-const VOLUME_HIGH: f64 = 5000.0;
-const EFFORT_LOW: f64 = 1000.0;
-const EFFORT_MEDIUM: f64 = 10000.0;
-const DIFFICULTY_MEDIUM: f64 = 15.0;
-const DIFFICULTY_HIGH: f64 = 30.0;
+/// Difficulty at which the risk scatter places a point in the high-risk
+/// series — a plot-only band above the crate's `Complex` bound
+/// ([`DIFFICULTY_COMPLEX`]), which marks medium risk here.
+const SCATTER_DIFFICULTY_HIGH: f64 = 30.0;
+
+/// Bar colors per effort band ([`EFFORT_MEDIUM`] / [`EFFORT_HIGH`]).
+const COLOR_LOW: &str = "#91cc75";
+const COLOR_MEDIUM: &str = "#fac858";
+const COLOR_HIGH: &str = "#ee6666";
 
 /// The reference `analyze.ReportFunctionListWithFallback(report, "functions",
 /// "function_halstead")`.
@@ -61,14 +65,15 @@ fn function_name(f: &GoMap) -> &str {
     }
 }
 
-/// The reference `getEffortColor`.
+/// The bar color of a function: the crate's effort bands (lower-inclusive,
+/// as `cf_halstead::thresholds::effort_assessment` classifies them).
 fn effort_color(effort: f64) -> &'static str {
-    if effort <= EFFORT_LOW {
-        "#91cc75"
-    } else if effort <= EFFORT_MEDIUM {
-        "#fac858"
+    if effort >= EFFORT_HIGH {
+        COLOR_HIGH
+    } else if effort >= EFFORT_MEDIUM {
+        COLOR_MEDIUM
     } else {
-        "#ee6666"
+        COLOR_LOW
     }
 }
 
@@ -114,7 +119,7 @@ pub fn sections(report: &GoValue) -> Option<Vec<Section>> {
             Hint {
                 title: "How to interpret:".to_string(),
                 items: vec![
-                    "<strong>Low (≤100)</strong> = usually easy to maintain".to_string(),
+                    "<strong>Low (&lt;100)</strong> = usually easy to maintain".to_string(),
                     "<strong>High / Very High</strong> concentration means decomposition debt".to_string(),
                 ],
             },
@@ -129,11 +134,13 @@ fn effort_bar_chart(report: &GoValue) -> Option<Chart> {
         return Some(empty_halstead_chart());
     }
 
-    // mapx.SortAndLimit by effort desc (unstable sort.Slice over the walk-order
-    // input — go_sort reproduces the tie permutation).
+    // The highest effort first, then by name (stable: equal names keep the
+    // report order).
     let mut sorted = functions.clone();
-    go_sort::slice(&mut sorted, |a, b| {
-        float_value(a, "effort") > float_value(b, "effort")
+    sorted.sort_by(|a, b| {
+        float_value(b, "effort")
+            .total_cmp(&float_value(a, "effort"))
+            .then_with(|| function_name(a).cmp(function_name(b)))
     });
     sorted.truncate(TOP_FUNCTIONS_LIMIT);
 
@@ -190,11 +197,13 @@ fn effort_bar_chart(report: &GoValue) -> Option<Chart> {
     Some(bar)
 }
 
-/// Scatter risk zones (reference `classifyScatterRisk`).
+/// Scatter risk zones: high from the crate's very-high volume, the plot's
+/// high difficulty band or a `poor` bug estimate; medium from high volume,
+/// complex difficulty or a `fair` bug estimate.
 fn classify_scatter_risk(volume: f64, difficulty: f64, bugs: f64) -> u8 {
-    if volume >= VOLUME_HIGH || difficulty >= DIFFICULTY_HIGH || bugs >= 1.0 {
+    if volume >= VOLUME_VERY_HIGH || difficulty >= SCATTER_DIFFICULTY_HIGH || bugs >= BUGS_POOR {
         2 // riskHigh
-    } else if volume >= VOLUME_MEDIUM || difficulty >= DIFFICULTY_MEDIUM || bugs >= 0.3 {
+    } else if volume >= VOLUME_HIGH || difficulty >= DIFFICULTY_COMPLEX || bugs >= BUGS_FAIR {
         1 // riskMedium
     } else {
         0 // riskLow
@@ -306,36 +315,32 @@ fn volume_pie_chart(report: &GoValue) -> Chart {
         return empty_halstead_pie();
     }
 
-    let (mut low, mut medium, mut high, mut very_high) = (0i64, 0i64, 0i64, 0i64);
+    // The crate's volume bands ([`VolumeLevel::of`]), one slice each.
+    let mut counts = [0i64; VolumeLevel::ALL.len()];
     for f in &functions {
-        let volume = float_value(f, "volume");
-        if volume <= VOLUME_LOW {
-            low += 1;
-        } else if volume <= VOLUME_MEDIUM {
-            medium += 1;
-        } else if volume <= VOLUME_HIGH {
-            high += 1;
-        } else {
-            very_high += 1;
-        }
+        counts[VolumeLevel::of(float_value(f, "volume")).index()] += 1;
     }
 
     let palette = get_chart_palette(Theme::Dark);
-    let item = |name: &str, value: i64, color: &str| cf_plotpage::echarts::PieData {
-        name: name.to_string(),
-        value: Some(GoValue::Int(value)),
-        item_style: Some(ItemStyle {
-            color: color.to_string(),
-            ..ItemStyle::default()
-        }),
-        ..cf_plotpage::echarts::PieData::default()
-    };
-    let pie_data = vec![
-        item("Low (≤100)", low, palette.semantic.good),
-        item("Medium (101-1000)", medium, palette.primary[1]),
-        item("High (1001-5000)", high, palette.semantic.warning),
-        item("Very High (>5000)", very_high, palette.semantic.bad),
+    let colors = [
+        palette.semantic.good,
+        palette.primary[1],
+        palette.semantic.warning,
+        palette.semantic.bad,
     ];
+    let pie_data = VolumeLevel::ALL
+        .iter()
+        .zip(colors)
+        .map(|(level, color)| cf_plotpage::echarts::PieData {
+            name: level.bucket_label().to_string(),
+            value: Some(GoValue::Int(counts[level.index()])),
+            item_style: Some(ItemStyle {
+                color: color.to_string(),
+                ..ItemStyle::default()
+            }),
+            ..cf_plotpage::echarts::PieData::default()
+        })
+        .collect();
 
     build_pie_chart(None, "Volume", pie_data, PIE_RADIUS)
 }
@@ -437,11 +442,24 @@ mod tests {
         assert!(!json.contains("Medium risk"));
     }
 
+    /// The pie buckets are the crate's volume bands with the crate's labels.
     #[test]
-    fn pie_volume_buckets_match_go() {
+    fn pie_volume_buckets_are_the_crate_bands() {
         let json = volume_pie_chart(&raw_report()).option_json();
         assert!(json.contains(
-            "{\"name\":\"Low (≤100)\",\"value\":1,\"itemStyle\":{\"color\":\"#22c55e\"}},{\"name\":\"Medium (101-1000)\",\"value\":0,\"itemStyle\":{\"color\":\"#38bdf8\"}},{\"name\":\"High (1001-5000)\",\"value\":0,\"itemStyle\":{\"color\":\"#eab308\"}},{\"name\":\"Very High (>5000)\",\"value\":1,\"itemStyle\":{\"color\":\"#ef4444\"}}"
-        ));
+            "{\"name\":\"Low (<100)\",\"value\":1,\"itemStyle\":{\"color\":\"#22c55e\"}},{\"name\":\"Medium (100-1000)\",\"value\":0,\"itemStyle\":{\"color\":\"#38bdf8\"}},{\"name\":\"High (1000-5000)\",\"value\":0,\"itemStyle\":{\"color\":\"#eab308\"}},{\"name\":\"Very High (>=5000)\",\"value\":1,\"itemStyle\":{\"color\":\"#ef4444\"}}"
+        ), "{json}");
+    }
+
+    /// A function exactly at a band bound belongs to the higher band, as in
+    /// `cf_halstead::thresholds`.
+    #[test]
+    fn bounds_are_lower_inclusive_like_the_crate() {
+        assert_eq!(effort_color(EFFORT_MEDIUM), COLOR_MEDIUM);
+        assert_eq!(effort_color(EFFORT_HIGH), COLOR_HIGH);
+        assert_eq!(classify_scatter_risk(VOLUME_HIGH, 0.0, 0.0), 1);
+        assert_eq!(classify_scatter_risk(VOLUME_VERY_HIGH, 0.0, 0.0), 2);
+        assert_eq!(classify_scatter_risk(0.0, DIFFICULTY_COMPLEX, 0.0), 1);
+        assert_eq!(classify_scatter_risk(0.0, 0.0, BUGS_POOR), 2);
     }
 }

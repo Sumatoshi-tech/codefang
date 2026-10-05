@@ -47,15 +47,17 @@ generated noise.
    codefang run -a '*' --extra-excluded-prefixes '.venv/,target/,build/' --format json .
    ```
 
-5. Constrain memory on a large monorepo so the streaming pipeline auto-tunes
-   worker count and spill thresholds rather than consuming all available RAM:
+5. Bound the history window on a large monorepo — there is no memory or
+   worker knob; a history run costs what its commit window costs. Limit the
+   range with `--since` or `--limit`, skip merge side branches with
+   `--first-parent`, and drop mass-change commits (vendoring dumps,
+   generated-code regenerations) with `--max-changes-per-commit`:
 
    ```bash
-   codefang run -a 'history/*' --memory-budget 4GB --workers 4 --format json --silent .
+   codefang run -a 'history/*' --limit 5000 --first-parent --format json --silent .
    ```
 
-6. If you need only a subset of the history, limit the commit range with
-   `--since` or `--limit` to keep the run bounded:
+6. If you need only a period of the history, select it with `--since`:
 
    ```bash
    codefang run -a 'history/devs' --since 2025-01-01 --format json .

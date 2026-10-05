@@ -26,7 +26,7 @@
 //! binary remains the first end-to-end-shippable artifact (DESIGN §1.1).
 //!
 //! Compatibility: parse trees and report bytes are pinned against the
-//! reference implementation by `tests/compat`.
+//! reference implementation by the report e2e suites (`bins/codefang/tests`).
 //!
 //! # Byte-identity
 //!

@@ -1,156 +1,199 @@
 # Developers analyzer reference
 
 The developers analyzer computes **per-developer contribution statistics**
-across Git history, including commit counts, line changes, language breakdown,
-bus factor risk, and activity time series.
+across Git history: commit counts, lines added / removed / changed with a
+per-language breakdown, bus factor risk, and activity time series.
 
-For the conceptual model — what each statistic means and how the bus factor is
-derived — see [Understanding developer analysis](../explanation/developers.md).
-To run it, see the [Quick start](../getting-started/quickstart.md).
+For the conceptual model — what each statistic means and how the bus factor
+is derived — see
+[Understanding developer analysis](../explanation/developers.md). To run
+it, see the [Quick start](../getting-started/quickstart.md).
 
 ---
 
-## Configuration options
+## Options
 
-| Option | Type | Default | Description |
+The analyzer reads its options from the `codefang run` flags. The shared
+history flags (`--head`, `--limit`, `--since`, `--first-parent`,
+`--tick-size`, `--max-changes-per-commit`, `--languages`, `--people-dict`,
+`--exact-signatures`, `--anonymize`) apply as documented in the
+[CLI reference](../guide/cli-reference.md).
+
+| Flag | Type | Default | Description |
 |---|---|---|---|
-| `Devs.ConsiderEmptyCommits` | `bool` | `false` | Include empty commits (e.g., trivial merges) in commit counts |
-| `Devs.Anonymize` | `bool` | `false` | Replace developer names with pseudonyms (Developer-A, Developer-B, etc.) |
+| `--empty-commits` | `bool` | `false` | Count commits whose filtered diff is empty (trivial merges, `--allow-empty` commits, commits touching only excluded paths) as commits with zero lines. |
+| `--anonymize` | `bool` | `false` | Replace developer names with pseudonyms (`Developer-A`, `Developer-B`, …). |
 
-```yaml
-# .codefang.yml
-history:
-  devs:
-    consider_empty_commits: false
-    anonymize: false
-```
+!!! note "Configuration file"
+    The `history.devs.*` keys of `.codefang.yaml` describe the same
+    options in the configuration schema, but `codefang run` applies the
+    flags above only.
 
 ---
 
 ## Example output
 
+From a twelve-commit fixture with three developers
+(`bins/codefang/tests/devs_e2e.rs`); the `activity` and `churn` lists are
+cut to their first tick.
+
 === "JSON"
 
     ```json
     {
+      "aggregate": {
+        "total_commits": 10,
+        "total_lines_added": 30,
+        "total_lines_removed": 15,
+        "total_developers": 3,
+        "active_developers": 1,
+        "estimated_total_developers": 3,
+        "estimated_active_developers": 1,
+        "analysis_period_ticks": 310,
+        "project_bus_factor": 2,
+        "total_languages": 2
+      },
       "developers": [
         {
           "id": 0,
           "name": "alice",
           "email": "alice@example.com",
-          "commits": 342,
-          "lines_added": 28500,
-          "lines_removed": 12300,
-          "lines_changed": 8400,
-          "net_lines": 16200,
+          "commits": 6,
+          "lines_added": 16,
+          "lines_removed": 0,
+          "lines_changed": 0,
+          "net_lines": 16,
           "languages": [
-            {"language": "Go", "added": 22000, "removed": 9800, "changed": 6200},
-            {"language": "Python", "added": 6500, "removed": 2500, "changed": 2200}
+            {"language": "Go", "added": 11, "removed": 0, "changed": 0},
+            {"language": "Python", "added": 5, "removed": 0, "changed": 0}
           ],
           "first_tick": 0,
-          "last_tick": 120,
-          "active_ticks": 85
+          "last_tick": 310,
+          "active_ticks": 6
+        },
+        {
+          "id": 2,
+          "name": "carol",
+          "email": "carol@example.com",
+          "commits": 1,
+          "lines_added": 6,
+          "lines_removed": 12,
+          "lines_changed": 0,
+          "net_lines": -6,
+          "languages": [
+            {"language": "Go", "added": 6, "removed": 12, "changed": 0}
+          ],
+          "first_tick": 155,
+          "last_tick": 155,
+          "active_ticks": 1
         }
       ],
       "languages": [
         {
           "name": "Go",
-          "total_lines": 45000,
-          "total_contribution": 67800,
-          "contributors": {"0": 54600, "1": 13200}
+          "total_lines": 22,
+          "total_contribution": 37,
+          "contributors": {"0": 11, "1": 8, "2": 18}
         }
       ],
       "busfactor": [
         {
-          "language": "Python",
-          "bus_factor": 1,
-          "total_contributors": 2,
-          "primary_dev_id": 0,
-          "primary_dev_name": "alice",
-          "primary_dev_email": "alice@example.com",
-          "primary_percentage": 67.1,
-          "secondary_dev_id": 1,
-          "secondary_dev_name": "bob",
-          "secondary_dev_email": "bob@example.com",
-          "secondary_percentage": 32.9,
-          "risk_level": "MEDIUM"
+          "language": "Go",
+          "bus_factor": 2,
+          "total_contributors": 3,
+          "primary_dev_id": 2,
+          "primary_dev_name": "carol",
+          "primary_dev_email": "carol@example.com",
+          "primary_percentage": 48.64864864864865,
+          "secondary_dev_id": 0,
+          "secondary_dev_name": "alice",
+          "secondary_dev_email": "alice@example.com",
+          "secondary_percentage": 29.72972972972973,
+          "risk_level": "LOW"
         }
       ],
       "activity": [
         {
           "tick": 0,
-          "start_time": "2024-01-15T10:30:00Z",
-          "end_time": "2024-01-16T08:45:00Z",
-          "total_commits": 5,
-          "by_developer": [
-            {"dev_id": 0, "commits": 3},
-            {"dev_id": 1, "commits": 2}
-          ]
+          "start_time": "2021-01-01T12:00:00Z",
+          "end_time": "2021-01-01T12:00:00Z",
+          "by_developer": [{"dev_id": 0, "commits": 1}],
+          "total_commits": 1
         }
       ],
       "churn": [
         {
           "tick": 0,
-          "start_time": "2024-01-15T10:30:00Z",
-          "end_time": "2024-01-16T08:45:00Z",
-          "lines_added": 450,
-          "lines_removed": 120,
-          "net_change": 330
+          "start_time": "2021-01-01T12:00:00Z",
+          "end_time": "2021-01-01T12:00:00Z",
+          "lines_added": 10,
+          "lines_removed": 0,
+          "net_change": 10
         }
-      ],
-      "aggregate": {
-        "total_commits": 850,
-        "total_developers": 5,
-        "active_developers": 3,
-        "analysis_period_ticks": 120,
-        "project_bus_factor": 2,
-        "total_languages": 4
-      }
+      ]
     }
     ```
-
-    **Key fields for analytics:**
-
-    - `developers[].email` — split from previously pipe-delimited name
-    - `developers[].languages` — flattened from map to sorted array
-    - `activity[].by_developer` — flattened from `map[int]int` to `[{dev_id, commits}]` array
-    - `activity[].start_time` / `end_time` — RFC 3339 tick boundaries
-    - `churn[].start_time` / `end_time` — RFC 3339 tick boundaries
-    - `busfactor[].primary_dev_email` / `secondary_dev_email` — split identity fields
 
 === "YAML"
 
     ```yaml
     aggregate:
-      total_commits: 850
-      total_lines_added: 95000
-      total_lines_removed: 42000
-      total_developers: 5
-      active_developers: 3
-      project_bus_factor: 2
-      total_languages: 4
+        total_commits: 10
+        total_lines_added: 30
+        total_lines_removed: 15
+        total_developers: 3
+        active_developers: 1
+        estimated_total_developers: 3
+        estimated_active_developers: 1
+        analysis_period_ticks: 310
+        project_bus_factor: 2
+        total_languages: 2
     developers:
-      - name: alice
-        commits: 342
-        lines_added: 28500
-        lines_removed: 12300
-        net_lines: 16200
-    languages:
-      - name: Go
-        total_lines: 45000
-        total_contribution: 67800
+        - id: 0
+          name: alice
+          email: alice@example.com
+          commits: 6
+          lines_added: 16
+          lines_removed: 0
+          lines_changed: 0
+          net_lines: 16
     busfactor:
-      - language: Python
-        bus_factor: 1
-        total_contributors: 2
-        primary_dev_name: alice
-        primary_percentage: 67.1
-        risk_level: MEDIUM
+        - language: Go
+          bus_factor: 2
+          total_contributors: 3
+          primary_dev_id: 2
+          primary_dev_name: carol
+          primary_percentage: 48.64864864864865
+          secondary_dev_id: 0
+          secondary_dev_name: alice
+          risk_level: LOW
     ```
+
+Fields:
+
+| Field | Meaning |
+|---|---|
+| `aggregate.total_commits` | Commits counted (merges included, empty commits only with `--empty-commits`). |
+| `aggregate.total_developers`, `active_developers` | Exact counts; active = with commits in the last 90 days of the window. |
+| `aggregate.estimated_total_developers`, `estimated_active_developers` | The same cardinalities estimated by a HyperLogLog sketch (precision 14, about 0.8 % error); equal to the exact counts on small inputs. |
+| `aggregate.analysis_period_ticks` | The newest tick of the window. |
+| `aggregate.project_bus_factor` | Smallest number of developers covering 50 % of all contributions (`added + removed`). |
+| `developers[]` | Sorted by commits (id on a tie): `email` is omitted when unknown; `languages` is `null` in JSON (`[]` in YAML) for a developer with no line statistics; `first_tick` / `last_tick` / `active_ticks` describe the active period. |
+| `languages[]` | Sorted by `total_lines` (lines added): `total_contribution` is `added + removed`; `contributors` maps developer id → contribution. |
+| `busfactor[]` | Per language, highest risk first: `bus_factor`, `total_contributors`, the primary and secondary owners (the secondary is present whenever the language has two or more contributors — developer id 0 included), `primary_percentage` / `secondary_percentage`, `risk_level`. |
+| `activity[]`, `churn[]` | Per tick, with the tick's first and last committer time: commits per developer / lines added, removed and the net change. |
+
+### NDJSON and timeseries
+
+`--format ndjson` writes one record per commit with line statistics
+(`{"commits", "lines_added", "lines_removed", "lines_changed", "author_id",
+"languages"}`); `--format timeseries` lists every kept commit in tick order
+with the same entry under `"devs"`.
 
 ---
 
 ## See also
 
-- [Understanding developer analysis](../explanation/developers.md) — the mental model, bus factor methodology, architecture, and limitations.
-- [Quick start](../getting-started/quickstart.md) — run history analysis.
+- [Understanding developer analysis](../explanation/developers.md) — the
+  mental model, bus factor methodology, architecture, and limitations.
+- [Quick start](../getting-started/quickstart.md) — run developer analysis.

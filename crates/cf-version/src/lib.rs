@@ -13,13 +13,15 @@
 //! `Version`/`Commit`/`Date` are injected at build time (DESIGN.md §2.8)
 //! through a build script (`build.rs`) that reads environment variables and
 //! re-exports them as `rustc-env` entries; the library reads those with
-//! [`option_env!`], falling back to the defaults `dev` / `none` / `unknown`
-//! when unset. A plain `cargo build` with no environment therefore produces
-//! exactly `dev` / `none` / `unknown`.
+//! [`option_env!`], falling back to the crate version, `unknown` and `unknown`
+//! when unset. Inside a git checkout the build script also finds the commit
+//! `HEAD` points at, so a plain `cargo build` reports the crate version and
+//! that commit.
 //!
 //! Recognized build-time inputs (see `build.rs`):
 //! - `Version`: `CF_VERSION`, then `GIT_VERSION`
-//! - `Commit`:  `CF_COMMIT`,  then `GIT_COMMIT`
+//! - `Commit`:  `CF_COMMIT`,  then `GIT_COMMIT`, then `GIT_HASH`, then the
+//!   checkout's `HEAD`
 //! - `Date`:    `CF_DATE`,    then `SOURCE_DATE_EPOCH` (epoch → RFC3339 UTC)
 //!
 //! `SOURCE_DATE_EPOCH` support keeps the `built:` date reproducible so the
@@ -30,10 +32,10 @@
 
 use std::fmt::Write as _;
 
-/// Default version when none is injected.
-pub const DEFAULT_VERSION: &str = "dev";
-/// Default commit when none is injected.
-pub const DEFAULT_COMMIT: &str = "none";
+/// Default version when none is injected: the workspace crate version.
+pub const DEFAULT_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Default commit when none is injected and the build is not in a checkout.
+pub const DEFAULT_COMMIT: &str = "unknown";
 /// Default build date when none is injected.
 pub const DEFAULT_DATE: &str = "unknown";
 /// Default git hash of the running binary. There is no build-time injection
@@ -45,7 +47,7 @@ pub const DEFAULT_BINARY: i64 = 0;
 /// The build version string.
 ///
 /// Injected via `CF_VERSION` / `GIT_VERSION` at build time; defaults to
-/// [`DEFAULT_VERSION`] (`"dev"`).
+/// [`DEFAULT_VERSION`] (the crate version).
 pub const VERSION: &str = match option_env!("CF_VERSION_INJECTED") {
     Some(v) => v,
     None => DEFAULT_VERSION,
@@ -54,7 +56,7 @@ pub const VERSION: &str = match option_env!("CF_VERSION_INJECTED") {
 /// The build commit hash.
 ///
 /// Injected via `CF_COMMIT` / `GIT_COMMIT` at build time; defaults to
-/// [`DEFAULT_COMMIT`] (`"none"`).
+/// [`DEFAULT_COMMIT`] (`"unknown"`).
 pub const COMMIT: &str = match option_env!("CF_COMMIT_INJECTED") {
     Some(v) => v,
     None => DEFAULT_COMMIT,
@@ -86,14 +88,11 @@ pub const BINARY_GIT_HASH: &str = DEFAULT_BINARY_GIT_HASH;
 /// # Examples
 ///
 /// ```
-/// // With no build-time injection, the defaults are used:
+/// use cf_version::{banner, COMMIT, DATE, VERSION};
+///
 /// assert_eq!(
-///     cf_version::banner("codefang"),
-///     "codefang dev (commit: none, built: unknown)"
-/// );
-/// assert_eq!(
-///     cf_version::banner("uast"),
-///     "uast dev (commit: none, built: unknown)"
+///     banner("uast"),
+///     format!("uast {VERSION} (commit: {COMMIT}, built: {DATE})")
 /// );
 /// ```
 #[must_use]
@@ -102,7 +101,7 @@ pub fn banner(name: &str) -> String {
 }
 
 /// Returns the `codefang version` line — the banner plus a trailing newline
-/// (frozen CLI contract, pinned by `tests/compat`).
+/// (CLI contract, pinned by the binaries' end-to-end tests).
 #[must_use]
 pub fn codefang_version_line() -> String {
     let mut s = banner("codefang");
@@ -111,7 +110,7 @@ pub fn codefang_version_line() -> String {
 }
 
 /// Returns the `uast version` line — the banner plus a trailing newline
-/// (frozen CLI contract, pinned by `tests/compat`).
+/// (CLI contract, pinned by the binaries' end-to-end tests).
 #[must_use]
 pub fn uast_version_line() -> String {
     let mut s = banner("uast");
@@ -176,10 +175,10 @@ mod tests {
 
     #[test]
     fn defaults_are_frozen() {
-        // Frozen defaults: Version="dev", Commit="none", Date="unknown",
+        // Defaults: the crate version, Commit="unknown", Date="unknown",
         // BinaryGitHash="<unknown>", Binary=0.
-        assert_eq!(DEFAULT_VERSION, "dev");
-        assert_eq!(DEFAULT_COMMIT, "none");
+        assert_eq!(DEFAULT_VERSION, env!("CARGO_PKG_VERSION"));
+        assert_eq!(DEFAULT_COMMIT, "unknown");
         assert_eq!(DEFAULT_DATE, "unknown");
         assert_eq!(DEFAULT_BINARY_GIT_HASH, "<unknown>");
         assert_eq!(DEFAULT_BINARY, 0);
@@ -204,16 +203,22 @@ mod tests {
 
     #[test]
     fn banner_with_no_injection_uses_defaults() {
-        // In the test build no CF_*_INJECTED env is set, so the consts default.
-        assert_eq!(VERSION, "dev");
-        assert_eq!(COMMIT, "none");
-        assert_eq!(DATE, "unknown");
+        // With no injected version the crate version is reported; the commit
+        // is the checkout's HEAD (a hex id) or `unknown` outside a checkout.
+        assert_eq!(VERSION, env!("CARGO_PKG_VERSION"));
+        assert!(
+            COMMIT == DEFAULT_COMMIT || COMMIT.bytes().all(|b| b.is_ascii_hexdigit()),
+            "{COMMIT}"
+        );
         assert_eq!(BINARY_GIT_HASH, "<unknown>");
         assert_eq!(
             banner("codefang"),
-            "codefang dev (commit: none, built: unknown)"
+            format!("codefang {VERSION} (commit: {COMMIT}, built: {DATE})")
         );
-        assert_eq!(banner("uast"), "uast dev (commit: none, built: unknown)");
+        assert_eq!(
+            banner("uast"),
+            format!("uast {VERSION} (commit: {COMMIT}, built: {DATE})")
+        );
     }
 
     #[test]

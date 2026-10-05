@@ -150,7 +150,7 @@ impl Manager {
     /// the [`Metadata`] is written atomically as `checkpoint.json`.
     ///
     /// `created_at` is supplied by the caller so the wall clock can be pinned
-    /// in tests/goldens (DESIGN §2.8); use [`Manager::save_now`] for the
+    /// in tests; use [`Manager::save_now`] for the
     /// production behavior (current UTC time, RFC3339).
     ///
     /// # Errors

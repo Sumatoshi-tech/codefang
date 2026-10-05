@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use cf_alg_stats::mean_std_dev;
 use cf_gosort::go_sort_slice;
 
-use crate::model::{ExternalAnomaly, ExternalSummary, RawMetrics, Record, TickMetrics, ZScoreSet};
+use crate::model::{ExternalAnomaly, ExternalSummary, Record, TickMetrics, ZScoreSet};
 use crate::zscore::compute_z_scores;
 
 /// Detects anomalies across all six per-tick metrics.
@@ -40,11 +40,11 @@ pub fn detect_anomalies_from_ticks(
     for (i, tick) in ticks.iter().enumerate() {
         let tm = &tick_metrics[tick];
         churn[i] = tm.net_churn as f64;
-        files[i] = tm.files_changed as f64;
+        files[i] = tm.files_changed() as f64;
         added[i] = tm.lines_added as f64;
         removed[i] = tm.lines_removed as f64;
-        lang_div[i] = tm.languages.len() as f64;
-        authors[i] = tm.author_ids.len() as f64;
+        lang_div[i] = tm.language_diversity() as f64;
+        authors[i] = tm.author_count() as f64;
     }
 
     let churn_scores = compute_z_scores(&churn, window);
@@ -67,11 +67,12 @@ pub fn detect_anomalies_from_ticks(
         threshold_f,
     );
 
-    // Sort by max absolute Z-score descending. The reference binary uses
-    // Go's unstable sort.Slice, so the relative order of ties is fixed by
-    // pdqsort's deterministic-but-unstable behavior; replicate it exactly
-    // via cf-gosort rather than a stable sort.
-    go_sort_slice(&mut anomalies, |a, b| a.max_abs_z_score > b.max_abs_z_score);
+    // Sort by max absolute Z-score descending; ties stay in tick order.
+    anomalies.sort_by(|a, b| {
+        b.max_abs_z_score
+            .total_cmp(&a.max_abs_z_score)
+            .then_with(|| a.tick.cmp(&b.tick))
+    });
 
     anomalies
 }
@@ -79,7 +80,6 @@ pub fn detect_anomalies_from_ticks(
 /// Builds anomaly records for ticks whose max-abs Z-score exceeds
 /// `threshold` (strict).
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::cast_possible_wrap)] // language/author counts are small
 fn build_records(
     ticks: &[i64],
     tick_metrics: &BTreeMap<i64, TickMetrics>,
@@ -114,15 +114,8 @@ fn build_records(
             tick: *tick,
             z_scores: scores,
             max_abs_z_score: max_abs,
-            metrics: RawMetrics {
-                files_changed: tm.files_changed,
-                lines_added: tm.lines_added,
-                lines_removed: tm.lines_removed,
-                net_churn: tm.net_churn,
-                language_diversity: tm.languages.len() as i64,
-                author_count: tm.author_ids.len() as i64,
-            },
-            files: tm.files.clone(),
+            metrics: tm.raw(),
+            files: tm.files.iter().cloned().collect(),
         });
     }
 
@@ -245,10 +238,10 @@ mod tests {
             tick_metrics.insert(
                 tick,
                 TickMetrics {
-                    files_changed: 5,
                     lines_added: 20,
                     lines_removed: 10,
                     net_churn: 10,
+                    files: (0..5).map(|f| format!("f{f}.go")).collect(),
                     languages: BTreeMap::from([("Go".to_string(), 1)]),
                     ..Default::default()
                 },
@@ -257,18 +250,43 @@ mod tests {
         tick_metrics.insert(
             10,
             TickMetrics {
-                files_changed: 200,
                 lines_added: 5000,
                 lines_removed: 50,
                 net_churn: 4950,
+                files: (0..200).map(|f| format!("g{f}.go")).collect(),
                 languages: BTreeMap::from([("Go".to_string(), 1), ("Python".to_string(), 1)]),
                 ..Default::default()
             },
         );
 
         let anomalies = detect_anomalies_from_ticks(&tick_metrics, 2.0, 5);
-        assert!(!anomalies.is_empty(), "should detect the spike");
+        assert_eq!(anomalies.len(), 1, "only the spike is flagged");
         assert_eq!(anomalies[0].tick, 10);
+        assert_eq!(anomalies[0].metrics.files_changed, 200);
+        assert_eq!(anomalies[0].files.len(), 200);
+        assert_eq!(anomalies[0].files[0], "g0.go");
+    }
+
+    #[test]
+    fn ties_rank_by_tick_after_severity() {
+        // Two spikes, each after three flat ticks (zero variance -> the same
+        // sentinel severity): the tie resolves by tick.
+        let mut tick_metrics = BTreeMap::new();
+        for tick in 0..8_i64 {
+            let churn = if tick == 3 || tick == 7 { 500 } else { 10 };
+            tick_metrics.insert(
+                tick,
+                TickMetrics {
+                    lines_added: churn,
+                    net_churn: churn,
+                    ..Default::default()
+                },
+            );
+        }
+        let anomalies = detect_anomalies_from_ticks(&tick_metrics, 2.0, 3);
+        let ticks: Vec<i64> = anomalies.iter().map(|a| a.tick).collect();
+        assert_eq!(ticks, vec![3, 7], "{anomalies:?}");
+        assert!((anomalies[0].max_abs_z_score - anomalies[1].max_abs_z_score).abs() < 1e-9);
     }
 
     #[test]

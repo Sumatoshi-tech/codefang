@@ -5,7 +5,7 @@ description: Model Context Protocol server for AI agent integration, exposing Co
 
 # MCP server
 
-Codefang includes a built-in [Model Context Protocol](https://modelcontextprotocol.io/)
+Codefang includes a [Model Context Protocol](https://modelcontextprotocol.io/)
 (MCP) server that exposes its analysis capabilities as tools that AI agents
 can discover and invoke programmatically.
 
@@ -38,18 +38,14 @@ The server communicates over **stdio** (stdin/stdout) using JSON-RPC, which is
 the standard MCP transport for local tool use. Agents connect by launching
 the process and reading/writing to its stdio streams.
 
-### Debug mode
-
-Enable debug logging to stderr for troubleshooting:
-
-```bash
-codefang mcp --debug
-```
-
-Debug mode enables:
-
-- `slog.LevelDebug` logging with JSON format on stderr
-- 100% trace sampling (all spans exported)
+Every tool runs the CLI's own pipeline, so a tool returns the report `codefang run`
+renders for the same input: `codefang_analyze` returns
+`{analyzer: report}` with each report equal to
+`codefang run -a static/<analyzer> --format json` over the snippet, and
+`codefang_history` returns `{analyzer: report}` with each report equal to
+`codefang run -a history/<analyzer> --format json --limit <limit>` over the
+repository. The server holds no results between calls. Errors and the
+server's own failures go to stderr; stdout carries only JSON-RPC.
 
 ---
 
@@ -77,7 +73,7 @@ metrics.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `code` | string | **Yes** | -- | Source code to analyze (max 1 MB) |
-| `language` | string | **Yes** | -- | Programming language (e.g., `go`, `python`, `javascript`) |
+| `language` | string | **Yes** | -- | Language name or alias (Linguist: `go`, `python`, `JavaScript`, `py`); the snippet is parsed as `code` plus the language's primary extension |
 | `analyzers` | string[] | No | all | List of analyzer names to run |
 
 #### Available analyzers
@@ -115,7 +111,7 @@ node type.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `code` | string | **Yes** | -- | Source code to parse (max 1 MB) |
-| `language` | string | **Yes** | -- | Programming language (e.g., `go`, `python`, `javascript`) |
+| `language` | string | **Yes** | -- | Language name or alias (Linguist: `go`, `python`, `JavaScript`, `py`); the snippet is parsed as `code` plus the language's primary extension |
 | `query` | string | No | -- | Optional node type filter (e.g., `function_declaration`) |
 
 #### Example
@@ -211,36 +207,6 @@ Add Codefang as an MCP server in your Claude Code settings:
     }
     ```
 
-=== "With debug mode"
-
-    ```json
-    {
-      "mcpServers": {
-        "codefang": {
-          "command": "codefang",
-          "args": ["mcp", "--debug"],
-          "env": {}
-        }
-      }
-    }
-    ```
-
-=== "With observability"
-
-    ```json
-    {
-      "mcpServers": {
-        "codefang": {
-          "command": "codefang",
-          "args": ["mcp"],
-          "env": {
-            "OTEL_EXPORTER_OTLP_ENDPOINT": "localhost:4317"
-          }
-        }
-      }
-    }
-    ```
-
 ### Generic MCP client
 
 Any MCP-compatible client can connect by launching the process:
@@ -274,71 +240,20 @@ error message in the `content` field.
 
 ---
 
-## Observability
-
-The MCP server supports full OpenTelemetry instrumentation:
-
-### Tracing
-
-Each tool invocation creates a root span with `SpanKindServer`:
-
-| Span | Attributes |
-|------|------------|
-| `mcp.codefang_analyze` | `mcp.tool`, analyzer list |
-| `mcp.uast_parse` | `mcp.tool`, language |
-| `mcp.codefang_history` | `mcp.tool`, repo path, commit limit |
-
-When a span is sampled, the `trace_id` is included in the response content
-for correlation with backend traces.
-
-### Metrics
-
-RED metrics are recorded for each tool invocation:
-
-| Metric | Description |
-|--------|-------------|
-| `codefang.requests.total` | Request count by tool and status |
-| `codefang.request.duration.seconds` | Request duration histogram |
-| `codefang.errors.total` | Error count by tool |
-| `codefang.inflight.requests` | In-flight request gauge |
-
-### Configuration
-
-Set the OTLP endpoint to enable telemetry export:
-
-```json
-{
-  "mcpServers": {
-    "codefang": {
-      "command": "codefang",
-      "args": ["mcp"],
-      "env": {
-        "OTEL_EXPORTER_OTLP_ENDPOINT": "localhost:4317",
-        "OTEL_EXPORTER_OTLP_INSECURE": "true"
-      }
-    }
-  }
-}
-```
-
-Without an OTLP endpoint, the server uses no-op providers with zero overhead.
-
----
-
 ## Architecture
 
 ```mermaid
 flowchart LR
     AGENT["AI Agent<br/>(Claude, etc.)"]
     STDIO["stdio<br/>(JSON-RPC)"]
-    MCP_SERVER["MCP Server<br/><em>internal/mcp</em>"]
+    MCP_SERVER["MCP Server<br/><em>cf-mcp</em>"]
     ANALYZE["codefang_analyze"]
     UAST_PARSE["uast_parse"]
     HISTORY["codefang_history"]
 
-    STATIC_SVC["Static Analysis<br/>Service"]
-    UAST_PARSER["UAST Parser"]
-    HIST_PIPELINE["History Pipeline<br/><em>framework + gitlib</em>"]
+    STATIC_SVC["codefang run<br/><em>static analyzers</em>"]
+    UAST_PARSER["UAST Parser<br/><em>cf-uast</em>"]
+    HIST_PIPELINE["codefang run<br/><em>history pipeline</em>"]
 
     AGENT <-->|MCP protocol| STDIO
     STDIO <--> MCP_SERVER
@@ -347,6 +262,8 @@ flowchart LR
     MCP_SERVER --> HISTORY --> HIST_PIPELINE
 ```
 
-The MCP server reuses the same analysis infrastructure as the CLI -- the same
-analyzers, parsers, and pipeline components. The only difference is the
-transport layer (stdio JSON-RPC instead of command-line flags and stdout).
+The MCP server (`cf-mcp`, launched by `codefang mcp` in
+`crates/cf-commands/src/mcp.rs`) renders every tool result through the CLI's
+own pipeline (`cf_commands::render_run`), so the analyzers, the parser, the
+memory budget and the report bytes are the CLI's. Only the transport differs:
+newline-delimited JSON-RPC on stdio instead of flags and stdout.

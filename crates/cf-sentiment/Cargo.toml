@@ -12,7 +12,7 @@ publish.workspace = true
 # tick over commit history.
 #
 # Compatibility: machine-report bytes are pinned against the reference binary by
-# tests/compat. The base VADER lexicon is vendored byte-for-byte under
+# the report e2e suites in bins/codefang/tests. The base VADER lexicon is vendored byte-for-byte under
 # data/.
 
 [dependencies]

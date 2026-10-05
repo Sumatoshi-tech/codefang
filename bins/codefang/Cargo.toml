@@ -11,17 +11,6 @@ publish.workspace = true
 name = "codefang"
 path = "src/main.rs"
 
-[features]
-default = []
-# The `mcp` command (cmd/codefang/commands/mcp.go) carries `//go:build ignore`
-# in Go and is NOT wired into the root command. Mirror that: feature-gated, off
-# by default. See DESIGN.md §4.1.
-mcp = []
-# `--profile` pprof HTTP server (localhost:6060). The memory watchdog is always
-# available; this feature is reserved for the pprof HTTP endpoints (behavioral
-# parity only, never machine output bytes).
-profile = []
-
 [dependencies]
 clap = { workspace = true }
 # KEEP libgit2 (vendored via git2). The entrypoint links a core libgit2 path so
@@ -38,3 +27,10 @@ cf-commands = { path = "../../crates/cf-commands" }
 # Deterministic commit fixtures for the CLI-level window tests (feature-gated:
 # compiled for tests only, never in a shipped binary).
 cf-gitlib = { path = "../../crates/cf-gitlib", features = ["testutil"] }
+# Comments e2e: tempdir fixtures + machine-format assertions on the real
+# binary (`bins/codefang/tests/comments_e2e.rs`).
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+# Couples e2e: the documented changeset cap the oversized-commit fixture is
+# sized against (`bins/codefang/tests/couples_e2e.rs`).
+cf-couples = { path = "../../crates/cf-couples" }

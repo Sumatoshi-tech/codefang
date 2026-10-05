@@ -9,7 +9,7 @@
 # This crate emits no machine-format report bytes, so it does NOT depend on the
 # compat serialization crates cf-gojson / cf-goyaml. Its parity surface is the
 # boolean include/exclude decision, which selects which files appear in reports
-# (pinned by tests/compat).
+# (pinned by the report e2e suites in bins/codefang/tests).
 [package]
 name = "cf-pathfilter"
 version.workspace = true

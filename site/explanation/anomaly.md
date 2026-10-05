@@ -16,27 +16,29 @@ that deviate significantly from the historical baseline.
 
 ### Z-score analysis
 
-For each time tick, the analyzer computes Z-scores for six metrics using a trailing sliding window:
+For each time tick, the analyzer computes Z-scores for six metrics using a trailing window:
 
 | Metric | Description |
 |---|---|
 | **Net churn** | `lines_added - lines_removed` |
-| **Files changed** | Number of files modified in the tick |
+| **Files changed** | Number of **distinct** files touched in the tick (a file modified by several commits counts once; a deleted file counts) |
 | **Lines added** | Total lines added across all commits in the tick |
 | **Lines removed** | Total lines removed across all commits in the tick |
 | **Language diversity** | Number of distinct programming languages modified |
 | **Author count** | Number of distinct developers active in the tick |
 
-A Z-score measures how many standard deviations a value is from the rolling mean. When any metric's absolute Z-score exceeds the threshold, the tick is flagged as anomalous.
+A Z-score measures how many standard deviations a value is from the rolling mean. When any metric's absolute Z-score strictly exceeds the threshold, the tick is flagged as anomalous.
 
 !!! info "Z-score interpretation"
     - **|Z| < 2.0**: Within normal variation
     - **|Z| 2.0 - 3.0**: Unusual, worth investigating
     - **|Z| > 3.0**: Highly anomalous, likely a significant event
 
-### Sliding window
+### Trailing window
 
-The Z-score is computed against a trailing window of the previous N ticks (default 20). This means the "normal" baseline adapts to gradual trends, and only sudden deviations are flagged.
+The Z-score of a tick is computed against the previous `window_size` ticks (default 20) — the ticks that exist when the history is shorter — using the mean and the population standard deviation of that window. The "normal" baseline therefore adapts to gradual trends, and only sudden deviations are flagged.
+
+A window needs at least two observations: the first tick has no window and the second has a single observation, so both score `0`. When a window of two or more identical values is followed by a different value, there is no variance to scale by and the signed sentinel `±100` is assigned.
 
 ### Anomaly records
 
@@ -46,22 +48,20 @@ Each detected anomaly includes:
 - **Z-scores**: Per-metric Z-scores showing which dimension is anomalous
 - **Max absolute Z-score**: The highest Z-score across all metrics (used for severity ranking)
 - **Raw metrics**: The actual values for that tick
-- **Files**: List of files changed in the anomalous tick
+- **Files**: The distinct files changed in the anomalous tick
 
-Anomalies are sorted by severity (highest absolute Z-score first).
+Anomalies are sorted by severity (highest absolute Z-score first, ties by tick). When nothing is flagged the list is empty, never absent.
 
 ---
 
 ## Architecture
 
-The anomaly analyzer follows the **TC/Aggregator pattern**:
+The math lives in the `cf-anomaly` crate; the history walk in `cf-commands` supplies the per-commit inputs:
 
-1. **Consume phase**: For each commit, `Consume()` extracts file changes, line stats, language diversity, and author ID, returning per-commit metrics as a `TC{Data: *CommitAnomalyData}`. The analyzer retains no per-commit state.
-2. **Aggregation phase**: An `anomaly.Aggregator` collects TCs, merges `CommitAnomalyData` into per-tick `TickMetrics` (aggregating files, lines, languages, and unique authors), and produces `TICK` results.
-3. **Z-score detection**: `ticksToReport()` runs sliding-window Z-score analysis on six dimensions over the aggregated tick metrics to detect anomalies.
-4. **Serialization phase**: `SerializeTICKs()` converts aggregated TICKs into JSON, YAML, binary, or HTML plot output via `ComputeAllMetrics()`.
-
-This separation enables streaming output, budget-aware memory spilling, and decoupled aggregation.
+1. **Per-commit product**: for every commit the walk takes the filtered tree diff against the first parent, the files it names (a delete names the deleted file), the line stats (skipped for merges) and the language of every touched blob — a pure function of the commit, computed in parallel across cores.
+2. **Chronological reduce**: the shared history core stamps every commit with its identity and tick in oldest-first order; `cf_anomaly::aggregate_commits_to_ticks` merges the commits of a tick (lines add up; files, languages and authors merge as sets).
+3. **Z-score detection**: `cf_anomaly::detect_anomalies_from_ticks` runs the trailing-window Z-scores on the six dimensions with the validated `Config` (`--anomaly-window`; threshold 2.0).
+4. **Serialization**: `compute_all_metrics` produces one value tree (anomalies, time series, aggregate) that json, yaml and bin encode; the plot path adds the cross-analyzer enrichment over the co-selected analyzers' time series.
 
 ---
 
@@ -78,10 +78,10 @@ This separation enables streaming output, budget-aware memory spilling, and deco
 
 ## Limitations
 
-- **Cold start**: The first `window_size` ticks have no or limited history for Z-score computation. Anomalies during this period are less reliable.
+- **Cold start**: The first ticks have little history: the first two score `0` on every metric, and the following ones are scored against a window shorter than `window_size`. Anomalies early in a history are less reliable.
 - **Gradual drift**: Z-scores detect sudden deviations, not gradual trends. A slow but steady increase in churn will update the rolling mean and never trigger an anomaly.
-- **Zero-variance sentinel**: When the window has zero standard deviation (all values identical) and the current value differs, a sentinel Z-score of 100 is assigned. This ensures detection but may inflate severity rankings.
-- **Tick granularity**: Metrics are aggregated per tick (default 24-hour window). Sub-tick anomalies are not detected.
+- **Zero-variance sentinel**: When the window (two or more observations) has zero standard deviation and the current value differs, a sentinel Z-score of `±100` is assigned. This ensures detection but may inflate severity rankings.
+- **Tick granularity**: Metrics are aggregated per tick (default 24 hours, `--tick-size`). Sub-tick anomalies are not detected, and days without commits are not ticks.
 - **Not causal**: The analyzer detects statistical anomalies, not root causes. Investigation is required to determine whether an anomaly represents a real problem.
 - **Multi-dimensional**: An anomaly is flagged when *any* single metric exceeds the threshold. This means false positive rates increase with the number of metrics (currently six).
 

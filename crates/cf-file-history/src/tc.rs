@@ -1,14 +1,7 @@
-//! Per-commit transport-cell (TC) payload types.
-//!
-//! These types capture, for a single commit, the path actions
-//! (insert/modify/delete/rename), the per-author line-stat deltas, and the file
-//! category composition. The full TC plumbing (change routing, blob cache,
-//! identity detection) belongs to the framework integration sketched in
-//! [`crate::framework`]. The data shapes and the [`CategoryCounts`] arithmetic
-//! are report-contract-relevant (the category names feed the composition
-//! report) and live here.
+//! The per-change value types the history walk accumulates: a developer's
+//! line-stat delta on a file and the per-category file counts.
 
-use crate::classify::Category;
+use crate::category::Category;
 
 /// Line statistics for a single file/author change.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

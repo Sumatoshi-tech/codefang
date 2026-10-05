@@ -11,24 +11,23 @@ publish = false
 # (analyzer id: history/anomaly). Also used by the quality and sentiment
 # analyzers via the cross-analyzer enrichment path.
 #
-# Report serialization routes exclusively through cf-gojson / cf-goyaml; the
-# machine-format bytes (json/yaml/ndjson/timeseries/compact/bin) are pinned
-# against the reference implementation by tests/compat.
+# Report serialization routes exclusively through cf-gojson / cf-goyaml: the
+# analyzer builds ONE GoValue tree and the handlers encode it per format.
 
 [dependencies]
 # Mean/stddev/z-score helpers. Every float that reaches a machine report is
 # produced here, so the arithmetic order is part of the report contract.
 cf-alg-stats = { path = "../cf-alg-stats" }
-# Report-format-compatible JSON encoder. NEVER serde_json. YAML output routes
-# the SAME GoValue tree through cf-goyaml once that crate lands; the report
-# types expose `to_go_value()` for both paths.
+# Report-format JSON encoder (the report types expose `to_go_value()`; the
+# yaml path renders the same tree through cf-goyaml).
 cf-gojson = { path = "../cf-gojson" }
-# Bit-exact port of Go's sort.Slice (pdqsort). The anomaly lists are sorted
-# with an unstable sort in the reference binary, so tie order on equal
-# Z-scores is part of the report contract and must match exactly.
+# Deterministic unstable-sort port used for the cross-analyzer enrichment
+# lists (`sort_external_results`).
 cf-gosort = { path = "../cf-gosort" }
 
 [lints.clippy]
 pedantic = "warn"
 
 [dev-dependencies]
+# The yaml rendering of the report tree is asserted alongside the json one.
+cf-goyaml = { path = "../cf-goyaml" }

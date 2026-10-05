@@ -1,23 +1,14 @@
-//! Memory watchdog + pprof bootstrap for `--profile`.
+//! The `--profile` memory watchdog.
 //!
-//! Port of the memory-watchdog / pprof machinery in cmd/codefang/main.go
-//! (`startMemoryWatchdog`, `readRSSMiB`, `readProcField`, `readSmapsRollup`,
-//! `saveProcMaps`, `startPprofServer`). This is behavioral parity only: it never
-//! influences machine-report bytes (DESIGN.md §4.1, §2.8).
+//! Logs `MEM t=<s> RSS=<MiB> threads=<n>` to stderr when the run starts and
+//! every [`WATCHDOG_INTERVAL`] after, snapshots `/proc/self/maps` into the
+//! temp directory at start (`maps_baseline.txt`) and on the first RSS spike
+//! above [`RSS_THRESHOLD_MIB`] (`maps_spike_<MiB>MiB.txt`), and logs the
+//! `/proc/self/smaps_rollup` summary on every spike (at most
+//! [`MAX_SPIKE_DUMPS`]). It never influences report bytes.
 //!
-//! Intentional differences from Go, documented so the divergence is explicit:
-//!   - Go dumps gzipped pprof heap profiles on RSS spikes; Rust has no built-in
-//!     equivalent, so on a spike this logs the smaps rollup and snapshots
-//!     `/proc/self/maps` (the diagnostic value Go's runbook relies on). The
-//!     gzipped heap `.pb.gz` dump is tracked as a roadmap follow-up under the
-//!     `profile` feature and is not output-affecting.
-//!   - The pprof HTTP server (localhost:6060) needs a profiling backend; it is
-//!     gated behind the `profile` cargo feature. See [`start_pprof_server`].
-//!   - Go also logs Go-runtime `MemStats` (GoHeap/GoSys/goroutines); those are
-//!     runtime-specific with no Rust analogue, so this logs RSS/threads only.
-//!
-//! All `/proc` reads are Linux-specific; elsewhere they return defaults and the
-//! watchdog logs zeros, matching Go's best-effort `os.Open` fallback.
+//! All `/proc` reads are Linux-specific; elsewhere they return defaults and
+//! the watchdog logs zeros.
 
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -29,13 +20,19 @@ const WATCHDOG_INTERVAL: Duration = Duration::from_secs(2);
 /// 1 MiB in bytes (Go `megabyte`).
 const MEGABYTE: u64 = 1024 * 1024;
 
-/// RSS threshold in MiB above which heap dumps are triggered (Go `rssThresholdMiB`).
+/// RSS threshold in MiB above which a spike is logged.
 pub const RSS_THRESHOLD_MIB: i64 = 4096;
 
-/// Reads current RSS in MiB from `/proc/self/statm` (Go `readRSSMiB`).
+/// Spikes logged per run.
+const MAX_SPIKE_DUMPS: i32 = 5;
+
+/// The baseline `/proc/self/maps` snapshot written at start.
+const BASELINE_MAPS_FILE: &str = "maps_baseline.txt";
+
+/// Reads current RSS in MiB from `/proc/self/statm`.
 ///
-/// Returns 0 when the file cannot be read or parsed, matching Go's best-effort
-/// behavior. The second field of `statm` is the resident set size in pages.
+/// Returns 0 when the file cannot be read or parsed (best effort). The
+/// second field of `statm` is the resident set size in pages.
 fn read_rss_mib() -> i64 {
     let mut buf = String::new();
     if File::open("/proc/self/statm")
@@ -53,7 +50,7 @@ fn read_rss_mib() -> i64 {
     rss_pages * page_size() / MEGABYTE as i64
 }
 
-/// Returns the OS page size in bytes (Go `os.Getpagesize()`).
+/// Returns the OS page size in bytes.
 ///
 /// Reading `/proc/self/statm` already assumes Linux, where 4 KiB is the page
 /// size on the supported targets. Watchdog logging is diagnostic, not output.
@@ -61,8 +58,8 @@ fn page_size() -> i64 {
     4096
 }
 
-/// Reads a named field (e.g. `"Threads:"`) from `/proc/self/status`
-/// (Go `readProcField`). Returns an empty string when unavailable.
+/// Reads a named field (e.g. `"Threads:"`) from `/proc/self/status`.
+/// Returns an empty string when unavailable.
 fn read_proc_field(field: &str) -> String {
     let f = match File::open("/proc/self/status") {
         Ok(f) => f,
@@ -76,7 +73,7 @@ fn read_proc_field(field: &str) -> String {
     String::new()
 }
 
-/// Summarizes memory regions from `/proc/self/smaps_rollup` (Go `readSmapsRollup`).
+/// Summarizes memory regions from `/proc/self/smaps_rollup`.
 fn read_smaps_rollup() -> String {
     const PREFIXES: &[&str] = &[
         "Rss:",
@@ -102,9 +99,9 @@ fn read_smaps_rollup() -> String {
     out
 }
 
-/// Copies `/proc/self/maps` to `path` for offline analysis (Go `saveProcMaps`).
-/// Best-effort: silently returns on any I/O error, matching Go.
-fn save_proc_maps(path: &str) {
+/// Copies `/proc/self/maps` to `path` for offline analysis. Best effort:
+/// silently returns on any I/O error.
+fn save_proc_maps(path: &std::path::Path) {
     let mut src = match File::open("/proc/self/maps") {
         Ok(f) => f,
         Err(_) => return,
@@ -119,29 +116,33 @@ fn save_proc_maps(path: &str) {
     }
 }
 
-/// Logs an RSS spike and snapshots `/proc/self/maps` (Go `handleRSSSpike`).
-///
-/// Returns the updated dump count. This logs the smaps rollup and the maps
-/// snapshot; the gzipped pprof heap profile Go writes has no Rust equivalent
-/// without an extra dependency and is a roadmap follow-up under `profile`.
-fn handle_rss_spike(dump_count: i32, rss_mib: i64, dump_dir: &str) -> i32 {
+/// Logs an RSS spike and, on the first one, snapshots `/proc/self/maps`
+/// into `dump_dir`. Returns the updated spike count.
+fn handle_rss_spike(dump_count: i32, rss_mib: i64, dump_dir: &std::path::Path) -> i32 {
     let dump_count = dump_count + 1;
     let smaps = read_smaps_rollup();
     eprintln!("SPIKE #{dump_count}: RSS={rss_mib} MiB smaps: {smaps}");
     if dump_count == 1 {
-        save_proc_maps(&format!("{dump_dir}/maps_spike_{rss_mib}MiB.txt"));
+        save_proc_maps(&dump_dir.join(format!("maps_spike_{rss_mib}MiB.txt")));
     }
     dump_count
 }
 
-/// Starts the background memory watchdog (Go `startMemoryWatchdog`).
-///
-/// Logs RSS / threads every [`WATCHDOG_INTERVAL`] and snapshots `/proc/self/maps`
-/// on threshold breach (capped at 5 dumps, matching Go). The baseline maps are
-/// saved to `/tmp/maps_baseline.txt` at startup. Runs on a detached thread; the
-/// process exits normally when `main` returns.
-pub fn start_memory_watchdog(threshold_mib: i64, dump_dir: &'static str) {
-    let dump_dir_owned = dump_dir.to_string();
+/// Logs one `MEM` sample at `elapsed_secs` and returns the RSS in MiB.
+fn log_sample(elapsed_secs: u64) -> i64 {
+    let rss_mib = read_rss_mib();
+    let threads = read_proc_field("Threads:");
+    eprintln!("MEM t={elapsed_secs} RSS={rss_mib} threads={threads}");
+    rss_mib
+}
+
+/// Starts the memory watchdog: one sample and the baseline maps snapshot
+/// now, then a detached thread sampling every [`WATCHDOG_INTERVAL`] and
+/// logging spikes above `threshold_mib` (at most [`MAX_SPIKE_DUMPS`]). The
+/// thread ends with the process.
+pub fn start_memory_watchdog(threshold_mib: i64, dump_dir: std::path::PathBuf) {
+    log_sample(0);
+    save_proc_maps(&dump_dir.join(BASELINE_MAPS_FILE));
     std::thread::spawn(move || {
         let mut dump_count = 0i32;
         let mut tick = 0u64;
@@ -149,35 +150,12 @@ pub fn start_memory_watchdog(threshold_mib: i64, dump_dir: &'static str) {
         loop {
             std::thread::sleep(WATCHDOG_INTERVAL);
             tick += 1;
-            let rss_mib = read_rss_mib();
-            let threads = read_proc_field("Threads:");
-            eprintln!(
-                "MEM t={} RSS={} threads={}",
-                tick * tick_seconds,
-                rss_mib,
-                threads
-            );
-            if rss_mib > threshold_mib && dump_count < 5 {
-                dump_count = handle_rss_spike(dump_count, rss_mib, &dump_dir_owned);
+            let rss_mib = log_sample(tick * tick_seconds);
+            if rss_mib > threshold_mib && dump_count < MAX_SPIKE_DUMPS {
+                dump_count = handle_rss_spike(dump_count, rss_mib, &dump_dir);
             }
         }
     });
-
-    // Save baseline maps at startup (Go: runbook 6.2, compare t0 vs tN).
-    save_proc_maps("/tmp/maps_baseline.txt");
-}
-
-/// Starts the pprof HTTP server on localhost:6060 (Go `startPprofServer`).
-///
-/// Without the `profile` cargo feature this is a single log line: the pprof
-/// endpoints require a profiling backend that is not a default dependency.
-/// Behavioral parity only; never affects output bytes.
-#[allow(unused_variables)]
-pub fn start_pprof_server() {
-    #[cfg(not(feature = "profile"))]
-    eprintln!("pprof server requested (--profile) but the `profile` feature is not enabled");
-    #[cfg(feature = "profile")]
-    eprintln!("pprof server: localhost:6060 (feature `profile` enabled)");
 }
 
 #[cfg(test)]
@@ -200,15 +178,11 @@ mod tests {
     }
 
     #[test]
-    fn handle_spike_increments_count() {
-        let dir = std::env::temp_dir();
-        let dir = dir.to_str().unwrap();
-        assert_eq!(handle_rss_spike(0, 1, dir), 1);
-        assert_eq!(handle_rss_spike(3, 1, dir), 4);
-    }
-
-    #[test]
-    fn threshold_constant_matches_go() {
-        assert_eq!(RSS_THRESHOLD_MIB, 4096);
+    fn handle_spike_increments_count_and_snapshots_the_first() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(handle_rss_spike(0, 1, dir.path()), 1);
+        assert!(dir.path().join("maps_spike_1MiB.txt").is_file());
+        assert_eq!(handle_rss_spike(3, 2, dir.path()), 4);
+        assert!(!dir.path().join("maps_spike_2MiB.txt").exists());
     }
 }

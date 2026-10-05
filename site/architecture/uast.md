@@ -8,8 +8,8 @@ description: Deep dive into the Universal Abstract Syntax Tree parser, Tree-sitt
 The **Universal Abstract Syntax Tree** (UAST) is Codefang's language-agnostic
 code representation. It normalizes the wildly different ASTs produced by
 language-specific parsers into a common schema with consistent node types,
-roles, and properties -- enabling analyzers to work across 60+ languages
-with a single implementation.
+roles, and properties -- enabling analyzers to work across the 68
+compiled-in languages with a single implementation.
 
 ---
 
@@ -53,48 +53,60 @@ backend. Tree-sitter provides:
 
 - **Incremental parsing** -- only re-parses changed regions
 - **Error recovery** -- produces partial trees even for malformed code
-- **60+ language grammars** compiled into the binary via [go-sitter-forest](https://github.com/alexaandru/go-sitter-forest)
+- **68 language grammars** compiled into the binary: the grammar C sources are
+  vendored under `crates/cf-uast/vendor/` (taken from
+  [go-sitter-forest](https://github.com/alexaandru/go-sitter-forest)) and
+  built by `crates/cf-uast/build.rs`
 - **Zero runtime dependencies** -- all grammars are statically linked
 
 The parsing flow:
 
 ```mermaid
 flowchart LR
-    SRC["Source Code<br/>(any language)"] --> DETECT["Language Detection<br/><em>go-enry</em>"]
+    SRC["Source Code<br/>(any language)"] --> DETECT["Grammar selection<br/><em>file extension</em>"]
     DETECT --> TS["Tree-sitter Parser<br/><em>language-specific grammar</em>"]
     TS --> CST["Concrete Syntax Tree<br/><em>Tree-sitter nodes</em>"]
     CST --> DSL["DSL Mapping Engine"]
     DSL --> UAST["Universal AST<br/><em>normalized nodes</em>"]
 ```
 
-### Language detection
+### Grammar selection
 
-File language is detected using the [go-enry](https://github.com/go-enry/go-enry)
-library, which uses filename, extension, and content heuristics (the same
-algorithm as GitHub's Linguist). You can override detection with the
-`--language` / `-l` flag.
+The parser (`cf_uast::Parser`) picks the grammar from the file's
+**extension** (lower-cased), looked up in the registry of compiled-in
+mappings behind a small bloom filter (`crates/cf-uast/src/loader.rs`). There
+are no content heuristics: a file without a mapped extension (for example a
+`Makefile`) is not parsed. `uast parse -l <language>` forces the grammar.
 
-### Performance optimizations
+The `codefang` language filter (`--languages`) and its per-language
+breakdowns are a separate step: they use `cf-langpath`, a port of the
+enry / Linguist cascade over the file name AND its content (shebangs,
+`.h` disambiguation).
 
-The UAST parser includes several performance optimizations for high-throughput
-analysis:
+### Performance characteristics
 
-- **Parser pool**: `sync.Pool` of Tree-sitter parsers to avoid re-allocation across files.
-- **Pre-interned types and roles**: DSL rule strings are interned at load time, eliminating repeated allocations.
-- **Per-parse string interning**: Short strings (32 bytes or less) are deduplicated within each parse call.
-- **O(1) rule lookup**: Rule index by node type replaces linear scan.
-- **Batch child reading**: Uses unsafe batch reads for nodes with 8+ children, avoiding per-child CGO overhead.
-- **Zero-copy text comparison**: `unsafeNodeText` provides zero-allocation string views for condition evaluation.
-- **Cursor pooling**: Tree-sitter cursors are pooled and reused across recursive calls within a single parse.
-- **Arena allocator**: Node allocation uses a per-parse arena (`node.Allocator`) to reduce GC pressure.
+- **Lazy per-language setup**: each language's parser state (tree-sitter
+  language, resolved rules, pattern matcher) is built on its first parse and
+  then shared (`LazyDslParser`, a `OnceLock`).
+- **O(1) rule lookup**: rules are indexed by the tree-sitter node type they
+  match (`rule_dispatch`), so lowering never scans the rule list.
+- **One parser facade per worker thread** in history walks: the parallel
+  per-commit pass keeps a thread-local `cf_uast::Parser`
+  (`crates/cf-commands/src/handlers/history/mod.rs`), so registry and loader
+  setup is paid once per thread.
+- **Parse watchdog**: every tree-sitter parse has a 30 s timeout
+  (`PARSE_TIMEOUT_MICROS`); a fresh tree-sitter parser is created per parse.
 
 ---
 
 ## DSL mapping engine
 
-The DSL (Domain-Specific Language) is how Tree-sitter's language-specific
-concrete syntax tree nodes are mapped to universal UAST node types. Each
-language has a `.uast` mapping file that declares the transformation rules.
+The mapping rules are how Tree-sitter's language-specific concrete syntax
+tree nodes are mapped to universal UAST node types. The compiled-in languages
+keep their rules as Rust tables, one module per language in
+`crates/cf-uast-mappings/src/` (built with the `uast_language!` macro); the
+text DSL below expresses the same rule model and is the format for custom
+mappings (`uast mapping`, `cf_uast::Parser::with_map`).
 
 ### DSL syntax overview
 
@@ -138,7 +150,7 @@ Each rule has four parts:
 | `type` | UAST node type | `"Function"`, `"Class"`, `"Import"` |
 | `token` | Token extraction source | `"@name"`, `"self"`, `"text"`, `"fields.name"`, `"child:identifier"`, `"descendant:identifier"` |
 | `roles` | Comma-separated semantic roles | `"Declaration", "Function"` |
-| `props` | Key-value properties | `name: "@name", visibility: "public"` |
+| `props` | Key-value properties: `@capture`, `descendant:<kind>`, or a literal | `name: "@name", operator: "?:"` |
 | `children` | Child capture reference | `"@body"` |
 
 ### Token sources
@@ -166,7 +178,12 @@ public_method <- (method_declaration
 ```
 
 Conditions support `==` and `!=` operators, comparing fields, captures, or
-child types against string literals.
+child types against string literals. A dotted path navigates the tree-sitter
+structure — `value.type == "arrow_function"` compares the `value` field's node
+kind — and a leading `parent` segment steps to the enclosing node:
+`parent.type == "variable_declarator"` selects the rule only when the node is
+the value of a declarator. Several rules may share one node kind; the first
+whose conditions pass wins and an unconditional rule is the catch-all.
 
 ### Inheritance
 
@@ -217,6 +234,66 @@ syntax. A single node can have multiple roles.
 | `Public` | Public visibility | Public methods, exported functions |
 | `Private` | Private visibility | Private methods, unexported functions |
 | `Lambda` | Anonymous function | Arrow functions, closures |
+
+---
+
+## Shape contract
+
+Analyzers read the UAST, never the language. The guarantees below hold for
+every language; the language-agnostic ones are implemented once in the
+lowering (`crates/cf-uast/src/lowering.rs`) and pinned by
+`crates/cf-uast/tests/lowering_contract.rs`, the per-language ones by
+`crates/cf-uast-mappings/tests/shape_contract.rs`.
+
+### Operators
+
+Every `BinaryOp`, `UnaryOp` and `Assignment` node (plain and compound) and
+every conditional expression carries `props.operator`: the operator's source
+spelling (`+`, `&&`, `and`, `not in`, `=`, `+=`, `++`). It is resolved, in
+order, from the rule's own `operator` prop, the grammar's `operator` / `op` /
+`operation` field, the space-joined repeated `operators` field (a Python chain
+`a < b <= c` reports `< <=`), and — for the three operator types only — the
+first anonymous child token. Ternaries are `If` nodes with role `Condition`
+and `operator` `?:` (`if-else` for Python's `x if c else y`). The node
+`token` of an operator node is not part of the contract; read `operator`.
+
+### Tokens
+
+`Identifier` and `Literal` nodes always carry their source text as `token`
+(including string quotes). A `Comment` is a **leaf** whose `token` is the
+comment text and whose span never includes the trailing line terminator;
+documentation comments (`///`, `//!`, `/** */`, Python docstrings) carry the
+role `Doc`. The `token` of a declaration node, when a table sets one, is the
+declared name (C/C++ functions, Java types, JS/TS class-field functions);
+some tables inherited from the DSL corpus still set the full declaration
+text (Go, Rust and Java functions) — slice the source through `pos` instead
+of relying on either.
+
+### Names
+
+Every `Function`, `Method`, `Class`, `Struct`, `Interface` and `Enum`
+declaration carries `props.name`, and there is exactly **one** such node per
+declaration: bodies are `Block`s, declarators and parameter-type lists are
+structural, and a function-typed parameter (`func(int) int`) or a prototype
+is never a `Function`. Named function values (`const f = () => {}`,
+`handler = () => {}`) are a single `Function` / `Method` named after the
+binding; an anonymous function value is a `Lambda`.
+
+### Branches and loops
+
+An `If`'s children are its condition expression(s), the consequence `Block`
+(role `Body`) and, when present, the alternative — the child lowered from the
+tree-sitter `alternative` field — which carries the role `Else`. An
+else-if chain is therefore an `If` **directly** under an `If` with roles
+`Condition, Else`; a final else is a `Block` with roles `Body, Else`
+(`Else` lands on whatever the alternative lowers to, including a bare
+statement in C/Java/JS). Grammars with an `else_clause` wrapper (C, C++,
+Rust, JavaScript, TypeScript) leave it unmapped so the wrapper collapses;
+Python's `elif_clause` / `else_clause` set the roles explicitly. Each loop
+statement is exactly one `Loop`; where the table knows the loop kind it is
+`props.kind` (`for`, `while`, `do-while`, `for-in`, `loop`). Every
+`case` / `default` label is one `Case` with role `Branch`; `Switch` is the
+statement only.
 
 ---
 
@@ -286,7 +363,7 @@ uast parse --language rust main.rs
 uast explore main.rs
 
 # Query specific node types
-uast query -e 'filter(.type == "Function")' main.rs
+uast query 'rfilter(.type == "Function")' main.rs
 ```
 
 ### Step 3: iterate
@@ -297,19 +374,18 @@ mapping rules to convert them to UAST types.
 
 ### Pre-compiled mappings
 
-For production performance, language mappings are pre-compiled into the binary.
-The DSL is parsed once at startup and the resulting `PatternMatcher` caches
-compiled Tree-sitter queries for O(1) lookup during parsing.
-
-The `DSLParser` pre-interns all Type and Role strings from the mapping rules,
-so repeated files of the same language share the same string values without
-allocation.
+The built-in language mappings are compiled into the binary as Rust tables
+(`crates/cf-uast-mappings`); nothing is read from disk at run time. Each
+language's rules are resolved once, on its first parse, together with its
+`PatternMatcher` and the node-type rule index.
 
 ---
 
 ## UAST CLI commands
 
-The `uast` binary provides five commands for working with Universal ASTs.
+The `uast` binary's commands for working with Universal ASTs are below; it
+also provides `analyze`, `validate`, `mapping`, `completion` and `version`
+(`uast --help`).
 
 ### `uast parse`
 
@@ -337,8 +413,8 @@ cat main.go | uast parse -               # Parse from stdin
 Query UAST nodes using filter expressions.
 
 ```bash
-uast query -e 'filter(.type == "Function")' main.go
-uast query -i ast.json -e 'filter(.roles has "Declaration")'
+uast query 'rfilter(.type == "Function")' main.go
+uast query 'rfilter(.roles has "Declaration")' -i ast.json
 uast query --interactive main.go         # REPL mode
 ```
 
@@ -389,22 +465,22 @@ flowchart TB
         EXPLORE_CMD[explore]
     end
 
-    subgraph parser["pkg/uast"]
-        LOADER[Loader<br/><em>pre-compiled mappings</em>]
+    subgraph parser["cf-uast"]
+        LOADER[Loader<br/><em>compiled-in mappings</em>]
         PARSER[Parser<br/><em>language router</em>]
-        DSL[DSLParser<br/><em>per-language</em>]
-        PM[PatternMatcher<br/><em>cached TS queries</em>]
-        POOL[Parser Pool<br/><em>sync.Pool</em>]
+        DSL[LazyDslParser<br/><em>per language, built on first use</em>]
+        PM[PatternMatcher<br/><em>rule index by node type</em>]
+        POOL[Tree-sitter parser<br/><em>per parse, 30 s timeout</em>]
     end
 
     subgraph treesitter["Tree-sitter"]
-        TS_GRAMMAR[Language Grammar<br/><em>60+ languages</em>]
+        TS_GRAMMAR[Language Grammar<br/><em>68 languages</em>]
         TS_PARSER[Tree-sitter Parser]
         CST[Concrete Syntax Tree]
     end
 
-    subgraph enry["go-enry"]
-        LANG_DETECT[Language Detection]
+    subgraph enry["Grammar selection"]
+        LANG_DETECT[File extension lookup]
     end
 
     subgraph output_nodes["Output"]
@@ -441,13 +517,19 @@ The UAST system is used by both static and history analyzers:
 - `static/comments` -- measures `Comment` node density relative to code
 - `static/imports` -- extracts `Import` nodes for dependency graphs
 
-**History analyzers** receive UAST diffs through the plumbing layer:
+**History analyzers** parse the changed blobs of every commit:
 
-- `history/sentiment` -- analyzes sentiment of `Comment` nodes across commits
+- `history/sentiment` -- analyzes sentiment of the `Comment` nodes a commit
+  introduced or changed
 - `history/shotness` -- tracks change frequency of `Function` nodes
-- `history/typos` -- detects identifier typos in UAST diffs
+- `history/typos` -- detects identifiers a commit renamed into a
+  Levenshtein-close spelling
+- `history/imports` -- records the imports each developer adds
 - `history/quality` -- tracks UAST-based quality metrics over time
 
-The `plumbing.UASTChangesAnalyzer` parses both the before and after versions
-of changed files, providing history analyzers with UAST diff information
-for each commit.
+Each commit's changed files are parsed in the parallel per-commit pass of the
+[history pipeline](streaming-pipeline.md), one change at a time: both sides
+of a change are parsed at most once, shared by every selected UAST analyzer,
+and dropped before the next change (`ChangeParses` in
+`crates/cf-commands/src/handlers/uast_walk.rs`); blobs over 256 KiB are not
+parsed. One pass parses for all the selected UAST analyzers.

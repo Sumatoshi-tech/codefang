@@ -1,38 +1,29 @@
-//! `history/imports` (`imports-per-dev`) plot sections  (`GenerateStoreSections` →
-//! `buildImportsStoreSections` over the `import_usage` store kind).
+//! `history/imports` (`imports-per-dev`) plot sections: the top imports by
+//! total usage across every developer, language and tick.
 //!
-//! The store records are the reference `topImports(aggregateImportCounts(merged))`: the
-//! per-import total counts sorted count-descending and cut to the top 20. The
-//! caller passes the name-ascending aggregated counts
-//! (`imports_run_usage_counts`); the pdqsort descending sort + cut happen
-//! here, mirroring `WriteToStore`.
+//! The caller passes the aggregated per-import counts
+//! (`imports_run_usage_counts`); [`cf_imports::history::top_imports`] ranks
+//! them (count descending, name ascending) and cuts the top 20.
 
+use std::collections::BTreeMap;
+
+use cf_imports::history::top_imports;
 use cf_plotpage::echarts::{
     AxisLabel, AxisLine, BarData, Chart, ChartKind, ItemStyle, LineStyle, XAxis,
 };
 use cf_plotpage::{get_chart_palette, ChartOpts, Hint, Section, Theme};
 
-use crate::handlers::go_sort;
-
-/// imports the reference `topImportsLimit`.
-const TOP_IMPORTS_LIMIT: usize = 20;
-/// imports the reference `xAxisRotate`.
+/// Rotation of the x-axis import labels.
 const X_AXIS_ROTATE: f64 = 60.0;
 
-/// The reference `GenerateStoreSections`: zero records yield zero sections.
-pub fn sections(usage_counts: &[(String, i64)]) -> Vec<Section> {
-    // The reference `topImports`: count-descending `sort.Slice` over the aggregate map's
-    // (random-order) entries, then the top-20 cut. The name-ascending input is
-    // the deterministic stand-in for the map order; ties are reference-variant.
-    let mut records: Vec<(String, i64)> = usage_counts.to_vec();
-    go_sort::slice(&mut records, |a, b| a.1 > b.1);
-    records.truncate(TOP_IMPORTS_LIMIT);
-
-    if records.is_empty() {
+/// The plot sections: zero imports yield zero sections.
+pub fn sections(usage_counts: &BTreeMap<String, i64>) -> Vec<Section> {
+    let (labels, data) = top_imports(usage_counts);
+    if labels.is_empty() {
         return Vec::new();
     }
 
-    let chart = build_bar_chart_from_usage_records(&records);
+    let chart = build_usage_bar_chart(&labels, &data);
 
     vec![Section {
         title: "Top Imports Usage".to_string(),
@@ -51,9 +42,8 @@ pub fn sections(usage_counts: &[(String, i64)]) -> Vec<Section> {
     }]
 }
 
-/// The reference `buildBarChartFromUsageRecords` → `createImportsBarChart` (+ the
-/// follow-up `WithXAxisOpts` override, which re-sets the identical axis).
-fn build_bar_chart_from_usage_records(records: &[(String, i64)]) -> Chart {
+/// One "Usage" bar per import label.
+fn build_usage_bar_chart(labels: &[String], data: &[i64]) -> Chart {
     let co = ChartOpts::default_dark();
     let palette = get_chart_palette(Theme::Dark);
 
@@ -80,14 +70,11 @@ fn build_bar_chart_from_usage_records(records: &[(String, i64)]) -> Chart {
         ..XAxis::default()
     };
     bar.y_axis = co.y_axis("Usage Count");
+    bar.set_x_axis_labels(labels);
 
-    let labels: Vec<String> = records.iter().map(|(name, _)| name.clone()).collect();
-    bar.set_x_axis_labels(&labels);
-
-    let data = cf_gojson::GoValue::Array(
-        records
-            .iter()
-            .map(|(_, count)| {
+    let values = cf_gojson::GoValue::Array(
+        data.iter()
+            .map(|count| {
                 BarData {
                     value: Some(cf_gojson::GoValue::Int(*count)),
                     ..BarData::default()
@@ -96,7 +83,7 @@ fn build_bar_chart_from_usage_records(records: &[(String, i64)]) -> Chart {
             })
             .collect(),
     );
-    let series = bar.add_series("Usage", data);
+    let series = bar.add_series("Usage", values);
     series.item_style = Some(ItemStyle {
         color: palette.primary[1].to_string(),
         ..ItemStyle::default()

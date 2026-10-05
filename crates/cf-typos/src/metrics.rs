@@ -1,67 +1,76 @@
-//! Typos metrics computation.
+//! The `history/typos` report metrics.
 //!
-//! Given the analyzer report (a list of [`Typo`]), computes four metrics —
-//! `typo_list`, `patterns`, `file_typos`, `aggregate` — with the pinned sort
-//! orders and the "frequency > 1" filter (report contract, pinned by
-//! `tests/compat`).
+//! Given every typo-fix occurrence a history walk detected ([`ReportData`],
+//! chronological), the report carries four metrics:
+//!
+//! * `typo_list` — every distinct `(wrong, correct)` pair once, attributed
+//!   to its first fix (file, 1-based line, commit);
+//! * `patterns` — the pairs fixed more than once, with their occurrence
+//!   count, most frequent first;
+//! * `file_typos` — occurrences per file, most affected first;
+//! * `aggregate` — occurrences, distinct pairs, distinct files, distinct
+//!   commits.
+//!
+//! [`metrics_report_value`] is the ONE value every machine format encodes:
+//! json marshals it, yaml renders it under the analyzer header, bin wraps the
+//! json bytes.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
-use crate::compat::{GoValue, Hash};
-use crate::typos::Typo;
+use cf_gojson::{GoMap, GoValue};
 
-/// Analyzer name used for the metrics-output interface.
-pub const ANALYZER_NAME_TYPOS: &str = "typos";
+use crate::hash::Hash;
+use crate::typos::{deduplicate_typos, Typo};
 
-/// Metric name: per-typo list.
+/// Metric name: the distinct typo-fix pairs.
 pub const METRIC_NAME_TYPO_LIST: &str = "typo_list";
-/// Metric name: recurring patterns.
+/// Metric name: recurring pairs.
 pub const METRIC_NAME_PATTERNS: &str = "patterns";
-/// Metric name: per-file typo counts.
+/// Metric name: per-file occurrence counts.
 pub const METRIC_NAME_FILE_TYPOS: &str = "file_typos";
 /// Metric name: aggregate summary.
 pub const METRIC_NAME_AGGREGATE: &str = "aggregate";
 
-/// Parsed input data for metrics computation.
+/// The input of the metrics: every typo-fix occurrence, chronological.
 #[derive(Debug, Clone, Default)]
 pub struct ReportData {
-    /// The typos to compute metrics over.
+    /// Every occurrence, in walk order (oldest commit first, detection order
+    /// within a commit).
     pub typos: Vec<Typo>,
 }
 
-/// Information about a single typo fix.
+/// One `typo_list` entry.
 ///
-/// JSON/YAML field order: wrong, correct, file, line, commit. `commit` is the
-/// lowercase hex string form of the hash.
+/// Field order: wrong, correct, file, line, commit (lowercase hex).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypoData {
     /// Misspelled identifier.
     pub wrong: String,
     /// Corrected identifier.
     pub correct: String,
-    /// File the fix appeared in.
+    /// File the first fix appeared in.
     pub file: String,
-    /// Zero-based line number.
+    /// 1-based line of the first fix.
     pub line: i64,
-    /// Commit hash (hex string).
+    /// Commit of the first fix (hex string).
     pub commit: String,
 }
 
 impl TypoData {
-    /// Encodes as a struct-origin object (field declaration order preserved).
+    /// Encodes as a struct-origin object (field declaration order).
     #[must_use]
-    pub fn to_govalue(&self) -> GoValue {
-        GoValue::Struct(vec![
-            ("wrong".to_string(), GoValue::Str(self.wrong.clone())),
-            ("correct".to_string(), GoValue::Str(self.correct.clone())),
-            ("file".to_string(), GoValue::Str(self.file.clone())),
-            ("line".to_string(), GoValue::Int(self.line)),
-            ("commit".to_string(), GoValue::Str(self.commit.clone())),
-        ])
+    pub fn to_go_value(&self) -> GoValue {
+        let mut m = GoMap::new_struct();
+        m.push("wrong", GoValue::Str(self.wrong.clone()));
+        m.push("correct", GoValue::Str(self.correct.clone()));
+        m.push("file", GoValue::Str(self.file.clone()));
+        m.push("line", GoValue::Int(self.line));
+        m.push("commit", GoValue::Str(self.commit.clone()));
+        GoValue::Map(m)
     }
 }
 
-/// A recurring typo pattern with its frequency.
+/// A recurring pair with its occurrence count.
 ///
 /// Field order: wrong, correct, frequency.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,125 +79,112 @@ pub struct TypoPatternData {
     pub wrong: String,
     /// Corrected identifier.
     pub correct: String,
-    /// Number of occurrences (always > 1, per the patterns filter).
+    /// Number of occurrences (always > 1).
     pub frequency: i64,
 }
 
 impl TypoPatternData {
     /// Encodes as a struct-origin object.
     #[must_use]
-    pub fn to_govalue(&self) -> GoValue {
-        GoValue::Struct(vec![
-            ("wrong".to_string(), GoValue::Str(self.wrong.clone())),
-            ("correct".to_string(), GoValue::Str(self.correct.clone())),
-            ("frequency".to_string(), GoValue::Int(self.frequency)),
-        ])
+    pub fn to_go_value(&self) -> GoValue {
+        let mut m = GoMap::new_struct();
+        m.push("wrong", GoValue::Str(self.wrong.clone()));
+        m.push("correct", GoValue::Str(self.correct.clone()));
+        m.push("frequency", GoValue::Int(self.frequency));
+        GoValue::Map(m)
     }
 }
 
-/// Typo statistics for a single file.
+/// Occurrences in a single file.
 ///
 /// Field order: file, typo_count, fixed_typos.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileTypoData {
     /// File path.
     pub file: String,
-    /// Number of typos detected in the file.
+    /// Number of typo-fix occurrences in the file.
     pub typo_count: i64,
-    /// Number of typos fixed (always equal to `typo_count`).
+    /// Number of fixed typos — every detected occurrence IS a fix, so this
+    /// equals `typo_count`.
     pub fixed_typos: i64,
 }
 
 impl FileTypoData {
     /// Encodes as a struct-origin object.
     #[must_use]
-    pub fn to_govalue(&self) -> GoValue {
-        GoValue::Struct(vec![
-            ("file".to_string(), GoValue::Str(self.file.clone())),
-            ("typo_count".to_string(), GoValue::Int(self.typo_count)),
-            ("fixed_typos".to_string(), GoValue::Int(self.fixed_typos)),
-        ])
+    pub fn to_go_value(&self) -> GoValue {
+        let mut m = GoMap::new_struct();
+        m.push("file", GoValue::Str(self.file.clone()));
+        m.push("typo_count", GoValue::Int(self.typo_count));
+        m.push("fixed_typos", GoValue::Int(self.fixed_typos));
+        GoValue::Map(m)
     }
 }
 
-/// Summary statistics across all typos.
+/// Summary statistics.
 ///
 /// Field order: total_typos, unique_patterns, affected_files,
 /// affected_commits.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AggregateData {
-    /// Total number of typos.
+    /// Number of typo-fix occurrences.
     pub total_typos: i64,
-    /// Number of distinct `wrong|correct` patterns.
+    /// Number of distinct `(wrong, correct)` pairs.
     pub unique_patterns: i64,
-    /// Number of distinct files affected.
+    /// Number of distinct files with an occurrence.
     pub affected_files: i64,
-    /// Number of distinct commits affected.
+    /// Number of distinct commits with an occurrence.
     pub affected_commits: i64,
 }
 
 impl AggregateData {
-    /// Encodes as a struct-origin object (field declaration order preserved).
+    /// Encodes as a struct-origin object.
     #[must_use]
-    pub fn to_govalue(&self) -> GoValue {
-        GoValue::Struct(vec![
-            ("total_typos".to_string(), GoValue::Int(self.total_typos)),
-            (
-                "unique_patterns".to_string(),
-                GoValue::Int(self.unique_patterns),
-            ),
-            (
-                "affected_files".to_string(),
-                GoValue::Int(self.affected_files),
-            ),
-            (
-                "affected_commits".to_string(),
-                GoValue::Int(self.affected_commits),
-            ),
-        ])
+    pub fn to_go_value(&self) -> GoValue {
+        let mut m = GoMap::new_struct();
+        m.push("total_typos", GoValue::Int(self.total_typos));
+        m.push("unique_patterns", GoValue::Int(self.unique_patterns));
+        m.push("affected_files", GoValue::Int(self.affected_files));
+        m.push("affected_commits", GoValue::Int(self.affected_commits));
+        GoValue::Map(m)
     }
 }
 
-/// Computes the `typo_list` metric. Preserves input order.
+/// The `typo_list` metric: every distinct pair once, attributed to its first
+/// occurrence, in first-seen order.
 #[must_use]
 pub fn compute_typo_list(input: &ReportData) -> Vec<TypoData> {
-    input
-        .typos
-        .iter()
+    deduplicate_typos(&input.typos)
+        .into_iter()
         .map(|t| TypoData {
-            wrong: t.wrong.clone(),
-            correct: t.correct.clone(),
-            file: t.file.clone(),
+            wrong: t.wrong,
+            correct: t.correct,
+            file: t.file,
             line: t.line,
             commit: t.commit.string(),
         })
         .collect()
 }
 
-/// Computes the `patterns` metric.
-///
-/// Counts `wrong|correct` occurrences, keeps only frequency > 1, and sorts by
-/// frequency descending. The reference implementation leaves equal-frequency
-/// tie order unspecified (unstable sort); this implementation breaks ties by
-/// the `wrong|correct` key for determinism.
+/// The `patterns` metric: the pairs with more than one occurrence, sorted by
+/// frequency descending, then by `wrong` and `correct` ascending.
 ///
 /// ```
 /// use cf_typos::metrics::{compute_typo_patterns, ReportData};
-/// use cf_typos::typos::Typo;
-/// use cf_typos::compat::Hash;
+/// use cf_typos::{Hash, Typo};
 ///
 /// let mk = |wrong: &str, correct: &str| Typo {
 ///     wrong: wrong.to_string(),
 ///     correct: correct.to_string(),
 ///     file: "x.go".to_string(),
 ///     commit: Hash::default(),
-///     line: 0,
+///     line: 1,
 /// };
 /// let input = ReportData {
 ///     typos: vec![
 ///         mk("recieve", "receive"),
-///         mk("recieve", "receive"), // freq 2 -> kept
-///         mk("seperate", "separate"), // freq 1 -> filtered out
+///         mk("recieve", "receive"),   // frequency 2 -> kept
+///         mk("seperate", "separate"), // frequency 1 -> filtered out
 ///     ],
 /// };
 /// let patterns = compute_typo_patterns(&input);
@@ -198,179 +194,110 @@ pub fn compute_typo_list(input: &ReportData) -> Vec<TypoData> {
 /// ```
 #[must_use]
 pub fn compute_typo_patterns(input: &ReportData) -> Vec<TypoPatternData> {
-    let mut counts: BTreeMap<String, i64> = BTreeMap::new();
+    let mut counts: BTreeMap<(&str, &str), i64> = BTreeMap::new();
     for t in &input.typos {
-        let key = format!("{}|{}", t.wrong, t.correct);
-        *counts.entry(key).or_insert(0) += 1;
+        *counts.entry((&t.wrong, &t.correct)).or_insert(0) += 1;
     }
-
     let mut result: Vec<TypoPatternData> = counts
         .into_iter()
-        .filter(|(_, freq)| *freq > 1)
-        .filter_map(|(key, freq)| {
-            key.find('|').map(|i| TypoPatternData {
-                wrong: key[..i].to_string(),
-                correct: key[i + 1..].to_string(),
-                frequency: freq,
-            })
+        .filter(|(_, frequency)| *frequency > 1)
+        .map(|((wrong, correct), frequency)| TypoPatternData {
+            wrong: wrong.to_string(),
+            correct: correct.to_string(),
+            frequency,
         })
         .collect();
-
     result.sort_by(|a, b| {
         b.frequency
             .cmp(&a.frequency)
             .then_with(|| a.wrong.cmp(&b.wrong))
             .then_with(|| a.correct.cmp(&b.correct))
     });
-
     result
 }
 
-/// Computes the `file_typos` metric.
-///
-/// Counts typos per file and sorts by typo count descending. Ties are broken
-/// by file name (ascending) for determinism (the reference sort is unstable).
+/// The `file_typos` metric: occurrences per file, sorted by count
+/// descending, then by file name ascending.
 #[must_use]
 pub fn compute_file_typos(input: &ReportData) -> Vec<FileTypoData> {
-    let mut file_counts: BTreeMap<String, i64> = BTreeMap::new();
+    let mut file_counts: BTreeMap<&str, i64> = BTreeMap::new();
     for t in &input.typos {
-        *file_counts.entry(t.file.clone()).or_insert(0) += 1;
+        *file_counts.entry(&t.file).or_insert(0) += 1;
     }
-
     let mut result: Vec<FileTypoData> = file_counts
         .into_iter()
         .map(|(file, count)| FileTypoData {
-            file,
+            file: file.to_string(),
             typo_count: count,
             fixed_typos: count,
         })
         .collect();
-
     result.sort_by(|a, b| {
         b.typo_count
             .cmp(&a.typo_count)
             .then_with(|| a.file.cmp(&b.file))
     });
-
     result
 }
 
-/// Computes the `aggregate` metric.
+/// The `aggregate` metric.
 #[must_use]
 pub fn compute_aggregate(input: &ReportData) -> AggregateData {
-    use std::collections::HashSet;
-
-    let mut patterns: HashSet<String> = HashSet::new();
-    let mut files: HashSet<String> = HashSet::new();
+    let mut pairs: HashSet<(&str, &str)> = HashSet::new();
+    let mut files: HashSet<&str> = HashSet::new();
     let mut commits: HashSet<Hash> = HashSet::new();
-
     for t in &input.typos {
-        patterns.insert(format!("{}|{}", t.wrong, t.correct));
-        files.insert(t.file.clone());
+        pairs.insert((&t.wrong, &t.correct));
+        files.insert(&t.file);
         commits.insert(t.commit);
     }
-
     AggregateData {
         total_typos: input.typos.len() as i64,
-        unique_patterns: patterns.len() as i64,
+        unique_patterns: pairs.len() as i64,
         affected_files: files.len() as i64,
         affected_commits: commits.len() as i64,
     }
 }
 
-/// A computed metric result (name + value).
-#[derive(Debug, Clone, PartialEq)]
-pub struct MetricResult {
-    /// Metric name.
-    pub name: String,
-    /// Metric value.
-    pub value: GoValue,
-}
-
-/// Runs all typos metrics in the fixed computation order and returns the
-/// results: typo_list, patterns, file_typos, aggregate.
-#[must_use]
-pub fn compute_all_metrics(input: &ReportData) -> Vec<MetricResult> {
-    vec![
-        MetricResult {
-            name: METRIC_NAME_TYPO_LIST.to_string(),
-            value: GoValue::Array(
-                compute_typo_list(input)
-                    .iter()
-                    .map(TypoData::to_govalue)
-                    .collect(),
-            ),
-        },
-        MetricResult {
-            name: METRIC_NAME_PATTERNS.to_string(),
-            // The patterns metric is a nil-when-empty slice in the report
-            // contract: no pattern survives the "frequency > 1" filter ->
-            // JSON `null`, NOT `[]`. The `typo_list`/`file_typos` metrics are
-            // always-present slices and marshal to `[]` when empty — keep
-            // that asymmetry exact (pinned by the differential gate).
-            value: {
-                let patterns = compute_typo_patterns(input);
-                if patterns.is_empty() {
-                    GoValue::Null
-                } else {
-                    GoValue::Array(patterns.iter().map(TypoPatternData::to_govalue).collect())
-                }
-            },
-        },
-        MetricResult {
-            name: METRIC_NAME_FILE_TYPOS.to_string(),
-            value: GoValue::Array(
-                compute_file_typos(input)
-                    .iter()
-                    .map(FileTypoData::to_govalue)
-                    .collect(),
-            ),
-        },
-        MetricResult {
-            name: METRIC_NAME_AGGREGATE.to_string(),
-            value: compute_aggregate(input).to_govalue(),
-        },
-    ]
-}
-
-/// Builds the metrics report value: a **map-origin** object keyed by metric
-/// name, so JSON encoding sorts the keys by raw UTF-8 bytes.
-///
-/// The metric set serializes as a dynamic map (one entry per metric) with
-/// byte-sorted keys. So the top-level order is `aggregate`, `file_typos`,
-/// `patterns`, `typo_list` — NOT the computation order. Using
-/// [`GoValue::Map`] (sorted at encode time) reproduces that exactly.
+/// The report value: a map-origin object keyed by metric name (byte-sorted
+/// on encode: `aggregate`, `file_typos`, `patterns`, `typo_list`); every
+/// list is present, `[]` when empty.
 #[must_use]
 pub fn metrics_report_value(input: &ReportData) -> GoValue {
-    let metrics = compute_all_metrics(input);
-    GoValue::Map(metrics.into_iter().map(|m| (m.name, m.value)).collect())
-}
-
-/// Builds the metrics value for **YAML** serialization.
-///
-/// The YAML value tree is the same map as [`metrics_report_value`], but the
-/// YAML encoding of a nil-when-empty slice is `[]`, whereas the JSON encoding
-/// is `null`. The patterns metric is nil when no pattern repeats, so the only
-/// json/yaml shape difference is the empty `patterns` metric: JSON `null` vs
-/// YAML `[]`. This builder reproduces the YAML side by promoting an empty
-/// `patterns` value ([`GoValue::Null`]) to an empty [`GoValue::Array`]; every
-/// other metric is identical to the JSON value.
-#[must_use]
-pub fn metrics_yaml_value(input: &ReportData) -> GoValue {
-    let metrics = compute_all_metrics(input);
-    GoValue::Map(
-        metrics
-            .into_iter()
-            .map(|m| {
-                let value = if m.name == METRIC_NAME_PATTERNS && m.value == GoValue::Null {
-                    GoValue::Array(Vec::new())
-                } else {
-                    m.value
-                };
-                (m.name, value)
-            })
-            .collect(),
-    )
+    let array = |items: Vec<GoValue>| GoValue::Array(items);
+    let mut m = GoMap::new_map();
+    m.insert(
+        METRIC_NAME_TYPO_LIST,
+        array(
+            compute_typo_list(input)
+                .iter()
+                .map(TypoData::to_go_value)
+                .collect(),
+        ),
+    );
+    m.insert(
+        METRIC_NAME_PATTERNS,
+        array(
+            compute_typo_patterns(input)
+                .iter()
+                .map(TypoPatternData::to_go_value)
+                .collect(),
+        ),
+    );
+    m.insert(
+        METRIC_NAME_FILE_TYPOS,
+        array(
+            compute_file_typos(input)
+                .iter()
+                .map(FileTypoData::to_go_value)
+                .collect(),
+        ),
+    );
+    m.insert(
+        METRIC_NAME_AGGREGATE,
+        compute_aggregate(input).to_go_value(),
+    );
+    GoValue::Map(m)
 }
 
 #[cfg(test)]
@@ -393,6 +320,8 @@ mod tests {
         Hash(h)
     }
 
+    /// `recieve → receive` fixed on two lines of `a.go` in commit 1, and a
+    /// second pair in `b.go` in commit 2.
     fn data() -> ReportData {
         ReportData {
             typos: vec![
@@ -404,25 +333,57 @@ mod tests {
     }
 
     #[test]
-    fn typo_list_preserves_order_and_hex_commit() {
+    fn typo_list_lists_each_pair_once_at_its_first_fix() {
         let list = compute_typo_list(&data());
-        assert_eq!(list.len(), 3);
+        assert_eq!(list.len(), 2);
         assert_eq!(list[0].wrong, "recieve");
+        assert_eq!(list[0].line, 10);
         assert_eq!(list[0].commit, hash(1).string());
-        assert_eq!(list[2].wrong, "seperate");
+        assert_eq!(list[1].wrong, "seperate");
     }
 
     #[test]
-    fn patterns_only_keeps_frequency_gt_one() {
+    fn patterns_count_every_occurrence_and_keep_frequency_above_one() {
         let patterns = compute_typo_patterns(&data());
-        assert_eq!(patterns.len(), 1);
-        assert_eq!(patterns[0].wrong, "recieve");
-        assert_eq!(patterns[0].correct, "receive");
-        assert_eq!(patterns[0].frequency, 2);
+        assert_eq!(
+            patterns,
+            vec![TypoPatternData {
+                wrong: "recieve".to_string(),
+                correct: "receive".to_string(),
+                frequency: 2,
+            }]
+        );
     }
 
     #[test]
-    fn file_typos_counts_and_sorts_desc() {
+    fn patterns_sort_by_frequency_then_pair() {
+        let input = ReportData {
+            typos: vec![
+                typo("b", "bb", "f", 1, hash(1)),
+                typo("b", "bb", "f", 2, hash(1)),
+                typo("a", "aa", "f", 3, hash(1)),
+                typo("a", "aa", "f", 4, hash(1)),
+                typo("c", "cc", "f", 5, hash(1)),
+                typo("c", "cc", "f", 6, hash(1)),
+                typo("c", "cc", "f", 7, hash(1)),
+            ],
+        };
+        let names: Vec<(String, i64)> = compute_typo_patterns(&input)
+            .into_iter()
+            .map(|p| (p.wrong, p.frequency))
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                ("c".to_string(), 3),
+                ("a".to_string(), 2),
+                ("b".to_string(), 2)
+            ]
+        );
+    }
+
+    #[test]
+    fn file_typos_count_occurrences_and_sort_desc() {
         let files = compute_file_typos(&data());
         assert_eq!(files.len(), 2);
         assert_eq!(files[0].file, "a.go");
@@ -433,16 +394,17 @@ mod tests {
     }
 
     #[test]
-    fn aggregate_counts_distinct() {
+    fn aggregate_counts_occurrences_and_distinct_pairs() {
         let agg = compute_aggregate(&data());
-        assert_eq!(agg.total_typos, 3);
-        assert_eq!(agg.unique_patterns, 2);
-        assert_eq!(agg.affected_files, 2);
-        assert_eq!(agg.affected_commits, 2);
-    }
-
-    #[test]
-    fn aggregate_empty() {
+        assert_eq!(
+            agg,
+            AggregateData {
+                total_typos: 3,
+                unique_patterns: 2,
+                affected_files: 2,
+                affected_commits: 2,
+            }
+        );
         assert_eq!(
             compute_aggregate(&ReportData::default()),
             AggregateData::default()
@@ -450,45 +412,27 @@ mod tests {
     }
 
     #[test]
-    fn all_metrics_order() {
-        let metrics = compute_all_metrics(&data());
-        let names: Vec<&str> = metrics.iter().map(|m| m.name.as_str()).collect();
-        assert_eq!(
-            names,
-            vec!["typo_list", "patterns", "file_typos", "aggregate"]
-        );
-    }
-
-    #[test]
-    fn metrics_report_value_sorted_keys_and_json() {
-        // Single typo -> typo_list has one entry, patterns empty (one
-        // occurrence, filtered out -> nil -> null), file_typos one, aggregate
-        // totals 1. The metric set is a dynamic map, so keys are byte-sorted:
-        // aggregate, file_typos, patterns, typo_list.
-        let input = ReportData {
-            typos: vec![typo("tets", "test", "main.go", 10, Hash::default())],
-        };
-        let json = metrics_report_value(&input).to_json();
-        assert!(json.starts_with("{\"aggregate\":{\"total_typos\":1,"));
-        assert!(json.contains(
-            "\"file_typos\":[{\"file\":\"main.go\",\"typo_count\":1,\"fixed_typos\":1}]"
-        ));
-        // A single occurrence is filtered (frequency > 1), leaving the nil
-        // slice -> JSON null, not [].
-        assert!(json.contains("\"patterns\":null"));
-        assert!(json.ends_with("\"typo_list\":[{\"wrong\":\"tets\",\"correct\":\"test\",\"file\":\"main.go\",\"line\":10,\"commit\":\"0000000000000000000000000000000000000000\"}]}"));
-    }
-
-    #[test]
-    fn metrics_report_value_empty_matches_golden_bytes() {
-        // The run/history_typos.json golden: zero typos -> the exact 138-byte
-        // compact JSON the reference binary emits for the empty typos metric
-        // set.
-        let json = metrics_report_value(&ReportData::default()).to_json();
+    fn report_value_json_shape() {
+        let json = cf_gojson::marshal(&metrics_report_value(&data()));
+        let json = String::from_utf8(json).unwrap();
         assert_eq!(
             json,
-            r#"{"aggregate":{"total_typos":0,"unique_patterns":0,"affected_files":0,"affected_commits":0},"file_typos":[],"patterns":null,"typo_list":[]}"#
+            concat!(
+                r#"{"aggregate":{"total_typos":3,"unique_patterns":2,"affected_files":2,"affected_commits":2},"#,
+                r#""file_typos":[{"file":"a.go","typo_count":2,"fixed_typos":2},{"file":"b.go","typo_count":1,"fixed_typos":1}],"#,
+                r#""patterns":[{"wrong":"recieve","correct":"receive","frequency":2}],"#,
+                r#""typo_list":[{"wrong":"recieve","correct":"receive","file":"a.go","line":10,"commit":"0100000000000000000000000000000000000000"},"#,
+                r#"{"wrong":"seperate","correct":"separate","file":"b.go","line":5,"commit":"0200000000000000000000000000000000000000"}]}"#
+            )
         );
-        assert_eq!(json.len(), 138);
+    }
+
+    #[test]
+    fn empty_report_has_every_list_present() {
+        let json = cf_gojson::marshal(&metrics_report_value(&ReportData::default()));
+        assert_eq!(
+            String::from_utf8(json).unwrap(),
+            r#"{"aggregate":{"total_typos":0,"unique_patterns":0,"affected_files":0,"affected_commits":0},"file_typos":[],"patterns":[],"typo_list":[]}"#
+        );
     }
 }

@@ -11,6 +11,6 @@ description = "HTML plot-page renderer for codefang --format plot: themes, go-ec
 [dependencies]
 # The chart `option_*` JSON embedded in each page reproduces go-echarts
 # BaseConfiguration.JSONNotEscaped output and MUST be byte-identical to the
-# reference binary's (pinned by tests/compat), so it routes through the
+# reference binary's (pinned by the report e2e suites in bins/codefang/tests), so it routes through the
 # report-format encoder — never serde.
 cf-gojson = { path = "../cf-gojson" }

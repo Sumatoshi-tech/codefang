@@ -1,69 +1,67 @@
-//! Real `history/couples` over the general history pipeline.
+//! `history/couples` over the shared history walk.
 //!
-//! Port of the reference streaming couples pipeline (the reference `initHistoryPipeline` /
-//! initHeadOnly → Runner → couples `HistoryAnalyzer.Consume` (`processChange`,
-//! seen-files Bloom merge dedup, oversized-changeset skip) → `Aggregator.Add`
-//! → `ticksToReport` (`buildReport`: collect current files from the last
-//! commit's tree, reduce to current files, byte-sorted file index,
-//! per-file newline counts, people/files matrices) → `ComputeAllMetrics`).
+//! A commit whose raw tree diff exceeds `--max-changes-per-commit` is dropped
+//! before the walk, as for every other history analyzer. Per commit
+//! (chronological order): the filtered tree diff against the first parent
+//! feeds `process_change` — the coupling context (files co-changed in
+//! the commit), the per-file author touch, rename pairs — and the aggregator
+//! sums the file co-occurrence and people matrices, applying each rename as
+//! it happens. Every change is counted ONCE over the walk: a merge commit
+//! contributes only the files no earlier commit of the window changed
+//! (`seen_files`, ONE exact set over the whole walk) and records no
+//! deletions. A commit above the changeset cap contributes no coupling
+//! context but still owns every file it touched. The report is reduced to
+//! the files present in the NEWEST commit of the window, with their line
+//! counts.
 //!
-//! The tree diff base is always `parent(0)` (first parent), exactly as the reference implementation
-//! `TreeDiffAnalyzer` (`ensurePreviousTree` → `Parent(0)`); merge handling is
-//! controlled by the `IsMerge` flag (`NumParents() > 1 && !--first-parent`).
-//!
-//! Output bytes route through `cf-gojson` (the reference `encoding/json` parity); never
-//! `serde_json`.
+//! Output bytes route through `cf-gojson`; never `serde_json`.
 
-use cf_analyzers_plumbing::identity_detector::IdentityDetector;
+use std::collections::{BTreeMap, HashSet};
+
+use cf_analyzers_plumbing::author_missing_id;
 use cf_couples::aggregator::Aggregator;
 use cf_couples::tc::{CommitData, RenamePair};
 use cf_couples::{compute_all_metrics, report};
-use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
-use std::collections::{BTreeMap, HashSet};
+use cf_gitlib::changes::ChangeAction;
 
-/// Expected unique file count for the seen-files Bloom filter.
-const SEEN_FILES_BLOOM_EXPECTED: u64 = 100_000;
-/// Target false-positive rate for the seen-files Bloom filter.
-const SEEN_FILES_BLOOM_FP: f64 = 0.01;
-/// Maximum coupling-context size.
+use cf_units::{KIB, MIB};
+
+use crate::handlers::history::{
+    commit_tree_changes, is_merge, walk_chunks, ChunkPlan, CommitStamp, HistoryRun, StampSummary,
+    Stamper, WalkCost,
+};
+
+/// The changeset cap: a commit touching more files feeds no coupling context.
 const MAX_MEANINGFUL_CONTEXT: usize = cf_couples::COUPLES_MAXIMUM_MEANINGFUL_CONTEXT_SIZE;
-/// Sentinel author id for unidentified authors: `(1 << 18) - 1`.
-const AUTHOR_MISSING: i64 = (1 << 18) - 1;
 
-/// `gitlib.Hash{}.String()` — the zero hash the reference implementation stamps on TCs whose Consume
-/// early-returned without setting `CommitHash` (oversized couples changesets).
-const ZERO_HASH_HEX: &str = "0000000000000000000000000000000000000000";
-
-/// Builds the `history/couples` report value (the reference `ComputedMetrics`, the single
-/// value behind `ToJSON`/`ToYAML`) for either the HEAD commit (`--head`) or the
-/// newest `--limit` commits (streaming walk). Returns `None` if the
-/// repository cannot be opened/walked. The caller serializes this one value
-/// across json/yaml/bin uniformly (`serialize_history_metrics`), so every
-/// format follows from the same report value (no per-format branch).
+/// Builds the `history/couples` report value (the single value behind
+/// json/yaml/bin) over the commit window. Returns `None` if the repository
+/// cannot be walked.
+#[must_use]
 pub fn couples_run_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
     couples_run(sub).map(|r| r.report_value)
 }
 
 /// The TYPED `ComputedMetrics` behind [`couples_run_value`] (same walk, same
-/// `compute_all_metrics` product) — the text serializer reads struct fields
-/// directly (the reference implementation `generateText` calls `ComputeAllMetrics` on
-/// the report), so it must see the identical metrics the json/yaml bytes
-/// encode.
+/// `compute_all_metrics` product) for the text serializer.
+#[must_use]
 pub fn couples_run_metrics(sub: &clap::ArgMatches) -> Option<cf_couples::ComputedMetrics> {
     couples_run(sub).map(|r| r.metrics)
 }
 
-/// One walked commit's couples products (the reference `couples.Consume` TC + runner
-/// stamps). `data` is `None` for a dedup-skipped merge (the reference implementation returns an EMPTY
-/// `CommitData` with a zero commit hash, which the aggregator ignores).
+/// One walked commit's couples payload plus the shared stamps.
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) struct CouplesCommit {
+    /// Position in the commit window (the ndjson merge key; a dropped
+    /// oversized commit keeps its slot).
+    pub pos: usize,
     /// Full hex hash.
     pub hash: String,
-    /// The per-commit TC payload; `None` ⇔ dedup-skipped merge.
-    pub data: Option<CommitData>,
-    /// Runner-stamped tick (TicksSinceStart).
+    /// The per-commit payload.
+    pub data: CommitData,
+    /// Tick.
     pub tick: i64,
-    /// Loose-identity author id.
+    /// Author id.
     pub author_id: i64,
     /// Committer time, Unix seconds.
     pub when: i64,
@@ -72,355 +70,194 @@ pub(crate) struct CouplesCommit {
 }
 
 /// The full products of one couples walk: the aggregated report value plus the
-/// per-commit TC stream (one entry per walked commit, walk order).
+/// per-commit stream (one entry per walked commit, walk order).
 pub(crate) struct CouplesRun {
     /// The aggregated `ComputedMetrics` GoValue (json/yaml/bin source).
     pub report_value: cf_gojson::GoValue,
     /// The typed metrics `report_value` was rendered from (text source).
     pub metrics: cf_couples::ComputedMetrics,
-    /// Per-commit TC products, walk order.
+    /// Per-commit products, walk order.
     pub commits: Vec<CouplesCommit>,
-    /// Bounded store-path file-coupling records (the reference `writeFileCoupling`:
-    /// `computeSparseCoupling` over the reduced sparse map, min edge weight 2,
-    /// co-change-descending, top 100) — the `file_coupling` store kind the plot
-    /// sections consume.
-    pub store_file_coupling: Vec<cf_couples::FileCouplingData>,
 }
 
-/// The data the `history/couples` plot sections consume — the Rust analogue of
-/// the analyzer's structured store kinds.
+/// The data the `history/couples` plot sections consume.
 pub struct CouplesPlotData {
-    /// `file_coupling` records (bounded sparse pairs, co-change-descending).
+    /// `file_coupling` records (co-change-descending, the report's list).
     pub file_coupling: Vec<cf_couples::FileCouplingData>,
-    /// `dev_matrix` names after `FilterTopDevs` — EMPTY on every `run`
-    /// pipeline: the aggregator's `reversedNames` is populated only from a
-    /// preloaded people dict, which run streaming never configures, so the
-    /// dev-coupling heatmap section is always skipped (matches the live reference
-    /// pages).
-    pub dev_names: Vec<String>,
-    /// `ownership` records, `filesSequence` order (identical inputs to the
-    /// dense `FileOwnershipMetric.Compute`, so the metric product is reused).
+    /// `ownership` records.
     pub ownership: Vec<cf_couples::FileOwnershipData>,
 }
 
 /// Builds the `history/couples` plot-section data over the shared couples walk.
+#[must_use]
 pub fn couples_plot_data(sub: &clap::ArgMatches) -> Option<CouplesPlotData> {
     let run = couples_run(sub)?;
     Some(CouplesPlotData {
-        file_coupling: run.store_file_coupling,
-        dev_names: Vec::new(),
+        file_coupling: run.metrics.file_coupling,
         ownership: run.metrics.file_ownership,
     })
 }
 
-pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
-    let path = crate::handlers::run_repo_path(sub);
-    let repo = cf_gitlib::Repository::open(&path).ok()?;
+/// The per-commit, order-independent product: the raw tree-diff size and the
+/// filtered changes (none for a commit above `max_changes`, which the walk
+/// drops).
+struct CouplesPrepared {
+    /// Size of the raw tree diff (before the change filter), for the
+    /// `--max-changes-per-commit` gate.
+    raw_change_count: usize,
+    /// The filtered tree-diff changes, in diff order.
+    changes: Vec<cf_gitlib::changes::Change>,
+}
 
-    let head_only = sub.get_flag("head");
-    let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
-    let first_parent = crate::handlers::effective_first_parent(sub);
-
-    // Commit window: HEAD-only loads the single HEAD commit; streaming selects
-    // the `limit` NEWEST commits (newest-first walk, then reversed to
-    // oldest-first). With `limit <= 0` this is the full oldest-first history.
-    let hashes: Vec<cf_gitlib::Hash> = if head_only {
-        vec![repo.head().ok()?]
+/// The per-commit pure product of `hash`: its raw tree-diff size and its
+/// filtered changes (none above `max_changes`). `None` on a fatal git error.
+fn couples_commit_product(
+    repo: &cf_gitlib::Repository,
+    hash: cf_gitlib::Hash,
+    filter: &crate::handlers::HistoryFilter,
+    max_changes: usize,
+) -> Option<CouplesPrepared> {
+    let commit = repo.lookup_commit(hash).ok()?;
+    let mut changes = commit_tree_changes(repo, &commit)?;
+    let raw_change_count = changes.len();
+    if raw_change_count > max_changes {
+        changes.clear();
     } else {
-        let v = crate::handlers::load_history_commit_hashes(
-            &repo,
-            limit,
-            first_parent,
-            crate::handlers::history_since_spec(sub),
-        )?;
-        // reference consume order at `--workers 1`: the streaming pipeline (commit
-        // streamer + blob/diff/uast prefetch) preserves input order end-to-end,
-        // so the couples leaf consumes commits in the oldest-first revwalk order
-        // they are fed (see `crate::handlers::pipeline_consume_order` for the
-        // per-stage source citation). This is the order in which the couples
-        // seen-files Bloom is populated, so a merge commit's merge-mode coupling
-        // gate (`!seenFiles.Test(name)`) depends on it. The additive
-        // coupling/people matrices are order-independent, but the Bloom gate and
-        // loose-identity id assignment are not, so we reproduce this exact order.
-        crate::handlers::pipeline_consume_order(v)
-    };
-
-    let change_filter = crate::handlers::history_filter(sub).unwrap_or_default();
-    // Loose identity detection (run streaming never preloads a people dict).
-    // Identity is a CORE (plumbing) analyzer: it runs sequentially on the main
-    // goroutine in oldest-first order BEFORE the leaf workers, and the resolved
-    // AuthorID is handed to the forked leaves via the per-commit plumbing
-    // snapshot. So author resolution is global oldest-first, NOT per-worker.
-    let mut identity = IdentityDetector::new();
-
-    // The reference implementation runs the couples leaf through `processCommitsHybrid`: with a
-    // single non-SequentialOnly leaf and CoreCount(8) < len(Analyzers)(9), the
-    // leaf is FORKED across `LeafWorkers` workers, each with an INDEPENDENT
-    // seen-files Bloom and merge-dedup tracker (couples `Fork`: fresh
-    // `newSeenFilesFilter()` + `NewMergeTracker()`; `Merge` deliberately does NOT
-    // combine them). Commits are dispatched round-robin by consume position
-    // (`workers[commitIdx % numWorkers]`, hybridCommitLoop), so worker `w`
-    // processes consume positions `p` with `p % numWorkers == w`, in oldest-first
-    // order within that worker. The per-commit coupling/people data each worker
-    // produces is then merged additively into the shared aggregator, so only the
-    // merge-mode Bloom gate (`!seenFiles.Test(name)`) is worker-partition
-    // sensitive. `LeafWorkers` is `max(NumCPU / 3, 4)` (coordinator default),
-    // making the merge-mode coupling count CPU-count dependent — we reproduce the
-    // live binary on THIS machine, which the oracle also runs on.
-    let num_workers = crate::handlers::leaf_worker_count();
-    // One forked seen-files Bloom + merge-dedup tracker per worker.
-    let mut seen_files: Vec<cf_alg_bloom::Filter> = Vec::with_capacity(num_workers);
-    for _ in 0..num_workers {
-        seen_files.push(
-            cf_alg_bloom::Filter::new_with_estimates(
-                SEEN_FILES_BLOOM_EXPECTED,
-                SEEN_FILES_BLOOM_FP,
-            )
-            .ok()?,
-        );
+        filter.retain_changes(repo, &mut changes);
     }
-    let mut seen_merges: Vec<HashSet<cf_gitlib::Hash>> = vec![HashSet::new(); num_workers];
+    Some(CouplesPrepared {
+        raw_change_count,
+        changes,
+    })
+}
 
-    // The aggregator grows its people slices on demand (ensure_capacity), so the
-    // initial PeopleNumber is 0 (loose detection discovers authors incrementally).
-    let mut agg = Aggregator::new(0);
+/// The couples pre-pass over `run`'s change filter and flags: the pure
+/// per-commit product a walk computes in parallel. Captures only the
+/// shareable pieces of the run (its repository handle is not `Sync`).
+fn couples_prepare(
+    run: &HistoryRun,
+) -> impl Fn(&cf_gitlib::Repository, cf_gitlib::Hash) -> Option<CouplesPrepared> + Sync + '_ {
+    let filter = &run.filter;
+    let max_changes = run.max_changes;
+    move |repo, hash| couples_commit_product(repo, hash, filter, max_changes)
+}
 
-    let mut last_commit_hash: Option<cf_gitlib::Hash> = None;
+/// The couples reduce state: the co-change and ownership aggregates, the
+/// files changed so far (ONE exact set over the whole walk, so the output is
+/// a pure function of the repository and the flags) and the per-commit
+/// records. Each kept commit's changes are folded in window order and
+/// dropped; only its record (what the per-commit formats emit) is kept.
+struct CouplesFold {
+    /// The walk's first-parent mode (a merge is an ordinary commit when set).
+    first_parent: bool,
+    /// The people slot an unmatched author is counted under.
+    unmatched_slot: usize,
+    /// Every file changed by a commit folded so far.
+    seen_files: HashSet<String>,
+    /// The co-change and per-developer touch sums.
+    agg: Aggregator,
+    /// The per-commit records, walk order.
+    commits: Vec<CouplesCommit>,
+}
 
-    // ---- parallel pure-compute stage -----------------------------------------
-    // ONLY the per-commit-independent work is parallelized — the tree diff (vs
-    // parent(0)) + path-policy filter — which dominates the per-commit cost. Each
-    // worker thread opens its OWN libgit2 Repository handle (the handle is !Send;
-    // per-thread handles also avoid shared-ODB-cache contention). The author
-    // signature is read here too (pure per commit) so the reduce needs no commit
-    // lookup. The order-SENSITIVE reduce below is UNCHANGED: the per-worker
-    // seen-files Bloom (partitioned by `pos % leaf_worker_count()`), the per-worker
-    // merge-dedup tracker, the loose-identity consume order (oldest-first), and the
-    // additive aggregator all run sequentially in the exact same order — only now
-    // reading `prepared[pos]` instead of recomputing the diff inline. The Bloom
-    // partition width (`num_workers`) is the modeled reference leaf-worker count and is
-    // INDEPENDENT of the parallel-compute worker count; neither is changed here.
-    struct CouplesPrepared {
-        num_parents: usize,
-        sig_name: String,
-        sig_email: String,
-        sig_when: i64,
-        committer_when: i64,
-        committer_offset: i32,
-        changes: Vec<cf_gitlib::changes::Change>,
-    }
-    let compute_workers =
-        std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
-    let filter_ref = &change_filter;
-    let prepared = crate::handlers::history::parallel_prepare(
-        &path,
-        &hashes,
-        compute_workers,
-        move |repo, hash| {
-            let commit = repo.lookup_commit(hash).ok()?;
-            let num_parents = commit.num_parents();
-            let gsig = commit.author();
-
-            // Tree diff against the first parent (root → full initial tree).
-            let new_tree = commit.tree().ok()?;
-            let raw_changes = if num_parents > 0 {
-                let parent = commit.parent(0).ok()?;
-                let old_tree = parent.tree().ok()?;
-                tree_diff(repo, Some(&old_tree), Some(&new_tree)).ok()?
-            } else {
-                initial_tree_changes(repo, Some(&new_tree)).ok()?
-            };
-
-            // TreeDiffAnalyzer.shouldIncludeChange: path-policy exclusion, then
-            // the --languages check (no-op for the default all-languages case).
-            let mut changes = raw_changes;
-            filter_ref.retain_changes(repo, &mut changes);
-
-            let cw = commit.committer().when;
-            Some(CouplesPrepared {
-                num_parents,
-                sig_name: gsig.name.clone(),
-                sig_email: gsig.email.clone(),
-                sig_when: gsig.when.seconds(),
-                committer_when: cw.seconds(),
-                committer_offset: cw.offset_minutes(),
-                changes,
-            })
-        },
-    )?;
-
-    // ---- sequential ordered-reduce stage (UNCHANGED order) -------------------
-    let mut tick0: Option<i64> = None;
-    let mut previous_tick: i64 = 0;
-    let mut commits: Vec<CouplesCommit> = Vec::with_capacity(hashes.len());
-
-    for (pos, hash) in hashes.iter().enumerate() {
-        let prep = &prepared[pos];
-        // Worker that consumes this commit in the reference implementation's hybrid leaf dispatch.
-        let worker = pos % num_workers;
-
-        // Runner tick stamping (TicksSinceStart over the committer time).
-        let base =
-            *tick0.get_or_insert_with(|| crate::handlers::floor_tick_secs(prep.committer_when));
-        let raw_tick = (prep.committer_when - base).div_euclid(86_400);
-        let tick = raw_tick.max(previous_tick);
-        previous_tick = tick;
-
-        // Merge dedup: a merge commit (NumParents > 1) seen twice by the SAME
-        // worker contributes an empty CommitData (reference: SeenOrAdd → return empty).
-        // With unique hashes in a single window this never triggers, but mirror
-        // reference faithfully — and the tracker is per-worker (Fork/Merge above).
-        let is_multi_parent = prep.num_parents > 1;
-        if is_multi_parent && !seen_merges[worker].insert(*hash) {
-            // Already seen: empty CommitData with a ZERO commit hash in the reference implementation —
-            // the aggregator ignores it; record no per-commit entry.
-            commits.push(CouplesCommit {
-                hash: hash.to_string(),
-                data: None,
-                tick,
-                author_id: 0,
-                when: prep.committer_when,
-                offset_min: prep.committer_offset,
-            });
-            continue;
+impl CouplesFold {
+    /// An empty fold for `run`. The unmatched slot is fixed before the
+    /// walk: only a run with a loaded `--people-dict` stamps an unmatched
+    /// author, and that dictionary never changes while commits are stamped,
+    /// so an unstamped identity state already names the slot the finished
+    /// one does.
+    fn new(run: &HistoryRun) -> Self {
+        Self {
+            first_parent: run.first_parent,
+            unmatched_slot: Stamper::new(run).finish().unmatched_slot,
+            seen_files: HashSet::new(),
+            // The aggregator grows its people slices on demand, so the
+            // initial PeopleNumber is 0 (identities are discovered
+            // incrementally).
+            agg: Aggregator::new(0),
+            commits: Vec::new(),
         }
+    }
 
-        // IsMerge: NumParents > 1, unless
-        // --first-parent forces single-parent semantics.
-        let merge_mode = is_multi_parent && !first_parent;
-
-        // lastCommit is set on every (non-dedup-skipped) consume.
-        last_commit_hash = Some(*hash);
-
-        // Identity: resolve this commit's author id (loose signature). Consumed in
-        // oldest-first order (CORE analyzer), independent of the worker partition.
-        let author_id = identity.consume_signature(&cf_analyzers_plumbing::Signature {
-            name: prep.sig_name.clone(),
-            email: prep.sig_email.clone(),
-            when_unix: prep.sig_when,
-        });
-        // Reference: author = Identity.AuthorID; if AuthorMissing → PeopleNumber.
-        // With loose detection author_id is always a real id, never AuthorMissing.
-        let author = if author_id == AUTHOR_MISSING {
-            0
+    /// Folds one kept commit, in window order: its changes become the
+    /// commit's coupling context, author touches and renames, which the
+    /// aggregator sums before the record is kept.
+    fn consume(&mut self, stamp: &CommitStamp, prep: CouplesPrepared) {
+        let merge_mode = is_merge(stamp.num_parents, self.first_parent);
+        let author = if stamp.author_id == author_missing_id() {
+            self.unmatched_slot
         } else {
-            author_id as usize
+            stamp.author_id as usize
         };
 
-        // The tree diff + path-policy filter for this commit was computed in the
-        // parallel pre-pass; the reduce only reads it.
-        let changes = &prep.changes;
-
-        // Build this commit's CommitData.
         let mut data = CommitData {
             commit_counted: true,
             ..CommitData::default()
         };
-
-        // Oversized changeset: skip coupling/ownership extraction, but the commit
-        // is still counted (CommitCounted = true) — the reference implementation returns `&data` early
-        // WITHOUT setting TC.CommitHash, so the streamed ndjson line carries the
-        // ZERO hash and the aggregator's `!tc.CommitHash.IsZero()` guard drops
-        // the commit from commit_stats/commits_by_tick (no timeseries entry).
-        let oversized = changes.len() > MAX_MEANINGFUL_CONTEXT;
-        if !oversized {
-            for change in changes {
-                process_change(
-                    change,
-                    merge_mode,
-                    author,
-                    &mut data,
-                    &mut seen_files[worker],
-                );
-            }
+        let couple = prep.changes.len() <= MAX_MEANINGFUL_CONTEXT;
+        for change in &prep.changes {
+            process_change(change, merge_mode, couple, &mut data, &mut self.seen_files);
         }
 
-        agg.add(author, &data);
-        commits.push(CouplesCommit {
-            hash: if oversized {
-                ZERO_HASH_HEX.to_string()
-            } else {
-                hash.to_string()
-            },
-            data: Some(data),
-            tick,
-            author_id,
-            when: prep.committer_when,
-            offset_min: prep.committer_offset,
+        self.agg.add(author, &data);
+        self.commits.push(CouplesCommit {
+            pos: stamp.pos,
+            hash: stamp.hex.clone(),
+            data,
+            tick: stamp.tick,
+            author_id: stamp.author_id,
+            when: stamp.when,
+            offset_min: stamp.offset_min,
         });
     }
 
-    // buildReport (reference: ticksToReport → buildReport → collectCurrentFiles).
-    //
-    // The two code paths behave differently because of libgit2 object lifetimes:
-    //
-    // * --head: the single HEAD commit object is still LIVE when buildReport runs,
-    //   so `lastCommit.Tree()` succeeds. `collectCurrentFiles` returns the HEAD
-    //   tree's files, the report is reduced to those, and
-    //   `computeFilesLinesFromCommit` reads each blob and counts newlines (real
-    //   `FilesLines`). This matches the `--head --limit 5` golden (real line
-    //   counts, files restricted to the HEAD tree).
-    //
-    // * streaming (--limit N, no --head): the commit objects consumed during the
-    //   walk are FREED once their chunk completes, so the analyzer's `lastCommit`
-    //   points at a freed commit and `lastCommit.Tree()` FAILS. `collectCurrentFiles`
-    //   takes its fallback branch (return *all* accumulated raw-file keys) and
-    //   every `commit.File(name)` in `computeFilesLinesFromCommit` likewise fails,
-    //   so every `FilesLines` entry is 0. We reproduce that observed behavior: the
-    //   current set is the accumulated raw-file keys (identity for the files map,
-    //   but it still prunes PEOPLE entries for files that never entered the
-    //   coupling map — e.g. delete-only author touches — which feeds the
-    //   people-matrix diagonal and thus `developer_coupling.coupling_strength`)
-    //   and zero line counts.
-    let (current_files, files_lines): (Option<HashSet<String>>, BTreeMap<String, i32>) =
-        if head_only {
-            collect_current_and_lines(&repo, last_commit_hash)
-        } else {
-            (
-                Some(agg.raw_files().keys().cloned().collect()),
-                BTreeMap::new(),
-            )
-        };
-
-    let mut report_data = agg.build_report(current_files.as_ref(), &files_lines);
-
-    // Reversed people dict from loose identity detection (reference:
-    // GetReversedPeopleDict()). FinalizeDict builds the reverse entries from the
-    // incrementally-collected names/emails (the streaming pipeline finalizes the
-    // loose dict before report rendering).
-    identity.finalize_dict();
-    report_data.reversed_people_dict = identity.reversed_people_dict.clone();
-
-    // Store-path file coupling (the reference implementation `writeFileCoupling`):
-    // sparse pairs over the SAME reduce the report uses (the live binary's
-    // plot pipeline observably takes `collectUnfiltered` — couples' lastCommit
-    // object is freed by store-finalize time, so the filtered prune/cap path
-    // never runs), min edge weight 2 (`DefaultMinEdgeWeight`; the
-    // `Couples.MinEdgeWeight` config key has no run flag), descending
-    // co-changes, top 100 (`DefaultTopKPerFile`).
-    let (reduced_files, _reduced_people) = agg.reduced(current_files.as_ref());
-    let (files_sequence, files_index) = cf_couples::matrix::build_files_index(&reduced_files);
-    let sparse_pairs = cf_couples::store::compute_sparse_coupling(
-        &reduced_files,
-        &files_sequence,
-        &files_index,
-        2,
-    );
-    let store_file_coupling = cf_couples::store::top_k_file_coupling(sparse_pairs, 100);
-
-    let metrics = compute_all_metrics(&report_data);
-    Some(CouplesRun {
-        report_value: report::computed_metrics_to_value(&metrics),
-        metrics,
-        commits,
-        store_file_coupling,
-    })
+    /// The finished walk: the report reduced to the files present in the
+    /// NEWEST commit of `run`'s window, with their line counts and the
+    /// developer names of `summary`, plus the per-commit records.
+    fn finish(self, summary: StampSummary, run: &HistoryRun) -> CouplesRun {
+        let (current_files, files_lines) =
+            collect_current_and_lines(&run.repo, run.hashes.last().copied());
+        let mut report_data = self.agg.build_report(current_files.as_ref(), &files_lines);
+        report_data.reversed_people_dict = summary.names;
+        let metrics = compute_all_metrics(&report_data);
+        CouplesRun {
+            report_value: report::computed_metrics_to_value(&metrics),
+            metrics,
+            commits: self.commits,
+        }
+    }
 }
 
-/// Per-commit couples NDJSON records (forked leaf): every non-dedup-skipped
-/// commit emits a line; `data` is the reference implementation's `*CommitData` struct — `CouplingFiles`
-/// (initialized slice), `AuthorFiles` (map, key-sorted), `Renames` (initialized
-/// slice of `{FromName, ToName}`), `CommitCounted` bool.
+/// The couples walk's measured cost. Kubernetes, 31,923 commits: one worker
+/// peaks at 1345 MB (the co-change state), 24 workers at 1591 MB (10 MiB per
+/// added worker); the whole window and 50-commit chunks peak alike.
+const COUPLES_COST: WalkCost = WalkCost {
+    worker_bytes: 16 * MIB,
+    product_bytes: KIB,
+};
+
+/// Runs the `history/couples` walk over the run's chunk plan: the
+/// per-commit changes are computed in parallel one chunk at a time,
+/// oversized commits dropped, and folded in window order ([`walk_chunks`]).
+/// `None` when the repository cannot be walked.
+pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
+    let run = HistoryRun::open(sub)?;
+    let plan = ChunkPlan::for_walk(sub, "history/couples", run.hashes.len(), COUPLES_COST).ok()?;
+    let max_changes = run.max_changes;
+    let mut fold = CouplesFold::new(&run);
+    let summary = walk_chunks(
+        &run,
+        plan,
+        couples_prepare(&run),
+        |prep| prep.raw_change_count > max_changes,
+        |stamp, prep| fold.consume(stamp, prep),
+    )?;
+    Some(fold.finish(summary, &run))
+}
+
+/// Per-commit couples NDJSON records: every walked commit emits a line;
+/// `data` is `{CouplingFiles, AuthorFiles, Renames, CommitCounted}`.
+#[must_use]
 pub fn couples_ndjson_records(
     sub: &clap::ArgMatches,
 ) -> Option<Vec<crate::handlers::history_formats::NdjsonRecord>> {
@@ -428,8 +265,8 @@ pub fn couples_ndjson_records(
 
     let run = couples_run(sub)?;
     let mut records = Vec::new();
-    for (pos, c) in run.commits.iter().enumerate() {
-        let Some(cd) = &c.data else { continue };
+    for c in &run.commits {
+        let cd = &c.data;
         let mut data = GoMap::new_struct();
         data.insert(
             "CouplingFiles".to_string(),
@@ -464,7 +301,7 @@ pub fn couples_ndjson_records(
             GoValue::Bool(cd.commit_counted),
         );
         records.push(crate::handlers::history_formats::NdjsonRecord {
-            pos,
+            pos: c.pos,
             hash: c.hash.clone(),
             tick: c.tick,
             author_id: c.author_id,
@@ -476,11 +313,10 @@ pub fn couples_ndjson_records(
     Some(records)
 }
 
-/// The couples contribution to the merged `--format timeseries` document (reference:
-/// `couples.ExtractCommitTimeSeries` over `report["commit_stats"]`): per
-/// commit `{"files_touched": len(CouplingFiles), "author_id": id}`. The couples
-/// aggregator is NOT tick-bucketed — its single TICK carries tick index 0, so
-/// every merged commit reports `"tick": 0`.
+/// The couples contribution to the merged `--format timeseries` document: per
+/// commit `{"files_touched": <files the author touched>, "author_id": id}`
+/// under the commit's tick.
+#[must_use]
 pub fn couples_timeseries_contribution(
     sub: &clap::ArgMatches,
 ) -> Option<crate::handlers::history_formats::TimeSeriesContribution> {
@@ -490,22 +326,16 @@ pub fn couples_timeseries_contribution(
     let mut per_commit = Vec::new();
     let mut commit_meta = Vec::new();
     for c in &run.commits {
-        let Some(cd) = &c.data else { continue };
-        if c.hash == ZERO_HASH_HEX {
-            // Aggregator.Add: `if !tc.CommitHash.IsZero()` — oversized commits
-            // never reach commit_stats, so the merged timeseries omits them.
-            continue;
-        }
         let mut entry = GoMap::new_map();
         entry.insert(
             "files_touched".to_string(),
-            GoValue::Int(cd.coupling_files.len() as i64),
+            GoValue::Int(c.data.author_files.len() as i64),
         );
         entry.insert("author_id".to_string(), GoValue::Int(c.author_id));
         per_commit.push((c.hash.clone(), GoValue::Map(entry)));
         commit_meta.push((
             c.hash.clone(),
-            0, // aggregator TICK.Tick is 0 (single un-bucketed TICK).
+            c.tick,
             crate::handlers::format_rfc3339_offset(c.when, c.offset_min),
             String::new(),
         ));
@@ -517,16 +347,15 @@ pub fn couples_timeseries_contribution(
     })
 }
 
-/// Collects the current-file set and per-file newline counts from the live
-/// commit at `last_commit_hash` (reference: `collectCurrentFiles` +
-/// `computeFilesLinesFromCommit`, used on the `--head` path where the commit
-/// object is still live). Returns `(None, empty)` if the tree cannot be read,
-/// matching the reference implementation's fallback (all raw files, zero lines).
+/// Collects the current-file set and per-file newline counts from the commit
+/// at `newest`. Returns `(None, empty)` when there is no commit or its tree
+/// cannot be read (the report then keeps every accumulated file with zero
+/// lines).
 fn collect_current_and_lines(
     repo: &cf_gitlib::Repository,
-    last_commit_hash: Option<cf_gitlib::Hash>,
+    newest: Option<cf_gitlib::Hash>,
 ) -> (Option<HashSet<String>>, BTreeMap<String, i32>) {
-    let Some(lc) = last_commit_hash else {
+    let Some(lc) = newest else {
         return (None, BTreeMap::new());
     };
     let Ok(commit) = repo.lookup_commit(lc) else {
@@ -540,7 +369,6 @@ fn collect_current_and_lines(
     let mut lines: BTreeMap<String, i32> = BTreeMap::new();
     let mut iter = tree.files();
     while let Some(f) = iter.next_file() {
-        // newline count of the blob (reference: countFileLinesAt over the file blob).
         let n = match f.contents() {
             Ok(data) => data.iter().filter(|&&b| b == b'\n').count() as i32,
             Err(_) => 0,
@@ -551,60 +379,286 @@ fn collect_current_and_lines(
     (Some(set), lines)
 }
 
-/// Per-commit change processing.
+/// Per-commit change processing: renames, the author touch and (when
+/// `couple`, i.e. the commit is within the changeset cap) the coupling
+/// context. A merge records no deletions and skips every file already
+/// changed earlier in the walk — that change was counted at its own commit.
 fn process_change(
     change: &cf_gitlib::changes::Change,
     merge_mode: bool,
-    author: usize,
+    couple: bool,
     data: &mut CommitData,
-    seen_files: &mut cf_alg_bloom::Filter,
+    seen_files: &mut HashSet<String>,
 ) {
-    let action = change.action;
+    if change.action == ChangeAction::Delete {
+        if merge_mode {
+            return;
+        }
+        let name = change.from.name.clone();
+        seen_files.insert(name.clone());
+        data.author_files.insert(name, 1);
+        return;
+    }
 
-    let mut name = if action == ChangeAction::Delete {
-        change.from.name.clone()
-    } else {
-        change.to.name.clone()
-    };
-
-    if action == ChangeAction::Modify && change.to.name != change.from.name {
+    let name = change.to.name.clone();
+    if change.action == ChangeAction::Modify && change.from.name != name {
         data.renames.push(RenamePair {
             from_name: change.from.name.clone(),
-            to_name: change.to.name.clone(),
+            to_name: name.clone(),
         });
-        name = change.to.name.clone();
     }
-
-    if merge_mode && action == ChangeAction::Delete {
+    if merge_mode && seen_files.contains(&name) {
         return;
     }
-
-    if !merge_mode {
-        if action != ChangeAction::Delete {
-            data.coupling_files.push(name.clone());
-        }
-        seen_files.add(name.as_bytes());
-        // Reference: if author != AuthorMissing { AuthorFiles[name] = 1 }.
-        if author != AUTHOR_MISSING_IDX {
-            data.author_files.insert(name, 1);
-        }
-        return;
-    }
-
-    // Merge mode. Only add the file to the
-    // coupling context if it was NOT seen on the first-parent line already
-    // (`!seenFiles.Test(name)`): a file changed on a merged-in branch must not
-    // be double-counted against files it already coupled with on mainline.
-    // The author touch is always recorded (coupling dedup != ownership dedup).
-    if !seen_files.test(name.as_bytes()) {
+    seen_files.insert(name.clone());
+    if couple {
         data.coupling_files.push(name.clone());
     }
-    if author != AUTHOR_MISSING_IDX {
-        data.author_files.insert(name, 1);
-    }
+    data.author_files.insert(name, 1);
 }
 
-/// `identity.AuthorMissing` as a `usize` index (the reference implementation uses it both as the sentinel
-/// id and, when present, as the `PeopleNumber` slot). Under loose detection the
-/// resolved author is never this sentinel.
-const AUTHOR_MISSING_IDX: usize = (1 << 18) - 1;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::handlers::history::fold_testutil::{
+        assert_chunk_invariant, chunk_fixture, open_run, run_matches, OVERSIZED_POS,
+    };
+    use cf_gitlib::changes::{Change, ChangeEntry};
+    use cf_gitlib::Hash;
+
+    fn change(action: ChangeAction, from: &str, to: &str) -> Change {
+        Change {
+            action,
+            from: ChangeEntry {
+                name: from.to_string(),
+                hash: Hash::ZERO,
+                size: 0,
+                mode: 0,
+            },
+            to: ChangeEntry {
+                name: to.to_string(),
+                hash: Hash::ZERO,
+                size: 0,
+                mode: 0,
+            },
+        }
+    }
+
+    fn run(changes: &[Change], merge_mode: bool, couple: bool, seen: &[&str]) -> CommitData {
+        let mut seen_files: HashSet<String> = seen.iter().map(|s| (*s).to_string()).collect();
+        let mut data = CommitData::default();
+        for c in changes {
+            process_change(c, merge_mode, couple, &mut data, &mut seen_files);
+        }
+        data
+    }
+
+    #[test]
+    fn a_regular_commit_couples_and_owns_every_non_deleted_file() {
+        let data = run(
+            &[
+                change(ChangeAction::Insert, "", "a"),
+                change(ChangeAction::Modify, "b", "b"),
+                change(ChangeAction::Delete, "c", ""),
+            ],
+            false,
+            true,
+            &[],
+        );
+        assert_eq!(data.coupling_files, vec!["a", "b"]);
+        assert_eq!(
+            data.author_files.keys().collect::<Vec<_>>(),
+            vec!["a", "b", "c"]
+        );
+        assert!(data.renames.is_empty());
+    }
+
+    #[test]
+    fn a_rename_is_recorded_and_counted_on_the_new_path() {
+        let data = run(&[change(ChangeAction::Modify, "b", "d")], false, true, &[]);
+        assert_eq!(
+            data.renames,
+            vec![RenamePair {
+                from_name: "b".into(),
+                to_name: "d".into()
+            }]
+        );
+        assert_eq!(data.coupling_files, vec!["d"]);
+        assert_eq!(data.author_files.keys().collect::<Vec<_>>(), vec!["d"]);
+    }
+
+    #[test]
+    fn a_merge_skips_files_already_changed_in_the_walk_and_deletions() {
+        let data = run(
+            &[
+                change(ChangeAction::Insert, "", "b"),
+                change(ChangeAction::Modify, "c", "c"),
+                change(ChangeAction::Insert, "", "fresh"),
+                change(ChangeAction::Delete, "gone", ""),
+            ],
+            true,
+            true,
+            &["b", "c"],
+        );
+        assert_eq!(data.coupling_files, vec!["fresh"]);
+        assert_eq!(data.author_files.keys().collect::<Vec<_>>(), vec!["fresh"]);
+    }
+
+    /// `--max-changes-per-commit 2` over `c1 (alice: a, b) ; c2 (bob: a, b,
+    /// c) ; c3 (alice: a)`: Bob's three-change commit is dropped before the
+    /// walk, as devs and burndown drop it — no co-change, no ownership, no
+    /// developer.
+    #[test]
+    fn max_changes_per_commit_drops_the_oversized_commit() {
+        use cf_gitlib::testutil::{commit_files_as, init_repo};
+        const T0: i64 = 1_609_459_200;
+        const DAY: i64 = 86_400;
+        let test = init_repo().expect("init");
+        commit_files_as(
+            &test,
+            "alice",
+            "a@x",
+            "c1",
+            T0,
+            &[("a", b"1\n"), ("b", b"1\n")],
+        )
+        .expect("c1");
+        commit_files_as(
+            &test,
+            "bob",
+            "b@x",
+            "c2",
+            T0 + DAY,
+            &[("a", b"2\n"), ("b", b"2\n"), ("c", b"2\n")],
+        )
+        .expect("c2");
+        commit_files_as(&test, "alice", "a@x", "c3", T0 + 2 * DAY, &[("a", b"3\n")]).expect("c3");
+        let path = test.path().to_str().expect("utf-8");
+        let metrics = |extra: &[&str]| {
+            let argv: Vec<&str> = ["codefang", "run", "-a", "history/couples"]
+                .into_iter()
+                .chain(extra.iter().copied())
+                .chain([path])
+                .collect();
+            let matches = crate::build_codefang_command()
+                .try_get_matches_from(argv)
+                .expect("run args parse");
+            couples_run_metrics(matches.subcommand_matches("run").expect("run"))
+                .expect("couples report")
+        };
+        let co_changes = |m: &cf_couples::ComputedMetrics| -> Vec<(String, String, i64)> {
+            m.file_coupling
+                .iter()
+                .map(|c| (c.file1.clone(), c.file2.clone(), c.co_changes))
+                .collect()
+        };
+
+        let all = metrics(&[]);
+        assert!(
+            co_changes(&all).contains(&("a".into(), "b".into(), 2)),
+            "{all:?}"
+        );
+        assert_eq!(all.aggregate.total_developers, 2, "{all:?}");
+
+        let capped = metrics(&["--max-changes-per-commit", "2"]);
+        assert_eq!(co_changes(&capped), [("a".to_string(), "b".to_string(), 1)]);
+        assert_eq!(capped.aggregate.total_developers, 1, "{capped:?}");
+        let owned: Vec<&str> = capped
+            .file_ownership
+            .iter()
+            .map(|o| o.file.as_str())
+            .collect();
+        assert!(
+            !owned.contains(&"c"),
+            "c was only touched by the dropped commit: {owned:?}"
+        );
+    }
+
+    #[test]
+    fn an_oversized_commit_owns_without_coupling() {
+        let data = run(
+            &[
+                change(ChangeAction::Insert, "", "a"),
+                change(ChangeAction::Modify, "b", "d"),
+            ],
+            false,
+            false,
+            &[],
+        );
+        assert!(data.coupling_files.is_empty());
+        assert_eq!(data.author_files.keys().collect::<Vec<_>>(), vec!["a", "d"]);
+        assert_eq!(data.renames.len(), 1);
+    }
+
+    /// The analyzer id the fold tests run.
+    const ID: &str = "history/couples";
+
+    /// The comparable value of a finished couples walk: the report value and
+    /// the per-commit records.
+    fn comparable(run: CouplesRun) -> (cf_gojson::GoValue, Vec<CouplesCommit>) {
+        (run.report_value, run.commits)
+    }
+
+    /// Folds the chunk fixture opened with `extra` in chunks of every size,
+    /// asserts it finishes to the one-pass walk (the oversized commit
+    /// dropped) and that the walk returns it for any `--chunk-size`.
+    fn assert_couples_chunk_invariant(extra: &[&str]) {
+        let test = chunk_fixture();
+        let run = open_run(&test, ID, extra);
+        let max_changes = run.max_changes;
+        let whole = assert_chunk_invariant(
+            &run,
+            couples_prepare(&run),
+            |prep| prep.raw_change_count > max_changes,
+            || CouplesFold::new(&run),
+            CouplesFold::consume,
+            |fold, summary| comparable(fold.finish(summary, &run)),
+        );
+        let positions: Vec<usize> = whole.1.iter().map(|c| c.pos).collect();
+        assert_eq!(positions.len(), run.hashes.len() - 1, "{positions:?}");
+        assert!(!positions.contains(&OVERSIZED_POS), "{positions:?}");
+        for size in ["1", "4"] {
+            let args: Vec<&str> = extra
+                .iter()
+                .copied()
+                .chain(["--chunk-size", size])
+                .collect();
+            let chunked = couples_run(&run_matches(&test, ID, &args)).map(comparable);
+            assert_eq!(chunked.as_ref(), Some(&whole), "--chunk-size {size}");
+        }
+    }
+
+    /// The couples walk folds per chunk: the rename, the delete and the
+    /// merge's already-seen files carry across every chunk boundary.
+    #[test]
+    fn the_walk_folds_in_chunks_to_the_one_pass_value() {
+        assert_couples_chunk_invariant(&[]);
+    }
+
+    /// With a `--people-dict` that misses Bob, his touches are counted under
+    /// the dictionary's `<unmatched>` slot in every chunking, so Alice
+    /// couples with `<unmatched>` — the slot is fixed before the first
+    /// commit is folded.
+    #[test]
+    fn an_unmatched_author_folds_into_the_unmatched_slot_in_every_chunking() {
+        let dict = tempfile::NamedTempFile::new().expect("dict file");
+        std::fs::write(dict.path(), "Alice|alice@example.com|alice@elsewhere.org\n")
+            .expect("write dict");
+        let dict_path = dict.path().to_str().expect("utf-8 path");
+        assert_couples_chunk_invariant(&["--people-dict", dict_path]);
+
+        let test = chunk_fixture();
+        let sub = run_matches(
+            &test,
+            ID,
+            &["--people-dict", dict_path, "--chunk-size", "1"],
+        );
+        let metrics = couples_run_metrics(&sub).expect("couples report");
+        let pairs: Vec<(&str, &str)> = metrics
+            .developer_coupling
+            .iter()
+            .map(|d| (d.developer1.as_str(), d.developer2.as_str()))
+            .collect();
+        assert_eq!(pairs, [("Alice", "<unmatched>")], "{metrics:?}");
+    }
+}

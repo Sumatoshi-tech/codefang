@@ -1,10 +1,12 @@
-//! `IdentityDetector` provider.
+//! `IdentityDetector`: maps a commit author to a canonical person id.
 //!
-//! Maps a commit author to a canonical person id. Person ids and the reversed
-//! people dictionary flow into report output (pinned by the differential
-//! gate). Two matching modes:
+//! Person ids and the reversed people dictionary flow into report output
+//! (developer names, `author_id` fields, people matrices). Two matching modes:
 //! * **loose** (default): an author is identified by *either* their lowercased
-//!   email or lowercased name; the two are unified into one id;
+//!   email or lowercased name; the two are unified into one id. A hit on one
+//!   token REGISTERS the other, so `alice <a@x>` followed by `Alice Smith
+//!   <a@x>` followed by `Alice Smith <a2@y>` is one person — every alias seen
+//!   together with a known token joins that person;
 //! * **exact**: the whole `"name <email>"` signature (lowercased) is the key.
 //!
 //! The people dictionary can be loaded from a file or built incrementally as
@@ -16,14 +18,24 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use crate::analyzer::{dep, Analyzer, AnalyzerError, ValueMap};
-use crate::git_model::{Commit, Signature};
+pub use cf_identity::{AUTHOR_MISSING, AUTHOR_MISSING_NAME};
 
-/// Sentinel id for a missing author (report contract).
-pub const AUTHOR_MISSING: i64 = (1 << 18) - 1;
+/// An author signature — the commit metadata the detector reads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Signature {
+    /// Author display name.
+    pub name: String,
+    /// Author email.
+    pub email: String,
+    /// Authoring time as a UTC unix timestamp in seconds.
+    pub when_unix: i64,
+}
 
-/// Display name for a missing author (report contract).
-pub const AUTHOR_MISSING_NAME: &str = "<unknown>";
+/// The [`AUTHOR_MISSING`] sentinel as the `i64` the detector hands out.
+#[must_use]
+pub const fn author_missing_id() -> i64 {
+    AUTHOR_MISSING as i64
+}
 
 /// `IdentityDetector` provider.
 #[derive(Debug, Clone, Default)]
@@ -72,7 +84,7 @@ impl IdentityDetector {
             self.lookup_loose_signature(signature)
         };
         let author_id = if !exists && self.dict_finalized {
-            AUTHOR_MISSING
+            author_missing_id()
         } else {
             author_id
         };
@@ -95,15 +107,23 @@ impl IdentityDetector {
         (0, false)
     }
 
-    /// Find or register an author by loose signature.
+    /// Find or register an author by loose signature. A hit on either token
+    /// registers the other token under the same id (incremental mode), so a
+    /// later commit carrying only the newly seen token still resolves to this
+    /// person.
     fn lookup_loose_signature(&mut self, signature: &Signature) -> (i64, bool) {
         let email = signature.email.to_lowercase();
         let name = signature.name.to_lowercase();
 
-        if let Some(&id) = self.people_dict.get(&email) {
-            return (id, true);
-        }
-        if let Some(&id) = self.people_dict.get(&name) {
+        let hit = self
+            .people_dict
+            .get(&email)
+            .or_else(|| self.people_dict.get(&name))
+            .copied();
+        if let Some(id) = hit {
+            if !self.dict_finalized {
+                self.register_loose_identity(&email, &name);
+            }
             return (id, true);
         }
         if !self.dict_finalized {
@@ -153,12 +173,12 @@ impl IdentityDetector {
     /// Each non-empty line lists `|`-separated identity tokens for one person;
     /// every token (lowercased) maps to that person's index, and the first
     /// token is the reverse-dict entry. A trailing [`AUTHOR_MISSING_NAME`]
-    /// entry is appended (reference-implementation behavior).
+    /// entry is appended so the sentinel id has a display name.
     ///
     /// # Errors
     ///
-    /// Returns an error when the file cannot be opened or read.
-    pub fn load_people_dict<P: AsRef<Path>>(&mut self, path: P) -> Result<(), AnalyzerError> {
+    /// Returns the I/O error when the file cannot be opened or read.
+    pub fn load_people_dict<P: AsRef<Path>>(&mut self, path: P) -> std::io::Result<()> {
         let file = File::open(path)?;
         let reader = BufReader::new(file);
         let mut dict: HashMap<String, i64> = HashMap::new();
@@ -168,8 +188,7 @@ impl IdentityDetector {
             let size = size as i64;
             // Lines are processed verbatim: only the trailing newline is
             // stripped, other whitespace is NOT trimmed, and blank lines are
-            // processed too (reference-implementation behavior). Split on '|'
-            // directly.
+            // processed too. Split on '|' directly.
             let ids: Vec<&str> = line.split('|').collect();
             for id in &ids {
                 dict.insert(id.to_lowercase(), size);
@@ -181,62 +200,6 @@ impl IdentityDetector {
         self.reversed_people_dict = reverse;
         self.dict_finalized = true;
         Ok(())
-    }
-
-    /// Build the dictionary from a list of commits ahead of time
-    /// (dispatching on [`exact_signatures`](Self::exact_signatures)).
-    pub fn generate_people_dict(&mut self, commits: &[Commit]) {
-        if self.exact_signatures {
-            self.generate_exact_dict(commits);
-        } else {
-            self.generate_loose_dict(commits);
-        }
-        self.dict_finalized = true;
-    }
-
-    fn generate_exact_dict(&mut self, commits: &[Commit]) {
-        let mut dict: HashMap<String, i64> = HashMap::new();
-        let mut size: i64 = 0;
-        for c in commits {
-            let sig = format!("{} <{}>", c.author.name, c.author.email).to_lowercase();
-            if let std::collections::hash_map::Entry::Vacant(slot) = dict.entry(sig) {
-                slot.insert(size);
-                size += 1;
-            }
-        }
-        let mut reverse = vec![String::new(); size as usize];
-        for (key, &val) in &dict {
-            reverse[val as usize].clone_from(key);
-        }
-        self.people_dict = dict;
-        self.reversed_people_dict = reverse;
-    }
-
-    fn generate_loose_dict(&mut self, commits: &[Commit]) {
-        // Reset incremental state and reuse register_loose_identity.
-        self.people_dict.clear();
-        self.incremental_emails.clear();
-        self.incremental_names.clear();
-        self.incremental_size = 0;
-        for c in commits {
-            let email = c.author.email.to_lowercase();
-            let name = c.author.name.to_lowercase();
-            self.register_loose_identity(&email, &name);
-        }
-        let size = self.incremental_size;
-        let mut reverse = vec![String::new(); size as usize];
-        for id in 0..size {
-            let mut names = self.incremental_names.get(&id).cloned().unwrap_or_default();
-            let mut emails = self
-                .incremental_emails
-                .get(&id)
-                .cloned()
-                .unwrap_or_default();
-            names.sort();
-            emails.sort();
-            reverse[id as usize] = format!("{}|{}", names.join("|"), emails.join("|"));
-        }
-        self.reversed_people_dict = reverse;
     }
 
     /// Build [`reversed_people_dict`](IdentityDetector::reversed_people_dict)
@@ -282,26 +245,42 @@ impl IdentityDetector {
     }
 }
 
-impl Analyzer for IdentityDetector {
-    fn name(&self) -> &'static str {
-        "IdentityDetector"
-    }
+/// Prefix of every anonymized developer label.
+const ANONYMOUS_PREFIX: &str = "Developer-";
 
-    fn provides(&self) -> Vec<&'static str> {
-        vec!["author"]
-    }
+/// Replaces every reversed-dictionary entry with a stable pseudonym derived
+/// from its index: `Developer-A`, `Developer-B`, …, `Developer-Z`,
+/// `Developer-AA`, … (the `--anonymize` output policy). The
+/// [`AUTHOR_MISSING_NAME`] sentinel is kept as-is so an unmatched author
+/// stays recognisable.
+#[must_use]
+pub fn anonymize_names(names: &[String]) -> Vec<String> {
+    names
+        .iter()
+        .enumerate()
+        .map(|(i, name)| {
+            if name == AUTHOR_MISSING_NAME {
+                name.clone()
+            } else {
+                format!("{ANONYMOUS_PREFIX}{}", column_label(i))
+            }
+        })
+        .collect()
+}
 
-    fn requires(&self) -> Vec<&'static str> {
-        vec![]
+/// Spreadsheet-style column label for a 0-based index (`0 → A`, `25 → Z`,
+/// `26 → AA`).
+fn column_label(index: usize) -> String {
+    const ALPHABET: usize = 26;
+    let mut n = index + 1;
+    let mut out = Vec::new();
+    while n > 0 {
+        n -= 1;
+        out.push(b'A' + (n % ALPHABET) as u8);
+        n /= ALPHABET;
     }
-
-    fn consume(&mut self, deps: &mut ValueMap) -> Result<ValueMap, AnalyzerError> {
-        let commit = dep::<Commit>(deps, "commit")?.clone();
-        let id = self.consume_signature(&commit.author);
-        let mut out = ValueMap::new();
-        out.insert("author".to_string(), Box::new(id));
-        Ok(out)
-    }
+    out.reverse();
+    String::from_utf8(out).expect("ASCII letters")
 }
 
 #[cfg(test)]
@@ -329,6 +308,24 @@ mod tests {
         assert_ne!(id1, id3);
     }
 
+    /// A hit on one token must register the OTHER token: after `alice
+    /// <alice@x>` and `Alice Smith <alice@x>` (email hit), a commit by `Alice
+    /// Smith <alice@y>` (name hit only) is still the same person.
+    #[test]
+    fn loose_hit_registers_the_other_token() {
+        let mut d = IdentityDetector::new();
+        let a = d.consume_signature(&sig("alice", "alice@example.com"));
+        let b = d.consume_signature(&sig("Alice Smith", "alice@example.com"));
+        let c = d.consume_signature(&sig("Alice Smith", "alice@other.org"));
+        assert_eq!((a, b, c), (0, 0, 0), "all three aliases are one person");
+        d.finalize_dict();
+        assert_eq!(
+            d.reversed_people_dict,
+            vec!["alice|alice smith|alice@example.com|alice@other.org".to_string()],
+            "the reverse entry lists every alias seen"
+        );
+    }
+
     #[test]
     fn exact_distinguishes_full_signature() {
         let mut d = IdentityDetector::new();
@@ -337,6 +334,14 @@ mod tests {
         let id2 = d.consume_signature(&sig("J. Doe", "john@example.com"));
         // Exact mode treats the differing display name as a new identity.
         assert_ne!(id1, id2);
+        d.finalize_dict();
+        assert_eq!(
+            d.reversed_people_dict,
+            vec![
+                "john doe <john@example.com>".to_string(),
+                "j. doe <john@example.com>".to_string()
+            ]
+        );
     }
 
     #[test]
@@ -347,11 +352,11 @@ mod tests {
         assert_eq!(d.consume_signature(&sig("John", "john@example.com")), 0);
         assert_eq!(
             d.consume_signature(&sig("Nobody", "nobody@example.com")),
-            AUTHOR_MISSING
+            author_missing_id()
         );
+        assert_eq!(author_missing_id(), i64::from(cf_identity::AUTHOR_MISSING));
     }
 
-    // Mirrors the reference suite's LoadPeopleDict expectations.
     #[test]
     fn load_people_dict_appends_unknown_sentinel() {
         let content = "John Doe|john@example.com\nJane Smith|jane@example.com\n";
@@ -361,18 +366,38 @@ mod tests {
         d.load_people_dict(tmp.path()).unwrap();
         // Two persons * two tokens each = 4 dict entries.
         assert_eq!(d.people_dict.len(), 4);
-        // reversed = [first-token-of-line-0, first-token-of-line-1, "<unknown>"].
+        // reversed = [first-token-of-line-0, first-token-of-line-1, "<unmatched>"].
         assert_eq!(d.reversed_people_dict.len(), 3);
         assert_eq!(d.reversed_people_dict[2], AUTHOR_MISSING_NAME);
-        // Tokens lowercased on load.
+        // Tokens lowercased on load; a loaded dict never grows.
         assert_eq!(d.consume_signature(&sig("john doe", "john@example.com")), 0);
+        assert_eq!(d.consume_signature(&sig("Jane Smith", "x@y")), 1);
+        assert_eq!(
+            d.consume_signature(&sig("Stranger", "s@z")),
+            author_missing_id()
+        );
+        assert_eq!(d.people_dict.len(), 4);
     }
 
     #[test]
-    fn provider_metadata() {
-        let d = IdentityDetector::new();
-        assert_eq!(d.name(), "IdentityDetector");
-        assert_eq!(d.provides(), vec!["author"]);
-        assert!(d.requires().is_empty());
+    fn load_people_dict_missing_file_is_an_error() {
+        let mut d = IdentityDetector::new();
+        let err = d
+            .load_people_dict("/nonexistent/people.txt")
+            .expect_err("missing file must error");
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn anonymize_names_numbers_developers_and_keeps_the_sentinel() {
+        let names: Vec<String> = (0..27)
+            .map(|i| format!("dev{i}|dev{i}@x"))
+            .chain(std::iter::once(AUTHOR_MISSING_NAME.to_string()))
+            .collect();
+        let anon = anonymize_names(&names);
+        assert_eq!(anon[0], "Developer-A");
+        assert_eq!(anon[25], "Developer-Z");
+        assert_eq!(anon[26], "Developer-AA");
+        assert_eq!(anon[27], AUTHOR_MISSING_NAME);
     }
 }

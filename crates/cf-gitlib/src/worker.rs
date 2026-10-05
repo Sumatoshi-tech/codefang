@@ -7,7 +7,7 @@
 //! the repository and executes each request synchronously by calling git2
 //! directly. The numeric outputs (line counts, diff op runs) reproduce the
 //! reference batch algorithms byte-for-byte, which is what flows into reports
-//! (pinned by `tests/compat`).
+//! (pinned by the report e2e suites (`bins/codefang/tests`)).
 //!
 //! # Diff-op algorithm (reference batch-shim behavior)
 //!

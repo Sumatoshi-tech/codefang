@@ -10,9 +10,9 @@
 //! and error wording all live here and are part of the tool contract.
 
 use crate::errors::ToolError;
-use crate::providers::{StaticAnalysisProvider, UastParser};
+use crate::providers::{Snippet, StaticAnalysisProvider, UastParser};
 use crate::result::{ToolOutput, ToolResult};
-use crate::tools::{synthetic_filename, validate_code_input, AnalyzeInput};
+use crate::tools::{validate_code_input, AnalyzeInput};
 
 /// Names of the default static analyzers, in their fixed registration order:
 /// `complexity, comments, halstead, cohesion, imports`.
@@ -47,7 +47,7 @@ pub fn handle_analyze(
         return (ToolResult::error(&err), ToolOutput::empty());
     }
 
-    let filename = synthetic_filename(&input.language);
+    let filename = parser.filename_for(&input.language);
 
     if !parser.is_supported(&filename) {
         let err = ToolError::UnsupportedLanguage {
@@ -70,7 +70,12 @@ pub fn handle_analyze(
         input.analyzers.clone()
     };
 
-    let results = match provider.run(&root, &names) {
+    let snippet = Snippet {
+        filename: &filename,
+        code: input.code.as_bytes(),
+        root: &root,
+    };
+    let results = match provider.run(&snippet, &names) {
         Ok(v) => v,
         Err(e) => {
             let err = ToolError::wrap("run analyzers", e.to_string());
@@ -103,7 +108,7 @@ mod tests {
     /// contains the substring the tests assert on.
     struct FakeProvider;
     impl StaticAnalysisProvider for FakeProvider {
-        fn run(&self, _root: &Node, names: &[String]) -> Result<JsonValue, ToolError> {
+        fn run(&self, _snippet: &Snippet<'_>, names: &[String]) -> Result<JsonValue, ToolError> {
             let entries = names
                 .iter()
                 .map(|n| (n.clone(), JsonValue::Int(1)))

@@ -3,7 +3,7 @@
 //! # Data parity (DESIGN §2.6)
 //!
 //! File-classification decisions change *which* bytes appear in machine reports
-//! (pinned by `tests/compat`), so the underlying data tables must match
+//! (pinned by the report e2e suites (`bins/codefang/tests`)), so the underlying data tables must match
 //! the enry library **byte-for-byte**. We therefore vendor the **same**
 //! regular-expression sources that `github.com/src-d/enry/v2@v2.1.0` compiles
 //! in `data/vendor.go`, rather than swapping in a behaviourally different
