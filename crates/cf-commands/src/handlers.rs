@@ -581,6 +581,22 @@ pub struct HistoryWindow {
     pub since: SinceSpec,
 }
 
+/// Warns, once per process, that a shallow clone has no walkable history.
+///
+/// A shallow repository yields an empty window (see
+/// [`cf_gitlib::Repository::log`]), so every history analyzer reports empty
+/// results. The warning names the cause and the remedy so the empty report is
+/// not mistaken for an analysis result.
+fn warn_shallow_history_once() {
+    static WARNED: std::sync::Once = std::sync::Once::new();
+    WARNED.call_once(|| {
+        eprintln!(
+            "warning: shallow clone: history analyzers see no commits; \
+             run `git fetch --unshallow` for a full history"
+        );
+    });
+}
+
 /// The commit window selected by a [`HistoryWindow`].
 ///
 /// Returns hashes in the **oldest-first** order the history analyzers consume
@@ -609,6 +625,9 @@ pub fn load_history_commit_hashes(
 
     if window.head {
         return Some(vec![repo.head().ok()?]);
+    }
+    if repo.is_shallow() {
+        warn_shallow_history_once();
     }
 
     let since_secs = match &window.since {

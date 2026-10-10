@@ -80,6 +80,8 @@ This is the first release line, so there is no prior version to upgrade from. If
 
 ## Fixed
 
+- Full-report schemas now declare exactly the fields each analyzer emits. `history/typos`, `history/imports`, `history/burndown` (`interactions`), and `static/clones` (`message`) had registry entries that named fields the reports did not contain, or omitted fields they did contain.
+- A shallow clone no longer produces empty history reports silently. History analyzers still see no commits in a shallow repository, but the run prints one `warning: shallow clone` line on stderr naming the remedy (`git fetch --unshallow`).
 - Fixed a data race in `internal/framework.PipelineSampler`: `t1Captured` was a plain `bool` read by the sampler goroutine and written by the caller, causing intermittent races under `go test -race`. It is now a `sync/atomic.Bool` using `CompareAndSwap`, so at most one t1 heap profile is captured. Removed the unused `t0Captured` field.
 
 ## Security

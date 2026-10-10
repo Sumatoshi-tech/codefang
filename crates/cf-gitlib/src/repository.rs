@@ -218,6 +218,13 @@ impl Repository {
         Ok(RevWalk::new(walk, self))
     }
 
+    /// Reports whether this is a shallow clone (`.git/shallow` lists its graft
+    /// boundary). A shallow repository's [`Self::log`] is exhausted at once.
+    #[must_use]
+    pub fn is_shallow(&self) -> bool {
+        self.repo.is_shallow()
+    }
+
     /// Returns a commit iterator starting from HEAD.
     ///
     /// Pushes HEAD, applies `SortTime | SortTopological` (plus `SortReverse`
@@ -226,19 +233,17 @@ impl Repository {
     /// part of the report contract; the topological order prevents diffing
     /// against a descendant (burndown integrity).
     ///
+    /// A shallow repository (see [`Self::is_shallow`]) yields an exhausted
+    /// iterator: the reference binary's libgit2 predates shallow-clone support
+    /// and fails the revwalk on the grafted commit's missing parents, so the
+    /// reference reports an empty history. The command layer surfaces this with
+    /// a warning rather than leaving the empty report unexplained.
+    ///
     /// # Errors
     ///
     /// Returns revwalk/HEAD errors on failure.
     pub fn log(&self, opts: &LogOptions) -> Result<CommitIter<'_>> {
-        // Shallow-clone parity with the reference binary: it links libgit2 1.5.0,
-        // which predates shallow-clone support, so its revwalk preparation hits the
-        // grafted commit's missing parent objects and fails on the first next().
-        // The reference pipeline swallows that as an empty walk ("planning chunks
-        // ... commits=0 chunks=0") and every history analyzer emits its empty
-        // report. Our libgit2 honors `.git/shallow` and would happily walk the
-        // truncated history, so replicate the reference behavior: a shallow
-        // repository yields an already-exhausted commit iterator.
-        if self.repo.is_shallow() {
+        if self.is_shallow() {
             return Ok(CommitIter::empty(self));
         }
         let mut walk = self.repo.revwalk().map_err(GitError::CreateRevwalk)?;

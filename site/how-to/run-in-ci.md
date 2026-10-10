@@ -13,7 +13,9 @@ detects issues.
 - A repository hosted on GitHub (this guide uses the published GitHub Action).
 - Permission to add workflow files under `.github/workflows/`.
 - For history analyzers, the checkout step must fetch full history
-  (`fetch-depth: 0`); a shallow clone only sees the most recent commits.
+  (`fetch-depth: 0`). A shallow clone has no walkable history: the history
+  analyzers report empty results and print a `warning: shallow clone` line
+  on stderr.
 
 ## Steps
 

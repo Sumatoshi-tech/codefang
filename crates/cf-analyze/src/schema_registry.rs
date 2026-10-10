@@ -197,6 +197,14 @@ fn build_registry() -> BTreeMap<String, AnalyzerSchema> {
                     "Fraction of functions involved in duplication",
                 ),
             ),
+            (
+                "message",
+                FieldMeta::new(
+                    "scalar",
+                    "",
+                    "Duplication band message keyed off clone_ratio",
+                ),
+            ),
         ],
     );
     schema(
@@ -399,6 +407,14 @@ fn build_registry() -> BTreeMap<String, AnalyzerSchema> {
                 FieldMeta::new("list", "developer", "Per-developer survival data"),
             ),
             (
+                "interactions",
+                FieldMeta::new(
+                    "list",
+                    "pair",
+                    "Lines each author lost to each modifier (filled with --burndown-people)",
+                ),
+            ),
+            (
                 "aggregate",
                 FieldMeta::new("aggregate", "", "Summary statistics"),
             ),
@@ -421,33 +437,47 @@ fn build_registry() -> BTreeMap<String, AnalyzerSchema> {
         "history/imports",
         &[
             (
-                "import_list",
-                FieldMeta::new("list", "import", "Import statements (requires UAST mode)"),
+                "author_index",
+                FieldMeta::new("list", "author", "Developer labels by author id"),
             ),
             (
-                "dependencies",
-                FieldMeta::new("list", "dependency", "Dependencies (requires UAST mode)"),
+                "imports",
+                FieldMeta::new(
+                    "aggregate",
+                    "author",
+                    "Import counts by author, language, file and tick",
+                ),
             ),
             (
-                "categories",
-                FieldMeta::new("aggregate", "", "Import category breakdown"),
-            ),
-            (
-                "aggregate",
-                FieldMeta::new("aggregate", "", "Summary statistics"),
+                "tick_size",
+                FieldMeta::new("scalar", "", "Tick width in seconds"),
             ),
         ],
     );
     schema(
         "history/typos",
-        &[(
-            "typos",
-            FieldMeta::new(
-                "list",
-                "identifier",
-                "Detected identifier typos (requires UAST mode)",
+        &[
+            (
+                "aggregate",
+                FieldMeta::new("aggregate", "", "Summary statistics"),
             ),
-        )],
+            (
+                "typo_list",
+                FieldMeta::new(
+                    "list",
+                    "identifier",
+                    "Every distinct wrong to correct pair, attributed to its first fix",
+                ),
+            ),
+            (
+                "patterns",
+                FieldMeta::new("list", "pattern", "Wrong to correct pairs with frequency"),
+            ),
+            (
+                "file_typos",
+                FieldMeta::new("list", "file", "Typos fixed per file"),
+            ),
+        ],
     );
 
     reg
@@ -471,10 +501,17 @@ mod tests {
     }
 
     #[test]
-    fn typos_has_single_field() {
+    fn typos_declares_the_fields_the_report_emits() {
         let s = schema_for_analyzer("history/typos").expect("registered");
-        assert_eq!(s.len(), 1);
-        assert!(s.contains_key("typos"));
+        let fields: Vec<&str> = s.keys().map(String::as_str).collect();
+        assert_eq!(fields, ["aggregate", "file_typos", "patterns", "typo_list"]);
+    }
+
+    #[test]
+    fn imports_history_declares_the_fields_the_report_emits() {
+        let s = schema_for_analyzer("history/imports").expect("registered");
+        let fields: Vec<&str> = s.keys().map(String::as_str).collect();
+        assert_eq!(fields, ["author_index", "imports", "tick_size"]);
     }
 
     #[test]
