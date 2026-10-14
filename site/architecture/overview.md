@@ -227,7 +227,7 @@ flowchart LR
 ### Static mode
 
 1. Walks the source tree once per analyzer (`walk_source_files`), applying
-   the vendored / generated policy, `--languages` and a 64 MiB per-file cap.
+   the vendored / generated policy, `--languages` and an 8 MiB per-file parse cap (`--max-parse-file-size`).
 2. Parses each file into a UAST using Tree-sitter and the compiled-in
    mappings.
 3. Runs the selected static analyzers (complexity, cohesion, halstead,

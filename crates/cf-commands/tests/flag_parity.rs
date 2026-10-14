@@ -86,6 +86,7 @@ fn permissive() -> StaticFilter {
             ..cf_pathpolicy::Options::default()
         },
         language_globs: None,
+        max_parse_bytes: cf_commands::handlers::DEFAULT_MAX_PARSE_FILE_BYTES,
     }
 }
 

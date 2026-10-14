@@ -123,7 +123,48 @@ pub(crate) fn run_cancelled() -> bool {
 /// size), lowered to a UAST, and — on the complexity path — deep-copied
 /// again, so peak RSS is a large multiple of the largest file encountered.
 /// Oversized files are skipped exactly like unreadable ones.
-pub const MAX_STATIC_FILE_SIZE: u64 = 64 * 1024 * 1024;
+pub const DEFAULT_MAX_PARSE_FILE_BYTES: u64 = DEFAULT_MAX_PARSE_FILE_MIB as u64 * MIB_BYTES;
+
+/// Default `--max-parse-file-size`, in MiB.
+pub const DEFAULT_MAX_PARSE_FILE_MIB: i64 = 8;
+
+/// Bytes in one MiB.
+const MIB_BYTES: u64 = 1024 * 1024;
+
+/// Parses `file` for a function analyzer. A data-only file
+/// ([`FUNCTIONLESS_LANGUAGES`]) gets an empty file root instead of a parse:
+/// it has no functions, so its report is the same and the tree is never built.
+///
+/// # Errors
+///
+/// The parser's error for a file that must be parsed.
+pub fn parse_for_functions(
+    parser: &cf_uast::Parser,
+    file: &SourceFile,
+) -> Result<cf_uast::Node, cf_uast::ParseError> {
+    if FUNCTIONLESS_LANGUAGES.contains(&file.language.as_str()) {
+        return Ok(cf_uast::Node::with_token(cf_uast_node::UAST_FILE, ""));
+    }
+    parser.parse(&file.rel_path, &file.bytes)
+}
+
+/// Languages whose UAST has no function-like constructs (data and config
+/// formats). The function analyzers do not build their tree: an empty file
+/// root stands in, so the file still reports zero functions.
+pub const FUNCTIONLESS_LANGUAGES: [&str; 12] = [
+    "json",
+    "yaml",
+    "toml",
+    "ini",
+    "csv",
+    "psv",
+    "dotenv",
+    "xml",
+    "gitignore",
+    "gitattributes",
+    "git_config",
+    "ssh_config",
+];
 
 /// Bytes read per file by [`walk_all_files`]: the classification header
 /// (binary sniffing, generated markers, shebangs and modelines all live
@@ -135,7 +176,7 @@ pub const ALL_FILES_HEADER_BYTES: usize = 8192;
 pub enum SkipReason {
     /// The file (or its metadata) could not be read.
     Unreadable,
-    /// The file is larger than [`MAX_STATIC_FILE_SIZE`].
+    /// The file is larger than the run's parse size limit.
     Oversized,
     /// The parser has no usable grammar for the file.
     Unparseable,
@@ -147,7 +188,7 @@ impl SkipReason {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Unreadable => "unreadable",
-            Self::Oversized => "larger than 64 MiB",
+            Self::Oversized => "larger than the parse size limit (--max-parse-file-size)",
             Self::Unparseable => "unparseable",
         }
     }
@@ -195,11 +236,11 @@ fn was_skipped(path: &Path) -> bool {
         .contains(path)
 }
 
-/// Reads a source file whole, refusing files over [`MAX_STATIC_FILE_SIZE`]
-/// before any byte is read.
-fn read_source_capped(path: &Path) -> Result<Vec<u8>, SkipReason> {
+/// Reads a source file whole, refusing files over `limit` bytes before any
+/// byte is read.
+fn read_source_capped(path: &Path, limit: u64) -> Result<Vec<u8>, SkipReason> {
     let meta = std::fs::metadata(path).map_err(|_| SkipReason::Unreadable)?;
-    if meta.len() > MAX_STATIC_FILE_SIZE {
+    if meta.len() > limit {
         return Err(SkipReason::Oversized);
     }
     std::fs::read(path).map_err(|_| SkipReason::Unreadable)
@@ -280,7 +321,7 @@ pub struct StaticWalk<'a> {
 ///  3. applies the vendor / generated / `--extra-excluded-prefixes` policy to
 ///     the ROOT-RELATIVE path, so `--extra-excluded-prefixes gen/` works
 ///     whatever the root spelling;
-///  4. reads each file once, refusing files over [`MAX_STATIC_FILE_SIZE`];
+///  4. reads each file once, refusing files over the filter's parse size limit;
 ///     an unreadable or oversized file is skipped and reported once on
 ///     stderr for the whole run ([`note_skipped`]);
 ///  5. applies the generated-content marker over the first 512 bytes
@@ -318,6 +359,7 @@ pub fn walk_all_files(
             extra_excluded_prefixes: filter.policy.extra_excluded_prefixes.clone(),
         },
         language_globs: filter.language_globs.clone(),
+        max_parse_bytes: DEFAULT_MAX_PARSE_FILE_BYTES,
     };
     StaticWalk::new(root, WalkMode::AllFiles, relaxed)
 }
@@ -352,7 +394,7 @@ impl<'a> StaticWalk<'a> {
         if !parser.is_supported(&rel_path) || self.filter.skips(&rel_path) {
             return None;
         }
-        let bytes = match read_source_capped(path) {
+        let bytes = match read_source_capped(path, self.filter.max_parse_bytes) {
             Ok(bytes) => bytes,
             Err(reason) => {
                 note_skipped(path, reason);
@@ -1588,12 +1630,22 @@ pub const GENERATED_MARKER_HEADER_BYTES: usize = 512;
 ///    `--extra-excluded-prefixes` policy over the path and, through
 ///    [`StaticFilter::skips_with_header`], over the file's first
 ///    [`GENERATED_MARKER_HEADER_BYTES`] bytes.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct StaticFilter {
     /// Vendor / generated exclusion policy.
     pub policy: cf_pathpolicy::Options,
     /// Basename globs from `--languages`; `None` disables the filter.
     pub language_globs: Option<Vec<String>>,
+    /// Largest source file, in bytes, that is read and parsed (`--max-parse-file-size`).
+    pub max_parse_bytes: u64,
+}
+
+impl Default for StaticFilter {
+    /// The default policy, no language restriction, and the default parse size
+    /// limit: a zero limit would skip every file.
+    fn default() -> Self {
+        Self::from_policy(cf_pathpolicy::Options::default())
+    }
 }
 
 impl StaticFilter {
@@ -1603,6 +1655,7 @@ impl StaticFilter {
         StaticFilter {
             policy,
             language_globs: None,
+            max_parse_bytes: DEFAULT_MAX_PARSE_FILE_BYTES,
         }
     }
 
@@ -1647,6 +1700,16 @@ pub(crate) fn static_filter(ctx: &RunContext) -> Result<StaticFilter, String> {
     let policy = static_path_policy(ctx);
     let tokens = language_tokens(ctx.matches);
     let globs = cf_langpath::globs(&tokens).map_err(|e| format!("static --languages: {e}"))?;
+    let max_mib = ctx
+        .matches
+        .try_get_one::<i64>("max-parse-file-size")
+        .ok()
+        .flatten()
+        .copied()
+        .unwrap_or(DEFAULT_MAX_PARSE_FILE_MIB);
+    if max_mib < 1 {
+        return Err("static --max-parse-file-size: must be at least 1 MiB".to_string());
+    }
     Ok(StaticFilter {
         policy,
         language_globs: if globs.wants_all {
@@ -1654,6 +1717,7 @@ pub(crate) fn static_filter(ctx: &RunContext) -> Result<StaticFilter, String> {
         } else {
             Some(globs.globs)
         },
+        max_parse_bytes: u64::try_from(max_mib).unwrap_or(u64::MAX) * MIB_BYTES,
     })
 }
 
@@ -2159,6 +2223,7 @@ mod static_filter_tests {
         let filter = StaticFilter {
             policy: permissive_policy(),
             language_globs: Some(vec!["*.go".to_string()]),
+            max_parse_bytes: DEFAULT_MAX_PARSE_FILE_BYTES,
         };
         assert!(!filter.skips("src/pkg/deep/file.go"));
         assert!(filter.skips("src/pkg/deep/file.py"));
@@ -2169,6 +2234,7 @@ mod static_filter_tests {
         let filter = StaticFilter {
             policy: permissive_policy(),
             language_globs: Some(vec!["*.py".to_string()]),
+            max_parse_bytes: DEFAULT_MAX_PARSE_FILE_BYTES,
         };
         assert!(filter.skips("vendor/dep.go"));
         // A language-matched path still falls through to the path policy:
@@ -2176,6 +2242,7 @@ mod static_filter_tests {
         let filter = StaticFilter {
             policy: cf_pathpolicy::Options::default(),
             language_globs: Some(vec!["*.go".to_string()]),
+            max_parse_bytes: DEFAULT_MAX_PARSE_FILE_BYTES,
         };
         assert!(filter.skips("vendor/dep.go"));
     }
@@ -2185,6 +2252,7 @@ mod static_filter_tests {
         let filter = StaticFilter {
             policy: permissive_policy(),
             language_globs: None,
+            max_parse_bytes: DEFAULT_MAX_PARSE_FILE_BYTES,
         };
         assert!(!filter.skips("a.py"));
         assert!(!filter.skips("vendor/dep.go"));
@@ -2197,6 +2265,7 @@ mod static_filter_tests {
         let filter = StaticFilter {
             policy: permissive_policy(),
             language_globs: Some(Vec::new()),
+            max_parse_bytes: DEFAULT_MAX_PARSE_FILE_BYTES,
         };
         assert!(filter.skips("a.go"));
         assert!(filter.skips("a.py"));
@@ -2514,7 +2583,7 @@ mod static_walk_tests {
         // A sparse file: the size is what the cap reads, no bytes are written.
         std::fs::File::create(&big)
             .unwrap()
-            .set_len(MAX_STATIC_FILE_SIZE + 1)
+            .set_len(DEFAULT_MAX_PARSE_FILE_BYTES + 1)
             .unwrap();
         assert!(!was_skipped(&big));
         assert_eq!(source_paths(dir.path(), &permissive()), vec!["a.go"]);
@@ -2612,6 +2681,7 @@ mod static_walk_tests {
         write(dir.path(), "deep/b.py", b"def f():\n    return 1\n");
         let py_only = StaticFilter {
             language_globs: Some(vec!["*.py".to_string()]),
+            max_parse_bytes: DEFAULT_MAX_PARSE_FILE_BYTES,
             ..permissive()
         };
         assert_eq!(source_paths(dir.path(), &py_only), vec!["deep/b.py"]);

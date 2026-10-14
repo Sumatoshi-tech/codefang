@@ -101,7 +101,7 @@ fn aggregate_report_opts(root_path: &str, filter: &StaticFilter) -> Option<Clone
     let parser = Parser::new();
     let mut agg = Aggregator::new();
     for file in super::walk_source_files(root_path, &parser, filter).ok()? {
-        let Ok(uast_root) = parser.parse(&file.rel_path, &file.bytes) else {
+        let Ok(uast_root) = super::parse_for_functions(&parser, &file) else {
             super::note_skipped(&file.path, SkipReason::Unparseable);
             continue;
         };

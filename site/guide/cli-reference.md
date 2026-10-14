@@ -252,12 +252,18 @@ Every `static/*` analyzer reads the same walk of the path you pass
 - a file is admitted when the UAST parser supports its extension, its
   basename matches `--languages`, and its **root-relative** path passes the
   vendor / generated / `--extra-excluded-prefixes` policy;
-- each admitted file is read **once**; a file larger than **64 MiB** or one
-  that cannot be read is skipped with one stderr line
-  (`warning: skipped <path>: larger than 64 MiB` / `: unreadable`) for the
+- each admitted file is read **once**; a file larger than the parse size
+  limit (`--max-parse-file-size`, default **8 MiB**) or one that cannot be read
+  is skipped with one stderr line
+  (`warning: skipped <path>: larger than the parse size limit (--max-parse-file-size)` / `: unreadable`) for the
   whole run, however many analyzers are selected, and counted once in the
   end-of-run `progress: skipped N unreadable/oversized/unparseable files`
   line;
+- data and config files (JSON, YAML, TOML, INI, CSV, PSV, dotenv, XML, and the
+  git and ssh config formats) have no functions: the function analyzers
+  (`static/complexity`, `static/halstead`, `static/cohesion`, `static/clones`)
+  do not parse them and report them with zero functions, so memory and time stay
+  bounded on large data files;
 - the generated-content marker (`DO NOT EDIT`, `Code generated`,
   `@generated`, … in the first 512 bytes) is applied to the bytes just read
   unless `--include-generated`;

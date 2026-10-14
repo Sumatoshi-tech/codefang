@@ -116,7 +116,7 @@ fn aggregate_opts(root_path: &str, filter: &StaticFilter) -> Option<Aggregate> {
         let directory = file.directory();
         // A supported file whose grammar is not wired (or that fails to
         // parse) still counts as an analyzed, function-free file.
-        let records = match parser.parse(&file.rel_path, &file.bytes) {
+        let records = match super::parse_for_functions(&parser, &file) {
             Ok(node) => analyze_file(
                 &node,
                 &file.bytes,

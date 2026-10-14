@@ -42,7 +42,7 @@ walk visits directories in lexical order (skipping `.git`, cache-tagged
 directories and symlinked directories), admits the files the UAST parser
 supports and `--languages` keeps, applies the vendor / generated /
 `--extra-excluded-prefixes` policy to the root-relative path, reads each
-file once (files over 64 MiB and unreadable files are skipped with one
+file once (files over 8 MiB by default, `--max-parse-file-size`, and unreadable files are skipped with one
 stderr warning each), and applies the generated-content marker
 (`DO NOT EDIT`, `Code generated`, … in the first 512 bytes) unless
 `--include-generated`. `static/composition` classifies every file instead,

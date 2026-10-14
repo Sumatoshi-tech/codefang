@@ -130,6 +130,7 @@ fn walk_root(root_path: &str, filter: &StaticFilter, per_file: bool) -> Option<W
 #[cfg(test)]
 mod per_file_tests {
     use super::*;
+    use crate::handlers::DEFAULT_MAX_PARSE_FILE_BYTES;
 
     /// Fixture: a source file, a vendored file, a generated file, a doc
     /// under `docs/` and an unknown extension.
@@ -211,6 +212,7 @@ mod per_file_tests {
         let filter = StaticFilter {
             policy: cf_pathpolicy::Options::default(),
             language_globs: Some(vec!["*.go".to_string()]),
+            max_parse_bytes: DEFAULT_MAX_PARSE_FILE_BYTES,
         };
         let json = json(&dir, &filter, false);
         assert!(

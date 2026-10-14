@@ -132,6 +132,11 @@ fn add_literal_run_flags(cmd: Command) -> Command {
         "Folder/repository path to analyze",
     ))
     .arg(int_arg(
+        "max-parse-file-size",
+        crate::handlers::DEFAULT_MAX_PARSE_FILE_MIB,
+        "Static analyzers skip source files larger than this many MiB (default 8)",
+    ))
+    .arg(int_arg(
         "limit",
         0,
         "Analyze only the N newest commits (0 = no limit)",

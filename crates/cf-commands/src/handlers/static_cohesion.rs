@@ -37,7 +37,7 @@ fn analyze_tree(root_path: &str, filter: &StaticFilter) -> Option<Vec<AnalyzedFi
     let files = super::walk_source_files(root_path, &parser, filter)
         .ok()?
         .filter_map(|file| {
-            let Ok(uast_root) = parser.parse(&file.rel_path, &file.bytes) else {
+            let Ok(uast_root) = super::parse_for_functions(&parser, &file) else {
                 super::note_skipped(&file.path, SkipReason::Unparseable);
                 return None;
             };

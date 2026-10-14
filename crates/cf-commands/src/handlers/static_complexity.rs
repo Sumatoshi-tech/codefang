@@ -87,7 +87,7 @@ pub(crate) fn collect(root_path: &str, filter: &StaticFilter) -> Option<Collecte
 /// Parses and measures one admitted file; `None` when it fails to parse
 /// (counted as skipped).
 fn analyze_file(file: &SourceFile, parser: &Parser) -> Option<AnalyzedFile> {
-    let Ok(tree) = parser.parse(&file.rel_path, &file.bytes) else {
+    let Ok(tree) = super::parse_for_functions(parser, file) else {
         super::note_skipped(&file.path, SkipReason::Unparseable);
         return None;
     };
