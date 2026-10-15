@@ -358,21 +358,19 @@ impl LanguageParser for LazyDslParser {
         self.extensions.clone()
     }
 
-    fn yields_functions(&self) -> bool {
+    fn may_yield(&self, wanted: &dyn Fn(&UastSpec) -> bool) -> bool {
         match self.init() {
-            Ok(state) => state
-                .resolved
-                .iter()
-                .any(|r| spec_yields_function(&r.rule.uast_spec)),
+            Ok(state) => state.resolved.iter().any(|r| wanted(&r.rule.uast_spec)),
             Err(_) => true,
         }
     }
 }
 
-/// Whether a rule's output spec is a function node, by the shape the
-/// complexity analyzer discovers: type `Function` or `Method`, or the
-/// `Function` and `Declaration` roles together.
-fn spec_yields_function(spec: &UastSpec) -> bool {
+/// Whether an output spec is a function node, by the shape the complexity
+/// analyzer discovers: type `Function` or `Method`, or the `Function` and
+/// `Declaration` roles together.
+#[must_use]
+pub fn spec_yields_function(spec: &UastSpec) -> bool {
     let has_role = |name: &str| spec.roles.iter().any(|r| r == name);
     matches!(spec.r#type.as_str(), UAST_FUNCTION | UAST_METHOD)
         || (has_role(ROLE_FUNCTION) && has_role(ROLE_DECLARATION))

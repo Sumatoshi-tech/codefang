@@ -11,7 +11,8 @@ use std::sync::Arc;
 use cf_uast_mapping::Parser as MappingParser;
 use cf_uast_node::Node;
 
-use crate::loader::Loader;
+use crate::loader::{spec_yields_function, Loader};
+use crate::UastSpec;
 use crate::types::{get_file_extension, LanguageParser, Map, ParseError};
 
 /// The main entry point for UAST parsing.
@@ -117,16 +118,23 @@ impl Parser {
         }
     }
 
-    /// Whether the mapping for `filename`'s language can produce a function
-    /// node. `false` means no parse of such a file yields a function, so a
-    /// function analyzer may skip the parse. A file with no parser is `false`
-    /// too: it cannot be parsed to yield functions either.
+    /// Whether the mapping for `filename`'s language has an output spec that
+    /// `wanted` accepts. `false` means no parse of such a file yields a node
+    /// `wanted` matches, so an analyzer that looks only for those nodes may skip
+    /// the parse. A file with no parser is `false` too: it cannot be parsed to
+    /// yield such a node either.
     #[must_use]
-    pub fn yields_functions(&self, filename: &str) -> bool {
+    pub fn may_yield(&self, filename: &str, wanted: &dyn Fn(&UastSpec) -> bool) -> bool {
         let ext = get_file_extension(filename).to_lowercase();
         self.loader
             .language_parser(&ext)
-            .is_some_and(|p| p.yields_functions())
+            .is_some_and(|p| p.may_yield(wanted))
+    }
+
+    /// [`Self::may_yield`] for function nodes ([`crate::spec_yields_function`]).
+    #[must_use]
+    pub fn yields_functions(&self, filename: &str) -> bool {
+        self.may_yield(filename, &spec_yields_function)
     }
 
     /// Parses `content` for `filename`, returning its UAST root.

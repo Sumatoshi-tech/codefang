@@ -43,6 +43,12 @@ const TYPE_IDENTIFIER: &str = "Identifier";
 const TYPE_SYNTHETIC: &str = "Synthetic";
 /// UAST type of a call expression node.
 const TYPE_CALL: &str = "Call";
+
+/// The node types an import rule starts from: `Import` statements, and `Call`s
+/// for the JavaScript `require` and `import()` loaders. Every rule consumes one
+/// of these, so a language whose mapping has no output of these types cannot
+/// yield an import.
+pub const IMPORT_TRIGGER_TYPES: [&str; 2] = [TYPE_IMPORT, TYPE_CALL];
 /// The CommonJS loader function.
 const JS_REQUIRE: &str = "require";
 /// The token the dynamic-import keyword node carries.

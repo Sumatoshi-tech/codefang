@@ -91,10 +91,11 @@ pub trait LanguageParser {
     /// Returns the supported file extensions (including the leading dot).
     fn extensions(&self) -> Vec<String>;
 
-    /// Whether any mapping rule of this language can produce a function node
-    /// (see [`crate::Parser::yields_functions`]). The default is `true`, the
-    /// answer that never lets a caller skip a parse it needs.
-    fn yields_functions(&self) -> bool {
+    /// Whether any mapping rule of this language has an output spec that
+    /// `wanted` accepts (see [`crate::Parser::may_yield`]). The default is
+    /// `true`, the answer that never lets a caller skip a parse it needs.
+    fn may_yield(&self, wanted: &dyn Fn(&crate::UastSpec) -> bool) -> bool {
+        let _ = wanted;
         true
     }
 }

@@ -139,3 +139,69 @@ fn max_parse_file_size_flag_raises_the_limit() {
     );
     assert_eq!(total_functions(&doc["sections"][0]), "2");
 }
+
+/// The `issues` names of a per-file entry, sorted.
+fn issue_names(entry: &serde_json::Value) -> Vec<String> {
+    let mut names: Vec<String> = entry["issues"]
+        .as_array()
+        .expect("issues array")
+        .iter()
+        .map(|i| i["name"].as_str().expect("issue name").to_string())
+        .collect();
+    names.sort();
+    names
+}
+
+#[test]
+fn proto_imports_are_still_reported_from_a_data_typed_file() {
+    // enry types Protocol Buffer as data, but its mapping yields Import nodes,
+    // so the import analyzer must still parse it.
+    let test = repo_with(&[
+        ("api.proto", b"syntax = \"proto3\";\nimport \"google/api.proto\";\nimport \"other.proto\";\nmessage M { int32 a = 1; }\n"),
+        ("config.yaml", b"a: 1\n"),
+    ]);
+    let path = test.path().to_str().expect("utf-8 path");
+    let (doc, _) = run_json(&["-a", "static/imports", "--per-file", "--format", "json", path]);
+
+    let files = doc["sections"][0]["files"].as_array().expect("per-file entries");
+    let proto = files.iter().find(|f| f["file_path"] == "api.proto").expect("api.proto");
+    assert_eq!(issue_names(proto), ["google/api.proto", "other.proto"]);
+    let yaml = files.iter().find(|f| f["file_path"] == "config.yaml").expect("config.yaml");
+    assert!(issue_names(yaml).is_empty(), "a YAML file has no imports");
+}
+
+#[test]
+fn comments_in_data_files_are_still_counted() {
+    // Comments are real nodes of the parsed tree, so a data file's comments
+    // must not be dropped by the function-parse skip.
+    let test = repo_with(&[(
+        "settings.yaml",
+        b"# top comment\nkey: value  # trailing\nlist:\n  - one\n",
+    )]);
+    let path = test.path().to_str().expect("utf-8 path");
+    let (doc, _) = run_json(&["-a", "static/comments", "--per-file", "--format", "json", path]);
+
+    let files = doc["sections"][0]["files"].as_array().expect("per-file entries");
+    let yaml = files.iter().find(|f| f["file_path"] == "settings.yaml").expect("entry");
+    let total = yaml["metrics"]
+        .as_array()
+        .expect("metrics")
+        .iter()
+        .find(|m| m["label"] == "Total Comments")
+        .and_then(|m| m["value"].as_str())
+        .expect("Total Comments");
+    assert_eq!(total, "2");
+}
+
+#[test]
+fn sql_functions_are_still_counted_from_a_data_typed_file() {
+    // enry types SQL as data, but its mapping declares CREATE FUNCTION as a
+    // function, so the function analyzers must parse it.
+    let test = repo_with(&[(
+        "query.sql",
+        b"CREATE FUNCTION add(a int, b int) RETURNS int AS $$ SELECT a + b $$ LANGUAGE sql;\n",
+    )]);
+    let path = test.path().to_str().expect("utf-8 path");
+    let (doc, _) = run_json(&["-a", "static/complexity", "--format", "json", path]);
+    assert_eq!(total_functions(&doc["sections"][0]), "1");
+}

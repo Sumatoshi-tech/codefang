@@ -131,20 +131,33 @@ pub const DEFAULT_MAX_PARSE_FILE_MIB: i64 = 8;
 /// Bytes in one MiB.
 const MIB_BYTES: u64 = 1024 * 1024;
 
-/// Whether a function analyzer may skip parsing `file`. enry must type it as
-/// data, and the file's mapping must be unable to produce a function node.
-/// Both are needed: enry's data type admits SQL and GraphQL, whose mappings do
-/// declare functions, so the type alone would change their reports.
-fn skips_function_parse(parser: &cf_uast::Parser, file: &SourceFile) -> bool {
+/// Parses `file` for an analyzer that looks only for the nodes `wanted`
+/// accepts. A data file (enry types it as data) whose mapping cannot yield such
+/// a node gets an empty file root instead of a parse: the analyzer would find
+/// nothing either way, so its report is the same and the tree is never built.
+///
+/// Both checks are needed. enry's data type alone admits SQL and GraphQL, whose
+/// mappings declare functions and operations, so the type alone would change
+/// their reports.
+///
+/// # Errors
+///
+/// The parser's error for a file that must be parsed.
+pub fn parse_unless_data(
+    parser: &cf_uast::Parser,
+    file: &SourceFile,
+    wanted: &dyn Fn(&cf_uast::UastSpec) -> bool,
+) -> Result<cf_uast::Node, cf_uast::ParseError> {
     let is_data = cf_langpath::language_by_path_with_content(&file.rel_path, &file.bytes)
         .and_then(|language| cf_langpath::language_type(&language))
         == Some(cf_langpath::LanguageType::Data);
-    is_data && !parser.yields_functions(&file.rel_path)
+    if is_data && !parser.may_yield(&file.rel_path, wanted) {
+        return Ok(cf_uast::Node::with_token(cf_uast_node::UAST_FILE, ""));
+    }
+    parser.parse(&file.rel_path, &file.bytes)
 }
 
-/// Parses `file` for a function analyzer. A file [`skips_function_parse`]
-/// admits gets an empty file root: it has no functions, so its report is the
-/// same and the tree is never built.
+/// [`parse_unless_data`] for the function analyzers.
 ///
 /// # Errors
 ///
@@ -153,10 +166,21 @@ pub fn parse_for_functions(
     parser: &cf_uast::Parser,
     file: &SourceFile,
 ) -> Result<cf_uast::Node, cf_uast::ParseError> {
-    if skips_function_parse(parser, file) {
-        return Ok(cf_uast::Node::with_token(cf_uast_node::UAST_FILE, ""));
-    }
-    parser.parse(&file.rel_path, &file.bytes)
+    parse_unless_data(parser, file, &cf_uast::spec_yields_function)
+}
+
+/// [`parse_unless_data`] for the import analyzer.
+///
+/// # Errors
+///
+/// The parser's error for a file that must be parsed.
+pub fn parse_for_imports(
+    parser: &cf_uast::Parser,
+    file: &SourceFile,
+) -> Result<cf_uast::Node, cf_uast::ParseError> {
+    parse_unless_data(parser, file, &|spec| {
+        cf_imports::IMPORT_TRIGGER_TYPES.contains(&spec.r#type.as_str())
+    })
 }
 
 /// Bytes read per file by [`walk_all_files`]: the classification header

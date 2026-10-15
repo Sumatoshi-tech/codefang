@@ -55,7 +55,7 @@ pub mod stdlib;
 
 // Re-exports for the primary public surface.
 pub use aggregate::{Aggregate, Entry};
-pub use extract::{extract_imports, Import};
+pub use extract::{extract_imports, Import, IMPORT_TRIGGER_TYPES};
 pub use history::{HistoryReport, ImportEntry, ImportsMap};
 pub use language::Language;
 pub use metrics::{

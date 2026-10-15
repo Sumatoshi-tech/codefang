@@ -190,7 +190,7 @@ fn scan(root_path: &str, filter: &StaticFilter, keep_per_file: bool) -> Option<S
 
     let mut scan = Scan::default();
     for file in walk {
-        let imports: Vec<String> = match parser.parse(&file.rel_path, &file.bytes) {
+        let imports: Vec<String> = match super::parse_for_imports(&parser, &file) {
             Ok(node) => {
                 let found = extract_imports(&node, &file.language, &file.bytes);
                 scan.aggregate.add_file(&file.language, &found);

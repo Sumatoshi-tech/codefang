@@ -260,11 +260,13 @@ Every `static/*` analyzer reads the same walk of the path you pass
   end-of-run `progress: skipped N unreadable/oversized/unparseable files`
   line;
 - a data file is not parsed by the function analyzers (`static/complexity`,
-  `static/halstead`, `static/cohesion`, `static/clones`) when enry types it as
-  data (Linguist's `data` type) **and** its UAST mapping cannot produce a
-  function. The file is still reported, with zero functions. The two checks
-  are both needed: SQL and GraphQL are data-typed but declare functions, so they
-  are parsed;
+  `static/halstead`, `static/cohesion`, `static/clones`) or by the import
+  analyzer (`static/imports`) when enry types it as data (Linguist's `data`
+  type) **and** its UAST mapping cannot produce the nodes those analyzers look
+  for (a function, or an import). The file is still reported, with zero results.
+  Both checks are needed: SQL and GraphQL are data-typed but declare functions,
+  and Protocol Buffers declare imports, so they are parsed. `static/comments`
+  always parses, because comments in YAML, TOML, and INI files are counted;
 - the generated-content marker (`DO NOT EDIT`, `Code generated`,
   `@generated`, … in the first 512 bytes) is applied to the bytes just read
   unless `--include-generated`;

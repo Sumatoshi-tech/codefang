@@ -51,7 +51,7 @@ mod types;
 pub mod languages;
 
 pub use changes::detect_changes;
-pub use loader::{embedded_mappings_available, Loader, PrecompiledMapping};
+pub use loader::{embedded_mappings_available, spec_yields_function, Loader, PrecompiledMapping};
 pub use parser::Parser;
 pub use types::{
     get_file_extension, ChangeType, LanguageParser, Map, NodeChange, ParseError,
@@ -61,6 +61,7 @@ pub use types::{
 // Re-export the node type so facade callers can use it without an explicit
 // `cf-uast-node` dependency.
 pub use cf_uast_node::{Node, Positions};
+pub use cf_uast_mapping::UastSpec;
 
 /// The dependency name provided by UAST change detection.
 pub const DEPENDENCY_UAST_CHANGES: &str = "uast_changes";
