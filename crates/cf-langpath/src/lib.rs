@@ -32,6 +32,8 @@ use std::sync::OnceLock;
 
 pub mod content;
 pub mod content_heuristics;
+pub mod linguist_type;
+pub use linguist_type::{language_type, LanguageType};
 
 /// Resolve a candidate token to its canonical Linguist language via enry's
 /// alias table (`GetLanguageByAlias`), or `None` if unrecognized.

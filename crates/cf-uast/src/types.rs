@@ -90,6 +90,13 @@ pub trait LanguageParser {
 
     /// Returns the supported file extensions (including the leading dot).
     fn extensions(&self) -> Vec<String>;
+
+    /// Whether any mapping rule of this language can produce a function node
+    /// (see [`crate::Parser::yields_functions`]). The default is `true`, the
+    /// answer that never lets a caller skip a parse it needs.
+    fn yields_functions(&self) -> bool {
+        true
+    }
 }
 
 /// Minimum number of dot-separated parts for a filename to have an extension.

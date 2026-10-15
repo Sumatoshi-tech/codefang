@@ -131,9 +131,20 @@ pub const DEFAULT_MAX_PARSE_FILE_MIB: i64 = 8;
 /// Bytes in one MiB.
 const MIB_BYTES: u64 = 1024 * 1024;
 
-/// Parses `file` for a function analyzer. A data-only file
-/// ([`FUNCTIONLESS_LANGUAGES`]) gets an empty file root instead of a parse:
-/// it has no functions, so its report is the same and the tree is never built.
+/// Whether a function analyzer may skip parsing `file`. enry must type it as
+/// data, and the file's mapping must be unable to produce a function node.
+/// Both are needed: enry's data type admits SQL and GraphQL, whose mappings do
+/// declare functions, so the type alone would change their reports.
+fn skips_function_parse(parser: &cf_uast::Parser, file: &SourceFile) -> bool {
+    let is_data = cf_langpath::language_by_path_with_content(&file.rel_path, &file.bytes)
+        .and_then(|language| cf_langpath::language_type(&language))
+        == Some(cf_langpath::LanguageType::Data);
+    is_data && !parser.yields_functions(&file.rel_path)
+}
+
+/// Parses `file` for a function analyzer. A file [`skips_function_parse`]
+/// admits gets an empty file root: it has no functions, so its report is the
+/// same and the tree is never built.
 ///
 /// # Errors
 ///
@@ -142,29 +153,11 @@ pub fn parse_for_functions(
     parser: &cf_uast::Parser,
     file: &SourceFile,
 ) -> Result<cf_uast::Node, cf_uast::ParseError> {
-    if FUNCTIONLESS_LANGUAGES.contains(&file.language.as_str()) {
+    if skips_function_parse(parser, file) {
         return Ok(cf_uast::Node::with_token(cf_uast_node::UAST_FILE, ""));
     }
     parser.parse(&file.rel_path, &file.bytes)
 }
-
-/// Languages whose UAST has no function-like constructs (data and config
-/// formats). The function analyzers do not build their tree: an empty file
-/// root stands in, so the file still reports zero functions.
-pub const FUNCTIONLESS_LANGUAGES: [&str; 12] = [
-    "json",
-    "yaml",
-    "toml",
-    "ini",
-    "csv",
-    "psv",
-    "dotenv",
-    "xml",
-    "gitignore",
-    "gitattributes",
-    "git_config",
-    "ssh_config",
-];
 
 /// Bytes read per file by [`walk_all_files`]: the classification header
 /// (binary sniffing, generated markers, shebangs and modelines all live

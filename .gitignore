@@ -49,6 +49,7 @@ _testmain.go
 !crates/cf-langpath/data/enry-v2.1.0.tsv
 !crates/cf-langpath/data/enry-frequencies-v2.1.0.tsv
 !crates/cf-langpath/data/enry-interpreters-v2.1.0.tsv
+!crates/cf-langpath/data/enry-types-v2.1.0.tsv
 !crates/cf-sentiment-lexicons/data/**
 !crates/cf-gojson/tests/oracle_data/**
 

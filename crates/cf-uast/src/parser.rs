@@ -117,6 +117,18 @@ impl Parser {
         }
     }
 
+    /// Whether the mapping for `filename`'s language can produce a function
+    /// node. `false` means no parse of such a file yields a function, so a
+    /// function analyzer may skip the parse. A file with no parser is `false`
+    /// too: it cannot be parsed to yield functions either.
+    #[must_use]
+    pub fn yields_functions(&self, filename: &str) -> bool {
+        let ext = get_file_extension(filename).to_lowercase();
+        self.loader
+            .language_parser(&ext)
+            .is_some_and(|p| p.yields_functions())
+    }
+
     /// Parses `content` for `filename`, returning its UAST root.
     ///
     /// # Errors
@@ -186,6 +198,20 @@ impl LanguageParser for CustomDslParser {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn yields_functions_follows_the_mapping_not_the_name() {
+        let p = Parser::new();
+        // Plain data mappings declare no function rule.
+        assert!(!p.yields_functions("config.json"));
+        assert!(!p.yields_functions("settings.yaml"));
+        // A data-typed language whose mapping declares functions (SQL's
+        // CREATE FUNCTION rule) must be parsed, so it is reported as yielding.
+        assert!(p.yields_functions("query.sql"));
+        assert!(p.yields_functions("main.go"));
+        // No parser: no function can be produced.
+        assert!(!p.yields_functions("notes.unknownext"));
+    }
 
     #[test]
     fn new_parser_supports_go() {
