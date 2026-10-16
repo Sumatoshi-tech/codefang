@@ -65,14 +65,26 @@ fn repo_with(files: &[(&str, &[u8])]) -> TestRepo {
 #[test]
 fn data_file_is_listed_per_file_with_zero_functions() {
     let test = repo_with(&[
-        ("main.go", b"package main\n\nfunc add(a, b int) int {\n\treturn a + b\n}\n"),
+        (
+            "main.go",
+            b"package main\n\nfunc add(a, b int) int {\n\treturn a + b\n}\n",
+        ),
         ("config.json", b"{\"name\": \"x\", \"items\": [1, 2, 3]}\n"),
         ("settings.yaml", b"key: value\nlist:\n  - one\n"),
     ]);
     let path = test.path().to_str().expect("utf-8 path");
-    let (doc, _) = run_json(&["-a", "static/complexity", "--per-file", "--format", "json", path]);
+    let (doc, _) = run_json(&[
+        "-a",
+        "static/complexity",
+        "--per-file",
+        "--format",
+        "json",
+        path,
+    ]);
 
-    let files = doc["sections"][0]["files"].as_array().expect("per-file entries");
+    let files = doc["sections"][0]["files"]
+        .as_array()
+        .expect("per-file entries");
     for data in ["config.json", "settings.yaml"] {
         let entry = files
             .iter()
@@ -93,7 +105,10 @@ fn source_file_over_the_parse_limit_is_skipped_with_a_warning() {
     let mut big = b"package main\n\nfunc big() int {\n\treturn 1\n}\n// ".to_vec();
     big.resize(DEFAULT_LIMIT_MIB * MIB + 1, b'x');
     let test = repo_with(&[
-        ("main.go", b"package main\n\nfunc small() int {\n\treturn 2\n}\n"),
+        (
+            "main.go",
+            b"package main\n\nfunc small() int {\n\treturn 2\n}\n",
+        ),
         ("big.go", &big),
     ]);
     let path = test.path().to_str().expect("utf-8 path");
@@ -119,7 +134,10 @@ fn max_parse_file_size_flag_raises_the_limit() {
     let mut big = b"package main\n\nfunc big() int {\n\treturn 1\n}\n// ".to_vec();
     big.resize(DEFAULT_LIMIT_MIB * MIB + 1, b'x');
     let test = repo_with(&[
-        ("main.go", b"package main\n\nfunc small() int {\n\treturn 2\n}\n"),
+        (
+            "main.go",
+            b"package main\n\nfunc small() int {\n\treturn 2\n}\n",
+        ),
         ("big.go", &big),
     ]);
     let path = test.path().to_str().expect("utf-8 path");
@@ -161,12 +179,27 @@ fn proto_imports_are_still_reported_from_a_data_typed_file() {
         ("config.yaml", b"a: 1\n"),
     ]);
     let path = test.path().to_str().expect("utf-8 path");
-    let (doc, _) = run_json(&["-a", "static/imports", "--per-file", "--format", "json", path]);
+    let (doc, _) = run_json(&[
+        "-a",
+        "static/imports",
+        "--per-file",
+        "--format",
+        "json",
+        path,
+    ]);
 
-    let files = doc["sections"][0]["files"].as_array().expect("per-file entries");
-    let proto = files.iter().find(|f| f["file_path"] == "api.proto").expect("api.proto");
+    let files = doc["sections"][0]["files"]
+        .as_array()
+        .expect("per-file entries");
+    let proto = files
+        .iter()
+        .find(|f| f["file_path"] == "api.proto")
+        .expect("api.proto");
     assert_eq!(issue_names(proto), ["google/api.proto", "other.proto"]);
-    let yaml = files.iter().find(|f| f["file_path"] == "config.yaml").expect("config.yaml");
+    let yaml = files
+        .iter()
+        .find(|f| f["file_path"] == "config.yaml")
+        .expect("config.yaml");
     assert!(issue_names(yaml).is_empty(), "a YAML file has no imports");
 }
 
@@ -179,10 +212,22 @@ fn comments_in_data_files_are_still_counted() {
         b"# top comment\nkey: value  # trailing\nlist:\n  - one\n",
     )]);
     let path = test.path().to_str().expect("utf-8 path");
-    let (doc, _) = run_json(&["-a", "static/comments", "--per-file", "--format", "json", path]);
+    let (doc, _) = run_json(&[
+        "-a",
+        "static/comments",
+        "--per-file",
+        "--format",
+        "json",
+        path,
+    ]);
 
-    let files = doc["sections"][0]["files"].as_array().expect("per-file entries");
-    let yaml = files.iter().find(|f| f["file_path"] == "settings.yaml").expect("entry");
+    let files = doc["sections"][0]["files"]
+        .as_array()
+        .expect("per-file entries");
+    let yaml = files
+        .iter()
+        .find(|f| f["file_path"] == "settings.yaml")
+        .expect("entry");
     let total = yaml["metrics"]
         .as_array()
         .expect("metrics")

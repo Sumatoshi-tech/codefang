@@ -47,8 +47,11 @@ fn make_shallow(test: &TestRepo) {
         .expect("head")
         .target()
         .expect("head target");
-    std::fs::write(test.path().join(".git").join("shallow"), format!("{head}\n"))
-        .expect("write .git/shallow");
+    std::fs::write(
+        test.path().join(".git").join("shallow"),
+        format!("{head}\n"),
+    )
+    .expect("write .git/shallow");
 }
 
 /// Runs `codefang run -a history/devs --format json` and returns

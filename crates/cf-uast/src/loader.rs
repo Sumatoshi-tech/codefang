@@ -18,8 +18,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
-use cf_uast_mapping::{LanguageInfo, Parser as MappingParser, PatternMatcher, Rule};
 use cf_uast_mapping::UastSpec;
+use cf_uast_mapping::{LanguageInfo, Parser as MappingParser, PatternMatcher, Rule};
 use cf_uast_node::{Node, ROLE_DECLARATION, ROLE_FUNCTION, UAST_FUNCTION, UAST_METHOD};
 
 use crate::lowering::{resolve_rules, Lowering, ResolvedRule};

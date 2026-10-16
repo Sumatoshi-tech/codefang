@@ -60,8 +60,8 @@ pub use types::{
 
 // Re-export the node type so facade callers can use it without an explicit
 // `cf-uast-node` dependency.
-pub use cf_uast_node::{Node, Positions};
 pub use cf_uast_mapping::UastSpec;
+pub use cf_uast_node::{Node, Positions};
 
 /// The dependency name provided by UAST change detection.
 pub const DEPENDENCY_UAST_CHANGES: &str = "uast_changes";

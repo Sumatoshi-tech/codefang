@@ -12,8 +12,8 @@ use cf_uast_mapping::Parser as MappingParser;
 use cf_uast_node::Node;
 
 use crate::loader::{spec_yields_function, Loader};
-use crate::UastSpec;
 use crate::types::{get_file_extension, LanguageParser, Map, ParseError};
+use crate::UastSpec;
 
 /// The main entry point for UAST parsing.
 ///

@@ -79,7 +79,11 @@ fn every_analyzer_schema_declares_exactly_its_report_fields() {
 
     let doc = full_report(&path);
     let analyzers = doc["analyzers"].as_array().expect("analyzers array");
-    assert_eq!(analyzers.len(), ANALYZER_COUNT, "full selection analyzer count");
+    assert_eq!(
+        analyzers.len(),
+        ANALYZER_COUNT,
+        "full selection analyzer count"
+    );
     // Collect every mismatch so one run lists them all, not just the first.
     let mut mismatches = Vec::new();
     for analyzer in analyzers {
