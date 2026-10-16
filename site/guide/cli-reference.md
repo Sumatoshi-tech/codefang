@@ -2,7 +2,9 @@
 
 Codefang ships two binaries: **`codefang`**, the analyzer engine, and **`uast`**, the
 Universal Abstract Syntax Tree parser. This page is the exhaustive reference for
-every command, sub-command, and flag.
+every command, sub-command, and flag. Every flag listed by `codefang run --help`
+is documented here and is read by the pipeline; a flag that is accepted but
+has no effect is a bug.
 
 ---
 
@@ -10,6 +12,17 @@ every command, sub-command, and flag.
 
 The main analysis binary. It runs static and history analyzers against source
 code and Git repositories.
+
+### Global flags
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--verbose` | `-v` | `bool` | `false` | Print run details on stderr: `progress: config file: <path>` (or `none`) and `progress: analyzers: <resolved ids>` |
+| `--quiet` (alias `--silent`) | `-q` | `bool` | `false` | Suppress the `progress:` lines on stderr; warnings and errors still print. `-v` and `-q` together are a usage error. |
+| `--profile` | | `bool` | `false` | Memory watchdog: logs `MEM t=<s> RSS=<MiB> threads=<n>` to stderr at start and every 2 s, writes `/proc/self/maps` to `$TMPDIR/maps_baseline.txt` at start and `maps_spike_<MiB>MiB.txt` on the first RSS spike above 4096 MiB (Linux) |
+
+Global flags are accepted before or after the subcommand
+(`codefang -q run …` ≡ `codefang run -q …`).
 
 ### `codefang run`
 
@@ -26,7 +39,8 @@ If `path` is omitted the current directory (or the value of `--path`) is used.
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--analyzers` | `-a` | `[]string` | `nil` | Analyzer IDs or glob patterns. Comma-separated. |
+| `--analyzers` | `-a` | `[]string` | all | Analyzer IDs or glob patterns. Comma-separated. Omitted ⇒ every analyzer. |
+| `--list-analyzers` | | `bool` | `false` | Print every analyzer ID (one per line) and exit |
 
 Analyzer IDs follow a `<category>/<name>` convention. Globs are supported:
 
@@ -50,8 +64,8 @@ codefang run -a '*' .
 ??? info "Available Analyzer IDs"
 
     **Static analyzers:**
-    `static/complexity`, `static/comments`, `static/halstead`,
-    `static/cohesion`, `static/imports`
+    `static/clones`, `static/cohesion`, `static/comments`, `static/complexity`,
+    `static/composition`, `static/halstead`, `static/imports`
 
     **History analyzers:**
     `history/anomaly`, `history/burndown`, `history/couples`,
@@ -63,61 +77,95 @@ codefang run -a '*' .
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--format` | | `string` | `json` | Output format: `json`, `text`, `compact`, `yaml`, `plot`, `bin`, `timeseries` |
-| `--verbose` | `-v` | `bool` | `false` | Enable detailed output (RSS/memory stats in progress logs, full static report details) |
-| `--silent` | | `bool` | `false` | Suppress progress output on stderr |
-| `--no-color` | | `bool` | `false` | Disable colored static output |
+| `--format` | | `string` | `json` | Output format: `json`, `yaml`, `bin`, `text`, `compact`, `ndjson`, `timeseries`, `plot` |
+| `--ndjson` | | `bool` | `false` | With `--format timeseries`: emit one JSON line per commit instead of the merged document. With any other format the run fails with `Error: invalid --ndjson: requires --format timeseries, got --format <f>`. |
+| `--output` | `-o` | `string` | `""` | Write the report to this file (created or truncated) instead of stdout. With `--format plot` it is the output directory for the HTML pages, and required. |
+| `--per-file` | `-F` | `bool` | `false` | Add one `files` entry per analyzed file to every static section. **`--format json` only**: with any other format the flag is ignored and the run prints `--per-file applies to --format json only; ignored for <format>` on stderr (once). |
+| `--no-color` | | `bool` | `false` | Disable ANSI color in `text` / `compact` output (same as `NO_COLOR=1`) |
+
+Which formats a selection accepts:
+
+| Selection | Accepted formats |
+|-----------|------------------|
+| static only | `json`, `yaml`, `bin`, `text`, `compact`, `plot` |
+| history only | `json`, `yaml`, `bin`, `text`, `compact`, `ndjson`, `timeseries` (+ `--ndjson`), `plot` |
+| mixed static + history | `json`, `yaml`, `bin`, `ndjson`, `timeseries`, `plot` |
+
+`text` is supported by the six history analyzers with a text renderer
+(sentiment, shotness, burndown, couples, devs, file-history); selecting any
+other history analyzer with `--format text` fails with
+`serialization error for <Name>: unsupported format: text`.
 
 ```bash
 # Human-readable table
 codefang run -a 'static/*' --format text .
 
+# One summary line per history analyzer
+codefang run -a 'history/*' --format compact .
+
 # Interactive HTML charts
-codefang run -a 'history/*' --format plot .
+codefang run -a 'history/*' --format plot --output ./report .
+
+# The report in a file instead of stdout
+codefang run -a static/complexity --format json -o complexity.json .
 
 # Unified time-series JSON
 codefang run -a 'history/devs,history/sentiment' --format timeseries .
 ```
 
-#### Path & input flags
+!!! note "Several analyzers, one document"
+    A `json` or `yaml` run that selects more than one analyzer — a mixed
+    static+history selection, or several history analyzers — always emits
+    **one** document:
+
+    ```json
+    {
+      "version": "codefang.run.v1",
+      "metadata": { "...": "run provenance" },
+      "analyzers": [
+        { "id": "history/devs", "mode": "history", "report": { "...": "the devs report" } },
+        { "id": "history/burndown", "mode": "history", "report": { "...": "the burndown report" } }
+      ]
+    }
+    ```
+
+    A single analyzer emits its own report as the document root. Several
+    **static** analyzers in `json`/`text` merge their sections into one report
+    with an `overall_score`.
+
+#### Path flags
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--path` | `-p` | `string` | `.` | Folder or repository path to analyze |
-| `--input` | | `string` | `""` | Input report path for cross-format conversion |
-| `--input-format` | | `string` | `auto` | Input format: `auto`, `json`, `bin` |
-
-!!! tip "Format Conversion"
-
-    Use `--input` to convert a previously generated report to a different
-    format without re-running analysis:
-
-    ```bash
-    codefang run -a 'history/*' --format bin . > report.bin
-    codefang run -a 'history/*' --input report.bin --format plot
-    ```
+| `--path` | `-p` | `string` | `.` | Folder or repository path to analyze (the positional `path` wins when both are given) |
 
 #### Git history flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--limit` | `int` | `0` | Analyze at most N commits — the N **newest** (`0` = no limit) |
-| `--since` | `string` | `""` | Only analyze commits at/after this time or revision |
-| `--first-parent` | `bool` | `false` | Follow only first parent of merge commits |
-| `--head` | `bool` | `false` | Analyze only HEAD commit (ignores `--limit` and `--since`) |
+| `--limit` | `int` | `0` | Analyze at most N commits — the N **newest** (`0` = no limit). Negative values are rejected. |
+| `--since` | `string` | `""` | Only analyze commits **authored** at/after this time or revision |
+| `--first-parent` | `bool` | `false` | Follow only the first parent of merge commits |
+| `--head` | `bool` | `false` | Analyze only the HEAD commit (ignores `--limit` and `--since`) |
+| `--tick-size` | `int` | `24` | Width of one tick in hours (must be `> 0`). Burndown bands, devs activity, anomaly windows and `commits_by_tick` are bucketed by tick. |
+| `--max-changes-per-commit` | `int` | `0` | Drop commits whose raw tree diff exceeds this many changes (`0` = default 10000; negative values are rejected). Dropped commits are invisible to every analyzer; burndown re-inserts an affected file whole the next time it is touched. Raise this on monorepos with legitimate large commits. |
+| `--chunk-size` | `int` | planned from the budget | Commits per history chunk: worker threads prepare the per-commit work (diffs, line stats, parses) of at most this many commits ahead of the walk, which folds each commit into its report in commit order and frees it (must be `>= 1`). Overrides the chunk size `--memory-budget` plans; the walk then runs one worker per core. The output is byte-identical for every chunk size. |
+| `--memory-budget` | `size` | half the RAM, at most 2 GiB | Memory a history run plans against, e.g. `512MB`, `2GB`, `1.5GiB` (minimum `256MiB`). The history walks running at once share it; each walk sizes its chunk and its worker count from its share and its measured per-worker and per-commit cost, and libgit2 gets a fixed part of it (25 % for its object cache, 7.5 % for mapped pack files). Free heap pages go back to the OS after every chunk. `-v` prints each walk's plan. The output never depends on the budget. |
 
 These flags bound the **history** phase only — static analyzers read the
-working tree, so neither one affects them.
+working tree, so none of them affects a static run.
 
 The window is selected **newest-first** (`--limit 10` = the ten most recent
 commits, like `git log -n 10`) and then handed to the analyzers in
 chronological oldest-first order, because ticks, burndown line survival and
 author identity all depend on that order. `--limit` and `--since` compose:
-`--since` picks the window, `--limit` caps its newest end.
+`--since` picks the window, `--limit` caps its newest end. `--head` is the
+single-commit window `[HEAD]` — the same window `--limit 1` selects, so the two
+produce byte-identical reports for every analyzer and format.
 
 The `--since` flag accepts these forms, in precedence order:
 
-- **Go duration**: `24h`, `168h` (7 days), `1h30m` — units are `h`/`m`/`s`
+- **Duration**: `24h`, `168h` (one week), `1h30m` — units are `h`/`m`/`s`
   only. There is **no** `d` or `w` unit and `m` means **minutes**, so a week
   is `168h`, not `7d`
 - **Date**: `2025-01-01` (midnight UTC)
@@ -125,8 +173,13 @@ The `--since` flag accepts these forms, in precedence order:
 - **Git revision**: `v1.2.0`, `HEAD~100`, or a bare SHA — that commit's author
   time becomes the cutoff
 
+The cutoff compares the commit's **author** time, and every commit authored
+at/after it is kept regardless of its position in the committer-time walk
+(a commit authored after the cutoff but committed before it is still
+included; one authored before the cutoff but committed after it is not).
+
 ```bash
-# Last 7 days only
+# Everything authored in the last 168h (one week)
 codefang run -a history/devs --since 168h .
 
 # Since a specific date
@@ -137,6 +190,9 @@ codefang run -a history/couples --since v1.2.0 .
 
 # Only the latest 500 commits
 codefang run -a history/couples --limit 500 .
+
+# Hourly ticks
+codefang run -a history/devs --tick-size 1 --format timeseries .
 ```
 
 !!! note "Empty windows and bad values"
@@ -146,30 +202,81 @@ codefang run -a history/couples --limit 500 .
     neither a time form nor a resolvable revision fails immediately with
     `Error: cannot resolve --since "<value>"`, empty stdout, exit 1.
 
-!!! note "Burndown and `--first-parent`"
+!!! note "Burndown always walks first-parent"
+    The burndown analyzer tracks line survival along the main line of
+    development, so **its own** walk always follows the first parent of merge
+    commits, whatever `--first-parent` says. This never leaks into the other
+    analyzers: selecting burndown next to devs, couples or file-history leaves
+    their walks exactly as the user's `--first-parent` flag configures them.
 
-    The burndown analyzer automatically enables `--first-parent` when selected.
-    This is required for correct line-tracking across merge commits.
+!!! note "Renames"
+    The tree diff detects renames (libgit2 `find_similar`, the `git diff -M`
+    default of 50 % similarity). A pure `git mv` is one change whose old and
+    new paths differ and whose blob is unchanged, so devs reports 0 added /
+    0 removed lines for it and burndown, couples, file-history and shotness
+    keep the file's identity across the move.
+
+!!! note "Deterministic output"
+    A history report is a pure function of the repository and the flags. It
+    does not depend on the host's CPU count, the wall clock, or the number of
+    threads the walk happens to use.
 
 #### Language filtering
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--languages` | `[]string` | `[all]` | Restrict analysis to the given Linguist languages; comma-separated. `all` (default) disables the filter. Applies to **both** history and static phases. |
+| `--languages` | `[]string` | `[all]` | Restrict analysis to the given Linguist languages; comma-separated. `all` (default), an absent flag and an explicit empty value (`--languages ""`) all disable the filter. Applies to **both** history and static phases with one meaning. In the static phase each language resolves to its Linguist filename globs, matched against the file's **basename** (`*.go`, `*.py`, `Dockerfile`, …). |
 
-**History phase** — the filter is pushed down into libgit2's `pathspec`
-at the tree-diff stage, so non-matching files are skipped before the
-diff is computed. On a polyglot repo a narrow filter can reduce wall
-time by 30–40 %. A content-based language check still runs as the
-authoritative pass for ambiguous extensions (`.h`, `.pl`, `.m`, `.r`).
+**History phase** — each changed file is classified with the full enry
+cascade over its basename **and** its blob content, so ambiguous extensions
+(`.h`, `.m`, `.pl`, `.r`) and extensionless scripts (shebang) resolve
+correctly; changes whose language is not in the set are dropped before any
+analyzer sees them.
 
-**Static phase** — the filter is applied at the directory walker
-before the UAST parser or raw-file analyzers
-see the file. It's path-based only: the parser's own language router
-remains the final authority for how a matched file is parsed (e.g. a
-`.h` under `--languages c++` is still parsed as C). Both phases read
-from the same `langpath.Globs` helper, so the flag value has one
-meaning across `-a 'static/*'`, `-a 'history/*'`, and `-a '*'` runs.
+**Static phase** — the filter is applied by the ONE directory walk every
+static analyzer shares, before the UAST parser or raw-file analyzers see the
+file: the language globs are matched against the basename, so the parser's
+own language router remains the final authority for how a matched file is
+parsed. Both phases read the same `langpath` tables, so the flag value has
+one meaning across `-a 'static/*'`, `-a 'history/*'`, and `-a '*'` runs.
+
+#### The static walk
+
+Every `static/*` analyzer reads the same walk of the path you pass
+(a directory or a single file):
+
+- directories are visited in lexical order, depth-first; `.git` and any
+  directory carrying a `CACHEDIR.TAG` (Cargo's `target/`) are skipped;
+  symlinked directories are never followed (a symlink loop cannot recurse
+  and the walk cannot leave the root); symlinks to regular files are read;
+- a file is admitted when the UAST parser supports its extension, its
+  basename matches `--languages`, and its **root-relative** path passes the
+  vendor / generated / `--extra-excluded-prefixes` policy;
+- each admitted file is read **once**; a file larger than the parse size
+  limit (`--max-parse-file-size`, default **8 MiB**) or one that cannot be read
+  is skipped with one stderr line
+  (`warning: skipped <path>: larger than the parse size limit (--max-parse-file-size)` / `: unreadable`) for the
+  whole run, however many analyzers are selected, and counted once in the
+  end-of-run `progress: skipped N unreadable/oversized/unparseable files`
+  line;
+- a data file is not parsed by the function analyzers (`static/complexity`,
+  `static/halstead`, `static/cohesion`, `static/clones`) or by the import
+  analyzer (`static/imports`) when enry types it as data (Linguist's `data`
+  type) **and** its UAST mapping cannot produce the nodes those analyzers look
+  for (a function, or an import). The file is still reported, with zero results.
+  Both checks are needed: SQL and GraphQL are data-typed but declare functions,
+  and Protocol Buffers declare imports, so they are parsed. `static/comments`
+  always parses, because comments in YAML, TOML, and INI files are counted;
+- the generated-content marker (`DO NOT EDIT`, `Code generated`,
+  `@generated`, … in the first 512 bytes) is applied to the bytes just read
+  unless `--include-generated`;
+- a single-file path analyzes that one file and stamps its **name**
+  (`a.go`, never `.`) on every per-file entry and issue location.
+
+`static/composition` is the designed exception: it exists to report
+vendored / generated / binary shares, so it classifies **every** regular
+file the walk reaches (reading only the first 8 KiB of each); only
+`--languages` and `--extra-excluded-prefixes` narrow it.
 
 Language names are [Linguist keys](https://github.com/github/linguist/blob/master/lib/linguist/languages.yml)
 and common aliases resolve automatically:
@@ -178,13 +285,14 @@ and common aliases resolve automatically:
 # Canonical names (any case, whitespace is trimmed)
 codefang run -a 'history/devs' --languages go,python,typescript .
 
-# Aliases resolve via enry
+# Aliases resolve via the Linguist tables
 codefang run -a 'history/devs' --languages golang,js,ts .
 
-# Unknown language fails fast at configure time instead of silently
-# returning an empty report:
+# Unknown language fails fast instead of silently returning an empty report:
 codefang run -a 'history/devs' --languages notalang .
-# → Error: failed to configure TreeDiff: tree-diff pathspec: unknown language: "notalang"
+# → Error: history --languages: unknown language: "notalang"
+codefang run -a 'static/complexity' --languages notalang .
+# → Error: static --languages: unknown language: "notalang"
 ```
 
 Filename-only languages (e.g. `Dockerfile`, `Makefile`) are also supported:
@@ -192,9 +300,6 @@ Filename-only languages (e.g. `Dockerfile`, `Makefile`) are also supported:
 ```bash
 codefang run -a 'history/devs' --languages dockerfile .
 ```
-
-See `specs/optimize-lang/PROPOSAL.md` for the architecture and acceptance-gate
-numbers.
 
 #### Vendor & generated exclusion
 
@@ -205,11 +310,13 @@ single-language analyser (`go vet`, `eslint`, `ruff`, `rubocop`, `scalafix`,
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--include-vendored` | `bool` | `false` | Re-include vendored dependencies (detected by enry / Linguist) in analysis. Cross-language: covers `vendor/`, `node_modules/`, `third_party/`, `testdata/`, minified bundles, and more. |
-| `--include-generated` | `bool` | `false` | Re-include auto-generated files in analysis. Covers `*.pb.go`, `zz_generated_*.go`, `*_pb2.py`, `*.min.js`, and any file whose first 512 bytes contain a generated-file marker (`DO NOT EDIT`, `Code generated`, etc.). |
-| `--extra-excluded-prefixes` | `[]string` | `[]` | Additional UNIX path prefixes to exclude on top of enry heuristics (e.g. `".venv/,target/,build/"`). |
+| `--include-vendored` | `bool` | `false` | Re-include vendored dependencies (detected by the Linguist vendor patterns over the **root-relative** path) in analysis. Cross-language: covers `vendor/`, `node_modules/`, `third_party/`, `testdata/`, minified bundles, and more. `static/composition` counts vendored files regardless. |
+| `--include-generated` | `bool` | `false` | Re-include auto-generated files in analysis. Covers `*.pb.go`, `zz_generated_*.go`, `*_pb2.py`, `*.min.js` (path heuristics) **and** any file whose first 512 bytes contain a generated-file marker (`DO NOT EDIT`, `Code generated`, `@generated`, …) — the static walk reads every admitted file and applies the marker to it; the history filter applies it to the blob header. `static/composition` counts generated files regardless. |
+| `--extra-excluded-prefixes` | `[]string` | `[]` | Additional UNIX path prefixes to exclude on top of the built-in heuristics (e.g. `".venv/,target/,build/"`), matched against the **root-relative** path (`gen/` excludes `<root>/gen/…` whatever the root spelling). Always excludes, even with the include flags set, and narrows `static/composition` too. |
 
-All three flags apply **identically** to both static and history phases.
+All three flags apply **identically** to both static and history phases: the
+history change filter reads the blob header for the generated-file marker
+exactly as the static walk reads the bytes of each admitted file.
 
 ```bash
 # default: your own code only
@@ -218,117 +325,151 @@ codefang run -a '*' .
 # include vendored deps (node_modules/, vendor/, …)
 codefang run -a '*' --include-vendored .
 
-# restore pre-codefang-2026-04 behavior (include everything)
+# include everything
 codefang run -a '*' --include-vendored --include-generated .
 
-# skip extras that enry doesn't know about (e.g. Python venv, Rust target/)
+# skip extras the heuristics do not know about (e.g. Python venv, Rust target/)
 codefang run -a '*' --extra-excluded-prefixes '.venv/,target/' .
 ```
 
-!!! warning "Breaking change in 2026-04"
+!!! warning "Removed spellings"
+    The hidden `--skip-blacklist` and `--blacklisted-prefixes` flags were
+    accepted and ignored; they are removed and fail as unknown arguments.
+    Drop `--skip-blacklist` (the default already excludes) and write
+    `--blacklisted-prefixes X,Y` as `--extra-excluded-prefixes X,Y`.
 
-    Earlier versions of Codefang analysed vendored and generated files by
-    default (they needed the confusingly-named `--skip-blacklist=true` to be
-    excluded). Starting from 2026-04, defaults flip: vendor / generated
-    are **excluded by default**. To restore the old behavior:
-
-    ```bash
-    codefang run ... --include-vendored --include-generated
-    ```
-
-    The deprecated `--skip-blacklist` and `--blacklisted-prefixes` flags
-    still work with a cobra deprecation warning and will be removed in
-    the next minor release. Map them to:
-
-    - `--skip-blacklist` → no-op (the new default already excludes)
-    - `--blacklisted-prefixes X,Y` → `--extra-excluded-prefixes X,Y`
-
-See `specs/exclude-vendored/PROPOSAL.md` for the full cross-phase design
-and `specs/frds/FRD-20260419-exclude-vendored.md` for implementation
-details.
-
-#### Pipeline tuning flags
+#### Developer identity
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--workers` | `int` | `0` | Parallel workers (`0` = CPU count via `GOMAXPROCS`) |
-| `--buffer-size` | `int` | `0` | Internal pipeline channel size (`0` = `workers * 2`) |
-| `--commit-batch-size` | `int` | `0` | Commits per processing batch (`0` = default 100) |
-| `--blob-cache-size` | `string` | `""` | Max blob cache size (e.g. `256MB`, `1GB`; empty = 1 GB) |
-| `--diff-cache-size` | `int` | `0` | Max diff cache entries (`0` = default 10000) |
-| `--blob-arena-size` | `string` | `""` | Memory arena for blob loading (e.g. `4MB`; empty = 4 MB) |
-| `--memory-budget` | `string` | `""` | Memory budget for auto-tuning (e.g. `512MB`, `2GB`). Applies to both history and static phases — auto-derives worker count, spill thresholds, and Go memory limit |
+| `--people-dict` | `path` | `""` | File with one person per line, its identity tokens separated by a vertical bar (names and emails, matched case-insensitively). With a dictionary, an author matching no line is reported as `<unmatched>`. An unreadable file is an error. |
+| `--exact-signatures` | `bool` | `false` | Match the whole `name <email>` signature instead of merging authors that share a name **or** an email. Yields considerably more identities. |
+| `--anonymize` | `bool` | `false` | Replace developer names in every report with `Developer-A`, `Developer-B`, … |
 
-```bash
-# Large repository with constrained memory
-codefang run -a 'history/*' --workers 4 --memory-budget 2GB .
+By default an author is identified by **either** the lowercased email or the
+lowercased name, and a hit on one token registers the other: `alice <a@x>`,
+`Alice Smith <a@x>` and `Alice Smith <a@y>` are one developer. One identity
+detector serves every history analyzer, so devs, burndown, couples,
+file-history and anomaly agree on author ids.
 
-# Static analysis with memory budget (auto-tunes workers and spill thresholds)
-codefang run -a 'static/*' --memory-budget 512MB .
-
-# High-throughput with large caches
-codefang run -a 'history/*' --blob-cache-size 2GB --diff-cache-size 50000 .
+```text
+# people.txt
+Alice|alice@example.com|alice@other.org
+Bob|bob@example.com
 ```
 
-#### GC tuning flags
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--gogc` | `int` | `0` | GC target percentage (`0` = Go default 100) |
-| `--ballast-size` | `string` | `"0"` | GC ballast allocation (`0` = disabled) |
-
-#### Checkpoint & resume flags
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--checkpoint` | `bool` | `true` | Enable checkpointing for crash recovery |
-| `--checkpoint-dir` | `string` | `""` | Checkpoint directory (default: `~/.codefang/checkpoints`) |
-| `--resume` | `bool` | `true` | Resume from checkpoint if available |
-| `--clear-checkpoint` | `bool` | `false` | Clear existing checkpoint before run |
-
 ```bash
-# Disable checkpointing entirely
-codefang run -a history/burndown --checkpoint=false .
-
-# Resume a previously interrupted run
-codefang run -a 'history/*' --resume .
-
-# Start fresh, clearing old checkpoint data
-codefang run -a 'history/*' --clear-checkpoint .
+codefang run -a history/devs --people-dict people.txt .
+codefang run -a history/devs --anonymize --format text .
 ```
 
-#### Profiling & debug flags
+#### Analyzer options
+
+| Flag | Type | Default | Applies to | Description |
+|------|------|---------|------------|-------------|
+| `--typos-max-distance` | `int` | `4` | `history/typos` | Maximum Levenshtein distance between the two identifiers of a typo-fix pair (also bounds the whole-line prefilter); must be `> 0` |
+| `--granularity` | `int` | `30` | `history/burndown` | Ticks per age band of the survival matrix (must be `> 0`; `Error: invalid --granularity: must be > 0, got <v>`) |
+| `--sampling` | `int` | `30` | `history/burndown` | Ticks per sample row of the survival matrix (must be `> 0`; independent of `--granularity`) |
+| `--burndown-files` | `bool` | `false` | `history/burndown` | Per-file survival (`file_survival`, `tracked_files`, ndjson `FileDeltas`); with `--burndown-people` also per-file ownership |
+| `--burndown-people` | `bool` | `false` | `history/burndown` | Per-developer survival and the interaction matrix (`developer_survival`, `interactions`, `tracked_developers`, ndjson `PeopleDeltas` / `MatrixDeltas`, the text "Top Developers" section) |
+| `--anomaly-window` | `int` | `20` | `history/anomaly` | Trailing window size in ticks for the rolling mean and standard deviation (must be `>= 2`; a shorter history uses every earlier tick) |
+| `--anomaly-threshold` | `float` | `2.0` | `history/anomaly` | Z-score threshold, in standard deviations, above which a tick is flagged (must be `> 0`) |
+| `--empty-commits` | `bool` | `false` | `history/devs` | Count commits whose filtered diff is empty (trivial merges, `--allow-empty` commits, commits touching only excluded paths) as commits with zero lines |
+| `--shotness-dsl-struct` | `string` | `rfilter(.roles has "Function")` | `history/shotness` | UAST DSL query selecting the tracked declarations anywhere in each file (`filter(...)` would see the top level only); validated before the walk, an invalid expression is a flag error |
+| `--shotness-dsl-name` | `string` | `.props.name` | `history/shotness` | UAST DSL query extracting a declaration's own name (applied to selected nodes and their enclosing declarations); validated before the walk |
+| `--shotness-keep-ended` | `bool` | `false` | `history/shotness` | Keep entities whose declaration or file was removed, marked `"ended": true` with their counts and couplings (adds `ended_nodes`); hotspots and plot pages still show only live entities. Grows the report on long histories |
+| `--min-comment-len` | `int` | `20` | `history/sentiment` | Minimum comment length in characters to analyze; `0` disables the length filter, a negative value is rejected (`Error: invalid --min-comment-len: …`) |
+
+#### Configuration
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--profile` | `bool` | `false` | Start pprof HTTP server on `localhost:6060` and memory watchdog (heap dumps on RSS spikes) |
-| `--cpuprofile` | `string` | `""` | Write CPU profile to file |
-| `--heapprofile` | `string` | `""` | Write heap profile to file |
-| `--debug-trace` | `bool` | `false` | Enable 100% OpenTelemetry trace sampling |
+| `--config` | `string` | `""` | Configuration file. Without it `./.codefang.yaml`, then `$HOME/.codefang.yaml` is read when present. An explicit file that cannot be read is an error. |
 
-`--profile` is a **global flag** (available on all subcommands). It enables:
-
-- A pprof HTTP server on `localhost:6060` for live heap/goroutine/CPU inspection
-- A memory watchdog that logs RSS every 2s and dumps heap profiles to `/tmp` when RSS exceeds 4 GiB
+Every key of the file — and its `CODEFANG_*` environment variable — sets
+the **default** of one flag; the precedence is explicit flag > environment
+> config file > compiled default. `--config /dev/null` runs with the
+compiled defaults only. Keys nothing reads are ignored with one
+`warning: ignoring unsupported config keys: …` line. See
+[Configuration](configuration.md) for the key → flag table.
 
 ```bash
-# CPU profile a large run
-codefang run -a 'history/*' --cpuprofile cpu.prof .
+codefang run -a history/anomaly --config ./ci.codefang.yaml .
+```
 
-# Live pprof + memory watchdog
-codefang run -a 'static/*' --profile --path ~/sources/kubernetes
+No checkpoint store, incremental cache or trace exporter is linked into the
+binary, so the Go-era `--checkpoint`, `--checkpoint-dir`, `--resume`,
+`--clear-checkpoint`, `--cache-dir`, `--no-cache` and `--debug-trace` flags
+are removed; passing one fails as an unknown argument. A run always analyzes
+the whole requested window — bound it with `--limit` / `--since`.
 
-# Full debug tracing
-codefang run -a 'history/*' --debug-trace .
+#### Errors
+
+Every user error prints `Error: <message>` to stderr, leaves stdout empty and
+exits 1:
+
+| Situation | Message |
+|-----------|---------|
+| the path does not exist | `path not found: <path>` |
+| a history analyzer on a directory that is not a git repository | `cannot open repository: <path>` |
+| an unknown `--format` | `unsupported format: <value>` |
+| a known format the selection cannot render (e.g. static-only `ndjson`, mixed `compact`) | `format <value> is not supported for <analyzer>` |
+| an unknown analyzer id | `unknown analyzer id: <id>` |
+| `--limit`, `--tick-size`, `--max-changes-per-commit`, `--chunk-size`, `--granularity`, `--sampling`, `--typos-max-distance`, `--anomaly-window`, `--anomaly-threshold`, `--min-comment-len` out of range | `invalid --<flag>: must be … , got <value>` |
+| a `--memory-budget` that is not a size, or below `256MiB` | `invalid --memory-budget: "<value>" is not a size (examples: 512MB, 2GB, 1.5GiB)` / `… is below the minimum 256 MiB` |
+| `--ndjson` without `--format timeseries` | `invalid --ndjson: requires --format timeseries, got --format <f>` |
+| `--verbose` with `--quiet` | `--verbose and --quiet cannot be used together` |
+| an unreadable `--config` file | `cannot read --config <path>: …` |
+| a malformed config file or an out-of-range key | `invalid config <path>: <key> must be …, got <value>` (or the parser's message naming the key and line) |
+| a malformed `CODEFANG_*` variable | `invalid environment variable <NAME>: …` |
+| `-o` cannot be created | `cannot write --output <path>: …` |
+| an unresolvable `--since` | `cannot resolve --since "<value>": …` |
+| an unknown `--languages` token | `static --languages: unknown language: "<token>"` / `history --languages: …` |
+| an unreadable `--people-dict` | `cannot read --people-dict <path>: …` |
+| an analyzer produced nothing for an otherwise valid run | `no report produced for <analyzer> --format <format>` |
+
+A history `--format text` selection that includes an analyzer without a text
+renderer writes the header and the section name first, then fails with
+`serialization error for <Name>: unsupported format: text`.
+
+### `codefang version`
+
+Prints `codefang <version> (commit: <hash>, built: <date>)`:
+
+- `<version>` — the crate version (or `CF_VERSION` / `GIT_VERSION` set at
+  build time);
+- `<hash>` — the commit the binary was built from: `CF_COMMIT` /
+  `GIT_COMMIT` / `GIT_HASH` set at build time, else the `HEAD` of the
+  checkout it was built in, else `unknown`;
+- `<date>` — `CF_DATE` / `SOURCE_DATE_EPOCH` set at build time, else
+  `unknown` (the build never reads the wall clock).
+
+```bash
+codefang version
+```
+
+The former `codefang render <store-dir>` subcommand only ever printed
+"not available" — there is no stored-report format to render from — and is
+removed; `codefang run --format plot -o <dir>` writes the HTML pages
+directly.
+
+### `codefang completion <shell>`
+
+Generates the shell-completion script for `bash`, `fish`, `powershell` or
+`zsh` on stdout, from the live command tree (every flag on this page).
+`--no-descriptions` leaves the help texts out of the script.
+
+```bash
+codefang completion bash > ~/.local/share/bash-completion/completions/codefang
 ```
 
 ---
 
-### MCP server
+### `codefang mcp`
 
-The Model Context Protocol server lives in the `cf-mcp` crate. It exposes
-Codefang analysis capabilities as tools that AI agents can discover and invoke
-over stdio:
+Serves the Model Context Protocol over stdio (newline-delimited JSON-RPC) until
+the client closes stdin. It takes no flags and exposes three tools AI agents
+discover with `tools/list` and invoke with `tools/call`:
 
 | Tool | Description |
 |------|-------------|
@@ -336,15 +477,17 @@ over stdio:
 | `codefang_history` | Git history analysis (burndown, couples, devs, sentiment, etc.) |
 | `uast_parse` | Parse source code into Universal AST |
 
-See the [MCP Integration](../integrations/mcp.md) guide for how to launch and
-configure the server with an MCP-compatible client.
+Each tool result is the report the CLI renders for the same input. See the
+[MCP Integration](../integrations/mcp.md) guide for the tool reference.
 
 ---
 
 ## `uast`
 
 The UAST binary parses source files into a Universal Abstract Syntax Tree and
-provides querying, diffing, and exploration utilities.
+provides querying, diffing, and exploration utilities. The root command has
+no flags of its own; every flag below belongs to its subcommand and is read by
+it (`uast <command> --help` lists the same set).
 
 ### `uast parse`
 
@@ -358,16 +501,19 @@ uast parse [files...] [flags]
 |------|-------|------|---------|-------------|
 | `--language` | `-l` | `string` | `""` | Force language detection override |
 | `--output` | `-o` | `string` | `""` | Output file (default: stdout) |
-| `--format` | `-f` | `string` | `json` | Output format: `json`, `compact`, `tree` |
-| `--progress` | `-p` | `bool` | `false` | Show progress for multiple files |
+| `--format` | `-f` | `string` | `json` | Output format: `json` (pretty), `compact` (one line per input), `none` (parse only) |
 | `--all` | | `bool` | `false` | Parse all source files in the codebase recursively |
+
+With no files (and no `--all`), or for a `-` file argument, the source is read
+from stdin and parsed as Go unless `-l` names the language. With `-o`, every
+input's document is written to the one file, in input order.
 
 ```bash
 # Parse a single file
 uast parse main.go
 
-# Parse all Go files with progress
-uast parse -p *.go
+# Parse all Go files, one compact document per line
+uast parse -f compact *.go
 
 # Force language detection
 uast parse -l go main.c
@@ -394,14 +540,23 @@ uast query <expression> [files...] [flags]
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--input` | `-i` | `string` | `""` | Input file (UAST JSON or source code) |
-| `--output` | `-o` | `string` | `""` | Output file (default: stdout) |
+| `--input` | `-i` | `string` | `""` | Input file (UAST JSON or source code), queried before any positional files |
+| `--output` | `-o` | `string` | `""` | Output file (default: stdout); every input's result is written to it, in input order |
 | `--format` | `-f` | `string` | `json` | Output format: `json`, `compact`, `count` |
-| `--interactive` | `-t` | `bool` | `false` | Interactive query mode |
+| `--interactive` | `-t` | `bool` | `false` | Interactive query mode over one file (`--input`, else the single positional file, else source read from stdin) |
+
+With neither files nor `--input`, or for a `-` file argument, the query runs
+over a UAST JSON tree read from stdin.
 
 ```bash
-# Find all functions
+# Find the top-level functions (filter looks at the file's direct children)
 uast query "filter(.type == 'Function')" main.go
+
+# Find every function-role node anywhere in the tree, methods included
+uast query 'rfilter(.roles has "Function")' main.go
+
+# The name of every declaration in the tree
+uast query "rmap(.props.name)" main.go
 
 # Find exported items
 uast query "filter(.roles has 'Exported')" *.go
@@ -412,6 +567,9 @@ uast query "reduce(count)" main.go
 # Query from piped UAST JSON
 uast parse main.go | uast query "filter(.type == 'Call')" -
 
+# The same query over an --input file
+uast query "filter(.type == 'Call')" -i main.go
+
 # Count format
 uast query -f count "filter(.type == 'Function')" main.go
 
@@ -421,14 +579,29 @@ uast query -t main.go
 
 ??? info "DSL Syntax Reference"
 
+    A query is a pipeline of stages joined by `|`. `filter` and `map` look
+    at their input set only — a `filter(...)` at the start of a query runs
+    over the root's **direct children** — while `rfilter` and `rmap` apply
+    the same predicate / expression to every node of each input's subtree in
+    pre-order (the input itself first).
+
     | Expression | Description |
     |-----------|-------------|
-    | `filter(.type == "Function")` | Filter by node type |
-    | `filter(.type == "Call")` | Find function calls |
-    | `filter(.type == "Identifier")` | Find identifiers |
-    | `filter(.type == "Literal")` | Find literal values |
-    | `filter(.roles has "Exported")` | Filter by role annotation |
-    | `reduce(count)` | Count matching nodes |
+    | `filter(.type == "Function")` | Direct children of the root whose type is `Function` |
+    | `rfilter(.type == "Call")` | Every function call anywhere in the tree |
+    | `rfilter(.type == "Identifier")` | Every identifier |
+    | `rfilter(.roles has "Function")` | Every function-role node (functions and methods) |
+    | `filter(.roles has "Exported")` | Direct children carrying a role |
+    | `rfilter(.type == "Class") \| map(.props.name)` | The names of the classes |
+    | `rmap(.props.name)` | The `name` property of every node that has one |
+    | `map(.children)` | The children of each input node |
+    | `reduce(count)` | Count the matching nodes |
+
+    Field access resolves `children`, `token`, `id`, `roles`, `type`,
+    `props`, `first`, `last`; any other name reads that property
+    (`.props.name` ≡ `.name`). Comparisons: `==`, `!=`, `<`, `<=`, `>`,
+    `>=`, `has` (membership in `roles`). Builtins: `contains`,
+    `startsWith`, `endsWith`, `has`, `count`, `first`, `last`, `sort`.
 
 ---
 
@@ -513,3 +686,68 @@ uast analyze -f json *.go
 # Generate an HTML report
 uast analyze -o report.html -f html *.go
 ```
+
+---
+
+### `uast validate`
+
+Validate a UAST JSON document against the UAST JSON Schema. Exit codes: `0`
+valid, `1` the document violates the schema, `2` an error (unreadable input,
+malformed JSON, unreadable schema).
+
+```bash
+uast validate <file.json|-> [flags]
+```
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--schema` | | `string` | `""` | Path to a UAST JSON schema; empty validates against the schema embedded in the binary |
+
+```bash
+# Validate a parsed tree against the embedded schema
+uast parse -o tree.json main.go
+uast validate tree.json
+```
+
+---
+
+### `uast mapping`
+
+Grammar helpers for UAST mapping authors: summarize and classify a
+tree-sitter `node-types.json`, generate a `.uastmap` DSL skeleton from it, or
+dump the raw tree-sitter tree of source files.
+
+```bash
+uast mapping [files...] [flags]
+```
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--node-types` | | `string` | `""` | Path to `node-types.json` (required unless `--show-treesitter`) |
+| `--format` | | `string` | `text` | Output format of the node-types summary: `text`, `json` |
+| `--generate` | | `bool` | `false` | Print a `.uastmap` DSL skeleton generated from `node-types.json` |
+| `--show-treesitter` | | `bool` | `false` | Print the raw tree-sitter tree (named nodes, positions, byte ranges, text) of each input file |
+| `--language` | | `string` | `""` | Tree-sitter language name (e.g. `go`): required by `--show-treesitter`, written into the `--generate` header |
+| `--extensions` | | `string` | `""` | Comma-separated file extensions written into the `--generate` header |
+
+```bash
+# Classify a grammar's node types
+uast mapping --node-types node-types.json --format json
+
+# Generate a mapping skeleton
+uast mapping --node-types node-types.json --generate --language go --extensions .go
+
+# Dump the tree-sitter tree of a file
+uast mapping --show-treesitter --language go main.go
+```
+
+---
+
+### `uast completion <shell>`
+
+Generates the completion script for `bash`, `zsh`, `fish` or `powershell` on
+stdout, covering every subcommand and flag listed on this page.
+
+### `uast version`
+
+Prints `uast <version> (commit: <hash>, built: <date>)`.

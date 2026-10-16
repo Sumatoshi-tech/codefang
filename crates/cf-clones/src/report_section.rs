@@ -1,323 +1,38 @@
-//! The terminal report section for clone detection: the human-readable `text`
-//! output (key metrics, the clone-type distribution, and the top clone-pair
-//! issues). Terminal output is a **non-binding** format (DESIGN §2.7), so
-//! byte-identity is not required here; the score/percent computations
-//! nonetheless follow the reference behavior exactly.
+//! The clones report section: the human-facing section model (title,
+//! status, key metrics, clone-type distribution, pair issues), its
+//! `renderer.JSONReport` value (`--format json`, the source of the `text`
+//! render), the `--per-file` entries, and the single-line `compact` render.
 
-use cf_analyze::{GoMap, GoValue, MapOrigin, Report};
+use cf_gojson::{GoMap, GoValue, MapOrigin};
 
-use crate::report::{
-    categorize_clone_pairs, ClonePair, CloneTypeCounts, CLONE_TYPE1, CLONE_TYPE2, CLONE_TYPE3,
-};
-use crate::{
-    KEY_CLONE_PAIRS, KEY_CLONE_RATIO, KEY_CLONE_TYPE_DISTRIBUTION, KEY_MESSAGE,
-    KEY_TOTAL_CLONE_PAIRS, KEY_TOTAL_FUNCTIONS,
-};
-
-/// Machine-output severity for a clone pair below [`SEVERITY_THRESH_HIGH`]
-/// (the lowercase JSON form, distinct from the capitalized terminal label
-/// produced by [`ReportSection::all_issues`]).
-pub const JSON_SEVERITY_FAIR: &str = "fair";
-/// Machine-output severity for a clone pair at/above [`SEVERITY_THRESH_HIGH`].
-pub const JSON_SEVERITY_POOR: &str = "poor";
+use crate::report::{ClonePair, CloneReport, CloneType, FileSummary};
+use crate::MSG_NO_FUNCTIONS;
 
 /// Section title.
 pub const SECTION_TITLE: &str = "CLONE DETECTION";
-/// Default status message.
-pub const DEFAULT_STATUS_MSG: &str = "Clone analysis completed";
-/// Severity boundary above which a clone pair is "poor".
+/// Similarity at or above which a pair's issue severity is `poor`.
 pub const SEVERITY_THRESH_HIGH: f64 = 0.8;
+/// Issue severity for a pair at/above [`SEVERITY_THRESH_HIGH`].
+pub const SEVERITY_POOR: &str = "poor";
+/// Issue severity for a pair below [`SEVERITY_THRESH_HIGH`].
+pub const SEVERITY_FAIR: &str = "fair";
 
-/// Display label for Type-1 clones.
-pub const DIST_LABEL_TYPE1: &str = "Type-1 (Exact)";
-/// Display label for Type-2 clones.
-pub const DIST_LABEL_TYPE2: &str = "Type-2 (Renamed)";
-/// Display label for Type-3 clones.
-pub const DIST_LABEL_TYPE3: &str = "Type-3 (Near-miss)";
+/// Metric label: total functions.
+pub const METRIC_TOTAL_FUNCTIONS: &str = "Total Functions";
+/// Metric label: clone pairs.
+pub const METRIC_CLONE_PAIRS: &str = "Clone Pairs";
+/// Metric label: clone ratio.
+pub const METRIC_CLONE_RATIO: &str = "Clone Ratio";
+/// Per-file metric label: functions of the file in at least one pair.
+pub const METRIC_CLONED_FUNCTIONS: &str = "Cloned Functions";
 
-/// A key/value metric for terminal display.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Metric {
-    /// Metric label.
-    pub label: String,
-    /// Formatted metric value.
-    pub value: String,
-}
+/// Per-file status when none of the file's functions is cloned.
+pub const FILE_STATUS_NONE: &str = "No functions in clone pairs";
+/// Decimals shown for a pair's similarity in issue values.
+pub const SIMILARITY_DECIMALS: usize = 2;
 
-/// A distribution row for terminal display.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DistributionItem {
-    /// Row label.
-    pub label: String,
-    /// Percentage of the total.
-    pub percent: f64,
-    /// Raw count.
-    pub count: i64,
-}
-
-/// A reported issue (clone pair) for terminal display.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Issue {
-    /// `func_a <-> func_b`.
-    pub name: String,
-    /// The clone type (used as the location field).
-    pub location: String,
-    /// Formatted similarity value.
-    pub value: String,
-    /// Severity label (`"Poor"` / `"Fair"`).
-    pub severity: String,
-}
-
-/// Terminal report section for clone detection.
-pub struct ReportSection {
-    /// Section title.
-    pub title: String,
-    /// Status message.
-    pub message: String,
-    /// 0..1 score (higher is better).
-    pub score: f64,
-    report: Report,
-}
-
-impl ReportSection {
-    /// Builds a section from a clone-detection report.
-    #[must_use]
-    pub fn new(report: Report) -> Self {
-        let clone_ratio = cf_reportutil::get_float64(&report, KEY_CLONE_RATIO);
-        let mut msg = cf_reportutil::get_string(&report, KEY_MESSAGE);
-        if msg.is_empty() {
-            msg = DEFAULT_STATUS_MSG.to_string();
-        }
-        let score = compute_score(clone_ratio);
-        Self {
-            title: SECTION_TITLE.to_string(),
-            message: msg,
-            score,
-            report,
-        }
-    }
-
-    /// Ordered key metrics for display.
-    #[must_use]
-    pub fn key_metrics(&self) -> Vec<Metric> {
-        vec![
-            Metric {
-                label: "Total Functions".to_string(),
-                value: cf_reportutil::format_int(cf_reportutil::get_int(
-                    &self.report,
-                    KEY_TOTAL_FUNCTIONS,
-                )),
-            },
-            Metric {
-                label: "Clone Pairs".to_string(),
-                value: cf_reportutil::format_int(cf_reportutil::get_int(
-                    &self.report,
-                    KEY_TOTAL_CLONE_PAIRS,
-                )),
-            },
-            Metric {
-                label: "Clone Ratio".to_string(),
-                value: cf_reportutil::format_float(cf_reportutil::get_float64(
-                    &self.report,
-                    KEY_CLONE_RATIO,
-                )),
-            },
-        ]
-    }
-
-    /// Clone-type distribution rows.
-    #[must_use]
-    pub fn distribution(&self) -> Vec<DistributionItem> {
-        let (counts, total) = self.extract_distribution();
-        if total == 0 {
-            return Vec::new();
-        }
-        vec![
-            DistributionItem {
-                label: DIST_LABEL_TYPE1.to_string(),
-                percent: cf_reportutil::pct(counts.type1, total),
-                count: counts.type1,
-            },
-            DistributionItem {
-                label: DIST_LABEL_TYPE2.to_string(),
-                percent: cf_reportutil::pct(counts.type2, total),
-                count: counts.type2,
-            },
-            DistributionItem {
-                label: DIST_LABEL_TYPE3.to_string(),
-                percent: cf_reportutil::pct(counts.type3, total),
-                count: counts.type3,
-            },
-        ]
-    }
-
-    /// Returns the distribution counts and total: prefer the stored
-    /// full-population distribution, falling back to the capped pairs array.
-    fn extract_distribution(&self) -> (CloneTypeCounts, i64) {
-        if let Some(counts) = stored_distribution(&self.report) {
-            let total = counts.total();
-            return (counts, total);
-        }
-        let pairs = extract_clone_pairs(&self.report);
-        let counts = categorize_clone_pairs(&pairs);
-        (counts, i64::try_from(pairs.len()).unwrap_or(i64::MAX))
-    }
-
-    /// All clone pairs as issues, sorted by similarity descending.
-    #[must_use]
-    pub fn all_issues(&self) -> Vec<Issue> {
-        self.clone_issues(0)
-    }
-
-    /// The top `n` clone pairs as issues.
-    #[must_use]
-    pub fn top_issues(&self, n: usize) -> Vec<Issue> {
-        self.clone_issues(n)
-    }
-
-    fn clone_issues(&self, limit: usize) -> Vec<Issue> {
-        let mut pairs = extract_clone_pairs(&self.report);
-        if pairs.is_empty() {
-            return Vec::new();
-        }
-        // Sort by similarity descending with the reference's exact unstable
-        // pdqsort (`mapx.SortAndLimit` -> `sort.Slice` with `clonePairLess`:
-        // `a.Similarity > b.Similarity`, no tie-break), then truncate to the
-        // limit. On the already-sorted stored list this is an identity
-        // permutation, so the report's pair order flows through unchanged —
-        // which is the observable contract of the terminal output.
-        cf_gosort::go_sort_slice(&mut pairs, |a, b| a.similarity > b.similarity);
-        if limit > 0 && pairs.len() > limit {
-            pairs.truncate(limit);
-        }
-
-        pairs
-            .into_iter()
-            .map(|p| {
-                let severity = if p.similarity >= SEVERITY_THRESH_HIGH {
-                    "Poor"
-                } else {
-                    "Fair"
-                };
-                Issue {
-                    name: format!("{} <-> {}", p.func_a, p.func_b),
-                    location: p.clone_type.clone(),
-                    value: cf_reportutil::format_float(p.similarity),
-                    severity: severity.to_string(),
-                }
-            })
-            .collect()
-    }
-}
-
-/// Formats a 0..1 score as the `N/10` label (`round(score*10)` then
-/// `"{N}/10"`). A negative score renders `"Info"`, but the clone score is
-/// always in `[0, 1]`.
-#[must_use]
-pub fn score_label(score: f64) -> String {
-    if score < 0.0 {
-        return "Info".to_string();
-    }
-    let scaled = (score * 10.0).round() as i64;
-    format!("{scaled}/10")
-}
-
-/// Builds the sections-JSON [`GoValue`] tree for the single clones section
-/// produced by a `run --analyzers static/clones --format json`.
-///
-/// One [`ReportSection`] renders as
-/// `title, score_label, status, metrics, distribution (omitempty), issues,
-/// score`, wrapped by `overall_score_label, sections, overall_score`. For a
-/// single scored section the executive summary's overall score equals the
-/// section score. Issue severities use the lowercase machine form
-/// ([`JSON_SEVERITY_POOR`]/[`JSON_SEVERITY_FAIR`]), NOT the capitalized
-/// terminal label. The issues list is order-nondeterministic in the reference
-/// implementation (the stored pair multiset is stable; only the tie order
-/// varies run-to-run), so it is emitted here sorted by similarity descending
-/// as the deterministic representative — the differential oracle canonicalizes
-/// this list before comparison.
-#[must_use]
-pub fn report_section_json_value(report: &Report) -> GoValue {
-    let section = ReportSection::new(report.clone());
-    let score = section.score;
-
-    // metrics
-    let metrics = GoValue::Array(
-        section
-            .key_metrics()
-            .into_iter()
-            .map(|m| {
-                let mut sm = GoMap::new(MapOrigin::Struct);
-                sm.push("label", GoValue::Str(m.label));
-                sm.push("value", GoValue::Str(m.value));
-                GoValue::Object(sm)
-            })
-            .collect(),
-    );
-
-    // distribution (omitempty: omitted entirely when empty)
-    let dist = section.distribution();
-
-    // issues: all pairs sorted by similarity descending with the reference's
-    // exact unstable pdqsort (see `clone_issues`), lowercase severity.
-    let mut pairs = extract_clone_pairs(report);
-    cf_gosort::go_sort_slice(&mut pairs, |a, b| a.similarity > b.similarity);
-    let issues = GoValue::Array(
-        pairs
-            .into_iter()
-            .map(|p| {
-                let severity = if p.similarity >= SEVERITY_THRESH_HIGH {
-                    JSON_SEVERITY_POOR
-                } else {
-                    JSON_SEVERITY_FAIR
-                };
-                let mut si = GoMap::new(MapOrigin::Struct);
-                si.push(
-                    "name",
-                    GoValue::Str(format!("{} <-> {}", p.func_a, p.func_b)),
-                );
-                si.push("location", GoValue::Str(p.clone_type));
-                si.push(
-                    "value",
-                    GoValue::Str(cf_reportutil::format_float(p.similarity)),
-                );
-                si.push("severity", GoValue::Str(severity.to_string()));
-                GoValue::Object(si)
-            })
-            .collect(),
-    );
-
-    let mut sect = GoMap::new(MapOrigin::Struct);
-    sect.push("title", GoValue::Str(section.title));
-    sect.push("score_label", GoValue::Str(score_label(score)));
-    sect.push("status", GoValue::Str(section.message));
-    sect.push("metrics", metrics);
-    if !dist.is_empty() {
-        sect.push(
-            "distribution",
-            GoValue::Array(
-                dist.into_iter()
-                    .map(|d| {
-                        let mut sd = GoMap::new(MapOrigin::Struct);
-                        sd.push("label", GoValue::Str(d.label));
-                        sd.push("percent", GoValue::Float(d.percent));
-                        sd.push("count", GoValue::Int(d.count));
-                        GoValue::Object(sd)
-                    })
-                    .collect(),
-            ),
-        );
-    }
-    sect.push("issues", issues);
-    sect.push("score", GoValue::Float(score));
-
-    let mut report_tree = GoMap::new(MapOrigin::Struct);
-    report_tree.push("overall_score_label", GoValue::Str(score_label(score)));
-    report_tree.push("sections", GoValue::Array(vec![GoValue::Object(sect)]));
-    report_tree.push("overall_score", GoValue::Float(score));
-    GoValue::Object(report_tree)
-}
-
+/// Score label of a negative (info-only) score.
+const SCORE_LABEL_INFO: &str = "Info";
 /// Compact title column width.
 const COMPACT_TITLE_WIDTH: usize = 12;
 /// Compact score-bar width.
@@ -327,154 +42,371 @@ const PROGRESS_FILLED: &str = "\u{2588}"; // █
 /// Empty progress-bar cell.
 const PROGRESS_EMPTY: &str = "\u{2591}"; // ░
 
-/// Right-pads `s` with spaces to `width`; returns `s` unchanged when already
-/// at least `width` — by BYTE length (output contract; irrelevant for the
-/// ASCII section title but kept faithful).
+/// A key/value metric for display.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Metric {
+    /// Metric label.
+    pub label: String,
+    /// Formatted metric value.
+    pub value: String,
+}
+
+/// A distribution row for display.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DistributionItem {
+    /// Row label.
+    pub label: String,
+    /// Share of the total as a fraction in `[0, 1]` (the renderer contract
+    /// shared by every analyzer; the formatted strings carry the `%`).
+    pub percent: f64,
+    /// Raw count.
+    pub count: i64,
+}
+
+/// A reported issue (one clone pair) for display.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Issue {
+    /// `func_a <-> func_b`.
+    pub name: String,
+    /// The clone type (shown in the location column).
+    pub location: String,
+    /// Formatted similarity.
+    pub value: String,
+    /// `poor` / `fair`.
+    pub severity: String,
+}
+
+/// The clones report section.
+#[derive(Debug, Clone)]
+pub struct ReportSection<'a> {
+    report: &'a CloneReport,
+}
+
+impl<'a> ReportSection<'a> {
+    /// Wraps a report.
+    #[must_use]
+    pub fn new(report: &'a CloneReport) -> Self {
+        Self { report }
+    }
+
+    /// The section title.
+    #[must_use]
+    pub fn title(&self) -> &'static str {
+        SECTION_TITLE
+    }
+
+    /// The status message (keyed off the clone ratio).
+    #[must_use]
+    pub fn message(&self) -> &str {
+        &self.report.message
+    }
+
+    /// The `0..1` score (higher is better): `1 - clone_ratio`.
+    #[must_use]
+    pub fn score(&self) -> f64 {
+        compute_score(self.report.clone_ratio)
+    }
+
+    /// Ordered key metrics.
+    #[must_use]
+    pub fn key_metrics(&self) -> Vec<Metric> {
+        vec![
+            metric(
+                METRIC_TOTAL_FUNCTIONS,
+                cf_reportutil::format_int(self.report.total_functions),
+            ),
+            metric(
+                METRIC_CLONE_PAIRS,
+                cf_reportutil::format_int(self.report.total_clone_pairs),
+            ),
+            metric(
+                METRIC_CLONE_RATIO,
+                cf_reportutil::format_float(self.report.clone_ratio),
+            ),
+        ]
+    }
+
+    /// Clone-type distribution rows over every pair found (empty when there
+    /// are no pairs).
+    #[must_use]
+    pub fn distribution(&self) -> Vec<DistributionItem> {
+        let counts = self.report.distribution;
+        let total = counts.total();
+        if total == 0 {
+            return Vec::new();
+        }
+        [CloneType::Type1, CloneType::Type2, CloneType::Type3]
+            .into_iter()
+            .map(|t| DistributionItem {
+                label: t.label().to_string(),
+                percent: cf_reportutil::pct(counts.get(t), total),
+                count: counts.get(t),
+            })
+            .collect()
+    }
+
+    /// Every stored pair as an issue, in report order.
+    #[must_use]
+    pub fn issues(&self) -> Vec<Issue> {
+        self.report.pairs.iter().map(issue_of).collect()
+    }
+}
+
+fn metric(label: &str, value: String) -> Metric {
+    Metric {
+        label: label.to_string(),
+        value,
+    }
+}
+
+fn issue_of(p: &ClonePair) -> Issue {
+    let severity = if p.similarity >= SEVERITY_THRESH_HIGH {
+        SEVERITY_POOR
+    } else {
+        SEVERITY_FAIR
+    };
+    Issue {
+        name: p.display_name(),
+        location: p.clone_type.as_str().to_string(),
+        value: format_similarity(p.similarity),
+        severity: severity.to_string(),
+    }
+}
+
+/// Formats a similarity with [`SIMILARITY_DECIMALS`] decimals (`0.64`,
+/// `1.00`): one decimal would collapse every Type-3 pair onto `0.5`–`0.9`.
+fn format_similarity(similarity: f64) -> String {
+    format!("{similarity:.SIMILARITY_DECIMALS$}")
+}
+
+/// Converts a clone ratio to a `0..1` score (lower ratio = higher score):
+/// clamps to `[0, 1]` then inverts.
+#[must_use]
+pub fn compute_score(clone_ratio: f64) -> f64 {
+    1.0 - clone_ratio.clamp(0.0, 1.0)
+}
+
+/// Formats a `0..1` score as the `N/10` label (`round(score*10)`); a
+/// negative score renders `Info`.
+#[must_use]
+pub fn score_label(score: f64) -> String {
+    if score < 0.0 {
+        return SCORE_LABEL_INFO.to_string();
+    }
+    format!("{}/10", (score * 10.0).round() as i64)
+}
+
+/// Builds the `renderer.JSONReport` value for the single clones section:
+/// `{overall_score_label, sections: [section], overall_score}`, where the
+/// section is `{title, score_label, status, metrics, distribution?, issues,
+/// files?, score}`. `per_file` adds one entry per analyzed file
+/// ([`file_entry`]).
+#[must_use]
+pub fn json_value(report: &CloneReport, per_file: bool) -> GoValue {
+    let section = ReportSection::new(report);
+    let score = section.score();
+
+    let mut sect = GoMap::new(MapOrigin::Struct);
+    sect.push("title", GoValue::Str(section.title().to_string()));
+    sect.push("score_label", GoValue::Str(score_label(score)));
+    sect.push("status", GoValue::Str(section.message().to_string()));
+    sect.push("metrics", metrics_value(&section.key_metrics()));
+    let distribution = section.distribution();
+    if !distribution.is_empty() {
+        sect.push("distribution", distribution_value(&distribution));
+    }
+    sect.push("issues", issues_value(&section.issues()));
+    if per_file {
+        let files = report.files.iter().map(|f| file_entry(report, f)).collect();
+        sect.push("files", GoValue::Array(files));
+    }
+    sect.push("score", GoValue::Float(score));
+
+    let mut root = GoMap::new(MapOrigin::Struct);
+    root.push("overall_score_label", GoValue::Str(score_label(score)));
+    root.push("sections", GoValue::Array(vec![GoValue::Map(sect)]));
+    root.push("overall_score", GoValue::Float(score));
+    GoValue::Map(root)
+}
+
+/// Builds one `--per-file` entry: the file's function count, how many of
+/// them take part in a clone pair, the resulting per-file ratio/score, and
+/// the stored pairs that involve the file as issues.
+#[must_use]
+pub fn file_entry(report: &CloneReport, file: &FileSummary) -> GoValue {
+    let ratio = crate::compute_clone_ratio(
+        file.cloned_functions as usize,
+        file.total_functions as usize,
+    );
+    let score = compute_score(ratio);
+    let status = if file.total_functions == 0 {
+        MSG_NO_FUNCTIONS.to_string()
+    } else if file.cloned_functions == 0 {
+        FILE_STATUS_NONE.to_string()
+    } else {
+        format!(
+            "{} of {} functions in clone pairs",
+            file.cloned_functions, file.total_functions
+        )
+    };
+    let metrics = vec![
+        metric(
+            METRIC_TOTAL_FUNCTIONS,
+            cf_reportutil::format_int(file.total_functions),
+        ),
+        metric(
+            METRIC_CLONED_FUNCTIONS,
+            cf_reportutil::format_int(file.cloned_functions),
+        ),
+        metric(METRIC_CLONE_RATIO, cf_reportutil::format_float(ratio)),
+    ];
+    let issues: Vec<Issue> = file
+        .pairs
+        .iter()
+        .filter_map(|&i| report.pairs.get(i))
+        .map(issue_of)
+        .collect();
+
+    let mut entry = GoMap::new(MapOrigin::Struct);
+    entry.push("file_path", GoValue::Str(file.path.clone()));
+    entry.push("score_label", GoValue::Str(score_label(score)));
+    entry.push("status", GoValue::Str(status));
+    entry.push("metrics", metrics_value(&metrics));
+    entry.push("issues", issues_value(&issues));
+    entry.push("score", GoValue::Float(score));
+    GoValue::Map(entry)
+}
+
+fn metrics_value(metrics: &[Metric]) -> GoValue {
+    GoValue::Array(
+        metrics
+            .iter()
+            .map(|m| {
+                let mut sm = GoMap::new(MapOrigin::Struct);
+                sm.push("label", GoValue::Str(m.label.clone()));
+                sm.push("value", GoValue::Str(m.value.clone()));
+                GoValue::Map(sm)
+            })
+            .collect(),
+    )
+}
+
+fn distribution_value(rows: &[DistributionItem]) -> GoValue {
+    GoValue::Array(
+        rows.iter()
+            .map(|d| {
+                let mut sd = GoMap::new(MapOrigin::Struct);
+                sd.push("label", GoValue::Str(d.label.clone()));
+                sd.push("percent", GoValue::Float(d.percent));
+                sd.push("count", GoValue::Int(d.count));
+                GoValue::Map(sd)
+            })
+            .collect(),
+    )
+}
+
+fn issues_value(issues: &[Issue]) -> GoValue {
+    GoValue::Array(
+        issues
+            .iter()
+            .map(|i| {
+                let mut si = GoMap::new(MapOrigin::Struct);
+                si.push("name", GoValue::Str(i.name.clone()));
+                si.push("location", GoValue::Str(i.location.clone()));
+                si.push("value", GoValue::Str(i.value.clone()));
+                si.push("severity", GoValue::Str(i.severity.clone()));
+                GoValue::Map(si)
+            })
+            .collect(),
+    )
+}
+
+/// Right-pads `s` with spaces to `width` characters.
 fn pad_right(s: &str, width: usize) -> String {
-    if s.len() >= width {
+    let len = s.chars().count();
+    if len >= width {
         return s.to_string();
     }
     let mut out = String::with_capacity(width);
     out.push_str(s);
-    out.extend(std::iter::repeat(' ').take(width - s.len()));
+    out.extend(std::iter::repeat(' ').take(width - len));
     out
 }
 
 /// Progress bar: `trunc(value*width)` filled cells (value clamped to
 /// `[0,1]`), the remainder empty.
 fn draw_progress_bar(value: f64, width: usize) -> String {
-    let v = value.clamp(0.0, 1.0);
-    // Truncation toward zero (output contract).
-    let filled = (v * width as f64) as usize;
-    let empty = width.saturating_sub(filled);
-    let mut bar = String::with_capacity((filled + empty) * 3);
-    for _ in 0..filled {
-        bar.push_str(PROGRESS_FILLED);
-    }
-    for _ in 0..empty {
-        bar.push_str(PROGRESS_EMPTY);
-    }
+    let filled = (value.clamp(0.0, 1.0) * width as f64) as usize;
+    let mut bar = String::with_capacity(width * 3);
+    bar.extend(std::iter::repeat(PROGRESS_FILLED).take(filled));
+    bar.extend(std::iter::repeat(PROGRESS_EMPTY).take(width - filled));
     bar
 }
 
 /// Builds the single-line `--format compact` bytes for the clones section:
-///
-/// ```text
-/// <title padded to 12> [<bar>] <N/10>  <status message>\n
-/// ```
-///
-/// Color is always disabled (the compat env pins `NO_COLOR=1`), so no ANSI
-/// codes are emitted; a trailing newline is appended. This is the only fully
-/// deterministic terminal format for clones (it never lists the
-/// order-nondeterministic clone pairs), so its bytes are pinned by the
-/// differential gate.
+/// `<title padded to 12> [<bar>] <N/10>  <status message>\n` (no ANSI
+/// color).
 #[must_use]
-pub fn report_section_compact(report: &Report) -> Vec<u8> {
-    let section = ReportSection::new(report.clone());
-    let title = pad_right(&section.title, COMPACT_TITLE_WIDTH);
-    let bar = draw_progress_bar(section.score, COMPACT_BAR_WIDTH);
-    // Score bar: "[<bar>] <N/10>"; score_label() rounds score*10.
-    let score_bar = format!("[{}] {}", bar, score_label(section.score));
-    // Compact line: "<title> <score_bar>  <message>" + '\n'.
-    let line = format!("{title} {score_bar}  {}\n", section.message);
-    line.into_bytes()
-}
-
-/// Converts a clone ratio to a 0..1 score (lower ratio = higher score):
-/// clamps to `[0, 1]` then inverts.
-#[must_use]
-pub fn compute_score(clone_ratio: f64) -> f64 {
-    if clone_ratio >= 1.0 {
-        0.0
-    } else if clone_ratio <= 0.0 {
-        1.0
-    } else {
-        1.0 - clone_ratio
-    }
-}
-
-/// Reads the stored `clone_type_distribution` counts, if present.
-fn stored_distribution(report: &Report) -> Option<CloneTypeCounts> {
-    use cf_analyze::GoValue;
-    let Some(GoValue::Map(m)) = cf_reportutil::get(report, KEY_CLONE_TYPE_DISTRIBUTION) else {
-        return None;
-    };
-    let mut counts = CloneTypeCounts::default();
-    for (k, v) in m.entries() {
-        if let GoValue::Int(n) = v {
-            match k.as_str() {
-                CLONE_TYPE1 => counts.type1 = *n,
-                CLONE_TYPE2 => counts.type2 = *n,
-                CLONE_TYPE3 => counts.type3 = *n,
-                _ => {}
-            }
-        }
-    }
-    Some(counts)
-}
-
-/// Extracts the clone pairs from a report's `clone_pairs` array.
-fn extract_clone_pairs(report: &Report) -> Vec<ClonePair> {
-    use cf_analyze::GoValue;
-    let Some(GoValue::Array(items)) = cf_reportutil::get(report, KEY_CLONE_PAIRS) else {
-        return Vec::new();
-    };
-    let mut pairs = Vec::with_capacity(items.len());
-    for item in items {
-        if let GoValue::Map(m) = item {
-            pairs.push(pair_from_map(m));
-        }
-    }
-    pairs
-}
-
-fn pair_from_map(m: &cf_analyze::GoMap) -> ClonePair {
-    use cf_analyze::GoValue;
-    let mut pair = ClonePair {
-        func_a: String::new(),
-        func_b: String::new(),
-        similarity: 0.0,
-        clone_type: String::new(),
-    };
-    for (k, v) in m.entries() {
-        match (k.as_str(), v) {
-            ("func_a", GoValue::Str(s)) => pair.func_a.clone_from(s),
-            ("func_b", GoValue::Str(s)) => pair.func_b.clone_from(s),
-            ("similarity", GoValue::Float(f)) => pair.similarity = *f,
-            ("clone_type", GoValue::Str(s)) => pair.clone_type.clone_from(s),
-            _ => {}
-        }
-    }
-    pair
+pub fn compact(report: &CloneReport) -> Vec<u8> {
+    let section = ReportSection::new(report);
+    let score = section.score();
+    let title = pad_right(section.title(), COMPACT_TITLE_WIDTH);
+    let bar = draw_progress_bar(score, COMPACT_BAR_WIDTH);
+    format!(
+        "{title} [{bar}] {}  {}\n",
+        score_label(score),
+        section.message()
+    )
+    .into_bytes()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analyzer::Analyzer;
-    use crate::uast::NodeBuilder;
-    use cf_uast_node::Node;
+    use crate::report::{CloneTypeCounts, FileSummary};
+    use cf_gojson::Encoder;
 
-    fn function(name: &str) -> Node {
-        let name_node = NodeBuilder::new("Identifier")
-            .role("Name")
-            .token(name)
-            .build();
-        let mut f = NodeBuilder::new("Function")
-            .role("Function")
-            .child(name_node)
-            .build();
-        let mut block = NodeBuilder::new("Block").build();
-        for i in 0..24 {
-            let kind = ["Identifier", "Call", "Literal", "Operator"][i % 4];
-            block.add_child(NodeBuilder::new(kind).build());
+    fn pair(a: &str, b: &str, similarity: f64, clone_type: CloneType) -> ClonePair {
+        ClonePair {
+            func_a: a.into(),
+            func_b: b.into(),
+            similarity,
+            clone_type,
         }
-        f.add_child(block);
-        f
     }
 
-    // Exact comparisons on purpose: `compute_score` maps its clamp endpoints
-    // (0.0 / 1.0) exactly, so an epsilon compare would hide a real regression.
+    fn sample() -> CloneReport {
+        let mut distribution = CloneTypeCounts::default();
+        distribution.increment(CloneType::Type1);
+        distribution.increment(CloneType::Type3);
+        CloneReport {
+            total_functions: 4,
+            total_clone_pairs: 2,
+            clone_ratio: 0.75,
+            distribution,
+            pairs: vec![
+                pair("a.go::f", "b.go::f", 1.0, CloneType::Type1),
+                pair("a.go::f", "c.go::g", 0.6, CloneType::Type3),
+            ],
+            message: crate::MSG_HIGH_CLONES.into(),
+            files: vec![
+                FileSummary {
+                    path: "a.go".into(),
+                    total_functions: 1,
+                    cloned_functions: 1,
+                    pairs: vec![0, 1],
+                },
+                FileSummary {
+                    path: "d.go".into(),
+                    total_functions: 1,
+                    cloned_functions: 0,
+                    pairs: vec![],
+                },
+            ],
+        }
+    }
+
+    // Exact comparisons on purpose: the clamp endpoints map exactly.
     #[allow(clippy::float_cmp)]
     #[test]
     fn compute_score_clamps_and_inverts() {
@@ -486,31 +418,92 @@ mod tests {
     }
 
     #[test]
-    fn section_from_clone_report_has_metrics_and_issues() {
-        let a = Analyzer::new();
-        let root = NodeBuilder::new("File")
-            .child(function("foo"))
-            .child(function("bar"))
-            .build();
-        let report = a.analyze_node(Some(&root));
-        let section = ReportSection::new(report);
-
-        assert_eq!(section.title, SECTION_TITLE);
-        assert_eq!(section.key_metrics().len(), 3);
-        let issues = section.all_issues();
-        assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].severity, "Poor"); // similarity 1.0 >= 0.8
+    fn score_labels() {
+        assert_eq!(score_label(1.0), "10/10");
+        assert_eq!(score_label(0.25), "3/10");
+        assert_eq!(score_label(-1.0), "Info");
     }
 
-    // Exact by construction: clone_ratio 0.0 maps to the score 1.0 endpoint.
-    #[allow(clippy::float_cmp)]
     #[test]
-    fn empty_report_uses_default_status_and_full_score() {
-        let a = Analyzer::new();
-        let report = a.analyze_node(None);
-        let section = ReportSection::new(report);
-        // clone_ratio 0.0 -> score 1.0; message present so default not used.
-        assert_eq!(section.score, 1.0);
-        assert!(section.distribution().is_empty());
+    fn section_metrics_distribution_and_issues() {
+        let report = sample();
+        let s = ReportSection::new(&report);
+        assert_eq!(s.title(), SECTION_TITLE);
+        let m = s.key_metrics();
+        assert_eq!(m[0].value, "4");
+        assert_eq!(m[1].value, "2");
+        assert_eq!(m[2].value, "0.8");
+        let d = s.distribution();
+        assert_eq!(d.len(), 3);
+        assert_eq!(d[0].count, 1);
+        assert!((d[0].percent - 0.5).abs() < 1e-12);
+        let i = s.issues();
+        assert_eq!(i[0].severity, SEVERITY_POOR);
+        assert_eq!(i[1].severity, SEVERITY_FAIR);
+        assert_eq!(i[1].location, "Type-3");
+        assert_eq!(i[1].value, "0.60");
+    }
+
+    #[test]
+    fn empty_report_has_no_distribution_and_full_score() {
+        let report = CloneReport {
+            message: crate::MSG_NO_FUNCTIONS.into(),
+            ..CloneReport::default()
+        };
+        let s = ReportSection::new(&report);
+        assert!(s.distribution().is_empty());
+        assert!((s.score() - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn json_value_shape_and_order() {
+        let json = Encoder::marshal().encode_to_string(&json_value(&sample(), false));
+        assert!(json.starts_with(r#"{"overall_score_label":"3/10","sections":[{"title":"CLONE DETECTION","score_label":"3/10","status":"High duplication - significant refactoring recommended","metrics":[{"label":"Total Functions","value":"4"}"#), "{json}");
+        assert!(
+            json.contains(r#""distribution":[{"label":"Type-1 (Exact)","percent":0.5,"count":1}"#)
+        );
+        // The report encoder HTML-escapes `<` / `>` (`<` / `>`).
+        assert!(json.contains(r#""issues":[{"name":"a.go::f \u003c-\u003e b.go::f","location":"Type-1","value":"1.00","severity":"poor"}"#), "{json}");
+        assert!(!json.contains("\"files\""));
+        assert!(
+            json.ends_with(r#""score":0.25}],"overall_score":0.25}"#),
+            "{json}"
+        );
+    }
+
+    #[test]
+    fn per_file_entries_follow_the_file_summaries() {
+        let json = Encoder::marshal().encode_to_string(&json_value(&sample(), true));
+        assert!(json.contains(r#""files":[{"file_path":"a.go","score_label":"0/10","status":"1 of 1 functions in clone pairs","metrics":[{"label":"Total Functions","value":"1"},{"label":"Cloned Functions","value":"1"},{"label":"Clone Ratio","value":"1.0"}],"issues":[{"name":"a.go::f \u003c-\u003e b.go::f""#), "{json}");
+        assert!(json.contains(r#"{"file_path":"d.go","score_label":"10/10","status":"No functions in clone pairs","metrics":[{"label":"Total Functions","value":"1"},{"label":"Cloned Functions","value":"0"},{"label":"Clone Ratio","value":"0.0"}],"issues":[],"score":1}"#), "{json}");
+    }
+
+    #[test]
+    fn file_entry_without_functions_uses_the_no_functions_status() {
+        let report = sample();
+        let file = FileSummary {
+            path: "empty.go".into(),
+            ..FileSummary::default()
+        };
+        let json = Encoder::marshal().encode_to_string(&file_entry(&report, &file));
+        assert!(json.contains(r#""status":"No functions found for clone analysis""#));
+    }
+
+    #[test]
+    fn compact_line() {
+        let line = String::from_utf8(compact(&sample())).unwrap();
+        assert_eq!(
+            line,
+            "CLONE DETECTION [██░░░░░░░░] 3/10  High duplication - significant refactoring recommended\n"
+        );
+    }
+
+    #[test]
+    fn pad_and_bar_helpers() {
+        assert_eq!(pad_right("ab", 4), "ab  ");
+        assert_eq!(pad_right("abcdef", 4), "abcdef");
+        assert_eq!(draw_progress_bar(0.0, 3), "░░░");
+        assert_eq!(draw_progress_bar(1.0, 3), "███");
+        assert_eq!(draw_progress_bar(0.5, 3), "█░░");
     }
 }

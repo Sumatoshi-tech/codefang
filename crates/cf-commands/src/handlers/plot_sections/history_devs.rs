@@ -16,8 +16,9 @@ use cf_plotpage::{
     build_bar_chart, build_line_chart, BarSeries, ChartOpts, Hint, LineSeries, Section, SeriesValue,
 };
 
-use crate::handlers::go_sort;
-use crate::handlers::plot_sections::history_shared::{format_number, format_signed_number};
+use crate::handlers::plot_sections::history_shared::{
+    by_value_then_name, format_number, format_signed_number,
+};
 
 /// Reference devs plot/dashboard constants.
 const MAX_DEVS: usize = 20;
@@ -318,9 +319,8 @@ fn create_workload_tab(metrics: &ComputedMetrics) -> Box<dyn Renderable> {
         return Box::new(Text::new("No workload data available"));
     }
 
-    // buildTreemapNodes. the reference implementation iterates the langDevs map randomly before the
-    // value-descending sorts; language-name-ascending is the deterministic
-    // stand-in (ties at equal Value are reference-variant).
+    // Developers grouped by primary language; every level ranks by value
+    // (descending), then by name.
     let mut lang_devs: std::collections::BTreeMap<&str, Vec<TreeMapNode>> =
         std::collections::BTreeMap::new();
     let mut lang_totals: std::collections::BTreeMap<&str, i64> = std::collections::BTreeMap::new();
@@ -336,14 +336,14 @@ fn create_workload_tab(metrics: &ComputedMetrics) -> Box<dyn Renderable> {
 
     let mut root_nodes: Vec<TreeMapNode> = Vec::with_capacity(lang_devs.len());
     for (lang, mut dev_nodes) in lang_devs {
-        go_sort::slice(&mut dev_nodes, |a, b| a.value > b.value);
+        dev_nodes.sort_by(by_value_then_name);
         root_nodes.push(TreeMapNode {
             name: lang.to_string(),
             value: lang_totals[lang],
             children: dev_nodes,
         });
     }
-    go_sort::slice(&mut root_nodes, |a, b| a.value > b.value);
+    root_nodes.sort_by(by_value_then_name);
 
     let co = ChartOpts::default_dark();
     let mut tm = Chart::new(ChartKind::TreeMap);
@@ -424,7 +424,7 @@ fn create_languages_tab(metrics: &ComputedMetrics, top_langs: &[String]) -> Box<
         .iter()
         .map(|d| (d, contribution(d)))
         .collect();
-    go_sort::slice(&mut scored, |a, b| a.1 > b.1);
+    scored.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.name.cmp(&b.0.name)));
     scored.truncate(TOP_DEVS_FOR_RADAR);
 
     let indicators: Vec<cf_plotpage::echarts::Indicator> = top_langs

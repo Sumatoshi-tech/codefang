@@ -3,15 +3,14 @@
 //!
 //! Resolves files (`--all` walks `.` skipping hidden dirs), parses each into a
 //! UAST, and serializes via [`cf_textutil::write_json`] (DESIGN rule 1). With no
-//! files it reads stdin (`stdin.go`, or `stdin.<lang>` when `--language` is set)
-//! and assigns stable IDs before output.
+//! files, or for a `-` file argument, it reads stdin (`stdin.go`, or
+//! `stdin.<lang>` when `--language` is set) and assigns stable IDs before
+//! output.
 //!
 //! Output formats (parse.go `outputNode`): `json` (pretty), `compact`, `none`
-//! (parse only, no serialization). Note: the flag help lists `tree`, but the Go
-//! `switch` has no `tree` arm, so `tree` (and any other value) hits the default
-//! and yields `unsupported format: <fmt>` — reproduced exactly here.
+//! (parse only, no serialization). Any other value (the Go help also listed
+//! `tree`, which no code path renders) is `unsupported format: <fmt>`.
 
-use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::Path;
 
@@ -19,7 +18,7 @@ use cf_uast::Parser;
 use clap::{Arg, ArgAction, ArgMatches, Command};
 
 use crate::govalue_bridge::node_to_value;
-use crate::{FORMAT_COMPACT, FORMAT_JSON, FORMAT_NONE};
+use crate::{FORMAT_COMPACT, FORMAT_JSON, FORMAT_NONE, STDIN_ARG};
 
 /// Builds the `parse` subcommand (parse.go:39-66).
 pub fn command() -> Command {
@@ -32,28 +31,13 @@ pub fn command() -> Command {
         .arg(opt(
             "format",
             'f',
-            "json",
-            "output format (json, compact, tree, none)",
-        ))
-        .arg(flag(
-            "progress",
-            Some('p'),
-            "show progress for multiple files",
+            FORMAT_JSON,
+            "output format (json, compact, none)",
         ))
         .arg(flag(
             "all",
-            None,
             "parse all source files in the codebase recursively",
         ))
-        .arg(
-            Arg::new("workers")
-                .long("workers")
-                .short('w')
-                .help("number of parallel workers (default: number of CPUs)")
-                .default_value("0")
-                .value_parser(clap::value_parser!(i64))
-                .action(ArgAction::Set),
-        )
 }
 
 /// Runs `parse` (parse.go `runParse`).
@@ -80,14 +64,19 @@ pub fn run(m: &ArgMatches) -> Result<(), String> {
 
     let files = resolve_files(files, all, &parser)?;
 
+    let mut writer = crate::open_output(output)?;
     if files.is_empty() {
-        return parse_stdin(lang, output, format);
+        return parse_stdin(lang, &mut *writer, format);
     }
 
     // Go has a parallel path for `>1 file && format==none`; pooling is
     // behavioral-only (DESIGN), so the sequential path is byte-identical.
     for file in &files {
-        parse_one(&parser, file, lang, output, format)
+        if file == STDIN_ARG {
+            parse_stdin(lang, &mut *writer, format)?;
+            continue;
+        }
+        parse_one(&parser, file, lang, &mut *writer, format)
             .map_err(|e| format!("failed to parse {file}: {e}"))?;
     }
     Ok(())
@@ -139,7 +128,7 @@ fn is_hidden_dir(name: &str) -> bool {
 }
 
 /// Parses stdin into UAST and outputs it (parse.go `parseStdin`).
-fn parse_stdin(lang: &str, output: &str, format: &str) -> Result<(), String> {
+fn parse_stdin(lang: &str, writer: &mut dyn Write, format: &str) -> Result<(), String> {
     let mut code = Vec::new();
     io::stdin()
         .read_to_end(&mut code)
@@ -156,7 +145,7 @@ fn parse_stdin(lang: &str, output: &str, format: &str) -> Result<(), String> {
         .parse(&filename, &code)
         .map_err(|e| format!("parse error: {e}"))?;
     node.assign_stable_ids();
-    output_node(&node, output, format)
+    output_node(&node, writer, format)
 }
 
 /// Parses a single file and outputs it (parse.go `parseFileWithParser`).
@@ -164,7 +153,7 @@ fn parse_one(
     parser: &Parser,
     file: &str,
     lang: &str,
-    output: &str,
+    writer: &mut dyn Write,
     format: &str,
 ) -> Result<(), String> {
     let mut node = parser.parse_file(file, lang).map_err(|e| e.to_string())?;
@@ -173,20 +162,14 @@ fn parse_one(
         return Ok(());
     }
     node.assign_stable_ids();
-    output_node(&node, output, format)
+    output_node(&node, writer, format)
 }
 
-/// Serializes a node to the chosen writer and format (parse.go `outputNode`).
-fn output_node(node: &cf_uast::Node, output: &str, format: &str) -> Result<(), String> {
-    let mut writer: Box<dyn Write> = if output.is_empty() {
-        Box::new(io::stdout())
-    } else {
-        Box::new(File::create(output).map_err(|e| format!("failed to create output file: {e}"))?)
-    };
-
+/// Serializes a node to `writer` in `format` (parse.go `outputNode`).
+fn output_node(node: &cf_uast::Node, writer: &mut dyn Write, format: &str) -> Result<(), String> {
     match format {
-        FORMAT_JSON => write_node(&mut writer, node, true),
-        FORMAT_COMPACT => write_node(&mut writer, node, false),
+        FORMAT_JSON => write_node(writer, node, true),
+        FORMAT_COMPACT => write_node(writer, node, false),
         FORMAT_NONE => Ok(()),
         // Go: default => `unsupported format: <fmt>` (ErrUnsupportedParseFmt).
         other => Err(format!("unsupported format: {other}")),
@@ -218,15 +201,11 @@ fn opt(name: &'static str, short: char, default: &'static str, help: &'static st
         .action(ArgAction::Set)
 }
 
-fn flag(name: &'static str, short: Option<char>, help: &'static str) -> Arg {
-    let mut a = Arg::new(name)
+fn flag(name: &'static str, help: &'static str) -> Arg {
+    Arg::new(name)
         .long(name)
         .help(help)
-        .action(ArgAction::SetTrue);
-    if let Some(s) = short {
-        a = a.short(s);
-    }
-    a
+        .action(ArgAction::SetTrue)
 }
 
 #[cfg(test)]
@@ -245,7 +224,7 @@ mod tests {
     fn tree_format_is_unsupported() {
         // parse.go's switch has no `tree` arm, so `tree` hits the default error.
         let node = cf_uast::Node::with_token("File", "");
-        let err = output_node(&node, "", "tree").unwrap_err();
+        let err = output_node(&node, &mut io::sink(), "tree").unwrap_err();
         assert_eq!(err, "unsupported format: tree");
     }
 
@@ -253,6 +232,6 @@ mod tests {
     fn none_format_writes_nothing() {
         let node = cf_uast::Node::with_token("File", "");
         // `none` returns Ok without touching the writer.
-        assert!(output_node(&node, "", "none").is_ok());
+        assert!(output_node(&node, &mut io::sink(), "none").is_ok());
     }
 }

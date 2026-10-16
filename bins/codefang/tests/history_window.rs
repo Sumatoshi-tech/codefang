@@ -7,6 +7,8 @@
 //! Reports are asserted in machine formats only (`ndjson` / `json`), which are
 //! the byte-stable formats the golden harness also treats as binding.
 
+mod common;
+
 use cf_gitlib::testutil::{commit_files, init_repo, TestRepo};
 use cf_gitlib::Hash;
 
@@ -30,8 +32,8 @@ const NEEDLE_HASH: &str = "\"hash\":\"";
 /// Runs the binary with a deterministic environment; state is disabled so the
 /// run is self-contained (same discipline as the golden captures).
 fn codefang(args: &[&str]) -> std::process::Output {
-    Command::new(BIN)
-        .args(["run", "--checkpoint=false", "--resume=false", "--no-cache"])
+    common::command(BIN)
+        .arg("run")
         .args(args)
         .env("TZ", "UTC")
         .env("NO_COLOR", "1")
@@ -40,8 +42,6 @@ fn codefang(args: &[&str]) -> std::process::Output {
         .output()
         .expect("run the codefang binary")
 }
-
-use std::process::Command;
 
 /// Builds the five-commit fixture; returns it with its hashes, oldest-first.
 fn fixture() -> (TestRepo, Vec<Hash>) {
@@ -65,14 +65,7 @@ fn fixture() -> (TestRepo, Vec<Hash>) {
 fn ndjson_window(path: &str, extra: &[&str]) -> (i32, Vec<String>, String, String) {
     let out = codefang(
         &[
-            &[
-                "-a",
-                "history/burndown",
-                "--workers",
-                "1",
-                "--format",
-                "ndjson",
-            ],
+            &["-a", "history/burndown", "--format", "ndjson"],
             extra,
             &[path],
         ]

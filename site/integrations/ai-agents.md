@@ -222,9 +222,9 @@ flowchart LR
 
 | Metric | Source | Typical Baseline |
 |--------|--------|-----------------|
-| Comment density | `static/comments` | 15-25% of lines |
+| Documentation coverage | `static/comments` | >= 60% of functions documented |
 | Max cyclomatic complexity | `static/complexity` | 10-15 per function |
-| Cohesion score | `static/cohesion` | > 0.5 (LCOM4) |
+| Cohesion score | `static/cohesion` | >= 0.6 (1 − LCOM, function-weighted) |
 | Halstead difficulty | `static/halstead` | < 30 per function |
 
 ### Example agent prompt

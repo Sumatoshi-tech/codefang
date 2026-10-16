@@ -8,23 +8,27 @@ repository.workspace = true
 publish.workspace = true
 
 # cf-complexity — static cyclomatic/cognitive/nesting complexity analyzer
-# (analyzer id: static/complexity). Also used by the quality analyzer.
+# (analyzer id: static/complexity). Also used by the history quality analyzer.
 #
-# Report serialization routes exclusively through cf-gojson (and cf-goyaml) so
-# the machine-format bytes (json/yaml/ndjson/timeseries/compact/bin) match the
-# report contract byte-for-byte. See DESIGN.md §2.
+# The crate owns the math (counting rules, thresholds, aggregation, ordering)
+# and the UAST bridge; the cf-commands handlers own I/O and serialization.
+# Report values are built as cf-gojson GoValue trees (never serde_json).
 
 [dependencies]
-# Report-contract value model + encoder (DESIGN §2.2). The analyzer builds its
-# report as a GoValue tree; serialization is owned by the report layer.
-# NEVER serde_json.
+# Report-contract value model + encoder (DESIGN §2.2).
 cf-gojson = { workspace = true }
-# Pinned unstable sort (pdqsort) for tie ordering, shared across analyzers.
-cf-gosort = { workspace = true }
-# On-demand stack growth for the recursive complexity walk — the trees come
-# from cf-uast, which already needs a segmented stack to build them (>10k
-# nesting levels on real sources).
+# The canonical UAST node model: `node::Node::from_uast` is the one bridge
+# every report format shares.
+cf-uast-node = { path = "../cf-uast-node" }
+# On-demand stack growth for the recursive walks — the trees come from
+# cf-uast, which already needs a segmented stack to build them (>10k nesting
+# levels on real sources).
 stacker = "0.1.24"
+
+[dev-dependencies]
+# Fixture tests parse real multi-language sources and assert hand-computed
+# metrics end-to-end from source text.
+cf-uast = { path = "../cf-uast" }
 
 [lints.clippy]
 pedantic = "warn"

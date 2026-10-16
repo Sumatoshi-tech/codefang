@@ -2,7 +2,7 @@
 //!
 //! This is the keystone the whole report layer routes through. Its encoding
 //! rules are a frozen byte contract, pinned against the reference
-//! implementation by `tests/compat` (see `specs/rust-rewrite/DESIGN.md`
+//! implementation by the report e2e suites (`bins/codefang/tests`) (see `specs/rust-rewrite/DESIGN.md`
 //! §2):
 //!
 //! * **HTML escaping ON** by default — `<`, `>`, `&` encode as `\u003c`,

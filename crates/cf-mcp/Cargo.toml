@@ -6,13 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "MCP (Model Context Protocol) server exposing Codefang analysis as tools. Gated behind the non-default `mcp` feature; not shipped by default."
+description = "MCP (Model Context Protocol) server exposing Codefang analysis as tools; `codefang mcp` launches it. The server body sits behind the `mcp` feature, which cf-commands enables."
 
-# The MCP server is not part of the shipped codefang binary: the entire crate
-# body is behind the non-default `mcp` feature. With the feature OFF the crate
-# compiles to an empty shell, so it never participates in the default
-# workspace build and `cf-commands` must opt in explicitly. See DESIGN.md §1
-# and §3.
+# The crate body is behind the `mcp` feature; `cf-commands` enables it for
+# `codefang mcp`. With the feature OFF the crate compiles to an empty shell.
 [features]
 default = []
 mcp = ["dep:serde", "dep:serde_json", "dep:thiserror"]
@@ -33,9 +30,9 @@ cf-uast-node = { path = "../cf-uast-node" }
 # envelope — it is NEVER used to encode the machine-format report payload, which
 # flows through the byte-compatible encoder in `gojson.rs`. See DESIGN.md §2.
 serde = { version = "1", features = ["derive"], optional = true }
-serde_json = { version = "1", optional = true }
+serde_json = { workspace = true, optional = true }
 # Error derive; every ToolError display string is a frozen tool-contract message.
 thiserror = { version = "1", optional = true }
 
 [dev-dependencies]
-serde_json = "1"
+serde_json = { workspace = true }

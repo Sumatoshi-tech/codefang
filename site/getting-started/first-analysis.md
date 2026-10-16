@@ -260,11 +260,12 @@ the universal formats; some also support format-specific extras.
 === "Plot (HTML)"
 
     ```bash
-    codefang run -a history/burndown --format plot . > report.html
+    codefang run -a history/burndown --format plot -o report .
     ```
 
-    Opens as an interactive chart in any browser. Multiple analyzers produce
-    a multi-section dashboard with tabs.
+    Writes `report/index.html` plus one interactive page per analyzer
+    (`report/burndown.html`, …) and `report/report.json`; `-o` is required.
+    Open `report/index.html` in any browser.
 
 === "Time Series"
 
@@ -291,49 +292,45 @@ the universal formats; some also support format-specific extras.
 
 ## Configuration file
 
-Instead of passing flags every time, create a `.codefang.yaml` file in your
-repository root (or `$HOME`):
+Instead of passing flags every time, create a `.codefang.yaml` file in the
+directory you run `codefang` from (or in `$HOME`); `--config <file>` points
+at any other file. Every key is the default for one `run` flag:
 
 ```yaml title=".codefang.yaml"
-# Analyzers to run by default (empty = all registered).
+# Analyzers to run when -a is not given (omitted = all).
 analyzers:
   - static/complexity
   - static/halstead
   - history/burndown
 
-# Pipeline resource tuning.
-pipeline:
-  workers: 4              # parallel workers (0 = auto)
-  memory_budget: "4GiB"   # auto-tune caches to fit this budget
-  blob_cache_size: "512MiB"
-
 # History analyzer settings.
 history:
+  tick_size: 24           # --tick-size, hours per tick
   burndown:
-    granularity: 30       # days per time bucket
-    sampling: 30
-    track_files: false
-    track_people: false
+    granularity: 30       # --granularity, ticks per age band
+    sampling: 30          # --sampling, ticks per sample
+    track_files: false    # --burndown-files
+    track_people: false   # --burndown-people
   devs:
-    anonymize: false
+    anonymize: false      # --anonymize
   sentiment:
-    min_comment_length: 20
-    gap: 0.5
-
-# Checkpoint for crash recovery on large repos.
-checkpoint:
-  enabled: true
-  resume: true
+    min_comment_length: 20  # --min-comment-len
 ```
 
 !!! tip "Precedence order"
-    CLI flags override environment variables, which override the configuration
-    file. Environment variables use the `CODEFANG_` prefix with underscores
-    for nesting:
+    An explicit CLI flag overrides a `CODEFANG_*` environment variable, which
+    overrides the configuration file, which overrides the compiled default.
+    Environment variables use the `CODEFANG_` prefix with the key upper-cased
+    and `.` replaced by `_`:
 
     ```bash
-    CODEFANG_PIPELINE_WORKERS=8 codefang run -a history/burndown .
+    CODEFANG_HISTORY_BURNDOWN_GRANULARITY=60 codefang run -a history/burndown .
     ```
+
+    A key that codefang does not read (for example the Go-era `pipeline:`
+    tuning tree or `checkpoint:`) is ignored with one
+    `warning: ignoring unsupported config keys: …` line on stderr. See
+    [Configuration](../guide/configuration.md) for every key.
 
 ---
 
@@ -345,33 +342,28 @@ checkpoint:
 | `--since` | `--since 2024-01-01` | Only commits at/after this date, duration, or revision |
 | `--head` | `--head` | Snapshot of HEAD only (fast; ignores the two flags above) |
 | `--first-parent` | `--first-parent` | Skip merge-commit side branches |
-| `--workers N` | `--workers 8` | Parallel pipeline workers |
-| `--memory-budget` | `--memory-budget 2GB` | Auto-tune caches |
-| `--checkpoint` | `--checkpoint` | Enable crash recovery (on by default) |
-| `--silent` | `--silent` | Suppress progress output |
+| `--quiet` / `-q` | `-q` | Suppress the `progress:` lines on stderr (alias `--silent`) |
+| `--output` / `-o` | `-o report.json` | Write the report to a file instead of stdout |
 
 ---
 
-## Converting between formats
+## One run per format
 
-You can convert an existing report to a different format without re-running
-the analysis:
+A report is rendered in the format chosen by `--format` when the analysis
+runs; there is no command that converts a saved report into another format.
+To get several formats, run the analysis once per format (bound the window
+with `--limit` or `--since` to keep each run short):
 
 ```bash
-# Run once and save as binary
-codefang run -a history/burndown --format bin . > report.bin
+# Machine-readable JSON
+codefang run -a history/burndown --format json -o report.json .
 
-# Convert to YAML later
-codefang run --input report.bin --format yaml
+# The same analysis as YAML
+codefang run -a history/burndown --format yaml -o report.yaml .
 
-# Convert to an HTML plot
-codefang run --input report.bin --format plot > dashboard.html
+# Interactive HTML pages in ./dashboard
+codefang run -a history/burndown --format plot -o dashboard .
 ```
-
-!!! note "Supported input formats"
-    The `--input` flag accepts **JSON** and **binary** files. Use
-    `--input-format auto` (the default) to let Codefang detect the format, or
-    specify `--input-format json` or `--input-format bin` explicitly.
 
 ---
 

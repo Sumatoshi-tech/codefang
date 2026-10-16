@@ -5,14 +5,15 @@
 //! renderer does: the bar chart over the top-20 functions by cyclomatic
 //! complexity, the cyclomatic-vs-cognitive scatter, and the distribution pie.
 
+use cf_complexity::thresholds::{
+    distribution_bucket, COGNITIVE_HIGH, CYCLOMATIC_HIGH, DIST_LABEL_MODERATE, DIST_LABEL_SIMPLE,
+};
 use cf_gojson::{GoMap, GoValue};
 use cf_plotpage::echarts::{
     AxisLabel, AxisLine, BarData, Chart, ChartKind, Grid, ItemStyle, LineStyle, MarkLineItem,
     ScatterData, SplitLine, XAxis, YAxis,
 };
 use cf_plotpage::{build_pie_chart, get_chart_palette, ChartOpts, Hint, Section, Theme};
-
-use crate::handlers::static_complexity::go_pdqsort;
 
 /// Reference plot-section constants.
 const TOP_FUNCTIONS_LIMIT: usize = 20;
@@ -21,15 +22,19 @@ const EMPTY_CHART_HEIGHT: &str = "400px";
 const PIE_RADIUS: &str = "60%";
 const SCATTER_SYMBOL_SIZE: i64 = 15;
 const NESTING_MULTIPLIER: i64 = 3;
-const CYCLOMATIC_YELLOW_LINE: i64 = 5;
-const CYCLOMATIC_RED_LINE: i64 = 10;
-const COGNITIVE_RED_LINE: i64 = 15;
 const UNKNOWN_NAME: &str = "unknown";
 
-/// Plot display labels for the distribution pie.
-const PLOT_LABEL_SIMPLE: &str = "Simple";
-const PLOT_LABEL_MODERATE: &str = "Moderate";
-const PLOT_LABEL_COMPLEX: &str = "Complex";
+/// The three-bucket pie keys of [`distribution_bucket`].
+const BUCKET_SIMPLE: &str = "simple";
+const BUCKET_MODERATE: &str = "moderate";
+/// The pie merges the crate's `Complex (11-20)` and `Very Complex (>20)`
+/// terminal buckets into one slice.
+const PIE_LABEL_COMPLEX: &str = "Complex (>10)";
+
+/// Bar / pie colors per [`distribution_bucket`] key.
+const COLOR_SIMPLE: &str = "#91cc75";
+const COLOR_MODERATE: &str = "#fac858";
+const COLOR_COMPLEX: &str = "#ee6666";
 
 /// The reference `analyze.ReportFunctionListWithFallback(report, "functions",
 /// "function_complexity")`: the function maps under either key.
@@ -94,14 +99,13 @@ fn format_plot_label(f: &GoMap) -> String {
     format!("{}:{}", go_filepath_base(sf), name)
 }
 
-/// The reference `getComplexityColor`.
+/// The bar color of a function: its [`distribution_bucket`] (the crate's
+/// `<= 5` simple / `<= 10` moderate / else complex classification).
 fn complexity_color(complexity: i64) -> &'static str {
-    if complexity <= CYCLOMATIC_YELLOW_LINE {
-        "#91cc75"
-    } else if complexity <= CYCLOMATIC_RED_LINE {
-        "#fac858"
-    } else {
-        "#ee6666"
+    match distribution_bucket(complexity) {
+        BUCKET_SIMPLE => COLOR_SIMPLE,
+        BUCKET_MODERATE => COLOR_MODERATE,
+        _ => COLOR_COMPLEX,
     }
 }
 
@@ -177,11 +181,13 @@ fn bar_chart(report: &GoValue) -> Option<Chart> {
         return Some(empty_bar_chart());
     }
 
-    // mapx.SortAndLimit: copy, sort.Slice (the reference implementation's unstable pdqsort — reproduced
-    // exactly by go_pdqsort so the tie order in the top 20 matches), truncate.
+    // Top-N by cyclomatic complexity, descending. The raw report lists its
+    // functions in the crate's total order (cyclomatic desc, cognitive desc,
+    // nesting desc, name, file, line), so a STABLE sort on the cyclomatic key
+    // keeps ties in that deterministic order.
     let mut sorted = functions.clone();
-    go_pdqsort(&mut sorted, &|a: &&GoMap, b: &&GoMap| {
-        get_int(a, "cyclomatic_complexity") > get_int(b, "cyclomatic_complexity")
+    sorted.sort_by(|a, b| {
+        get_int(b, "cyclomatic_complexity").cmp(&get_int(a, "cyclomatic_complexity"))
     });
     sorted.truncate(TOP_FUNCTIONS_LIMIT);
 
@@ -340,11 +346,11 @@ fn scatter_chart(report: &GoValue) -> Option<Chart> {
     series.mark_lines = vec![
         MarkLineItem::XAxis {
             name: "Cyclomatic warning".to_string(),
-            value: GoValue::Int(CYCLOMATIC_RED_LINE),
+            value: GoValue::Int(CYCLOMATIC_HIGH),
         },
         MarkLineItem::YAxis {
             name: "Cognitive warning".to_string(),
-            value: GoValue::Int(COGNITIVE_RED_LINE),
+            value: GoValue::Int(COGNITIVE_HIGH),
         },
     ];
 
@@ -361,27 +367,22 @@ fn pie_chart(report: &GoValue) -> Chart {
         return empty_pie_chart();
     }
 
-    // stats.Distribution over classifyComplexityForPlot.
+    // The crate's three-bucket distribution over every function.
     let mut simple = 0i64;
     let mut moderate = 0i64;
     let mut complex_count = 0i64;
     for f in &functions {
-        let cc = get_int(f, "cyclomatic_complexity");
-        if cc <= CYCLOMATIC_YELLOW_LINE {
-            simple += 1;
-        } else if cc <= CYCLOMATIC_RED_LINE {
-            moderate += 1;
-        } else {
-            complex_count += 1;
+        match distribution_bucket(get_int(f, "cyclomatic_complexity")) {
+            BUCKET_SIMPLE => simple += 1,
+            BUCKET_MODERATE => moderate += 1,
+            _ => complex_count += 1,
         }
     }
-    // Distribution keys (kept for parity with the reference label constants).
-    let _ = (PLOT_LABEL_SIMPLE, PLOT_LABEL_MODERATE, PLOT_LABEL_COMPLEX);
 
     let palette = get_chart_palette(Theme::Dark);
     let pie_data = vec![
         cf_plotpage::echarts::PieData {
-            name: "Simple (1-5)".to_string(),
+            name: DIST_LABEL_SIMPLE.to_string(),
             value: Some(GoValue::Int(simple)),
             item_style: Some(ItemStyle {
                 color: palette.semantic.good.to_string(),
@@ -390,7 +391,7 @@ fn pie_chart(report: &GoValue) -> Chart {
             ..cf_plotpage::echarts::PieData::default()
         },
         cf_plotpage::echarts::PieData {
-            name: "Moderate (6-10)".to_string(),
+            name: DIST_LABEL_MODERATE.to_string(),
             value: Some(GoValue::Int(moderate)),
             item_style: Some(ItemStyle {
                 color: palette.semantic.warning.to_string(),
@@ -399,7 +400,7 @@ fn pie_chart(report: &GoValue) -> Chart {
             ..cf_plotpage::echarts::PieData::default()
         },
         cf_plotpage::echarts::PieData {
-            name: "Complex (>10)".to_string(),
+            name: PIE_LABEL_COMPLEX.to_string(),
             value: Some(GoValue::Int(complex_count)),
             item_style: Some(ItemStyle {
                 color: palette.semantic.bad.to_string(),

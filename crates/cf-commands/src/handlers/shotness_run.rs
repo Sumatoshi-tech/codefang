@@ -1,119 +1,203 @@
-//! Real `history/shotness` over the general history pipeline.
+//! `history/shotness` over the shared history core.
 //!
-//! Port of the reference streaming shotness pipeline (the reference `initHistoryPipeline` /
-//! initHeadOnly → Runner → shotness `Analyzer.Consume`
-//! (`handleInsertion`/`handleModification`/`handleDeletion`, diff-driven
-//! line→node attribution) → aggregator (`accumulateNodes` /
-//! `computeCouplingPairs`) → `ticksToReport` (`buildReportFromMerged`) →
-//! `ComputeAllMetrics`).
+//! Per commit, in the pure parallel pre-pass of the history core: the
+//! filtered tree diff against the first parent and, change by change, the
+//! gated UAST parse of the changed blobs through the change's [`ChangeParses`]
+//! (the shared 256 KiB cap), the entity extraction (structural DSL → name
+//! DSL → qualified name) and the line diff — the [`ShotnessChangeProduct`]s,
+//! which keep only the extracted entities and the diff, never a tree. Then
+//! ONE sequential fold in chronological order ([`ShotnessFold`]) turns
+//! the products into each commit's [`CommitEffects`] over the live
+//! [`ShotnessState`]: an entity is born on insertion, touched once per commit
+//! whose hunks overlap its line span, moved by a file rename and ended when
+//! its declaration or file disappears. Every format replays the SAME effect
+//! records: the report is the state after the last commit, ndjson /
+//! timeseries list the per-commit touches.
 //!
-//! ## Node identity in the streaming pipeline (measured reference-binary wobble)
+//! Entity identity is `(type, qualified name, file)`: the name DSL result
+//! prefixed by the names of the enclosing declarations
+//! (`Outer.Inner.method`) and, for a method declared with a receiver
+//! (`func (a *A) String()`), by the receiver type (`A.String`), so same-named
+//! methods on different types are different entities.
 //!
-//! The reference analyzer registers extracted nodes in a name-keyed map
-//! (`res map[name]node`) and attributes every diff-touched line's spanning
-//! node through `reverseNodeMap` (node identity → registered name), i.e. each
-//! touched node is attributed to its OWN name (hercules
-//! `addNode(reversedNodesBefore[UniqueKey(node)], node, toName)`). The live Go
-//! binary's per-commit records confirm this: one commit attributes MULTIPLE
-//! distinct names per file per diff side (e.g. hercules 4d3f9500 touches
-//! `Function_groupStatus` AND `Function_loc` in `analyser.go`), which is
-//! impossible under any single-winner collapse.
+//! Merge commits are skipped (their diff against the first parent re-shows
+//! the side line that was already walked); under `--first-parent` a merge is
+//! an ordinary commit and counts once.
 //!
-//! The reference binary's reverse map keys do collide for a minority of nodes,
-//! and Go's randomized map iteration then picks the surviving name at random —
-//! measured: repeated Go runs at the same argv differ in a small fraction of
-//! change counts / member nodes (content-level nondeterminism, so the compat
-//! oracle downgrades these cells to its structural contract). No deterministic
-//! port can be byte-identical to that wobble; this port attributes every
-//! touched node to its own registered name (the collision-free reference
-//! behavior, and Go's measured majority behavior). All accumulation, coupling,
-//! metric, and serialization logic is the byte-exact cf-shotness port.
-//!
-//! Output bytes route through `cf-gojson` (the reference `encoding/json` parity); never
-//! `serde_json`.
+//! Output bytes route through `cf-gojson`; never `serde_json`.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
-use cf_analyzers_plumbing::identity_detector::IdentityDetector;
 use cf_gitlib::changes::ChangeAction;
-use cf_pathpolicy::Options as PathPolicyOptions;
-use cf_shotness::aggregate::{
-    accumulate_nodes, build_report_from_merged, compute_coupling_pairs, merge_nodes_into, TickNodes,
+use cf_shotness::{
+    compute_all_metrics, coupling_pair_count, touched_entities, CommitEffects, EntityEffect,
+    NodeSummary, ShotnessState, DEFAULT_SHOTNESS_DSL_NAME, DEFAULT_SHOTNESS_DSL_STRUCT,
 };
-use cf_shotness::{compute_all_metrics, NodeSummary};
-use cf_uast_node::Node;
+use cf_uast_node::dsl::Query;
+use cf_uast_node::{
+    Node, ROLE_NAME, ROLE_TYPE, UAST_CLASS, UAST_ENUM, UAST_FUNCTION, UAST_IDENTIFIER,
+    UAST_INTERFACE, UAST_METHOD, UAST_PARAMETER, UAST_STRUCT,
+};
 
-use crate::handlers::{floor_tick_secs, run_repo_path};
+use crate::handlers::history::{is_merge, CommitStamp};
+use crate::handlers::uast_walk::{uast_results, ChangeParses, ParseOutcome, Side, UastAnalyzer};
+use crate::pipeline::HandlerError;
 
-/// `UASTChangesAnalyzer` spill threshold: a commit with more than this many file
-/// changes streams zero UAST changes (the gated parses themselves, including
-/// the 256 KiB blob cap, live in [`crate::handlers::uast_walk::CommitParseCache`]).
-const SPILL_THRESHOLD: usize = 32;
-/// Default DSL selecting structural nodes.
-const DSL_STRUCT: &str = r#"filter(.roles has "Function")"#;
-/// Default DSL extracting the node name (the reference `DefaultShotnessDSLName`,
-/// `.props.name`): resolved directly from the node's `name` property — see
-/// [`extract_nodes`].
-const _DSL_NAME: &str = ".props.name";
+/// The structural-selection flag.
+pub(crate) const FLAG_DSL_STRUCT: &str = "shotness-dsl-struct";
+/// The name-extraction flag.
+pub(crate) const FLAG_DSL_NAME: &str = "shotness-dsl-name";
+/// `--shotness-keep-ended`: ended entities stay in the report, marked.
+pub(crate) const FLAG_KEEP_ENDED: &str = "shotness-keep-ended";
 
-/// Builds the `run --analyzers history/shotness --format json` bytes over the
-/// REAL general history pipeline, or `None` if the repository cannot be
-/// opened/walked.
-pub fn shotness_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
-    let metrics = shotness_run_metrics(sub)?;
-    Some(cf_gojson::marshal(&metrics.to_go_value()))
+/// Declaration kinds whose names qualify the entities declared inside them.
+const QUALIFYING_TYPES: [&str; 6] = [
+    UAST_CLASS,
+    UAST_STRUCT,
+    UAST_INTERFACE,
+    UAST_ENUM,
+    UAST_FUNCTION,
+    UAST_METHOD,
+];
+/// Separator between a qualifier and the name it qualifies.
+const QUALIFIER_SEPARATOR: &str = ".";
+
+/// The `history/shotness` DSL configuration as the user set it: the structural
+/// selection (`--shotness-dsl-struct`) and the name extraction
+/// (`--shotness-dsl-name`), both validated at construction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ShotnessDsl {
+    /// The structural query, run against each parsed file root.
+    pub struct_query: String,
+    /// The name query, run against each selected node.
+    pub name_query: String,
 }
 
-/// Computes the `history/shotness` [`ComputedMetrics`] over the REAL general
-/// history pipeline (one report value shared by every output format), or `None`
-/// if the repository cannot be opened/walked. Each `run --format` encoding is
-/// just a serializer over this single value (the reference `ToJSON`/`ToYAML`/binary
-/// envelope), routed at the handler layer.
+impl Default for ShotnessDsl {
+    fn default() -> Self {
+        Self {
+            struct_query: DEFAULT_SHOTNESS_DSL_STRUCT.to_string(),
+            name_query: DEFAULT_SHOTNESS_DSL_NAME.to_string(),
+        }
+    }
+}
+
+impl ShotnessDsl {
+    /// Reads and validates the two DSL flags. A flag the user did not set
+    /// (or set empty) resolves to the crate default.
+    ///
+    /// # Errors
+    ///
+    /// [`HandlerError::InvalidFlag`] naming the flag whose expression does not
+    /// compile.
+    pub(crate) fn from_matches(sub: &clap::ArgMatches) -> Result<Self, HandlerError> {
+        let dsl = Self {
+            struct_query: dsl_flag(sub, FLAG_DSL_STRUCT, DEFAULT_SHOTNESS_DSL_STRUCT),
+            name_query: dsl_flag(sub, FLAG_DSL_NAME, DEFAULT_SHOTNESS_DSL_NAME),
+        };
+        dsl.compile()?;
+        Ok(dsl)
+    }
+
+    /// Compiles both queries.
+    ///
+    /// # Errors
+    ///
+    /// [`HandlerError::InvalidFlag`] naming the flag whose expression does not
+    /// compile.
+    pub(crate) fn compile(&self) -> Result<CompiledDsl, HandlerError> {
+        Ok(CompiledDsl {
+            structure: compile_flag(FLAG_DSL_STRUCT, &self.struct_query)?,
+            name: compile_flag(FLAG_DSL_NAME, &self.name_query)?,
+        })
+    }
+}
+
+/// Compiles one flag's expression, naming the flag on failure.
+fn compile_flag(flag: &str, query: &str) -> Result<Query, HandlerError> {
+    Query::compile(query)
+        .map_err(|e| HandlerError::InvalidFlag(format!("invalid --{flag} {query:?}: {e}")))
+}
+
+/// The flag's value when the user set it (command line or environment) to a
+/// non-empty string, else `default` — the registered flag default is NOT
+/// consulted, so the crate default stays the effective one.
+fn dsl_flag(sub: &clap::ArgMatches, name: &str, default: &str) -> String {
+    use clap::parser::ValueSource;
+    let Ok(Some(value)) = sub.try_get_one::<String>(name) else {
+        return default.to_string();
+    };
+    match sub.value_source(name) {
+        Some(ValueSource::CommandLine | ValueSource::EnvVariable) if !value.is_empty() => {
+            value.clone()
+        }
+        _ => default.to_string(),
+    }
+}
+
+/// Validates the shotness DSL flags (the preflight leg of this analyzer).
+///
+/// # Errors
+///
+/// [`HandlerError::InvalidFlag`] naming the flag whose expression does not
+/// compile.
+pub(crate) fn validate_shotness_dsl(sub: &clap::ArgMatches) -> Result<(), HandlerError> {
+    ShotnessDsl::from_matches(sub).map(|_| ())
+}
+
+/// Both DSL queries compiled once per worker commit (a [`Query`] is not
+/// `Sync`, so the parallel pre-pass compiles from the [`ShotnessDsl`] strings).
+pub(crate) struct CompiledDsl {
+    structure: Query,
+    name: Query,
+}
+
+/// Computes the `history/shotness` [`cf_shotness::ComputedMetrics`] over the
+/// shared history core (one report value shared by every output format), or
+/// `None` if the repository cannot be opened/walked.
 pub fn shotness_run_metrics(sub: &clap::ArgMatches) -> Option<cf_shotness::ComputedMetrics> {
     let report = shotness_run_report_data(sub)?;
     Some(compute_all_metrics(&report))
 }
 
-/// The raw `history/shotness` report (the reference `ticksToReport`: key-sorted `Nodes` +
-/// index-keyed `Counters`) over the same walk as [`shotness_run_metrics`]. The
-/// plot path consumes this directly — the reference implementation's store writer streams exactly these
-/// `(NodeSummary, Counter)` records (`WriteToStore` →
-/// `extractShotnessData(report)`).
+/// The raw `history/shotness` report (key-sorted `Nodes` + index-keyed
+/// `Counters`): the live state after replaying every walked commit's effects
+/// in walk order. The plot path consumes this directly.
 pub fn shotness_run_report_data(sub: &clap::ArgMatches) -> Option<cf_shotness::ReportData> {
     let walk = shotness_walk(sub)?;
-
-    // Per-tick accumulator (reference: aggregator `byTick`).
-    let mut by_tick: BTreeMap<i64, TickNodes> = BTreeMap::new();
-    for c in &walk {
-        if c.touched.is_empty() {
-            continue;
-        }
-        let acc = by_tick.entry(c.tick).or_default();
-        accumulate_nodes(acc, &c.touched);
-        compute_coupling_pairs(acc, &c.touched);
+    let keep_ended = sub
+        .try_get_one::<bool>(FLAG_KEEP_ENDED)
+        .ok()
+        .flatten()
+        .copied()
+        .unwrap_or(false);
+    let mut state = if keep_ended {
+        ShotnessState::keeping_ended()
+    } else {
+        ShotnessState::new()
+    };
+    for c in walk.iter() {
+        state.apply(&c.touched);
     }
-
-    // ticksToReport: merge every tick's node map, then buildReportFromMerged.
-    let mut merged: TickNodes = TickNodes::new();
-    for td in by_tick.values() {
-        merge_nodes_into(&mut merged, td);
-    }
-
-    Some(build_report_from_merged(&merged))
+    Some(state.report())
 }
 
-/// One walked commit's shotness products (the reference `shotness.Consume` TC + runner
-/// stamps). `touched` empty ⇔ nil-Data TC (skipped merge / spill / no nodes).
-#[derive(Clone)]
+/// One walked commit's shotness record: its [`CommitEffects`] plus the shared
+/// identity/tick stamps. `touched` empty ⇔ the commit affected no entity
+/// (skipped merge / no parseable change).
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ShotnessCommit {
+    /// Position in the ORIGINAL window (oversized-dropped commits count): the
+    /// key the merged ndjson stream orders every analyzer's records by.
+    pub pos: usize,
     /// Full hex hash.
     pub hash: String,
-    /// Node key → summary for the nodes this commit touched (reference:
-    /// `CommitData.NodesTouched` keys + summaries; `CountDelta` is always 1).
-    pub touched: BTreeMap<String, NodeSummary>,
-    /// TicksSinceStart tick.
+    /// What the commit did to each entity, keyed by entity key.
+    pub touched: CommitEffects,
+    /// The tick.
     pub tick: i64,
-    /// Loose-identity author id (walk order).
+    /// The author id.
     pub author_id: i64,
     /// Committer time, Unix seconds.
     pub when: i64,
@@ -121,123 +205,41 @@ pub(crate) struct ShotnessCommit {
     pub offset_min: i32,
 }
 
-/// The shared `history/shotness` revwalk: one entry per walked commit, walk
-/// order. Every shotness format consumes THIS one walk.
-pub(crate) fn shotness_walk(sub: &clap::ArgMatches) -> Option<Vec<ShotnessCommit>> {
-    // Multi-analyzer runs route through the ONE shared UAST walk (same code,
-    // one tree diff + one parse per blob per commit across the co-selected
-    // analyzers); single-analyzer runs keep this direct walk. Only the
-    // per-commit PARSES/extracts are shared — the cumulative state machine
-    // below ([`ShotnessReducer`]) runs sequentially in walk order either way.
-    if let Some(shared) = crate::handlers::uast_walk::shared_shotness_walk(sub) {
-        return shared;
+impl ShotnessCommit {
+    /// Whether the commit touched (counted a change on) any entity.
+    fn touched_any(&self) -> bool {
+        self.touched.values().any(|e| e.touched)
     }
-
-    let path = run_repo_path(sub);
-    let repo = cf_gitlib::Repository::open(&path).ok()?;
-
-    let head_only = sub.get_flag("head");
-    let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
-    let first_parent = crate::handlers::effective_first_parent(sub);
-
-    let hashes: Vec<cf_gitlib::Hash> = if head_only {
-        vec![repo.head().ok()?]
-    } else {
-        // Window: `limit` NEWEST commits oldest-first.
-        crate::handlers::load_history_commit_hashes(
-            &repo,
-            limit,
-            first_parent,
-            crate::handlers::history_since_spec(sub),
-        )?
-    };
-
-    let parser = cf_uast::Parser::new();
-    // `opts` drives the UAST parse gate only (the reference always-on
-    // pathfilter); the TreeDiff-level filter is applied to the changes below.
-    let opts = PathPolicyOptions::default();
-    let change_filter = crate::handlers::history_filter(sub).unwrap_or_default();
-    let mut identity = IdentityDetector::new();
-
-    // Cumulative analyzer state + merge dedup (sequential, walk order).
-    let mut reducer = ShotnessReducer::default();
-
-    let mut tick0: Option<i64> = None;
-    let mut previous_tick: i64 = 0;
-
-    let mut commits: Vec<ShotnessCommit> = Vec::with_capacity(hashes.len());
-
-    for hash in &hashes {
-        let commit = repo.lookup_commit(*hash).ok()?;
-        let committer_when = commit.committer().when;
-        let when = committer_when.seconds();
-
-        let gsig = commit.author();
-        let author_id = identity.consume_signature(&cf_analyzers_plumbing::Signature {
-            name: gsig.name.clone(),
-            email: gsig.email.clone(),
-            when_unix: gsig.when.seconds(),
-        });
-
-        let base = *tick0.get_or_insert_with(|| floor_tick_secs(when));
-        let raw_tick = (when - base).div_euclid(86_400);
-        let tick = raw_tick.max(previous_tick);
-        previous_tick = tick;
-
-        let mut entry = ShotnessCommit {
-            hash: hash.to_string(),
-            touched: BTreeMap::new(),
-            tick,
-            author_id,
-            when,
-            offset_min: committer_when.offset_minutes(),
-        };
-
-        // shouldConsumeCommit: a merge commit is processed only the first time.
-        if !reducer.should_consume(*hash, commit.num_parents()) {
-            commits.push(entry);
-            continue;
-        }
-
-        // Tree diff against the first parent (root → full initial tree), then
-        // the SAME per-commit parse/extract/diff product the shared
-        // multi-analyzer walk computes, fed to the sequential state machine.
-        let mut changes = crate::handlers::history::commit_tree_changes(&repo, &commit)?;
-        // TreeDiffAnalyzer.filterChanges (policy + --languages).
-        change_filter.retain_changes(&repo, &mut changes);
-        let mut cache = crate::handlers::uast_walk::CommitParseCache::new(&repo, &parser, &opts);
-        let products = shotness_commit_product(&changes, &mut cache);
-        entry.touched = reducer.consume(&products);
-
-        commits.push(entry);
-    }
-
-    Some(commits)
 }
 
-/// One change's state-independent shotness inputs: the parsed/extracted node
-/// lists and the file diff — everything `Consume`'s `handle*` calls need that
-/// does NOT depend on the cumulative analyzer state. Computed per commit by
-/// [`shotness_commit_product`] (in the direct walk AND the shared
-/// multi-analyzer walk) and consumed sequentially by [`ShotnessReducer`].
+/// The `history/shotness` records of the run's UAST pass: one entry per
+/// walked commit, walk order. Every shotness format consumes THIS one walk.
+pub(crate) fn shotness_walk(sub: &clap::ArgMatches) -> Option<Arc<Vec<ShotnessCommit>>> {
+    uast_results(sub, UastAnalyzer::Shotness)?.shotness
+}
+
+/// One change's state-independent shotness inputs: the extracted entity lists
+/// and the file diff — everything the reduce needs that does NOT depend on
+/// the cumulative state. Computed per change by [`shotness_change`] and
+/// folded per commit, sequentially, by [`ShotnessFold`] — which needs ALL of
+/// a commit's products at once (every file-level delete and rename applies
+/// before any entity touch), so a commit's products are kept until its fold.
 pub(crate) enum ShotnessChangeProduct {
-    /// A Delete change (`handleDeletion` input).
+    /// A Delete change: every entity of the file ends.
     Delete {
         /// The deleted file path.
         from_name: String,
     },
-    /// An Insert change whose After side parsed (`handleInsertion` input);
-    /// a failed parse emits no product, exactly as the direct walk skipped
-    /// the `handle_insertion` call.
+    /// An Insert change whose After side parsed: every entity is born.
     Insert {
         /// The inserted file path.
         to_name: String,
-        /// The extracted structural nodes of the After tree.
+        /// The extracted entities of the After tree.
         nodes: Vec<ExtractedNode>,
     },
-    /// A Modify change (`handleModification` input). The rename bookkeeping
-    /// applies unconditionally; `detail` is present only when BOTH sides
-    /// parsed AND the FileDiff survived its preconditions.
+    /// A Modify change. The rename bookkeeping applies unconditionally;
+    /// `detail` is present only when BOTH sides parsed AND the line diff
+    /// survived its preconditions.
     Modify {
         /// The old file path.
         from_name: String,
@@ -255,140 +257,206 @@ pub(crate) struct ShotnessModifyDetail {
     diff: FileDiff,
 }
 
-/// Computes one commit's [`ShotnessChangeProduct`]s — the pure
-/// (state-independent) half of the reference `shotness.Consume`: gated UAST
-/// parses through the per-commit cache, node extraction, and the FileDiff.
-/// The spill rule (> 32 changes ⇒ zero UAST changes, NO products — not even
-/// deletions) matches the direct walk's pre-loop skip.
-pub(crate) fn shotness_commit_product(
-    changes: &[cf_gitlib::changes::Change],
-    cache: &mut crate::handlers::uast_walk::CommitParseCache<'_>,
-) -> Vec<ShotnessChangeProduct> {
-    use crate::handlers::uast_walk::ParseOutcome;
-
-    // Spill rule: > 32 changes ⇒ the analyzer sees zero UAST changes.
-    if changes.len() > SPILL_THRESHOLD {
-        return Vec::new();
-    }
-
-    let mut products: Vec<ShotnessChangeProduct> = Vec::with_capacity(changes.len());
-    for change in changes {
-        match change.action {
-            ChangeAction::Delete => products.push(ShotnessChangeProduct::Delete {
-                from_name: change.from.name.clone(),
+/// Computes one change's [`ShotnessChangeProduct`] — the pure
+/// (state-independent) half of the consume: the gated UAST parses of the
+/// change's sides, entity extraction under `dsl`, and the line diff. `None`
+/// for an Insert whose After side does not parse (it contributes nothing).
+pub(crate) fn shotness_change(
+    parses: &ChangeParses<'_>,
+    dsl: &CompiledDsl,
+) -> Option<ShotnessChangeProduct> {
+    let change = parses.change();
+    match change.action {
+        ChangeAction::Delete => Some(ShotnessChangeProduct::Delete {
+            from_name: change.from.name.clone(),
+        }),
+        ChangeAction::Insert => match parses.parse(Side::After) {
+            ParseOutcome::Parsed(after) => Some(ShotnessChangeProduct::Insert {
+                to_name: change.to.name.clone(),
+                nodes: extract_nodes(after, dsl),
             }),
-            ChangeAction::Insert => {
-                if let ParseOutcome::Parsed(after) = &*cache.parse(&change.to.name, change.to.hash)
-                {
-                    products.push(ShotnessChangeProduct::Insert {
-                        to_name: change.to.name.clone(),
-                        nodes: extract_nodes(after),
-                    });
-                }
-            }
-            ChangeAction::Modify => {
-                let before = cache.parse(&change.from.name, change.from.hash);
-                let after = cache.parse(&change.to.name, change.to.hash);
-                let detail = match (&*before, &*after) {
-                    (ParseOutcome::Parsed(before), ParseOutcome::Parsed(after)) => {
-                        file_diff(cache, change).map(|diff| ShotnessModifyDetail {
-                            nodes_before: extract_nodes(before),
-                            nodes_after: extract_nodes(after),
-                            diff,
-                        })
-                    }
-                    _ => None,
-                };
-                products.push(ShotnessChangeProduct::Modify {
-                    from_name: change.from.name.clone(),
-                    to_name: change.to.name.clone(),
-                    detail,
-                });
-            }
+            ParseOutcome::Failed | ParseOutcome::Skipped => None,
+        },
+        ChangeAction::Modify => {
+            let detail = match (parses.parse(Side::Before), parses.parse(Side::After)) {
+                (ParseOutcome::Parsed(before), ParseOutcome::Parsed(after)) => file_diff(parses)
+                    .map(|diff| ShotnessModifyDetail {
+                        nodes_before: extract_nodes(before, dsl),
+                        nodes_after: extract_nodes(after, dsl),
+                        diff,
+                    }),
+                _ => None,
+            };
+            Some(ShotnessChangeProduct::Modify {
+                from_name: change.from.name.clone(),
+                to_name: change.to.name.clone(),
+                detail,
+            })
         }
     }
-    products
 }
 
-/// The sequential, cumulative half of the reference `shotness.Consume`: the
-/// state machine over commits in walk order. Both the direct walk and the
-/// shared multi-analyzer walk drive THIS reducer over identical per-commit
-/// products, so the cumulative node/file state — and therefore every report —
-/// is byte-identical between the two.
-#[derive(Default)]
-pub(crate) struct ShotnessReducer {
-    /// Cumulative analyzer state.
+/// The sequential half of the walk: turns each commit's products into its
+/// [`CommitEffects`] over the live state (file deletes and renames need the
+/// entities currently declared in the file), applies them and records them,
+/// in walk order. Merges are skipped (their record has no effects) unless the
+/// walk is first-parent simplified.
+pub(crate) struct ShotnessFold {
+    /// The live entity state.
     state: ShotnessState,
-    /// Merge dedup tracker (the reference `s.merges.SeenOrAdd` over
-    /// `NumParents() > 1`).
-    seen_merges: BTreeSet<cf_gitlib::Hash>,
+    /// Whether the walk simplifies to the first parent (a merge is then an
+    /// ordinary commit).
+    first_parent: bool,
+    /// One record per folded commit.
+    commits: Vec<ShotnessCommit>,
 }
 
-impl ShotnessReducer {
-    /// shouldConsumeCommit: a merge commit is processed only the first time.
-    pub(crate) fn should_consume(&mut self, hash: cf_gitlib::Hash, num_parents: usize) -> bool {
-        num_parents <= 1 || self.seen_merges.insert(hash)
+impl ShotnessFold {
+    /// An empty fold for a walk in the given first-parent mode.
+    pub(crate) fn new(first_parent: bool) -> Self {
+        Self {
+            state: ShotnessState::new(),
+            first_parent,
+            commits: Vec::new(),
+        }
     }
 
-    /// Applies one commit's products to the cumulative state and returns the
-    /// touched-node map (the reference `buildCommitData`: nil unless a known
-    /// node was touched).
-    pub(crate) fn consume(
-        &mut self,
-        products: &[ShotnessChangeProduct],
-    ) -> BTreeMap<String, NodeSummary> {
-        // allNodes: node keys touched in THIS commit (deduped, the reference `allNodes`).
-        let mut all_nodes: BTreeSet<String> = BTreeSet::new();
+    /// Folds one kept commit's per-change products, in window order.
+    pub(crate) fn consume(&mut self, stamp: &CommitStamp, products: &[ShotnessChangeProduct]) {
+        let touched = if is_merge(stamp.num_parents, self.first_parent) {
+            CommitEffects::new()
+        } else {
+            self.effects(products)
+        };
+        self.commits.push(ShotnessCommit {
+            pos: stamp.pos,
+            hash: stamp.hex.clone(),
+            touched,
+            tick: stamp.tick,
+            author_id: stamp.author_id,
+            when: stamp.when,
+            offset_min: stamp.offset_min,
+        });
+    }
 
+    /// The folded records, walk order.
+    pub(crate) fn finish(self) -> Vec<ShotnessCommit> {
+        self.commits
+    }
+
+    /// Builds and applies one commit's effects, returning them.
+    fn effects(&mut self, products: &[ShotnessChangeProduct]) -> CommitEffects {
+        let mut effects = CommitEffects::new();
+        // File-level events first (a rename onto a deleted path must see the
+        // delete), then the per-entity touches and ends.
         for product in products {
             match product {
                 ShotnessChangeProduct::Delete { from_name } => {
-                    self.state.handle_deletion(from_name);
+                    self.end_file(&mut effects, from_name);
                 }
+                ShotnessChangeProduct::Modify {
+                    from_name, to_name, ..
+                } if from_name != to_name => {
+                    self.move_file(&mut effects, from_name, to_name);
+                }
+                _ => {}
+            }
+        }
+        for product in products {
+            match product {
                 ShotnessChangeProduct::Insert { to_name, nodes } => {
-                    // Insertion has no diff, so every extracted node is touched
-                    // under its OWN name (the reference implementation iterates
-                    // `res` (name→node) directly).
                     for n in nodes {
-                        self.state
-                            .add_node(&n.name, &n.type_, to_name, &mut all_nodes);
+                        touch(&mut effects, n.summary(to_name));
                     }
                 }
                 ShotnessChangeProduct::Modify {
-                    from_name,
                     to_name,
-                    detail,
+                    detail: Some(d),
+                    ..
                 } => {
-                    if from_name != to_name {
-                        self.state.apply_rename(from_name, to_name);
-                    }
-                    if let Some(d) = detail {
-                        self.state.apply_diff_edits(
-                            to_name,
-                            &d.nodes_before,
-                            &d.nodes_after,
-                            &d.diff,
-                            &mut all_nodes,
-                        );
+                    apply_diff_edits(&mut effects, to_name, d);
+                    for removed in removed_declarations(&d.nodes_before, &d.nodes_after) {
+                        end(&mut effects, removed.summary(to_name));
                     }
                 }
+                _ => {}
             }
         }
+        self.state.apply(&effects);
+        effects
+    }
 
-        // buildCommitData: nil unless a known node was touched.
-        let mut touched: BTreeMap<String, NodeSummary> = BTreeMap::new();
-        for key in &all_nodes {
-            if let Some(ns) = self.state.nodes.get(key) {
-                touched.insert(key.clone(), ns.summary.clone());
-            }
+    /// Records the end of every entity declared in `file`.
+    fn end_file(&self, effects: &mut CommitEffects, file: &str) {
+        for node in self.state.entities_in(file) {
+            end(effects, node.summary.clone());
         }
-        touched
+    }
+
+    /// Records the move of every entity of `from` under `to`.
+    fn move_file(&self, effects: &mut CommitEffects, from: &str, to: &str) {
+        for node in self.state.entities_in(from) {
+            let moved = NodeSummary::new(&node.summary.type_, &node.summary.name, to);
+            let key = moved.key();
+            let effect = effects.entry(key).or_insert_with(|| EntityEffect {
+                summary: moved,
+                touched: false,
+                ended: false,
+                moved_from: None,
+            });
+            effect.moved_from = Some(node.summary.key());
+            // The destination key's previous occupant (a deleted file's
+            // entity) is replaced by the move, never ended after it.
+            effect.ended = false;
+        }
     }
 }
 
-/// Per-commit shotness NDJSON records (forked leaf): only commits that touched
-/// known nodes emit a line; `data` is the reference implementation's `*CommitData` — one `NodesTouched`
-/// map (key-sorted) of `NodeDelta{Summary{Type,Name,File}, CountDelta: 1}`.
+/// Records a touch of `summary` in the commit's effects.
+fn touch(effects: &mut CommitEffects, summary: NodeSummary) {
+    effects
+        .entry(summary.key())
+        .or_insert_with(|| EntityEffect {
+            summary,
+            touched: false,
+            ended: false,
+            moved_from: None,
+        })
+        .touched = true;
+}
+
+/// Records the end of `summary` in the commit's effects.
+fn end(effects: &mut CommitEffects, summary: NodeSummary) {
+    effects
+        .entry(summary.key())
+        .or_insert_with(|| EntityEffect {
+            summary,
+            touched: false,
+            ended: false,
+            moved_from: None,
+        })
+        .ended = true;
+}
+
+/// The Before-side entities whose `(type, name)` no longer exists on the
+/// After side: their declarations were removed in this change.
+fn removed_declarations<'a>(
+    before: &'a [ExtractedNode],
+    after: &[ExtractedNode],
+) -> Vec<&'a ExtractedNode> {
+    let kept: BTreeSet<(&str, &str)> = after
+        .iter()
+        .map(|n| (n.type_.as_str(), n.name.as_str()))
+        .collect();
+    before
+        .iter()
+        .filter(|n| !kept.contains(&(n.type_.as_str(), n.name.as_str())))
+        .collect()
+}
+
+/// Per-commit shotness NDJSON records: only commits that touched an entity
+/// emit a line; `data` is one `NodesTouched` map (key-sorted) of
+/// `{Summary{Type,Name,File}, CountDelta: 1}`.
 pub fn shotness_ndjson_records(
     sub: &clap::ArgMatches,
 ) -> Option<Vec<crate::handlers::history_formats::NdjsonRecord>> {
@@ -396,12 +464,12 @@ pub fn shotness_ndjson_records(
 
     let walk = shotness_walk(sub)?;
     let mut records = Vec::new();
-    for (pos, c) in walk.iter().enumerate() {
-        if c.touched.is_empty() {
+    for c in walk.iter() {
+        if !c.touched_any() {
             continue;
         }
         let mut nodes = GoMap::new_map();
-        for (key, ns) in &c.touched {
+        for (key, ns) in touched_entities(&c.touched) {
             let mut summary = GoMap::new_struct();
             summary.insert("Type".to_string(), GoValue::Str(ns.type_.clone()));
             summary.insert("Name".to_string(), GoValue::Str(ns.name.clone()));
@@ -414,7 +482,7 @@ pub fn shotness_ndjson_records(
         let mut data = GoMap::new_struct();
         data.insert("NodesTouched".to_string(), GoValue::Map(nodes));
         records.push(crate::handlers::history_formats::NdjsonRecord {
-            pos,
+            pos: c.pos,
             hash: c.hash.clone(),
             tick: c.tick,
             author_id: c.author_id,
@@ -426,9 +494,8 @@ pub fn shotness_ndjson_records(
     Some(records)
 }
 
-/// The shotness contribution to the merged `--format timeseries` document (reference:
-/// `shotness.ExtractCommitTimeSeries` over `report["commit_stats"]`): per
-/// node-touching commit `{"nodes_touched": n, "coupling_pairs": n*(n-1)/2}`.
+/// The shotness contribution to the merged `--format timeseries` document:
+/// per entity-touching commit `{"nodes_touched": n, "coupling_pairs": C(n,2)}`.
 pub fn shotness_timeseries_contribution(
     sub: &clap::ArgMatches,
 ) -> Option<crate::handlers::history_formats::TimeSeriesContribution> {
@@ -437,16 +504,17 @@ pub fn shotness_timeseries_contribution(
     let walk = shotness_walk(sub)?;
     let mut per_commit = Vec::new();
     let mut commit_meta = Vec::new();
-    for c in &walk {
-        if c.touched.is_empty() {
+    for c in walk.iter() {
+        let n = touched_entities(&c.touched).count();
+        if n == 0 {
             continue;
         }
-        let n = c.touched.len() as i64;
-        // The reference `computeCouplingPairs`: 0 below minCouplingNodes (2), else C(n,2).
-        let pairs = if n < 2 { 0 } else { n * (n - 1) / 2 };
         let mut entry = GoMap::new_map();
-        entry.insert("nodes_touched".to_string(), GoValue::Int(n));
-        entry.insert("coupling_pairs".to_string(), GoValue::Int(pairs));
+        entry.insert("nodes_touched".to_string(), GoValue::Int(n as i64));
+        entry.insert(
+            "coupling_pairs".to_string(),
+            GoValue::Int(coupling_pair_count(n)),
+        );
         per_commit.push((c.hash.clone(), GoValue::Map(entry)));
         commit_meta.push((
             c.hash.clone(),
@@ -462,9 +530,9 @@ pub fn shotness_timeseries_contribution(
     })
 }
 
-/// One extracted structural node: its resolved name, type, and 1-based inclusive
-/// line span, used for registration and diff line→node mapping
-/// (the reference `extractNodes` / `genLine2Node` / `resolveEndLine`).
+/// One extracted entity: its qualified name, type, and 1-based inclusive line
+/// span (for the diff line → entity mapping).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ExtractedNode {
     name: String,
     type_: String,
@@ -472,56 +540,150 @@ pub(crate) struct ExtractedNode {
     end_line: usize,
 }
 
-/// Extracts structural nodes via the struct DSL and resolves each node's name
-/// via the name DSL. Returns one entry per distinct name
-/// (last-wins on name collision over the deterministic `FindDSL` slice order),
-/// each carrying its own name/type/span — the reference `res map[name]node`
-/// registration that `reverseNodeMap` inverts for per-node attribution.
-fn extract_nodes(root: &Node) -> Vec<ExtractedNode> {
-    let Ok(structs) = root.find_dsl(DSL_STRUCT) else {
-        return Vec::new();
-    };
+impl ExtractedNode {
+    /// The entity's identity in `file`.
+    fn summary(&self, file: &str) -> NodeSummary {
+        NodeSummary::new(&self.type_, &self.name, file)
+    }
+}
 
-    // name → node (last-wins over the deterministic FindDSL slice order).
-    let mut named: BTreeMap<String, ExtractedNode> = BTreeMap::new();
+/// A byte span `[start, end)` of a node with position information.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Span {
+    start: u64,
+    end: u64,
+}
 
-    for struct_node in &structs {
-        // Reference: `nameNodes, err := structNode.FindDSL(".props.name")`. The
-        // `.props.<key>` field access yields one literal node holding the value of
-        // the `name` property (the Rust DSL engine lacks the nested-props
-        // processor, so resolve it directly — identical semantics). the reference implementation's name
-        // selection:
-        //   if err==nil && len(nameNodes)>0 { name=nameNodes[0].Token;
-        //                                      if name!="" { use name } }      // empty ⇒ skip
-        //   else if structNode.Token!="" { use structNode.Token }              // missing key ⇒ fall back
-        let name = match struct_node.props.get("name") {
-            Some(prop) => {
-                if prop.is_empty() {
-                    continue; // present-but-empty ⇒ no fallback, skip
-                }
-                prop.clone()
-            }
-            None if !struct_node.token.is_empty() => struct_node.token.clone(),
-            None => continue,
+impl Span {
+    fn of(n: &Node) -> Option<Self> {
+        n.pos.as_ref().map(|p| Self {
+            start: p.start_offset,
+            end: p.end_offset,
+        })
+    }
+
+    /// Whether `self` covers `other`.
+    fn contains(self, other: Self) -> bool {
+        self.start <= other.start && other.end <= self.end
+    }
+}
+
+/// A named declaration that qualifies what is declared inside it.
+struct Container {
+    span: Span,
+    type_: String,
+    qualified: String,
+}
+
+/// Extracts the entities of a parsed file: the structural query selects the
+/// nodes, the name query names each one, and the enclosing declarations (plus
+/// a receiver type) qualify the name. A node without a resolvable name is not
+/// an entity. Two selected nodes resolving to the same `(type, name)` are one
+/// entity spanning the last one (deterministic over the query's pre-order).
+fn extract_nodes(root: &Node, dsl: &CompiledDsl) -> Vec<ExtractedNode> {
+    let containers = containers(root, &dsl.name);
+    let mut named: BTreeMap<(String, String), ExtractedNode> = BTreeMap::new();
+    for node in dsl.structure.run(root) {
+        let Some(own) = own_name(&node, &dsl.name) else {
+            continue;
         };
-
-        let (start_line, end_line) = node_span(struct_node);
+        let name = match Span::of(&node).and_then(|span| enclosing(&containers, span, &node)) {
+            Some(prefix) => format!("{prefix}{QUALIFIER_SEPARATOR}{own}"),
+            None => own,
+        };
+        let (start_line, end_line) = node_span(&node);
+        let type_ = node.node_type.clone();
         named.insert(
-            name.clone(),
+            (type_.clone(), name.clone()),
             ExtractedNode {
                 name,
-                type_: struct_node.node_type.as_str().to_string(),
+                type_,
                 start_line,
                 end_line,
             },
         );
     }
-
     named.into_values().collect()
 }
 
-/// Resolves a node's 1-based inclusive line span (the reference `pos.StartLine` /
-/// `resolveEndLine`: explicit end line if greater, else the max descendant line).
+/// The named qualifying declarations of the tree in pre-order, each with its
+/// own qualified name.
+fn containers(root: &Node, name_query: &Query) -> Vec<Container> {
+    let mut out: Vec<Container> = Vec::new();
+    let mut open: Vec<usize> = Vec::new();
+    root.visit_pre_order(|n| {
+        let Some(span) = Span::of(n) else {
+            return;
+        };
+        while open.last().is_some_and(|&i| !out[i].span.contains(span)) {
+            open.pop();
+        }
+        if !QUALIFYING_TYPES.contains(&n.node_type.as_str()) {
+            return;
+        }
+        let Some(own) = own_name(n, name_query) else {
+            return;
+        };
+        let qualified = match open.last() {
+            Some(&i) => format!("{}{QUALIFIER_SEPARATOR}{own}", out[i].qualified),
+            None => own,
+        };
+        out.push(Container {
+            span,
+            type_: n.node_type.clone(),
+            qualified,
+        });
+        open.push(out.len() - 1);
+    });
+    out
+}
+
+/// The qualified name of the deepest container enclosing `node` (a container
+/// with the node's own span and type is the node itself).
+fn enclosing(containers: &[Container], span: Span, node: &Node) -> Option<String> {
+    containers
+        .iter()
+        .rev()
+        .find(|c| c.span.contains(span) && !(c.span == span && c.type_ == node.node_type))
+        .map(|c| c.qualified.clone())
+}
+
+/// A node's own name: the receiver type (when declared with one) and the
+/// name query's first non-empty result; `None` when the query yields nothing.
+fn own_name(node: &Node, name_query: &Query) -> Option<String> {
+    let name = name_query
+        .run(node)
+        .into_iter()
+        .map(|n| n.token)
+        .find(|t| !t.is_empty())?;
+    Some(match receiver_type(node) {
+        Some(receiver) => format!("{receiver}{QUALIFIER_SEPARATOR}{name}"),
+        None => name,
+    })
+}
+
+/// The receiver type of a method declared as `func (a *A) M()`: a `Parameter`
+/// child preceding the name identifier carries the receiver, and the first
+/// type-role identifier inside it is its type. Methods declared inside their
+/// type (`class A { m() }`) have no receiver parameter and are qualified by
+/// the enclosing declaration instead.
+fn receiver_type(node: &Node) -> Option<String> {
+    let name_index = node
+        .children
+        .iter()
+        .position(|c| c.node_type == UAST_IDENTIFIER && c.roles.iter().any(|r| r == ROLE_NAME))?;
+    let receiver = node.children[..name_index]
+        .iter()
+        .find(|c| c.node_type == UAST_PARAMETER)?;
+    receiver
+        .find(|d| d.node_type == UAST_IDENTIFIER && d.roles.iter().any(|r| r == ROLE_TYPE))
+        .first()
+        .map(|d| d.token.clone())
+        .filter(|t| !t.is_empty())
+}
+
+/// Resolves a node's 1-based inclusive line span: the explicit end line when
+/// greater than the start, else the maximum descendant line.
 fn node_span(n: &Node) -> (usize, usize) {
     let Some(pos) = &n.pos else { return (0, 0) };
     let start = pos.start_line as usize;
@@ -531,21 +693,17 @@ fn node_span(n: &Node) -> (usize, usize) {
     let mut end = start;
     n.visit_pre_order(|child| {
         if let Some(cp) = &child.pos {
-            let candidate = if cp.end_line > cp.start_line {
-                cp.end_line
-            } else {
-                cp.start_line
-            };
-            if candidate as usize > end {
-                end = candidate as usize;
+            let candidate = cp.end_line.max(cp.start_line) as usize;
+            if candidate > end {
+                end = candidate;
             }
         }
     });
     (start, end)
 }
 
-/// A line→spanning-node-indices map; `line2node[l-1]` holds
-/// the indices (into the `nodes` slice) of nodes whose span covers line `l`.
+/// A line → entity-indices map; `line2node[l-1]` holds the indices (into
+/// `nodes`) of the entities whose span covers line `l`.
 fn gen_line2node(nodes: &[ExtractedNode], lines: usize) -> Vec<Vec<usize>> {
     let mut res: Vec<Vec<usize>> = vec![Vec::new(); lines];
     for (i, n) in nodes.iter().enumerate() {
@@ -561,7 +719,7 @@ fn gen_line2node(nodes: &[ExtractedNode], lines: usize) -> Vec<Vec<usize>> {
     res
 }
 
-/// Diff operation kind (the reference `diffmatchpatch.Operation` as used by FileDiff).
+/// Diff operation kind.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DiffOp {
     Delete,
@@ -569,32 +727,26 @@ enum DiffOp {
     Equal,
 }
 
-/// One diff edit: its op and the number of lines it spans
-/// (`utf8.RuneCountInString(edit.Text)` over the line-encoded diff text).
+/// One diff edit: its op and the number of lines it spans.
 struct DiffEdit {
     op: DiffOp,
     line_count: usize,
 }
 
-/// Per-file diff: the rune-encoded edits plus the old/new LOC counts that the reference implementation's
-/// FileDiff reports as `len(src)` / `len(dst)`.
+/// Per-file line diff plus the old/new line counts.
 struct FileDiff {
     old_lines_of_code: usize,
     new_lines_of_code: usize,
     edits: Vec<DiffEdit>,
 }
 
-/// Computes the FileDiff for a Modify change, mirroring the reference implementation's `processChange`
-/// (skip same-hash / binary, line-diff via the diffmatchpatch port). Returns
-/// `None` when the change is not diffed (reference `FileDiff` only diffs Modify changes
-/// and skips binary blobs / missing blobs). Blob reads go through the
-/// per-commit cache so the parse path and the diff path fetch each blob once.
-fn file_diff(
-    cache: &mut crate::handlers::uast_walk::CommitParseCache<'_>,
-    change: &cf_gitlib::changes::Change,
-) -> Option<FileDiff> {
+/// Computes the line diff of a Modify change (same-hash / zero-hash / binary
+/// changes are not diffed). Blob reads go through the change's parse scope so
+/// the parse path and the diff path fetch each blob once.
+fn file_diff(parses: &ChangeParses<'_>) -> Option<FileDiff> {
     use cf_godiff::{line_diff, Op};
 
+    let change = parses.change();
     if change.action != ChangeAction::Modify {
         return None;
     }
@@ -602,17 +754,16 @@ fn file_diff(
     {
         return None;
     }
-    let blob_from = cache.blob(change.from.hash)?;
-    let blob_to = cache.blob(change.to.hash)?;
+    let blob_from = parses.blob(Side::Before)?;
+    let blob_to = parses.blob(Side::After)?;
     if is_binary(&blob_from.data) || is_binary(&blob_to.data) {
         return None;
     }
 
-    // The reference implementation decodes via string([]byte) (no whitespace stripping at default config).
     let from = String::from_utf8_lossy(&blob_from.data).into_owned();
     let to = String::from_utf8_lossy(&blob_to.data).into_owned();
 
-    // Identical-string fast path (reference: single DiffEqual of "L"*lineCount).
+    // Identical-string fast path: one Equal run.
     if from == to {
         let lc = count_lines(&from);
         return Some(FileDiff {
@@ -625,7 +776,6 @@ fn file_diff(
         });
     }
 
-    // FileDiff's DiffTimeout default is 1000ms (>0) ⇒ timeout_active = true.
     let segments = line_diff(from.as_bytes(), to.as_bytes(), true);
 
     let mut edits = Vec::with_capacity(segments.len());
@@ -658,8 +808,7 @@ fn file_diff(
     })
 }
 
-/// Counts lines the way the reference implementation's identical-string fast path does
-/// (`strings.Count(s,"\n")` plus one if non-empty without a trailing newline).
+/// Counts lines (`\n` count, plus one for an unterminated last line).
 fn count_lines(s: &str) -> usize {
     let mut count = s.bytes().filter(|&b| b == b'\n').count();
     if !s.is_empty() && s.as_bytes().last() != Some(&b'\n') {
@@ -668,146 +817,282 @@ fn count_lines(s: &str) -> usize {
     count
 }
 
-/// The reference implementation's `CachedBlob.IsBinary`: a NUL byte in the first 8000 bytes.
+/// Binary sniff: a NUL byte in the first 8000 bytes.
 fn is_binary(data: &[u8]) -> bool {
     let head = &data[..data.len().min(8000)];
     head.contains(&0)
 }
 
-/// Cumulative shotness analyzer state.
-#[derive(Default)]
-struct ShotnessState {
-    /// key → node hotness.
-    nodes: BTreeMap<String, StateNode>,
-    /// file → set of keys belonging to that file.
-    files: BTreeMap<String, BTreeSet<String>>,
+/// Walks the diff edits and records the touched entities: a Delete hunk
+/// touches the Before-side entities spanning its lines, an Insert hunk the
+/// After-side ones.
+fn apply_diff_edits(effects: &mut CommitEffects, file: &str, d: &ShotnessModifyDetail) {
+    let line2node_before = gen_line2node(&d.nodes_before, d.diff.old_lines_of_code);
+    let line2node_after = gen_line2node(&d.nodes_after, d.diff.new_lines_of_code);
+
+    let mut line_before: usize = 0;
+    let mut line_after: usize = 0;
+    for edit in &d.diff.edits {
+        let size = edit.line_count;
+        match edit.op {
+            DiffOp::Delete => {
+                record_touched(
+                    effects,
+                    &line2node_before,
+                    &d.nodes_before,
+                    line_before,
+                    size,
+                    file,
+                );
+                line_before += size;
+            }
+            DiffOp::Insert => {
+                record_touched(
+                    effects,
+                    &line2node_after,
+                    &d.nodes_after,
+                    line_after,
+                    size,
+                    file,
+                );
+                line_after += size;
+            }
+            DiffOp::Equal => {
+                line_before += size;
+                line_after += size;
+            }
+        }
+    }
 }
 
-/// Per-node cumulative state.
-struct StateNode {
-    summary: NodeSummary,
-    count: i64,
+/// Records the entities a hunk spanning `[start, start+size)` (0-based
+/// lines) touches.
+fn record_touched(
+    effects: &mut CommitEffects,
+    line2node: &[Vec<usize>],
+    nodes: &[ExtractedNode],
+    start: usize,
+    size: usize,
+    file: &str,
+) {
+    for indices in line2node.iter().skip(start).take(size) {
+        for &idx in indices {
+            touch(effects, nodes[idx].summary(file));
+        }
+    }
 }
 
-impl ShotnessState {
-    /// Registers or increments a node.
-    fn add_node(&mut self, name: &str, type_: &str, file: &str, all_nodes: &mut BTreeSet<String>) {
-        let summary = NodeSummary::new(type_, name, file);
-        let key = summary.key();
-        let exists = all_nodes.contains(&key);
-        all_nodes.insert(key.clone());
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        let count = self.nodes.get(&key).map_or(0, |n| n.count);
-
-        if count == 0 {
-            self.nodes
-                .insert(key.clone(), StateNode { summary, count: 1 });
-            self.files.entry(file.to_string()).or_default().insert(key);
-        } else if !exists {
-            if let Some(n) = self.nodes.get_mut(&key) {
-                n.count = count + 1;
-            }
-        }
+    fn parse(name: &str, source: &str) -> Node {
+        cf_uast::Parser::new()
+            .parse(name, source.as_bytes())
+            .expect("parse")
     }
 
-    /// Removes all nodes associated with a deleted file.
-    fn handle_deletion(&mut self, from_name: &str) {
-        if let Some(keys) = self.files.remove(from_name) {
-            for key in keys {
-                self.nodes.remove(&key);
-            }
-        }
+    /// `(type, qualified name, start line, end line)` of every entity.
+    fn extracted(
+        name: &str,
+        source: &str,
+        dsl: &ShotnessDsl,
+    ) -> Vec<(String, String, usize, usize)> {
+        extract_nodes(&parse(name, source), &dsl.compile().expect("compile"))
+            .into_iter()
+            .map(|n| (n.type_, n.name, n.start_line, n.end_line))
+            .collect()
     }
 
-    /// Walks the diff edits and records touched nodes (the reference `applyDiffEdits` +
-    /// `recordTouchedNodes`): a Delete hunk touches the Before-side nodes
-    /// spanning its lines, an Insert hunk the After-side nodes, and each
-    /// touched node is attributed to its OWN registered name and type
-    /// (hercules `addNode(reversedNodes[UniqueKey(node)], node, toName)`).
-    fn apply_diff_edits(
-        &mut self,
-        to_name: &str,
-        nodes_before: &[ExtractedNode],
-        nodes_after: &[ExtractedNode],
-        diff: &FileDiff,
-        all_nodes: &mut BTreeSet<String>,
-    ) {
-        let line2node_before = gen_line2node(nodes_before, diff.old_lines_of_code);
-        let line2node_after = gen_line2node(nodes_after, diff.new_lines_of_code);
-
-        let mut line_before: usize = 0;
-        let mut line_after: usize = 0;
-
-        for edit in &diff.edits {
-            let size = edit.line_count;
-            match edit.op {
-                DiffOp::Delete => {
-                    self.record_touched(
-                        &line2node_before,
-                        nodes_before,
-                        line_before,
-                        size,
-                        to_name,
-                        all_nodes,
-                    );
-                    line_before += size;
-                }
-                DiffOp::Insert => {
-                    self.record_touched(
-                        &line2node_after,
-                        nodes_after,
-                        line_after,
-                        size,
-                        to_name,
-                        all_nodes,
-                    );
-                    line_after += size;
-                }
-                DiffOp::Equal => {
-                    line_before += size;
-                    line_after += size;
-                }
-            }
-        }
+    fn row(type_: &str, name: &str, start: usize, end: usize) -> (String, String, usize, usize) {
+        (type_.to_string(), name.to_string(), start, end)
     }
 
-    /// Records nodes touched by a hunk spanning `[start, start+size)`: for each
-    /// line-spanning node, `addNode` is called with that node's own name and
-    /// type (per-node attribution, the reference `recordTouchedNodes`).
-    fn record_touched(
-        &mut self,
-        line2node: &[Vec<usize>],
-        nodes: &[ExtractedNode],
-        start: usize,
-        size: usize,
-        file: &str,
-        all_nodes: &mut BTreeSet<String>,
-    ) {
-        for l in start..start + size {
-            if l < line2node.len() {
-                for &idx in &line2node[l] {
-                    let node = &nodes[idx];
-                    let (name, type_) = (node.name.clone(), node.type_.clone());
-                    self.add_node(&name, &type_, file, all_nodes);
-                }
-            }
-        }
+    #[test]
+    fn the_default_dsl_compiles() {
+        ShotnessDsl::default()
+            .compile()
+            .expect("the default shotness DSL compiles");
     }
 
-    /// Updates state when a file is renamed.
-    fn apply_rename(&mut self, old_name: &str, new_name: &str) {
-        let Some(old_keys) = self.files.remove(old_name) else {
-            return;
+    #[test]
+    fn go_receivers_qualify_methods() {
+        let src = "package r\n\ntype A struct{}\ntype B struct{}\n\nfunc (a *A) String() string { return \"a\" }\n\nfunc (B) String() string { return \"b\" }\n\nfunc plain() int { return 1 }\n";
+        assert_eq!(
+            extracted("r.go", src, &ShotnessDsl::default()),
+            vec![
+                row("Function", "plain", 10, 10),
+                row("Method", "A.String", 6, 6),
+                row("Method", "B.String", 8, 8),
+            ]
+        );
+    }
+
+    #[test]
+    fn enclosing_declarations_qualify_nested_entities() {
+        let src = "def outer():\n    def inner():\n        return 1\n    return inner\n\nclass K:\n    def km(self):\n        return 3\n    class Inner:\n        def im(self):\n            return 4\n";
+        assert_eq!(
+            extracted("n.py", src, &ShotnessDsl::default()),
+            vec![
+                row("Function", "K.Inner.im", 10, 11),
+                row("Function", "K.km", 7, 8),
+                row("Function", "outer", 1, 4),
+                row("Function", "outer.inner", 2, 3),
+            ]
+        );
+    }
+
+    #[test]
+    fn java_methods_are_qualified_by_their_class() {
+        let src = "public class A {\n    public int f() {\n        return 1;\n    }\n    public int g() {\n        return 2;\n    }\n}\n";
+        assert_eq!(
+            extracted("A.java", src, &ShotnessDsl::default()),
+            vec![row("Method", "A.f", 2, 4), row("Method", "A.g", 5, 7)]
+        );
+        let classes = ShotnessDsl {
+            struct_query: r#"rfilter(.roles has "Class")"#.to_string(),
+            ..ShotnessDsl::default()
         };
-        let mut new_keys: BTreeSet<String> = BTreeSet::new();
-        for old_key in old_keys {
-            if let Some(mut node) = self.nodes.remove(&old_key) {
-                node.summary.file = new_name.to_string();
-                let new_key = node.summary.key();
-                self.nodes.insert(new_key.clone(), node);
-                new_keys.insert(new_key);
+        assert_eq!(
+            extracted("A.java", src, &classes),
+            vec![row("Class", "A", 1, 8)]
+        );
+    }
+
+    #[test]
+    fn the_name_dsl_is_honored_and_unnamed_nodes_are_skipped() {
+        let src =
+            "package l\n\nfunc top() int {\n\tf := func() int { return 1 }\n\treturn f()\n}\n";
+        assert_eq!(
+            extracted("l.go", src, &ShotnessDsl::default()),
+            vec![row("Function", "top", 3, 6)]
+        );
+        let by_type = ShotnessDsl {
+            name_query: ".type".to_string(),
+            ..ShotnessDsl::default()
+        };
+        assert_eq!(
+            extracted("l.go", src, &by_type),
+            vec![row("Function", "Function", 3, 6)]
+        );
+        let lambdas = ShotnessDsl {
+            struct_query: r#"rfilter(.type == "Lambda")"#.to_string(),
+            ..ShotnessDsl::default()
+        };
+        assert!(extracted("l.go", src, &lambdas).is_empty());
+    }
+
+    #[test]
+    fn removed_declarations_are_the_before_names_missing_after() {
+        let before = vec![
+            ExtractedNode {
+                name: "f".into(),
+                type_: "Function".into(),
+                start_line: 1,
+                end_line: 2,
+            },
+            ExtractedNode {
+                name: "g".into(),
+                type_: "Function".into(),
+                start_line: 3,
+                end_line: 4,
+            },
+        ];
+        let after = vec![ExtractedNode {
+            name: "g".into(),
+            type_: "Function".into(),
+            start_line: 1,
+            end_line: 2,
+        }];
+        let removed: Vec<&str> = removed_declarations(&before, &after)
+            .into_iter()
+            .map(|n| n.name.as_str())
+            .collect();
+        assert_eq!(removed, vec!["f"]);
+    }
+
+    #[test]
+    fn hunks_touch_the_entities_spanning_their_lines() {
+        let nodes = vec![
+            ExtractedNode {
+                name: "f".into(),
+                type_: "Function".into(),
+                start_line: 1,
+                end_line: 3,
+            },
+            ExtractedNode {
+                name: "g".into(),
+                type_: "Function".into(),
+                start_line: 5,
+                end_line: 7,
+            },
+        ];
+        // Lines 1-3 equal, line 4 deleted, lines 5-7 kept, then two lines inserted into g.
+        let detail = ShotnessModifyDetail {
+            nodes_before: nodes.clone(),
+            nodes_after: nodes,
+            diff: FileDiff {
+                old_lines_of_code: 7,
+                new_lines_of_code: 8,
+                edits: vec![
+                    DiffEdit {
+                        op: DiffOp::Equal,
+                        line_count: 5,
+                    },
+                    DiffEdit {
+                        op: DiffOp::Insert,
+                        line_count: 1,
+                    },
+                    DiffEdit {
+                        op: DiffOp::Equal,
+                        line_count: 2,
+                    },
+                ],
+            },
+        };
+        let mut effects = CommitEffects::new();
+        apply_diff_edits(&mut effects, "m.go", &detail);
+        let touched: Vec<&String> = touched_entities(&effects).map(|(k, _)| k).collect();
+        assert_eq!(touched, vec!["Function_g_m.go"]);
+    }
+
+    #[test]
+    fn dsl_flags_default_unless_the_user_sets_them() {
+        let cmd = crate::flags::build_run_command();
+        let defaults = cmd.clone().try_get_matches_from(["run"]).unwrap();
+        assert_eq!(
+            ShotnessDsl::from_matches(&defaults).unwrap(),
+            ShotnessDsl::default()
+        );
+        let set = cmd
+            .clone()
+            .try_get_matches_from([
+                "run",
+                "--shotness-dsl-struct",
+                r#"rfilter(.roles has "Class")"#,
+                "--shotness-dsl-name",
+                ".token",
+            ])
+            .unwrap();
+        assert_eq!(
+            ShotnessDsl::from_matches(&set).unwrap(),
+            ShotnessDsl {
+                struct_query: r#"rfilter(.roles has "Class")"#.to_string(),
+                name_query: ".token".to_string(),
             }
-        }
-        self.files.insert(new_name.to_string(), new_keys);
+        );
+        let empty = cmd
+            .clone()
+            .try_get_matches_from(["run", "--shotness-dsl-struct", ""])
+            .unwrap();
+        assert_eq!(
+            ShotnessDsl::from_matches(&empty).unwrap(),
+            ShotnessDsl::default()
+        );
+        let bad = cmd
+            .try_get_matches_from(["run", "--shotness-dsl-name", "map("])
+            .unwrap();
+        let err = validate_shotness_dsl(&bad).unwrap_err();
+        assert!(err.to_string().contains("--shotness-dsl-name"), "{err}");
     }
 }

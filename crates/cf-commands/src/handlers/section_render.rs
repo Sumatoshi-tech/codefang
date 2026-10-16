@@ -1,30 +1,23 @@
-//! Terminal `text` / `compact` rendering for the static analyzers.
+//! Terminal `text` / `compact` rendering over a section report tree.
 //!
-//! Mirrors the reference `StaticService.FormatText` / `FormatCompact`
-//! (`DefaultStaticRenderer.RenderText` / `RenderCompact`). Rather than re-derive
-//! each analyzer's section data, this adapter reads the **same** JSON section
-//! tree every static handler already builds for `--format json`
-//! (`*_report_value` → `renderer.JSONReport` shape: `{overall_score_label,
-//! sections:[{title,score_label,status,metrics,distribution?,issues,score}],
-//! overall_score}`) and feeds it to the ported [`cf_renderer::DefaultStaticRenderer`].
-//!
-//! Because the JSON path is byte-identical to the reference binary (DESIGN tier-0), the terminal
-//! formats are guaranteed to render from the exact same metrics / distribution /
-//! issue values and order as the reference implementation's own `ReportSection`, so wherever the reference implementation's terminal
-//! output is byte-deterministic the Rust output matches it byte-for-byte. Where
-//! the reference implementation's terminal output is itself nondeterministic (e.g. a map-order-dependent
-//! status message), the differential oracle falls back to a structural realcheck
-//! and this deterministic, non-empty rendering satisfies it.
+//! Rather than re-derive each analyzer's section data, this adapter reads the
+//! **same** JSON section tree every static handler already builds for
+//! `--format json` (`{overall_score_label, sections:[{title, score_label,
+//! status, metrics, distribution?, issues, score}], overall_score}`) and feeds
+//! it to [`cf_renderer::DefaultStaticRenderer`], so the terminal formats show
+//! exactly the metrics, distribution and issues the JSON report carries, in
+//! the same order. The history `--format compact` lines
+//! ([`super::history_formats::history_compact`]) are rendered through the same
+//! tree.
 
 use cf_gojson::{GoMap, GoValue};
 use cf_renderer::analyze::{DistributionItem, Issue, Metric, ReportSection};
 use cf_renderer::DefaultStaticRenderer;
 
 /// A [`ReportSection`] backed by an analyzer's already-built JSON section
-/// `GoValue` (the `renderer.SectionToJSON` shape). The issue list is stored in
-/// the reference implementation's exact render order, so [`Self::top_issues`] is a prefix slice and
-/// [`Self::all_issues`] the whole list — matching the reference implementation's `TopIssues(n)` /
-/// `AllIssues` over the pre-sorted slice.
+/// `GoValue`. The issue list is stored in render order, so
+/// [`Self::top_issues`] is a prefix slice and [`Self::all_issues`] the whole
+/// list.
 struct JsonSection {
     title: String,
     score: f64,
@@ -147,8 +140,8 @@ fn parse_section(section: &GoValue) -> Option<JsonSection> {
     })
 }
 
-/// Reads the `sections` array of a `renderer.JSONReport` tree into renderer
-/// sections, preserving order (the executive summary + multi-analyzer text/compact
+/// Reads the `sections` array of a report tree into renderer sections,
+/// preserving order (the executive summary + multi-analyzer text/compact
 /// depend on it).
 fn sections_from_report(report: &GoValue) -> Vec<JsonSection> {
     let GoValue::Map(rm) = report else {
@@ -160,13 +153,12 @@ fn sections_from_report(report: &GoValue) -> Vec<JsonSection> {
         .collect()
 }
 
-/// The reference implementation honors `NO_COLOR` (`terminal.NewConfig`: `os.Getenv("NO_COLOR") != ""`).
+/// Whether `NO_COLOR` is set (`--no-color` sets it for the run).
 fn no_color() -> bool {
     std::env::var_os("NO_COLOR").is_some()
 }
 
-/// `--format compact` bytes for a `renderer.JSONReport` tree (reference:
-/// `FormatCompact`: one single-line section render each, trailing `\n`).
+/// `--format compact` bytes for a report tree: one line per section.
 #[must_use]
 pub fn render_compact_report(report: &GoValue) -> Vec<u8> {
     let sections = sections_from_report(report);
@@ -176,9 +168,9 @@ pub fn render_compact_report(report: &GoValue) -> Vec<u8> {
         .into_bytes()
 }
 
-/// `--format text` bytes for a `renderer.JSONReport` tree (the reference `FormatText`:
-/// optional executive summary when ≥2 sections, then a blank line + full render
-/// per section).
+/// `--format text` bytes for a report tree: an executive summary when there
+/// are two or more sections, then a blank line + the full render of each
+/// section.
 #[must_use]
 pub fn render_text_report(report: &GoValue) -> Vec<u8> {
     let sections = sections_from_report(report);

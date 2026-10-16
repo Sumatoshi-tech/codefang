@@ -31,8 +31,8 @@ the [documentation site](https://sumatoshi-tech.github.io/codefang/) (built from
   quality, sentiment, shotness, typos, and anomaly, computed by walking Git
   history through libgit2.
 - **Stable machine output** — `--format json` (and `yaml`, `ndjson`,
-  `timeseries`, `bin`, `text`, `compact`, `plot`). The JSON byte stream is a
-  frozen contract, verified by the differential parity gate (see below).
+  `timeseries`, `bin`, `text`, `compact`, `plot`). The machine formats are a
+  stable contract, pinned by CLI-level end-to-end tests (see Testing below).
 
 ## Why
 
@@ -112,24 +112,19 @@ Analyzer IDs are `static/<name>` and `history/<name>`; `-a` accepts globs
 
 ---
 
-## Differential parity gate
+## Testing
 
-Machine-report output is a frozen contract. The original Go binaries are kept
-solely as a **frozen oracle** at `build/bin/{codefang,uast}` — the Go source is
-gone, only the compiled reference binaries remain. The parity harness under
-`tests/compat/` diffs the Rust binary's bytes against that oracle:
+Three gates, all runnable locally and all required to be green:
 
 ```bash
-cd tests/compat
-python3 oracle/oracle.py --n-go 3 --quiet -- \
-  run --checkpoint=false --resume=false --no-cache --workers 1 \
-  --analyzers history/burndown --format json --limit 50 /path/to/repo
+make test       # the workspace test suite (unit, integration, CLI-level e2e)
+make lint       # clippy across the workspace; every warning is an error
+make deadcode   # fails on any unreachable private item
 ```
 
-The oracle runs the Go reference N≥3 times, classifies each output field as
-stable or run-to-run variant, requires the Rust output to be byte-identical on
-stable fields, and rejects any attempt to blank a stable field. Exit code `0`
-means parity holds. See `tests/compat/README.md` for the full system.
+The analyzer crates carry unit tests for their metric math; `bins/codefang/tests`
+drives the real binary over hermetic fixture repositories and source trees and
+pins the machine-format bytes end to end.
 
 The CLI examples in this README and in `docs/` are themselves executed against
 the built Rust binary by the `doc-examples` test crate

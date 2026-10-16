@@ -4,20 +4,17 @@ use std::collections::BTreeMap;
 
 use cf_alg_stats::{mean_std_dev, to_percent};
 
+use crate::config::Config;
 use crate::detect::detect_anomalies_from_ticks;
 use crate::model::{
-    AggregateData, ComputedMetrics, ExternalAnomaly, ExternalSummary, RawMetrics, Record,
-    TickMetrics, TimeSeriesEntry,
+    AggregateData, ComputedMetrics, ExternalAnomaly, ExternalSummary, Record, TickMetrics,
+    TimeSeriesEntry,
 };
 use crate::zscore::compute_z_scores;
 
 /// Inclusive tick time bounds (start/end) used to annotate time-series
-/// entries.
-///
-/// Minimal stand-in for the canonical tick-bounds type in `cf-analyze` (not
-/// yet wired). Callers that have real bounds pass pre-formatted RFC3339
-/// strings here; an empty string means "no bound" and is omitted from
-/// [`TimeSeriesEntry`] output.
+/// entries: pre-formatted RFC3339 strings; an empty string means "no bound"
+/// and is omitted from the [`TimeSeriesEntry`] output.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TickBounds {
     /// Pre-formatted RFC3339 start time, or empty for none.
@@ -26,11 +23,7 @@ pub struct TickBounds {
     pub end_time: String,
 }
 
-/// Parsed input data for anomaly metric computation.
-///
-/// A typed struct (the reference implementation parses it out of an untyped
-/// report map). The report-map parsing belongs to the `cf-analyze` conversion
-/// hub and is tracked as a framework dependency (see crate todos).
+/// The typed input of the anomaly metrics.
 #[derive(Debug, Clone, Default)]
 pub struct ReportData {
     /// Pre-detected anomalies.
@@ -39,9 +32,9 @@ pub struct ReportData {
     pub tick_metrics: BTreeMap<i64, TickMetrics>,
     /// Optional per-tick time bounds.
     pub tick_bounds: BTreeMap<i64, TickBounds>,
-    /// Z-score threshold (single-precision by contract).
+    /// Z-score threshold the anomalies were detected with.
     pub threshold: f32,
-    /// Sliding window size.
+    /// Trailing window size the anomalies were detected with.
     pub window_size: usize,
     /// Cross-analyzer anomalies passed through to the output.
     pub external_anomalies: Vec<ExternalAnomaly>,
@@ -78,9 +71,9 @@ fn compute_aggregate(input: &ReportData) -> AggregateData {
     for (i, tick) in ticks.iter().enumerate() {
         let tm = &input.tick_metrics[tick];
         churn[i] = tm.net_churn as f64;
-        files[i] = tm.files_changed as f64;
-        lang_div[i] = tm.languages.len() as f64;
-        authors[i] = tm.author_ids.len() as f64;
+        files[i] = tm.files_changed() as f64;
+        lang_div[i] = tm.language_diversity() as f64;
+        authors[i] = tm.author_count() as f64;
     }
 
     let (churn_mean, churn_stddev) = mean_std_dev(&churn);
@@ -132,18 +125,9 @@ fn compute_time_series(input: &ReportData) -> Vec<TimeSeriesEntry> {
 
         let mut entry = TimeSeriesEntry {
             tick: *tick,
-            metrics: RawMetrics {
-                files_changed: tm.files_changed,
-                lines_added: tm.lines_added,
-                lines_removed: tm.lines_removed,
-                net_churn: tm.net_churn,
-                language_diversity: tm.languages.len() as i64,
-                author_count: tm.author_ids.len() as i64,
-            },
+            metrics: tm.raw(),
             is_anomaly,
             churn_z_score: churn_z,
-            language_diversity: tm.languages.len() as i64,
-            author_count: tm.author_ids.len() as i64,
             ..Default::default()
         };
 
@@ -174,7 +158,7 @@ pub fn compute_all_metrics(input: &ReportData) -> ComputedMetrics {
 }
 
 /// Builds [`ReportData`] from per-commit metrics, the commits-by-tick
-/// mapping, and the analyzer config, running anomaly detection over the
+/// mapping, and the validated [`Config`], running anomaly detection over the
 /// aggregated ticks.
 ///
 /// This is the canonical path: aggregate commits to ticks, detect anomalies,
@@ -184,19 +168,19 @@ pub fn build_report_data(
     commit_metrics: &BTreeMap<String, crate::model::CommitAnomalyData>,
     commits_by_tick: &BTreeMap<i64, Vec<String>>,
     tick_bounds: BTreeMap<i64, TickBounds>,
-    threshold: f32,
-    window_size: usize,
+    config: Config,
 ) -> ReportData {
     let tick_metrics =
         crate::aggregate::aggregate_commits_to_ticks(commit_metrics, commits_by_tick);
-    let anomalies = detect_anomalies_from_ticks(&tick_metrics, threshold, window_size);
+    let anomalies =
+        detect_anomalies_from_ticks(&tick_metrics, config.threshold, config.window_size);
 
     ReportData {
         anomalies,
         tick_metrics,
         tick_bounds,
-        threshold,
-        window_size,
+        threshold: config.threshold,
+        window_size: config.window_size,
         external_anomalies: Vec::new(),
         external_summaries: Vec::new(),
     }
@@ -257,7 +241,12 @@ mod tests {
             (2_i64, vec![hash('c')]),
         ]);
 
-        build_report_data(&commit_metrics, &commits_by_tick, BTreeMap::new(), 2.0, 20)
+        build_report_data(
+            &commit_metrics,
+            &commits_by_tick,
+            BTreeMap::new(),
+            Config::default(),
+        )
     }
 
     #[test]
@@ -318,12 +307,88 @@ mod tests {
         );
         commits_by_tick.insert(10, vec![spike]);
 
-        let input = build_report_data(&commit_metrics, &commits_by_tick, BTreeMap::new(), 2.0, 5);
+        let config = Config::new(2.0, 5).expect("valid config");
+        let input = build_report_data(&commit_metrics, &commits_by_tick, BTreeMap::new(), config);
         let computed = compute_all_metrics(&input);
 
         assert!(!computed.anomalies.is_empty(), "should detect the spike");
         assert!(computed.aggregate.total_anomalies > 0);
         assert!(computed.aggregate.anomaly_rate > 0.0);
+        assert_eq!(computed.aggregate.window_size, 5);
+    }
+
+    #[test]
+    fn quiet_then_busy_ticks_match_the_hand_computation() {
+        // Ten quiet ticks (one file each, 10/12 lines alternating) and a busy
+        // tick: 11 distinct files, 200 added, 10 removed.
+        let mut commit_metrics = BTreeMap::new();
+        let mut commits_by_tick = BTreeMap::new();
+        for tick in 0..10_i64 {
+            let h = format!("{tick:040x}");
+            commit_metrics.insert(
+                h.clone(),
+                CommitAnomalyData {
+                    files_changed: 1,
+                    lines_added: if tick % 2 == 0 { 10 } else { 12 },
+                    files: vec![format!("q{tick}.txt")],
+                    ..Default::default()
+                },
+            );
+            commits_by_tick.insert(tick, vec![h]);
+        }
+        let mut busy = Vec::new();
+        for k in 0..20_i64 {
+            let h = format!("{:040x}", 100 + k);
+            let file = if k < 10 {
+                format!("burst{k}.txt")
+            } else {
+                "burst0.txt".to_string()
+            };
+            commit_metrics.insert(
+                h.clone(),
+                CommitAnomalyData {
+                    files_changed: 1,
+                    lines_added: 10,
+                    files: vec![file],
+                    ..Default::default()
+                },
+            );
+            busy.push(h);
+        }
+        let del = format!("{:040x}", 200);
+        commit_metrics.insert(
+            del.clone(),
+            CommitAnomalyData {
+                files_changed: 1,
+                lines_removed: 10,
+                files: vec!["q0.txt".to_string()],
+                ..Default::default()
+            },
+        );
+        busy.push(del);
+        commits_by_tick.insert(10, busy);
+
+        let input = build_report_data(
+            &commit_metrics,
+            &commits_by_tick,
+            BTreeMap::new(),
+            Config::default(),
+        );
+        let computed = compute_all_metrics(&input);
+        assert_eq!(computed.anomalies.len(), 1, "{:?}", computed.anomalies);
+        let busy = &computed.anomalies[0];
+        assert_eq!(busy.tick, 10);
+        // Window mean 11, population std 1: (190 - 11) / 1 and (200 - 11) / 1.
+        assert!((busy.z_scores.net_churn - 179.0).abs() < 1e-9);
+        assert!((busy.z_scores.lines_added - 189.0).abs() < 1e-9);
+        // Every quiet tick touched one file: zero variance -> sentinel.
+        assert!((busy.z_scores.files_changed - 100.0).abs() < 1e-9);
+        assert_eq!(busy.metrics.files_changed, 11);
+        assert_eq!(busy.files.len(), 11);
+        assert!(busy.files.contains(&"q0.txt".to_string()));
+        // The second quiet tick is NOT flagged (one observation, no sentinel).
+        assert!(!computed.time_series[1].is_anomaly);
+        assert_eq!(computed.aggregate.total_anomalies, 1);
     }
 
     #[test]

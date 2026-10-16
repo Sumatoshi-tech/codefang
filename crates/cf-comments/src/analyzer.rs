@@ -1,31 +1,59 @@
 //! The comments analyzer.
 //!
-//! Finds comment and function/method/class/interface/struct nodes, groups
-//! consecutive comments into blocks (sorted by start line), scores each block
-//! by its placement relative to the closest target, and computes aggregate
-//! metrics.
+//! Finds comment nodes and declarations (function / method / class /
+//! interface / struct), groups adjacent comments into blocks, places every
+//! block against the declarations ([`crate::placement`]) and derives the
+//! per-file metrics: a declaration is documented iff a block is placed
+//! `above` it; a comment is good iff its block is placed `above` something.
 //!
 //! Report building is routed through [`cf_gojson::GoValue`] using a
 //! *map-origin* [`cf_gojson::GoMap`] so the encoder byte-sorts keys at encode
-//! time (report-format contract, DESIGN §2.2). Nothing here uses `serde_json`.
+//! time. Nothing here uses `serde_json`.
 
 use cf_gojson::{GoMap, GoValue, MapOrigin};
 use cf_uast_node::Node;
 
-use crate::traverse::{extract_entity_name, find_nodes_by_type};
+use crate::placement::{anchor_line, resolve, BlockSpan, Resolved, TargetSpan};
+use crate::traverse::{
+    comment_lines, comment_text, declaration_name, find_nodes_with_role, has_role, node_lines,
+};
 use crate::types::{
-    uast, CommentBlock, CommentConfig, CommentDetail, CommentMetrics, CommentReportItem,
-    FunctionInfo, FunctionReportItem,
+    uast, CommentConfig, CommentCounts, CommentDetail, CommentMetrics, FunctionInfo, Placement,
+    ROLE_ATTRIBUTE, ROLE_BODY, ROLE_DOC, ROLE_NAME, ROLE_PARAMETER, ROLE_TYPE, UNKNOWN_NAME,
 };
 
-/// Scoring constants (report contract).
-const SCORE_VALUE: f64 = 0.2;
-const GAP_THRESHOLD_HIGH: i64 = 2;
-const LEN_ARG_50: usize = 50;
-const MAGIC_3: i64 = 3;
-const MAGIC_999: i64 = 999;
-const MAGIC_1000: i64 = 1000;
-const UNKNOWN_NAME: &str = "unknown";
+/// Score of a comment attached to no declaration.
+const UNASSOCIATED_PENALTY: f64 = -0.2;
+/// Inline penalty for a declaration type without a configured penalty.
+const DEFAULT_INLINE_PENALTY: f64 = -0.1;
+/// Comment previews longer than this many bytes are shortened.
+const PREVIEW_MAX_BYTES: usize = 50;
+/// Bytes kept in a shortened preview before the ellipsis.
+const PREVIEW_KEEP_BYTES: usize = 47;
+
+/// Node types counted as declarations.
+const DECLARATION_TYPES: [&str; 5] = [
+    uast::FUNCTION,
+    uast::METHOD,
+    uast::CLASS,
+    uast::INTERFACE,
+    uast::STRUCT,
+];
+/// Declaration types that only count when they carry a name: a nameless
+/// class/struct/interface node is a type literal or a class body, not a
+/// declaration.
+const NAMED_ONLY_TYPES: [&str; 3] = [uast::CLASS, uast::INTERFACE, uast::STRUCT];
+/// Node types that form a declaration's header (everything before the first
+/// body statement): a `Doc` comment preceded only by these is a docstring.
+const HEADER_TYPES: [&str; 7] = [
+    uast::IDENTIFIER,
+    uast::PARAMETER,
+    uast::PATTERN,
+    uast::TYPE_ANNOTATION,
+    uast::DECORATOR,
+    uast::ATTRIBUTE,
+    uast::COMMENT,
+];
 
 /// Error returned when analysis is given no root. The error text is part of
 /// the CLI contract.
@@ -46,40 +74,51 @@ pub struct Analyzer;
 
 impl Analyzer {
     /// Creates a new analyzer.
+    #[must_use]
     pub fn new() -> Self {
         Analyzer
     }
 
     /// Returns the analyzer name (`"comments"`).
+    #[must_use]
     pub fn name(&self) -> &'static str {
         "comments"
     }
 
     /// Returns the CLI flag (`"comments-analysis"`).
+    #[must_use]
     pub fn flag(&self) -> &'static str {
         "comments-analysis"
     }
 
     /// Returns the default analysis configuration.
+    #[must_use]
     pub fn default_config(&self) -> CommentConfig {
         CommentConfig::default_config()
     }
 
-    /// Performs comment analysis.
+    /// Performs comment analysis and returns the per-file report map.
     ///
-    /// With no comments found, returns the empty result (all counts zero,
-    /// `overall_score` 0.0):
+    /// A file with declarations but no comments keeps its declarations (all
+    /// undocumented):
     ///
     /// ```
     /// use cf_comments::Analyzer;
     /// use cf_gojson::GoValue;
-    /// use cf_uast_node::Builder;
+    /// use cf_uast_node::{Builder, Positions};
     ///
-    /// let root = Builder::new().with_type("File").build();
+    /// let func = Builder::new()
+    ///     .with_type("Function")
+    ///     .with_props([("name".to_string(), "f".to_string())].into())
+    ///     .with_position(Some(Positions { start_line: 1, end_line: 3, ..Default::default() }))
+    ///     .build();
+    /// let mut root = Builder::new().with_type("File").build();
+    /// root.add_child(func);
     /// let report = Analyzer::new().analyze(Some(&root)).unwrap();
     /// let m = report.as_map().unwrap();
     /// assert_eq!(m.get("total_comments"), Some(&GoValue::Int(0)));
-    /// assert_eq!(m.get("overall_score"), Some(&GoValue::Float(0.0)));
+    /// assert_eq!(m.get("total_functions"), Some(&GoValue::Int(1)));
+    /// assert_eq!(m.get("documented_functions"), Some(&GoValue::Int(0)));
     /// ```
     ///
     /// # Errors
@@ -89,11 +128,10 @@ impl Analyzer {
         self.analyze_with_find_depth(root, None)
     }
 
-    /// [`analyze`](Self::analyze) with the reference shared traverser's
-    /// `maxDepth` applied to the comment / function DISCOVERY walks: with
-    /// `Some(cap)`, only nodes at depth `<= cap` below the root (root at
+    /// [`analyze`](Self::analyze) with a depth cap on the discovery walks:
+    /// with `Some(cap)`, only nodes at depth `<= cap` below the root (root at
     /// depth 0) are found. The history `quality` analyzer's comments instance
-    /// runs with `maxDepth = 10`; the static surfaces run uncapped.
+    /// runs capped; the static surfaces run uncapped.
     ///
     /// # Errors
     ///
@@ -103,586 +141,361 @@ impl Analyzer {
         root: Option<&Node>,
         find_depth: Option<usize>,
     ) -> Result<GoValue, NilRootNode> {
+        Ok(build_report(&self.analyze_metrics(root, find_depth)?))
+    }
+
+    /// Performs comment analysis and returns the typed per-file metrics.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NilRootNode`] when `root` is `None`.
+    pub fn analyze_metrics(
+        &self,
+        root: Option<&Node>,
+        find_depth: Option<usize>,
+    ) -> Result<CommentMetrics, NilRootNode> {
         let root = root.ok_or(NilRootNode)?;
-
-        let comments = self.find_comments(root, find_depth);
-        let functions = self.find_functions(root, find_depth);
-
-        if comments.is_empty() {
-            return Ok(build_empty_result());
-        }
-
-        let config = self.default_config();
-        let comment_details = self.analyze_comment_placement(&comments, &functions, &config);
-        let metrics = self.calculate_metrics(comment_details, &functions);
-
-        Ok(self.build_result(&metrics, &functions))
+        let declarations = collect_declarations(root, find_depth);
+        let blocks = collect_comment_blocks(root, find_depth);
+        Ok(compute_metrics(
+            &blocks,
+            declarations,
+            &self.default_config(),
+        ))
     }
+}
 
-    // --- node discovery -----------------------------------------------------
+// --- declarations -------------------------------------------------------------
 
-    fn find_comments<'a>(&self, root: &'a Node, find_depth: Option<usize>) -> Vec<&'a Node> {
-        match find_depth {
-            Some(cap) => crate::traverse::find_nodes_by_type_capped(root, &[uast::COMMENT], cap),
-            None => find_nodes_by_type(root, &[uast::COMMENT]),
-        }
-    }
+/// A declaration found in the tree.
+struct Declaration {
+    name: String,
+    kind: String,
+    start: i64,
+    end: i64,
+    anchor: i64,
+}
 
-    fn find_functions<'a>(&self, root: &'a Node, find_depth: Option<usize>) -> Vec<&'a Node> {
-        const TYPES: [&str; 5] = [
-            uast::FUNCTION,
-            uast::METHOD,
-            uast::CLASS,
-            uast::INTERFACE,
-            uast::STRUCT,
-        ];
-        match find_depth {
-            Some(cap) => crate::traverse::find_nodes_by_type_capped(root, &TYPES, cap),
-            None => find_nodes_by_type(root, &TYPES),
+fn collect_declarations(root: &Node, find_depth: Option<usize>) -> Vec<Declaration> {
+    let attributes: Vec<(i64, i64)> = find_nodes_with_role(root, ROLE_ATTRIBUTE, find_depth)
+        .into_iter()
+        .filter_map(node_lines)
+        .collect();
+    let mut out = Vec::new();
+    walk_declarations(root, find_depth, None, &mut out);
+    for d in &mut out {
+        d.anchor = anchor_line(d.start, &attributes);
+        if d.name.is_empty() {
+            d.name = UNKNOWN_NAME.to_string();
         }
     }
+    out
+}
 
-    // --- block grouping (sorted by line) ------------------------------------
-
-    fn analyze_comment_placement(
-        &self,
-        comments: &[&Node],
-        functions: &[&Node],
-        config: &CommentConfig,
-    ) -> Vec<CommentDetail> {
-        let blocks = self.group_comments_into_blocks(comments);
-        self.analyze_comment_blocks(&blocks, functions, config)
+fn walk_declarations(
+    n: &Node,
+    remaining: Option<usize>,
+    enclosing: Option<usize>,
+    out: &mut Vec<Declaration>,
+) {
+    let mut enclosing = enclosing;
+    if DECLARATION_TYPES.contains(&n.node_type.as_str()) {
+        enclosing = register_declaration(n, enclosing, out);
     }
+    let child_remaining = match remaining {
+        Some(0) => return,
+        Some(r) => Some(r - 1),
+        None => None,
+    };
+    for child in &n.children {
+        walk_declarations(child, child_remaining, enclosing, out);
+    }
+}
 
-    fn group_comments_into_blocks(&self, comments: &[&Node]) -> Vec<CommentBlock> {
-        if comments.is_empty() {
-            return Vec::new();
+/// Registers a declaration node and returns the index of the declaration
+/// that encloses its children.
+fn register_declaration(
+    n: &Node,
+    enclosing: Option<usize>,
+    out: &mut Vec<Declaration>,
+) -> Option<usize> {
+    let Some((start, end)) = node_lines(n) else {
+        return enclosing;
+    };
+    let name = declaration_name(n);
+    // A nameless declaration whose child declaration starts on the same line
+    // is that child's definition (C lowers `function_definition` over
+    // `function_declarator`): the child names it and is no declaration of
+    // its own.
+    if let Some(parent) = enclosing.map(|i| &mut out[i]) {
+        if parent.start == start && parent.name.is_empty() {
+            parent.name = name.unwrap_or_default();
+            return enclosing;
         }
-        let sorted = self.sort_comments_by_line(comments);
-        self.create_comment_blocks(&sorted)
     }
-
-    /// Sorts comments by start line. When either node lacks a position the
-    /// comparator returns `Equal`, preserving input order — equivalent to the
-    /// reference comparator's "not less than" answer for well-formed inputs
-    /// (every comment node here carries a position).
-    fn sort_comments_by_line<'a>(&self, comments: &[&'a Node]) -> Vec<&'a Node> {
-        let mut sorted: Vec<&Node> = comments.to_vec();
-        sorted.sort_by(|a, b| match (node_pos(a), node_pos(b)) {
-            (Some((a_start, _)), Some((b_start, _))) => a_start.cmp(&b_start),
-            _ => std::cmp::Ordering::Equal,
-        });
-        sorted
+    if name.is_none() && NAMED_ONLY_TYPES.contains(&n.node_type.as_str()) {
+        return enclosing;
     }
+    out.push(Declaration {
+        name: name.unwrap_or_default(),
+        kind: n.node_type.clone(),
+        start,
+        end,
+        anchor: start,
+    });
+    Some(out.len() - 1)
+}
 
-    fn create_comment_blocks(&self, sorted: &[&Node]) -> Vec<CommentBlock> {
-        let mut blocks: Vec<CommentBlock> = Vec::new();
-        let mut current: Option<CommentBlock> = None;
+// --- comment blocks -----------------------------------------------------------
 
-        for &comment in sorted {
-            let Some((start, end)) = node_pos(comment) else {
-                continue;
-            };
-            let comment_start = start as i64;
-            let comment_end = end as i64;
+/// Adjacent comment nodes, each `(text, start_line)`.
+struct Block {
+    start: i64,
+    text_end: i64,
+    /// Whether the block opens with a leading documentation comment of a
+    /// declaration body (a docstring).
+    leading_doc: bool,
+    comments: Vec<(String, i64)>,
+}
 
-            let start_new = match &current {
-                None => true,
-                Some(cur) => cur.comments.is_empty() || comment_start > cur.end_line + 1,
-            };
+/// One comment node: its line geometry, text and whether it is a leading
+/// documentation comment (the first statement of a declaration body).
+struct FoundComment {
+    start: i64,
+    text_end: i64,
+    text: String,
+    leading_doc: bool,
+}
 
-            if start_new {
-                if let Some(cur) = current.take() {
-                    if !cur.comments.is_empty() {
-                        blocks.push(cur);
-                    }
-                }
-                current = Some(CommentBlock {
-                    comments: vec![comment.clone()],
-                    start_line: comment_start,
-                    end_line: comment_end,
-                    full_text: node_token(comment).to_string(),
+fn collect_comment_blocks(root: &Node, find_depth: Option<usize>) -> Vec<Block> {
+    let mut comments = Vec::new();
+    collect_comments(root, find_depth, &mut comments);
+    comments.sort_by_key(|c| c.start);
+
+    let mut blocks: Vec<Block> = Vec::new();
+    for c in comments {
+        match blocks.last_mut() {
+            Some(cur) if c.start <= cur.text_end + 1 => {
+                cur.text_end = cur.text_end.max(c.text_end);
+                cur.comments.push((c.text, c.start));
+            }
+            _ => blocks.push(Block {
+                start: c.start,
+                text_end: c.text_end,
+                leading_doc: c.leading_doc,
+                comments: vec![(c.text, c.start)],
+            }),
+        }
+    }
+    blocks
+}
+
+/// Collects every `Comment` node below `n` (never descending into a comment:
+/// nested pieces are one comment), honoring the same depth cap as
+/// [`crate::traverse::find_nodes_by_type`].
+fn collect_comments(n: &Node, remaining: Option<usize>, out: &mut Vec<FoundComment>) {
+    let child_remaining = match remaining {
+        Some(0) => return,
+        Some(r) => Some(r - 1),
+        None => None,
+    };
+    for (index, child) in n.children.iter().enumerate() {
+        if child.node_type == uast::COMMENT {
+            if let Some((start, text_end)) = comment_lines(child) {
+                out.push(FoundComment {
+                    start,
+                    text_end,
+                    text: comment_text(child),
+                    leading_doc: has_role(child, ROLE_DOC) && is_leading_position(n, index),
                 });
-            } else if let Some(cur) = current.as_mut() {
-                cur.comments.push(comment.clone());
-                cur.end_line = comment_end;
-                cur.full_text.push('\n');
-                cur.full_text.push_str(node_token(comment));
             }
+            continue;
         }
-
-        if let Some(cur) = current.take() {
-            if !cur.comments.is_empty() {
-                blocks.push(cur);
-            }
-        }
-        blocks
-    }
-
-    // --- block scoring ------------------------------------------------------
-
-    fn analyze_comment_blocks(
-        &self,
-        blocks: &[CommentBlock],
-        functions: &[&Node],
-        config: &CommentConfig,
-    ) -> Vec<CommentDetail> {
-        let mut details = Vec::new();
-        for block in blocks {
-            details.extend(self.analyze_comment_block(block, functions, config));
-        }
-        details
-    }
-
-    fn analyze_comment_block(
-        &self,
-        block: &CommentBlock,
-        functions: &[&Node],
-        config: &CommentConfig,
-    ) -> Vec<CommentDetail> {
-        let block_detail = self.analyze_virtual_block(block, functions, config);
-        self.create_comment_details(block, &block_detail)
-    }
-
-    fn create_comment_details(
-        &self,
-        block: &CommentBlock,
-        block_detail: &CommentDetail,
-    ) -> Vec<CommentDetail> {
-        block
-            .comments
-            .iter()
-            .map(|comment| CommentDetail {
-                kind: node_type(comment).to_string(),
-                token: node_token(comment).to_string(),
-                score: block_detail.score,
-                is_good: block_detail.is_good,
-                target_type: block_detail.target_type.clone(),
-                target_name: block_detail.target_name.clone(),
-                position: block_detail.position.clone(),
-                line_number: node_pos(comment).map_or(0, |(s, _)| s as i64),
-            })
-            .collect()
-    }
-
-    /// Scores a block using its (`start_line`, `end_line`) span as a single
-    /// virtual comment.
-    fn analyze_virtual_block(
-        &self,
-        block: &CommentBlock,
-        functions: &[&Node],
-        config: &CommentConfig,
-    ) -> CommentDetail {
-        let mut detail = CommentDetail {
-            kind: uast::COMMENT.to_string(),
-            token: block.full_text.clone(),
-            score: 0.0,
-            is_good: false,
-            target_type: String::new(),
-            target_name: String::new(),
-            position: String::new(),
-            line_number: block.start_line,
-        };
-
-        match self.find_closest_target(block.end_line, functions) {
-            Some(target) => {
-                detail.target_type = node_type(target).to_string();
-                detail.target_name = self.extract_target_name(target);
-                detail.position = determine_position(block.start_line, block.end_line, target);
-                if is_comment_properly_placed(block.start_line, block.end_line, target) {
-                    detail.score = config.reward_score;
-                    detail.is_good = true;
-                } else {
-                    detail.score = self.penalty_score(target, config);
-                    detail.is_good = false;
-                }
-            }
-            None => {
-                detail.score = -SCORE_VALUE;
-                detail.is_good = false;
-                detail.position = "unassociated".to_string();
-            }
-        }
-        detail
-    }
-
-    fn penalty_score(&self, target: &Node, config: &CommentConfig) -> f64 {
-        config
-            .penalty_scores
-            .get(node_type(target))
-            .copied()
-            .unwrap_or(-0.1)
-    }
-
-    /// Finds the closest function/class to a comment span (see
-    /// [`calculate_distance`] for the asymmetric distance).
-    fn find_closest_target<'a>(
-        &self,
-        comment_end: i64,
-        functions: &[&'a Node],
-    ) -> Option<&'a Node> {
-        let mut closest: Option<&Node> = None;
-        let mut min_distance: i64 = -1;
-        for &function in functions {
-            let distance = calculate_distance(comment_end, function);
-            if min_distance == -1 || distance < min_distance {
-                min_distance = distance;
-                closest = Some(function);
-            }
-        }
-        closest
-    }
-
-    fn extract_target_name(&self, target: &Node) -> String {
-        extract_entity_name(target).unwrap_or_else(|| UNKNOWN_NAME.to_string())
-    }
-
-    // --- metrics ------------------------------------------------------------
-
-    fn calculate_metrics(
-        &self,
-        details: Vec<CommentDetail>,
-        functions: &[&Node],
-    ) -> CommentMetrics {
-        let total_comments = details.len() as i64;
-        let mut good_comments = 0i64;
-        let mut bad_comments = 0i64;
-        for d in &details {
-            if d.is_good {
-                good_comments += 1;
-            } else {
-                bad_comments += 1;
-            }
-        }
-        let overall_score = if total_comments > 0 {
-            good_comments as f64 / total_comments as f64
-        } else {
-            0.0
-        };
-
-        let mut function_summary: std::collections::BTreeMap<String, FunctionInfo> =
-            std::collections::BTreeMap::new();
-        let mut documented_functions = 0i64;
-        for &function in functions {
-            let func_name = self.extract_target_name(function);
-            let mut info = FunctionInfo {
-                name: func_name.clone(),
-                kind: node_type(function).to_string(),
-                has_comment: false,
-                comment_type: String::new(),
-            };
-            if has_good_comment(&func_name, &details) {
-                info.has_comment = true;
-                info.comment_type = comment_type_for(&func_name, &details);
-                documented_functions += 1;
-            }
-            function_summary.insert(func_name, info);
-        }
-
-        CommentMetrics {
-            total_comments,
-            good_comments,
-            bad_comments,
-            overall_score,
-            comment_details: details,
-            function_summary,
-            total_functions: functions.len() as i64,
-            documented_functions,
-        }
-    }
-
-    // --- report building (routed through cf-gojson) -------------------------
-
-    fn build_result(&self, metrics: &CommentMetrics, functions: &[&Node]) -> GoValue {
-        let comment_details_iface = self.build_comment_details_iface(&metrics.comment_details);
-        let comments_table = self.build_comments_table(&metrics.comment_details);
-        let functions_table = self.build_functions_table(functions, metrics);
-        let function_summary_iface = self.build_function_summary_iface(metrics);
-
-        // Dynamic report map => map-origin so cf-gojson byte-sorts keys.
-        let mut m = GoMap::new(MapOrigin::Map);
-        m.push("total_comments", GoValue::Int(metrics.total_comments));
-        m.push("good_comments", GoValue::Int(metrics.good_comments));
-        m.push("bad_comments", GoValue::Int(metrics.bad_comments));
-        m.push("overall_score", GoValue::Float(metrics.overall_score));
-        m.push("total_functions", GoValue::Int(metrics.total_functions));
-        m.push(
-            "documented_functions",
-            GoValue::Int(metrics.documented_functions),
-        );
-        m.push(
-            "good_comments_ratio",
-            GoValue::Float(safe_div(
-                metrics.good_comments as f64,
-                metrics.total_comments as f64,
-            )),
-        );
-        m.push(
-            "documentation_coverage",
-            GoValue::Float(safe_div(
-                metrics.documented_functions as f64,
-                metrics.total_functions as f64,
-            )),
-        );
-        m.push(
-            "total_comment_details",
-            GoValue::Int(metrics.comment_details.len() as i64),
-        );
-        m.push("comment_details", comment_details_iface);
-        m.push("comments", comments_table);
-        m.push("functions", functions_table);
-        m.push("function_summary", function_summary_iface);
-        m.push(
-            "message",
-            GoValue::Str(comment_message(metrics.overall_score)),
-        );
-        GoValue::Map(m)
-    }
-
-    fn build_comment_details_iface(&self, details: &[CommentDetail]) -> GoValue {
-        let items = details
-            .iter()
-            .map(|d| {
-                let mut m = GoMap::new(MapOrigin::Map);
-                m.push("type", GoValue::Str(d.kind.clone()));
-                m.push("token", GoValue::Str(d.token.clone()));
-                m.push("position", GoValue::Str(d.position.clone()));
-                m.push("score", GoValue::Float(d.score));
-                m.push("is_good", GoValue::Bool(d.is_good));
-                m.push("target_type", GoValue::Str(d.target_type.clone()));
-                m.push("target_name", GoValue::Str(d.target_name.clone()));
-                m.push("line_number", GoValue::Int(d.line_number));
-                GoValue::Map(m)
-            })
-            .collect();
-        GoValue::Array(items)
-    }
-
-    fn build_comments_table(&self, details: &[CommentDetail]) -> GoValue {
-        let items = details
-            .iter()
-            .map(|d| {
-                let item = CommentReportItem {
-                    line: d.line_number,
-                    comment: truncate_comment_body(&d.token),
-                    placement: d.position.clone(),
-                    target: d.target_name.clone(),
-                    assessment: comment_assessment(d.is_good),
-                };
-                let mut m = GoMap::new(MapOrigin::Map);
-                m.push("line", GoValue::Int(item.line));
-                m.push("comment", GoValue::Str(item.comment));
-                m.push("placement", GoValue::Str(item.placement));
-                m.push("target", GoValue::Str(item.target));
-                m.push("assessment", GoValue::Str(item.assessment));
-                GoValue::Map(m)
-            })
-            .collect();
-        GoValue::Array(items)
-    }
-
-    fn build_functions_table(&self, functions: &[&Node], metrics: &CommentMetrics) -> GoValue {
-        let items = functions
-            .iter()
-            .map(|&function| {
-                let func_name = self.extract_target_name(function);
-                let info = metrics.function_summary.get(&func_name);
-                let (assessment, comment_type) = function_assessment(info);
-                let func_type = function_type(function);
-                let lines = function_line_count(function);
-                let item = FunctionReportItem {
-                    function: func_name,
-                    kind: func_type,
-                    lines,
-                    comment: comment_type,
-                    assessment,
-                };
-                let mut m = GoMap::new(MapOrigin::Map);
-                m.push("function", GoValue::Str(item.function));
-                m.push("type", GoValue::Str(item.kind));
-                m.push("lines", GoValue::Int(item.lines));
-                m.push("comment", GoValue::Str(item.comment));
-                m.push("assessment", GoValue::Str(item.assessment));
-                GoValue::Map(m)
-            })
-            .collect();
-        GoValue::Array(items)
-    }
-
-    fn build_function_summary_iface(&self, metrics: &CommentMetrics) -> GoValue {
-        let mut outer = GoMap::new(MapOrigin::Map);
-        for (name, info) in &metrics.function_summary {
-            let mut m = GoMap::new(MapOrigin::Map);
-            m.push("name", GoValue::Str(info.name.clone()));
-            m.push("type", GoValue::Str(info.kind.clone()));
-            m.push("has_comment", GoValue::Bool(info.has_comment));
-            m.push("comment_type", GoValue::Str(info.comment_type.clone()));
-            outer.push(name.clone(), GoValue::Map(m));
-        }
-        GoValue::Map(outer)
+        collect_comments(child, child_remaining, out);
     }
 }
 
-// --- free helpers ------------------------------------------------------------
+/// Whether child `index` of `parent` is the first statement of a declaration
+/// body: the first child of a `Body` block, or a direct child of a
+/// declaration preceded only by header nodes (name, parameters, types,
+/// decorators, other comments).
+fn is_leading_position(parent: &Node, index: usize) -> bool {
+    if parent.node_type == uast::BLOCK && has_role(parent, ROLE_BODY) {
+        return index == 0;
+    }
+    DECLARATION_TYPES.contains(&parent.node_type.as_str())
+        && parent.children[..index].iter().all(is_header_node)
+}
 
-fn has_good_comment(func_name: &str, details: &[CommentDetail]) -> bool {
-    details
+fn is_header_node(n: &Node) -> bool {
+    HEADER_TYPES.contains(&n.node_type.as_str())
+        || [ROLE_NAME, ROLE_PARAMETER, ROLE_TYPE, ROLE_ATTRIBUTE]
+            .iter()
+            .any(|role| has_role(n, role))
+}
+
+// --- metrics ------------------------------------------------------------------
+
+fn compute_metrics(
+    blocks: &[Block],
+    declarations: Vec<Declaration>,
+    config: &CommentConfig,
+) -> CommentMetrics {
+    let spans: Vec<TargetSpan> = declarations
         .iter()
-        .any(|d| d.target_name == func_name && d.is_good)
-}
-
-fn comment_type_for(func_name: &str, details: &[CommentDetail]) -> String {
-    for d in details {
-        if d.target_name == func_name && d.is_good {
-            return d.kind.clone();
+        .map(|d| TargetSpan {
+            start: d.start,
+            end: d.end,
+            anchor: d.anchor,
+        })
+        .collect();
+    let mut doc_lines: Vec<Option<i64>> = vec![None; declarations.len()];
+    let mut comments = Vec::new();
+    for block in blocks {
+        let span = BlockSpan {
+            start: block.start,
+            text_end: block.text_end,
+            leading_doc: block.leading_doc,
+        };
+        let (placement, target) = match resolve(span, &spans) {
+            Resolved::Above(i) => (Placement::Above, Some(i)),
+            Resolved::Docstring(i) => (Placement::Docstring, Some(i)),
+            Resolved::Inline(i) => (Placement::Inline, Some(i)),
+            Resolved::Unassociated => (Placement::Unassociated, None),
+        };
+        if matches!(placement, Placement::Above | Placement::Docstring) {
+            if let Some(i) = target {
+                doc_lines[i].get_or_insert(block.start);
+            }
         }
+        let (target_type, target_name) = target
+            .map(|i| (declarations[i].kind.clone(), declarations[i].name.clone()))
+            .unwrap_or_default();
+        let score = score_for(placement, &target_type, config);
+        comments.extend(block.comments.iter().map(|(text, line)| CommentDetail {
+            text: text.clone(),
+            line: *line,
+            placement,
+            score,
+            target_type: target_type.clone(),
+            target_name: target_name.clone(),
+        }));
     }
-    String::new()
-}
 
-fn calculate_distance(comment_end_line: i64, target: &Node) -> i64 {
-    let Some((target_start, _)) = node_pos(target) else {
-        return MAGIC_999;
+    let functions: Vec<FunctionInfo> = declarations
+        .into_iter()
+        .zip(doc_lines)
+        .map(|(d, doc_line)| FunctionInfo {
+            name: d.name,
+            kind: d.kind,
+            line: d.start,
+            lines: d.end - d.start + 1,
+            doc_line,
+        })
+        .collect();
+
+    let good_comments = comments.iter().filter(|c| c.is_good()).count() as i64;
+    let counts = CommentCounts {
+        total_comments: comments.len() as i64,
+        good_comments,
+        bad_comments: comments.len() as i64 - good_comments,
+        total_functions: functions.len() as i64,
+        documented_functions: functions.iter().filter(|f| f.is_documented()).count() as i64,
     };
-    let target_line = target_start as i64;
-    if comment_end_line < target_line {
-        target_line - comment_end_line
-    } else {
-        MAGIC_1000 + (comment_end_line - target_line)
+    CommentMetrics {
+        counts,
+        comments,
+        functions,
     }
 }
 
-fn is_comment_properly_placed(comment_start: i64, comment_end: i64, target: &Node) -> bool {
-    let Some((target_start, _)) = node_pos(target) else {
-        return false;
-    };
-    let target_line = target_start as i64;
-    if comment_end >= target_line {
-        return false;
-    }
-    let gap = target_line - comment_end;
-    is_gap_acceptable(comment_start, comment_end, gap)
-}
-
-fn is_gap_acceptable(comment_start: i64, comment_end: i64, gap: i64) -> bool {
-    if comment_start == comment_end {
-        gap <= GAP_THRESHOLD_HIGH
-    } else {
-        gap <= MAGIC_3
+fn score_for(placement: Placement, target_type: &str, config: &CommentConfig) -> f64 {
+    match placement {
+        Placement::Above | Placement::Docstring => config.reward_score,
+        Placement::Inline => config
+            .penalty_scores
+            .get(target_type)
+            .copied()
+            .unwrap_or(DEFAULT_INLINE_PENALTY),
+        Placement::Unassociated => UNASSOCIATED_PENALTY,
     }
 }
 
-fn determine_position(comment_start: i64, comment_end: i64, target: &Node) -> String {
-    let Some((target_start, _)) = node_pos(target) else {
-        return UNKNOWN_NAME.to_string();
-    };
-    let target_line = target_start as i64;
-    if comment_end < target_line {
-        return "above".to_string();
-    }
-    if comment_start > target_line {
-        return "below".to_string();
-    }
-    "inline".to_string()
-}
+// --- report building (routed through cf-gojson) -------------------------------
 
-fn comment_assessment(is_good: bool) -> String {
-    if is_good {
-        "✅ OK".to_string()
-    } else {
-        "❌ Not OK".to_string()
-    }
-}
-
-fn truncate_comment_body(body: &str) -> String {
-    // Truncation is by BYTE length (report contract): len > 50 => first 47
-    // bytes + "...".
-    if body.len() > LEN_ARG_50 {
-        // Back off to the nearest char boundary <= 47 so we never split a
-        // multi-byte sequence; comment tokens here are ASCII-dominant.
-        let mut end = 47;
-        while end > 0 && !body.is_char_boundary(end) {
-            end -= 1;
-        }
-        format!("{}...", &body[..end])
-    } else {
-        body.to_string()
-    }
-}
-
-fn function_assessment(info: Option<&FunctionInfo>) -> (String, String) {
-    match info {
-        Some(i) if i.has_comment => ("✅ Well Documented".to_string(), i.comment_type.clone()),
-        _ => ("❌ No Comment".to_string(), "None".to_string()),
-    }
-}
-
-fn function_type(function: &Node) -> String {
-    let t = node_type(function);
-    if t.is_empty() {
-        "Unknown".to_string()
-    } else {
-        t.to_string()
-    }
-}
-
-fn function_line_count(function: &Node) -> i64 {
-    match node_pos(function) {
-        Some((start, end)) => (end as i64) - (start as i64) + 1,
-        None => 0,
-    }
-}
-
-fn safe_div(a: f64, b: f64) -> f64 {
-    if b == 0.0 {
-        0.0
-    } else {
-        a / b
-    }
-}
-
-fn comment_message(score: f64) -> String {
-    // Threshold labeler with high=0.8, medium=0.6, low=0.4. The label strings
-    // are part of the report contract.
-    if score >= 0.8 {
-        "Excellent comment quality and placement".to_string()
-    } else if score >= 0.6 {
-        "Good comment quality with room for improvement".to_string()
-    } else if score >= 0.4 {
-        "Fair comment quality - consider improving placement".to_string()
-    } else {
-        "Poor comment quality - significant improvement needed".to_string()
-    }
-}
-
-fn build_empty_result() -> GoValue {
+/// Builds the per-file report map: the counters, the derived ratios, the
+/// `comments` and `functions` tables and the quality `message`.
+#[must_use]
+pub fn build_report(metrics: &CommentMetrics) -> GoValue {
+    let counts = &metrics.counts;
+    // Dynamic report map => map-origin so cf-gojson byte-sorts keys.
     let mut m = GoMap::new(MapOrigin::Map);
-    m.push("total_comments", GoValue::Int(0));
-    m.push("good_comments", GoValue::Int(0));
-    m.push("bad_comments", GoValue::Int(0));
-    m.push("overall_score", GoValue::Float(0.0));
-    m.push("total_functions", GoValue::Int(0));
-    m.push("documented_functions", GoValue::Int(0));
-    m.push("message", GoValue::Str("No comments found".to_string()));
+    m.push("total_comments", GoValue::Int(counts.total_comments));
+    m.push("good_comments", GoValue::Int(counts.good_comments));
+    m.push("bad_comments", GoValue::Int(counts.bad_comments));
+    m.push("overall_score", GoValue::Float(counts.overall_score()));
+    m.push(
+        "good_comments_ratio",
+        GoValue::Float(counts.overall_score()),
+    );
+    m.push("total_functions", GoValue::Int(counts.total_functions));
+    m.push(
+        "documented_functions",
+        GoValue::Int(counts.documented_functions),
+    );
+    m.push(
+        "documentation_coverage",
+        GoValue::Float(counts.documentation_coverage()),
+    );
+    m.push("comments", comments_table(&metrics.comments));
+    m.push("functions", functions_table(&metrics.functions));
+    m.push("message", GoValue::Str(counts.message().to_string()));
     GoValue::Map(m)
 }
 
-// --- cf-uast-node accessors (the single point of API coupling) --------------
-
-/// Returns the node type string.
-fn node_type(n: &Node) -> &str {
-    &n.node_type
+fn comments_table(comments: &[CommentDetail]) -> GoValue {
+    let rows = comments
+        .iter()
+        .map(|c| {
+            let mut m = GoMap::new(MapOrigin::Map);
+            m.push("line", GoValue::Int(c.line));
+            m.push("comment", GoValue::Str(comment_preview(&c.text)));
+            m.push("placement", GoValue::Str(c.placement.as_str().to_string()));
+            m.push("target", GoValue::Str(c.target_name.clone()));
+            m.push("assessment", GoValue::Str(c.assessment().to_string()));
+            GoValue::Map(m)
+        })
+        .collect();
+    GoValue::Array(rows)
 }
 
-/// Returns the node token string.
-fn node_token(n: &Node) -> &str {
-    &n.token
+fn functions_table(functions: &[FunctionInfo]) -> GoValue {
+    let rows = functions
+        .iter()
+        .map(|f| {
+            let mut m = GoMap::new(MapOrigin::Map);
+            m.push("function", GoValue::Str(f.name.clone()));
+            m.push("type", GoValue::Str(f.kind.clone()));
+            m.push("line", GoValue::Int(f.line));
+            m.push("lines", GoValue::Int(f.lines));
+            m.push("doc_line", GoValue::Int(f.doc_line.unwrap_or(0)));
+            m.push("assessment", GoValue::Str(f.assessment().to_string()));
+            GoValue::Map(m)
+        })
+        .collect();
+    GoValue::Array(rows)
 }
 
-/// Returns `(start_line, end_line)` if the node carries a position.
-///
-/// `cf_uast_node::Positions` stores lines as `u64`; the analyzer works in
-/// `i64` line space, so callers widen these directly.
-fn node_pos(n: &Node) -> Option<(u64, u64)> {
-    n.pos.as_ref().map(|p| (p.start_line, p.end_line))
+/// The comment text shortened for tables: more than 50 bytes keeps the first
+/// 47 (backed off to a char boundary) plus `...`.
+#[must_use]
+pub fn comment_preview(text: &str) -> String {
+    if text.len() <= PREVIEW_MAX_BYTES {
+        return text.to_string();
+    }
+    let mut end = PREVIEW_KEEP_BYTES;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...", &text[..end])
 }

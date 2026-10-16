@@ -14,7 +14,7 @@
 //! HTML-escape ON, no trailing newline (the report-contract JSON encoding).
 //! Multiple envelopes concatenate back-to-back; the decoder loops while bytes
 //! remain. See DESIGN.md §2.5. Envelope bytes are pinned by
-//! `tests/compat`.
+//! the report e2e suites (`bins/codefang/tests`).
 
 use cf_gojson::{marshal, GoValue};
 

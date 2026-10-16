@@ -1,339 +1,504 @@
-//! Layered configuration loader.
+//! Locating, reading and layering the configuration.
 //!
-//! Precedence is **flag > env (`CODEFANG_`) > file > default** (CLI
-//! compatibility contract):
-//!
-//! 1. **default** — [`Config::default`] (the registered default values).
-//! 2. **file** — `.codefang.yaml` (explicit path, else CWD then `$HOME`),
-//!    deserialized over the defaults via `serde(default)`.
-//! 3. **env** — every `CODEFANG_<UPPER_SNAKE>` variable overrides the matching
-//!    dotted key (`.` maps to `_` under the `CODEFANG` prefix).
-//! 4. **flag** — explicit programmatic overrides applied last (supplied by the
-//!    caller, since clap lives in `cf-commands`).
+//! Layers, lowest first: the compiled defaults (every field `None`), the
+//! config file, the `CODEFANG_*` environment. The caller applies the result
+//! as the default of each flag, so an explicit flag wins over all of them.
 
-use crate::types::{Config, ConfigError};
-use std::env;
+use crate::types::{Config, ConfigError, KEYS};
+use serde_yaml::{Mapping, Value as Yaml};
 use std::path::{Path, PathBuf};
 
-/// Config file base name without extension.
-const CONFIG_NAME: &str = ".codefang";
-/// Config file extension.
-const CONFIG_EXT: &str = "yaml";
-/// Environment variable prefix.
-const ENV_PREFIX: &str = "CODEFANG";
+/// The configuration file name searched in the working directory and in
+/// `$HOME`.
+pub const CONFIG_FILE_NAME: &str = ".codefang.yaml";
 
-/// Error returned by [`load_config`].
-///
-/// The `Display` wrapping (`read config: ...`, `unmarshal config: ...`,
-/// `validate config: ...`) is part of the CLI compatibility contract, so any
-/// error-substring assertions continue to hold.
+/// Prefix of the environment variable of a key: `CODEFANG_` + the key
+/// upper-cased with `.` replaced by `_`.
+pub const ENV_PREFIX: &str = "CODEFANG_";
+
+/// Why the configuration could not be loaded.
 #[derive(Debug, thiserror::Error)]
 pub enum LoadError {
-    /// Reading the config file failed (`read config: <cause>`).
-    ///
-    /// A *missing* file at a searched path is NOT an error (defaults are
-    /// used), but an explicitly-set path that cannot be read, or a malformed
-    /// YAML document, is wrapped here.
-    #[error("read config: {0}")]
-    Read(String),
-    /// Deserializing the merged config into the struct failed
-    /// (`unmarshal config: <cause>`).
-    #[error("unmarshal config: {0}")]
-    Unmarshal(String),
-    /// Validation failed (`validate config: <cause>`).
-    #[error("validate config: {0}")]
-    Validate(#[source] ConfigError),
+    /// The file could not be read.
+    #[error("cannot read config {}: {cause}", .path.display())]
+    Read {
+        /// The file.
+        path: PathBuf,
+        /// The I/O error.
+        cause: std::io::Error,
+    },
+    /// The file is not a YAML mapping of the documented types.
+    #[error("invalid config {}: {cause}", .path.display())]
+    Parse {
+        /// The file.
+        path: PathBuf,
+        /// The parser's message (it names the key and the line).
+        cause: String,
+    },
+    /// A `CODEFANG_*` variable does not hold a value of its key's type.
+    #[error("invalid environment variable {name}: {cause}")]
+    Env {
+        /// The variable name.
+        name: String,
+        /// The parser's message.
+        cause: String,
+    },
+    /// A value breaks its key's rule; `origin` is the file path or the
+    /// environment variable that set it.
+    #[error("invalid config {origin}: {error}")]
+    Invalid {
+        /// The file path or variable name.
+        origin: String,
+        /// The violated rule.
+        error: ConfigError,
+    },
 }
 
-/// Loads configuration from file, environment variables, and defaults.
+/// A loaded configuration.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Loaded {
+    /// The file the configuration came from (`None`: no file).
+    pub path: Option<PathBuf>,
+    /// The layered configuration.
+    pub config: Config,
+    /// Keys the file sets that nothing reads, in document order.
+    pub unsupported_keys: Vec<String>,
+}
+
+/// The default search directories: the working directory, then `$HOME`.
+#[must_use]
+pub fn default_search_dirs() -> Vec<PathBuf> {
+    let mut dirs = vec![PathBuf::from(".")];
+    if let Some(home) = std::env::var_os("HOME").filter(|h| !h.is_empty()) {
+        dirs.push(PathBuf::from(home));
+    }
+    dirs
+}
+
+/// Loads the configuration.
 ///
-/// If `config_path` is non-empty it is used as the explicit config file path;
-/// otherwise `.codefang.yaml` is searched in CWD and `$HOME`. A missing config
-/// file (when searching) is not an error — defaults are used. An explicit
-/// path that does not exist *is* an error (reference loader behavior).
+/// `explicit` (from `--config`) must be readable; without it the first
+/// [`CONFIG_FILE_NAME`] found in `search_dirs` is read, and none at all is
+/// not an error. `env` resolves an environment variable name; the variable
+/// of a key overrides the file.
 ///
 /// # Errors
-/// - [`LoadError::Read`] if an explicit config file cannot be read or any
-///   located file is malformed YAML.
-/// - [`LoadError::Unmarshal`] if the YAML cannot be deserialized into [`Config`].
-/// - [`LoadError::Validate`] if [`Config::validate`] fails.
-pub fn load_config(config_path: &str) -> Result<Config, LoadError> {
-    // Layers 1+2: file over defaults (missing fields fall back via
-    // serde(default)), or pure defaults when no file is found.
-    let mut cfg = match read_config_source(config_path)? {
-        Some(contents) => parse_yaml_over_defaults(&contents)?,
-        None => Config::default(),
-    };
-
-    // Layer 3: environment (CODEFANG_*).
-    apply_env_overrides(&mut cfg, &env_lookup);
-
-    // Validate the merged result.
-    cfg.validate().map_err(LoadError::Validate)?;
-
-    Ok(cfg)
-}
-
-/// Reads the config file contents, or `None` when searching and no file exists.
 ///
-/// Returns [`LoadError::Read`] for an explicit path that cannot be read.
-fn read_config_source(config_path: &str) -> Result<Option<String>, LoadError> {
-    if !config_path.is_empty() {
-        // Explicit path: a missing/unreadable file is an error (reference
-        // loader behavior).
-        return std::fs::read_to_string(config_path)
-            .map(Some)
-            .map_err(|e| LoadError::Read(e.to_string()));
-    }
+/// [`LoadError`] naming the file, variable or key at fault.
+pub fn load<F>(
+    explicit: Option<&Path>,
+    search_dirs: &[PathBuf],
+    env: F,
+) -> Result<Loaded, LoadError>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let (path, contents) = match explicit {
+        Some(p) => (Some(p.to_path_buf()), Some(read(p)?)),
+        None => match discover(search_dirs)? {
+            Some((p, c)) => (Some(p), Some(c)),
+            None => (None, None),
+        },
+    };
+    let file_tree = match (&path, contents) {
+        (Some(p), Some(c)) => parse_file(p, &c)?,
+        _ => Yaml::Null,
+    };
+    let mut unsupported_keys = Vec::new();
+    collect_unsupported(&file_tree, "", &mut unsupported_keys);
 
-    // Search CWD then $HOME for `.codefang.yaml`. A missing file is fine.
-    for dir in search_paths() {
-        let candidate = dir.join(format!("{CONFIG_NAME}.{CONFIG_EXT}"));
-        match std::fs::read_to_string(&candidate) {
-            Ok(contents) => return Ok(Some(contents)),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(LoadError::Read(e.to_string())),
+    let mut merged = file_tree;
+    for key in KEYS {
+        let name = env_name(key);
+        if let Some(raw) = env(&name) {
+            let leaf = env_value(key, &raw);
+            let only = nest(key, leaf.clone());
+            let cfg: Config = serde_yaml::from_value(only).map_err(|e| LoadError::Env {
+                name: name.clone(),
+                cause: e.to_string(),
+            })?;
+            cfg.validate().map_err(|error| LoadError::Invalid {
+                origin: name.clone(),
+                error,
+            })?;
+            overlay(&mut merged, key, leaf);
         }
     }
+    let config: Config = serde_yaml::from_value(merged).map_err(|e| LoadError::Parse {
+        path: path.clone().unwrap_or_default(),
+        cause: e.to_string(),
+    })?;
+    Ok(Loaded {
+        path,
+        config,
+        unsupported_keys,
+    })
+}
 
+/// The environment variable of `key`.
+#[must_use]
+pub fn env_name(key: &str) -> String {
+    format!("{ENV_PREFIX}{}", key.to_uppercase().replace('.', "_"))
+}
+
+/// Reads `path` whole.
+fn read(path: &Path) -> Result<String, LoadError> {
+    std::fs::read_to_string(path).map_err(|cause| LoadError::Read {
+        path: path.to_path_buf(),
+        cause,
+    })
+}
+
+/// The first [`CONFIG_FILE_NAME`] in `dirs` and its contents. A missing file
+/// moves on to the next directory; any other read failure is an error.
+fn discover(dirs: &[PathBuf]) -> Result<Option<(PathBuf, String)>, LoadError> {
+    for dir in dirs {
+        let candidate = dir.join(CONFIG_FILE_NAME);
+        match std::fs::read_to_string(&candidate) {
+            Ok(contents) => return Ok(Some((candidate, contents))),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(cause) => {
+                return Err(LoadError::Read {
+                    path: candidate,
+                    cause,
+                })
+            }
+        }
+    }
     Ok(None)
 }
 
-/// Returns the config search directories, in order: CWD, then `$HOME`.
-fn search_paths() -> Vec<PathBuf> {
-    let mut paths = vec![PathBuf::from(".")];
-    if let Some(home) = home_dir() {
-        paths.push(home);
+/// Parses the file into a YAML tree, checks the documented types and the
+/// value rules. A file holding only comments is the empty configuration.
+fn parse_file(path: &Path, contents: &str) -> Result<Yaml, LoadError> {
+    let parse_error = |cause: String| LoadError::Parse {
+        path: path.to_path_buf(),
+        cause,
+    };
+    let tree: Yaml = serde_yaml::from_str(contents).map_err(|e| parse_error(e.to_string()))?;
+    if !matches!(tree, Yaml::Null | Yaml::Mapping(_)) {
+        return Err(parse_error("the document must be a mapping of keys".into()));
     }
-    paths
-}
-
-/// Best-effort `$HOME` resolution.
-fn home_dir() -> Option<PathBuf> {
-    env::var_os("HOME")
-        .filter(|h| !h.is_empty())
-        .map(PathBuf::from)
-}
-
-/// Deserializes YAML over the registered defaults.
-///
-/// An empty document yields the all-defaults [`Config`]. Malformed YAML is
-/// surfaced as [`LoadError::Read`] (`read config: ...`), matching the
-/// reference loader's wrapping of parse errors.
-fn parse_yaml_over_defaults(contents: &str) -> Result<Config, LoadError> {
-    if contents.trim().is_empty() {
-        return Ok(Config::default());
+    if tree.is_null() {
+        return Ok(tree);
     }
-    // serde(default) on every struct/field merges the file over the registered
-    // defaults: absent keys fall back to the default values.
-    serde_yaml::from_str::<Config>(contents).map_err(|e| LoadError::Read(e.to_string()))
+    // Typed parse of the TEXT (not the tree) so the message names the key
+    // path and the line: `history.anomaly.window_size: invalid type: …`.
+    let cfg: Config = serde_yaml::from_str(contents).map_err(|e| parse_error(e.to_string()))?;
+    cfg.validate().map_err(|error| LoadError::Invalid {
+        origin: path.display().to_string(),
+        error,
+    })?;
+    Ok(tree)
 }
 
-/// Resolves a `CODEFANG_*` environment variable, returning its value if set.
-fn env_lookup(name: &str) -> Option<String> {
-    env::var(name).ok()
+/// Appends to `out` every leaf path under `node` (prefixed with `prefix`)
+/// that is not a supported key, descending into mappings.
+fn collect_unsupported(node: &Yaml, prefix: &str, out: &mut Vec<String>) {
+    let Yaml::Mapping(map) = node else {
+        // `pipeline:` with every child commented out is an empty section.
+        let empty_section = node.is_null() && is_section(prefix);
+        if !prefix.is_empty() && !empty_section {
+            out.push(prefix.to_owned());
+        }
+        return;
+    };
+    if map.is_empty() && !prefix.is_empty() && !is_section(prefix) {
+        out.push(prefix.to_owned());
+    }
+    for (k, v) in map {
+        let name = match k {
+            Yaml::String(s) => s.clone(),
+            other => serde_yaml::to_string(other)
+                .map(|s| s.trim().to_owned())
+                .unwrap_or_default(),
+        };
+        let path = if prefix.is_empty() {
+            name
+        } else {
+            format!("{prefix}.{name}")
+        };
+        if KEYS.contains(&path.as_str()) {
+            continue;
+        }
+        collect_unsupported(v, &path, out);
+    }
 }
 
-/// Applies `CODEFANG_*` environment overrides over `cfg` (env > file).
-///
-/// `lookup` resolves a full env-var name (e.g. `CODEFANG_PIPELINE_WORKERS`) to
-/// its string value; the name is the dotted config key upper-cased with `.`
-/// replaced by `_` under the `CODEFANG` prefix. Parameterizing the lookup
-/// keeps the function testable without mutating the process environment.
-pub fn apply_env_overrides<F>(cfg: &mut Config, lookup: &F)
-where
-    F: Fn(&str) -> Option<String>,
-{
-    for (key, setter) in ENV_FIELDS {
-        let env_name = format!("{ENV_PREFIX}_{}", key.to_uppercase().replace('.', "_"));
-        if let Some(raw) = lookup(&env_name) {
-            setter(cfg, &raw);
+/// True when `prefix` is a section holding supported keys (`history`,
+/// `history.anomaly`, …).
+fn is_section(prefix: &str) -> bool {
+    KEYS.iter()
+        .any(|k| k.strip_prefix(prefix).is_some_and(|r| r.starts_with('.')))
+}
+
+/// The YAML value of an environment variable: a comma / whitespace
+/// separated list for `analyzers`, the raw text for the string keys, a YAML
+/// scalar otherwise (`3`, `true`, `2.5`).
+fn env_value(key: &str, raw: &str) -> Yaml {
+    use crate::types::keys;
+    if key == keys::SHOTNESS_DSL_STRUCT
+        || key == keys::SHOTNESS_DSL_NAME
+        || key == keys::MEMORY_BUDGET
+    {
+        return Yaml::String(raw.to_owned());
+    }
+    if key == keys::ANALYZERS {
+        let items = raw
+            .split(|c: char| c == ',' || c.is_whitespace())
+            .filter(|s| !s.is_empty())
+            .map(|s| Yaml::String(s.to_owned()))
+            .collect();
+        return Yaml::Sequence(items);
+    }
+    serde_yaml::from_str(raw).unwrap_or_else(|_| Yaml::String(raw.to_owned()))
+}
+
+/// `leaf` nested under the dotted `key` (`a.b` → `{a: {b: leaf}}`).
+fn nest(key: &str, leaf: Yaml) -> Yaml {
+    key.rsplit('.').fold(leaf, |inner, part| {
+        let mut map = Mapping::new();
+        map.insert(Yaml::String(part.to_owned()), inner);
+        Yaml::Mapping(map)
+    })
+}
+
+/// Sets the dotted `key` of `tree` to `leaf`, creating (or replacing
+/// non-mapping) intermediate sections.
+fn overlay(tree: &mut Yaml, key: &str, leaf: Yaml) {
+    let mut node = tree;
+    let parts: Vec<&str> = key.split('.').collect();
+    for (i, part) in parts.iter().enumerate() {
+        if !matches!(node, Yaml::Mapping(_)) {
+            *node = Yaml::Mapping(Mapping::new());
+        }
+        let Yaml::Mapping(map) = node else {
+            unreachable!("just made a mapping")
+        };
+        let k = Yaml::String((*part).to_owned());
+        if i + 1 == parts.len() {
+            map.insert(k, leaf);
+            return;
+        }
+        node = map.entry(k).or_insert(Yaml::Null);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::keys;
+
+    fn no_env(_: &str) -> Option<String> {
+        None
+    }
+
+    fn write(dir: &Path, name: &str, body: &str) -> PathBuf {
+        let p = dir.join(name);
+        std::fs::write(&p, body).unwrap();
+        p
+    }
+
+    #[test]
+    fn env_names_follow_the_key() {
+        assert_eq!(
+            env_name(keys::ANOMALY_WINDOW_SIZE),
+            "CODEFANG_HISTORY_ANOMALY_WINDOW_SIZE"
+        );
+        assert_eq!(env_name(keys::ANALYZERS), "CODEFANG_ANALYZERS");
+    }
+
+    /// The budget variable holds a size, kept as text whatever it looks
+    /// like.
+    #[test]
+    fn the_memory_budget_variable_is_text() {
+        for raw in ["512MB", "1073741824"] {
+            let dir = tempfile::tempdir().unwrap();
+            let env =
+                |name: &str| (name == "CODEFANG_PIPELINE_MEMORY_BUDGET").then(|| raw.to_owned());
+            let loaded = load(None, &[dir.path().to_path_buf()], env).unwrap();
+            assert_eq!(loaded.config.pipeline.memory_budget.as_deref(), Some(raw));
         }
     }
-    // analyzers (string list) — a single env var is split on whitespace
-    // (reference loader behavior, kept for parity).
-    let analyzers_name = format!("{ENV_PREFIX}_ANALYZERS");
-    if let Some(raw) = lookup(&analyzers_name) {
-        cfg.analyzers = parse_string_slice_env(&raw);
+
+    #[test]
+    fn no_file_and_no_env_is_the_empty_configuration() {
+        let dir = tempfile::tempdir().unwrap();
+        let loaded = load(None, &[dir.path().to_path_buf()], no_env).unwrap();
+        assert_eq!(loaded, Loaded::default());
     }
-}
 
-/// Parses a string-list env value (whitespace-separated).
-fn parse_string_slice_env(raw: &str) -> Vec<String> {
-    raw.split_whitespace().map(str::to_owned).collect()
-}
+    #[test]
+    fn discovery_takes_the_first_directory_that_has_the_file() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        write(
+            second.path(),
+            CONFIG_FILE_NAME,
+            "history:\n  tick_size: 2\n",
+        );
+        let dirs = [first.path().to_path_buf(), second.path().to_path_buf()];
+        let loaded = load(None, &dirs, no_env).unwrap();
+        assert_eq!(loaded.path, Some(second.path().join(CONFIG_FILE_NAME)));
+        assert_eq!(loaded.config.history.tick_size, Some(2));
 
-/// Parses an integer env value (best-effort coercion).
-///
-/// Invalid integers leave the existing value unchanged: unparsable overrides
-/// are conservatively ignored so a typo cannot silently zero a tuned value.
-fn set_i64(target: &mut i64, raw: &str) {
-    if let Ok(v) = raw.trim().parse::<i64>() {
-        *target = v;
+        write(first.path(), CONFIG_FILE_NAME, "history:\n  tick_size: 1\n");
+        let loaded = load(None, &dirs, no_env).unwrap();
+        assert_eq!(loaded.config.history.tick_size, Some(1));
     }
-}
 
-/// Parses a float env value; ignores unparsable input.
-fn set_f64(target: &mut f64, raw: &str) {
-    if let Ok(v) = raw.trim().parse::<f64>() {
-        *target = v;
+    #[test]
+    fn an_explicit_path_skips_discovery_and_must_exist() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), CONFIG_FILE_NAME, "history:\n  tick_size: 1\n");
+        let other = write(dir.path(), "other.yaml", "history:\n  tick_size: 6\n");
+        let dirs = [dir.path().to_path_buf()];
+        let loaded = load(Some(&other), &dirs, no_env).unwrap();
+        assert_eq!(loaded.config.history.tick_size, Some(6));
+
+        let missing = dir.path().join("missing.yaml");
+        let err = load(Some(&missing), &dirs, no_env).unwrap_err();
+        assert!(matches!(err, LoadError::Read { .. }), "{err}");
+        assert!(err.to_string().starts_with("cannot read config "), "{err}");
     }
-}
 
-/// Parses a bool env value; ignores unparsable input.
-fn set_bool(target: &mut bool, raw: &str) {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "1" | "t" | "true" | "yes" | "y" | "on" => *target = true,
-        "0" | "f" | "false" | "no" | "n" | "off" => *target = false,
-        _ => {}
+    #[test]
+    fn a_comment_only_file_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write(dir.path(), "c.yaml", "# nothing\n# analyzers: []\n");
+        let loaded = load(Some(&p), &[], no_env).unwrap();
+        assert_eq!(loaded.config, Config::default());
+        assert!(loaded.unsupported_keys.is_empty());
     }
-}
 
-/// Sets a string field directly to the raw env value.
-fn set_string(target: &mut String, raw: &str) {
-    raw.clone_into(target);
-}
+    #[test]
+    fn unsupported_keys_are_listed_in_document_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write(
+            dir.path(),
+            "c.yaml",
+            "pipeline:\n  workers: 4\n  max_changes_per_commit: 5\n\
+             checkpoint:\n  enabled: true\n  dir: x\n\
+             history:\n  burndown:\n    granularity: 7\n    debug: true\n  clones: {}\n\
+             bogus: 1\n",
+        );
+        let loaded = load(Some(&p), &[], no_env).unwrap();
+        assert_eq!(
+            loaded.unsupported_keys,
+            vec![
+                "pipeline.workers",
+                "checkpoint.enabled",
+                "checkpoint.dir",
+                "history.burndown.debug",
+                "history.clones",
+                "bogus",
+            ]
+        );
+        assert_eq!(loaded.config.pipeline.max_changes_per_commit, Some(5));
+        assert_eq!(loaded.config.history.burndown.granularity, Some(7));
+    }
 
-/// Type of a per-key env override setter.
-type EnvSetter = fn(&mut Config, &str);
+    #[test]
+    fn a_section_with_every_child_commented_out_is_not_unsupported() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write(
+            dir.path(),
+            "c.yaml",
+            "pipeline:\n#  workers: 0\nhistory:\n  burndown:\ncheckpoint:\n",
+        );
+        let loaded = load(Some(&p), &[], no_env).unwrap();
+        assert_eq!(loaded.unsupported_keys, vec!["checkpoint"]);
+    }
 
-/// Full table of `(dotted-key, setter)` pairs for env overrides.
-///
-/// [`apply_env_overrides`] derives the env-var name by upper-casing and
-/// replacing `.` with `_` under the `CODEFANG_` prefix. Every scalar config
-/// field appears here so the env layer is exhaustive.
-#[rustfmt::skip]
-const ENV_FIELDS: &[(&str, EnvSetter)] = &[
-    // pipeline
-    ("pipeline.workers", |c, v| set_i64(&mut c.pipeline.workers, v)),
-    ("pipeline.memory_budget", |c, v| set_string(&mut c.pipeline.memory_budget, v)),
-    ("pipeline.blob_cache_size", |c, v| set_string(&mut c.pipeline.blob_cache_size, v)),
-    ("pipeline.diff_cache_size", |c, v| set_i64(&mut c.pipeline.diff_cache_size, v)),
-    ("pipeline.blob_arena_size", |c, v| set_string(&mut c.pipeline.blob_arena_size, v)),
-    ("pipeline.commit_batch_size", |c, v| set_i64(&mut c.pipeline.commit_batch_size, v)),
-    ("pipeline.gogc", |c, v| set_i64(&mut c.pipeline.gogc, v)),
-    ("pipeline.ballast_size", |c, v| set_string(&mut c.pipeline.ballast_size, v)),
-    ("pipeline.memory_limit", |c, v| set_string(&mut c.pipeline.memory_limit, v)),
-    ("pipeline.worker_timeout", |c, v| set_string(&mut c.pipeline.worker_timeout, v)),
-    ("pipeline.uast_spill_threshold", |c, v| set_i64(&mut c.pipeline.uast_spill_threshold, v)),
-    ("pipeline.intra_commit_parallel_threshold", |c, v| set_i64(&mut c.pipeline.intra_commit_parallel_threshold, v)),
-    ("pipeline.max_intra_commit_workers", |c, v| set_i64(&mut c.pipeline.max_intra_commit_workers, v)),
-    ("pipeline.max_uast_blob_size", |c, v| set_i64(&mut c.pipeline.max_uast_blob_size, v)),
-    ("pipeline.uast_parse_timeout", |c, v| set_string(&mut c.pipeline.uast_parse_timeout, v)),
-    ("pipeline.max_changes_per_commit", |c, v| set_i64(&mut c.pipeline.max_changes_per_commit, v)),
-    ("pipeline.max_diff_batch_size", |c, v| set_i64(&mut c.pipeline.max_diff_batch_size, v)),
-    ("pipeline.memory_budget_ratio", |c, v| set_i64(&mut c.pipeline.memory_budget_ratio, v)),
-    ("pipeline.memory_budget_cap", |c, v| set_string(&mut c.pipeline.memory_budget_cap, v)),
-    ("pipeline.memory_limit_ratio", |c, v| set_i64(&mut c.pipeline.memory_limit_ratio, v)),
-    ("pipeline.uast_spill_trim_interval", |c, v| set_i64(&mut c.pipeline.uast_spill_trim_interval, v)),
-    ("pipeline.native_trim_interval", |c, v| set_i64(&mut c.pipeline.native_trim_interval, v)),
-    ("pipeline.max_streaming_buffering", |c, v| set_i64(&mut c.pipeline.max_streaming_buffering, v)),
-    ("pipeline.drain_prefetch_timeout", |c, v| set_string(&mut c.pipeline.drain_prefetch_timeout, v)),
-    ("pipeline.sampler_interval", |c, v| set_string(&mut c.pipeline.sampler_interval, v)),
-    ("pipeline.worker_ratio", |c, v| set_i64(&mut c.pipeline.worker_ratio, v)),
-    ("pipeline.uast_worker_ratio", |c, v| set_i64(&mut c.pipeline.uast_worker_ratio, v)),
-    ("pipeline.leaf_worker_divisor", |c, v| set_i64(&mut c.pipeline.leaf_worker_divisor, v)),
-    ("pipeline.min_leaf_workers", |c, v| set_i64(&mut c.pipeline.min_leaf_workers, v)),
-    ("pipeline.buffer_size_multiplier", |c, v| set_i64(&mut c.pipeline.buffer_size_multiplier, v)),
-    ("pipeline.budget_limit_ratio", |c, v| set_i64(&mut c.pipeline.budget_limit_ratio, v)),
-    ("pipeline.system_ram_limit_ratio", |c, v| set_i64(&mut c.pipeline.system_ram_limit_ratio, v)),
-    ("pipeline.static_max_workers", |c, v| set_i64(&mut c.pipeline.static_max_workers, v)),
-    ("pipeline.malloc_trim_interval", |c, v| set_i64(&mut c.pipeline.malloc_trim_interval, v)),
-    ("pipeline.static_memory_limit_ratio", |c, v| set_i64(&mut c.pipeline.static_memory_limit_ratio, v)),
-    ("pipeline.diff_job_buffer_multiplier", |c, v| set_i64(&mut c.pipeline.diff_job_buffer_multiplier, v)),
-    // history.burndown
-    ("history.burndown.granularity", |c, v| set_i64(&mut c.history.burndown.granularity, v)),
-    ("history.burndown.sampling", |c, v| set_i64(&mut c.history.burndown.sampling, v)),
-    ("history.burndown.track_files", |c, v| set_bool(&mut c.history.burndown.track_files, v)),
-    ("history.burndown.track_people", |c, v| set_bool(&mut c.history.burndown.track_people, v)),
-    ("history.burndown.hibernation_threshold", |c, v| set_i64(&mut c.history.burndown.hibernation_threshold, v)),
-    ("history.burndown.hibernation_to_disk", |c, v| set_bool(&mut c.history.burndown.hibernation_to_disk, v)),
-    ("history.burndown.hibernation_directory", |c, v| set_string(&mut c.history.burndown.hibernation_directory, v)),
-    ("history.burndown.debug", |c, v| set_bool(&mut c.history.burndown.debug, v)),
-    ("history.burndown.goroutines", |c, v| set_i64(&mut c.history.burndown.goroutines, v)),
-    // history.couples
-    ("history.couples.coupling_threshold_high", |c, v| set_i64(&mut c.history.couples.coupling_threshold_high, v)),
-    ("history.couples.ownership_few_threshold", |c, v| set_i64(&mut c.history.couples.ownership_few_threshold, v)),
-    ("history.couples.ownership_moderate_threshold", |c, v| set_i64(&mut c.history.couples.ownership_moderate_threshold, v)),
-    ("history.couples.batch_coupling_threshold", |c, v| set_i64(&mut c.history.couples.batch_coupling_threshold, v)),
-    ("history.couples.hll_precision", |c, v| set_i64(&mut c.history.couples.hll_precision, v)),
-    ("history.couples.top_k_per_file", |c, v| set_i64(&mut c.history.couples.top_k_per_file, v)),
-    ("history.couples.min_edge_weight", |c, v| set_i64(&mut c.history.couples.min_edge_weight, v)),
-    // history.devs
-    ("history.devs.consider_empty_commits", |c, v| set_bool(&mut c.history.devs.consider_empty_commits, v)),
-    ("history.devs.anonymize", |c, v| set_bool(&mut c.history.devs.anonymize, v)),
-    ("history.devs.bus_factor_threshold", |c, v| set_f64(&mut c.history.devs.bus_factor_threshold, v)),
-    ("history.devs.risk_threshold_critical", |c, v| set_f64(&mut c.history.devs.risk_threshold_critical, v)),
-    ("history.devs.risk_threshold_high", |c, v| set_f64(&mut c.history.devs.risk_threshold_high, v)),
-    ("history.devs.risk_threshold_medium", |c, v| set_f64(&mut c.history.devs.risk_threshold_medium, v)),
-    ("history.devs.active_threshold_ratio", |c, v| set_f64(&mut c.history.devs.active_threshold_ratio, v)),
-    ("history.devs.default_active_days", |c, v| set_i64(&mut c.history.devs.default_active_days, v)),
-    ("history.devs.hll_precision", |c, v| set_i64(&mut c.history.devs.hll_precision, v)),
-    // history.file_history
-    ("history.file_history.hotspot_threshold_critical", |c, v| set_i64(&mut c.history.file_history.hotspot_threshold_critical, v)),
-    ("history.file_history.hotspot_threshold_high", |c, v| set_i64(&mut c.history.file_history.hotspot_threshold_high, v)),
-    ("history.file_history.hotspot_threshold_medium", |c, v| set_i64(&mut c.history.file_history.hotspot_threshold_medium, v)),
-    // history.imports
-    ("history.imports.goroutines", |c, v| set_i64(&mut c.history.imports.goroutines, v)),
-    ("history.imports.max_file_size", |c, v| set_i64(&mut c.history.imports.max_file_size, v)),
-    ("history.imports.max_dependency_risk_rows", |c, v| set_i64(&mut c.history.imports.max_dependency_risk_rows, v)),
-    // history.sentiment
-    ("history.sentiment.min_comment_length", |c, v| set_i64(&mut c.history.sentiment.min_comment_length, v)),
-    ("history.sentiment.gap", |c, v| set_f64(&mut c.history.sentiment.gap, v)),
-    ("history.sentiment.neutralizer_weight", |c, v| set_f64(&mut c.history.sentiment.neutralizer_weight, v)),
-    ("history.sentiment.max_weight_ratio", |c, v| set_f64(&mut c.history.sentiment.max_weight_ratio, v)),
-    ("history.sentiment.positive_threshold", |c, v| set_f64(&mut c.history.sentiment.positive_threshold, v)),
-    ("history.sentiment.negative_threshold", |c, v| set_f64(&mut c.history.sentiment.negative_threshold, v)),
-    ("history.sentiment.trend_threshold", |c, v| set_f64(&mut c.history.sentiment.trend_threshold, v)),
-    ("history.sentiment.low_sentiment_risk_threshold", |c, v| set_f64(&mut c.history.sentiment.low_sentiment_risk_thresh, v)),
-    // history.shotness
-    ("history.shotness.dsl_struct", |c, v| set_string(&mut c.history.shotness.dsl_struct, v)),
-    ("history.shotness.dsl_name", |c, v| set_string(&mut c.history.shotness.dsl_name, v)),
-    // history.typos
-    ("history.typos.max_distance", |c, v| set_i64(&mut c.history.typos.max_distance, v)),
-    // history.anomaly
-    ("history.anomaly.threshold", |c, v| set_f64(&mut c.history.anomaly.threshold, v)),
-    ("history.anomaly.window_size", |c, v| set_i64(&mut c.history.anomaly.window_size, v)),
-    // history.clones
-    ("history.clones.max_clone_pairs", |c, v| set_i64(&mut c.history.clones.max_clone_pairs, v)),
-    ("history.clones.num_hashes", |c, v| set_i64(&mut c.history.clones.num_hashes, v)),
-    ("history.clones.num_bands", |c, v| set_i64(&mut c.history.clones.num_bands, v)),
-    ("history.clones.num_rows", |c, v| set_i64(&mut c.history.clones.num_rows, v)),
-    ("history.clones.shingle_size", |c, v| set_i64(&mut c.history.clones.shingle_size, v)),
-    ("history.clones.similarity_type2", |c, v| set_f64(&mut c.history.clones.similarity_type2, v)),
-    ("history.clones.similarity_type3", |c, v| set_f64(&mut c.history.clones.similarity_type3, v)),
-    ("history.clones.threshold_ratio_yellow", |c, v| set_f64(&mut c.history.clones.threshold_ratio_yellow, v)),
-    ("history.clones.threshold_ratio_red", |c, v| set_f64(&mut c.history.clones.threshold_ratio_red, v)),
-    ("history.clones.threshold_pairs_yellow", |c, v| set_i64(&mut c.history.clones.threshold_pairs_yellow, v)),
-    ("history.clones.threshold_pairs_red", |c, v| set_i64(&mut c.history.clones.threshold_pairs_red, v)),
-    // checkpoint
-    ("checkpoint.enabled", |c, v| set_bool(&mut c.checkpoint.enabled, v)),
-    ("checkpoint.dir", |c, v| set_string(&mut c.checkpoint.dir, v)),
-    ("checkpoint.resume", |c, v| set_bool(&mut c.checkpoint.resume, v)),
-    ("checkpoint.clear_prev", |c, v| set_bool(&mut c.checkpoint.clear_prev, v)),
-];
+    #[test]
+    fn a_wrong_type_is_a_parse_error_naming_the_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write(
+            dir.path(),
+            "c.yaml",
+            "history:\n  anomaly:\n    window_size: many\n",
+        );
+        let err = load(Some(&p), &[], no_env).unwrap_err().to_string();
+        assert!(err.starts_with("invalid config "), "{err}");
+        assert!(err.contains("history.anomaly.window_size"), "{err}");
+    }
 
-/// Loads configuration from a YAML string plus an env-lookup closure.
-///
-/// Test/host seam exposing the same layering as [`load_config`] (default → file
-/// → env) without touching the filesystem or process environment. The `flag`
-/// layer (highest precedence) is applied by the caller after this returns,
-/// completing the `flag > env > file > default` chain.
-///
-/// # Errors
-/// Same conditions as [`load_config`], minus the filesystem read.
-pub fn load_from_yaml_and_env<F>(yaml: &str, lookup: &F) -> Result<Config, LoadError>
-where
-    F: Fn(&str) -> Option<String>,
-{
-    let mut cfg = parse_yaml_over_defaults(yaml)?;
-    apply_env_overrides(&mut cfg, lookup);
-    cfg.validate().map_err(LoadError::Validate)?;
-    Ok(cfg)
-}
+    #[test]
+    fn a_non_mapping_document_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write(dir.path(), "c.yaml", "- a\n- b\n");
+        let err = load(Some(&p), &[], no_env).unwrap_err().to_string();
+        assert!(err.contains("must be a mapping"), "{err}");
+    }
 
-/// Returns the canonical config file path within `dir` (`.codefang.yaml`).
-#[must_use]
-pub fn config_file_path(dir: &Path) -> PathBuf {
-    dir.join(format!("{CONFIG_NAME}.{CONFIG_EXT}"))
+    #[test]
+    fn a_rule_violation_names_the_file_and_the_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write(
+            dir.path(),
+            "c.yaml",
+            "history:\n  burndown:\n    sampling: 0\n",
+        );
+        let err = load(Some(&p), &[], no_env).unwrap_err().to_string();
+        assert_eq!(
+            err,
+            format!(
+                "invalid config {}: history.burndown.sampling must be > 0, got 0",
+                p.display()
+            )
+        );
+    }
+
+    #[test]
+    fn the_environment_overrides_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write(
+            dir.path(),
+            "c.yaml",
+            "history:\n  anomaly:\n    window_size: 20\n    threshold: 3\n",
+        );
+        let env = |name: &str| match name {
+            "CODEFANG_HISTORY_ANOMALY_WINDOW_SIZE" => Some("4".to_owned()),
+            "CODEFANG_ANALYZERS" => Some("history/devs, history/anomaly".to_owned()),
+            "CODEFANG_HISTORY_DEVS_ANONYMIZE" => Some("true".to_owned()),
+            _ => None,
+        };
+        let loaded = load(Some(&p), &[], env).unwrap();
+        let cfg = &loaded.config;
+        assert_eq!(cfg.history.anomaly.window_size, Some(4));
+        assert_eq!(cfg.history.anomaly.threshold, Some(3.0));
+        assert_eq!(cfg.history.devs.anonymize, Some(true));
+        assert_eq!(
+            cfg.analyzers,
+            Some(vec![
+                "history/devs".to_owned(),
+                "history/anomaly".to_owned()
+            ])
+        );
+    }
+
+    #[test]
+    fn a_bad_environment_value_names_the_variable() {
+        let env = |name: &str| (name == "CODEFANG_HISTORY_TICK_SIZE").then(|| "hourly".to_owned());
+        let err = load(None, &[], env).unwrap_err().to_string();
+        assert!(
+            err.starts_with("invalid environment variable CODEFANG_HISTORY_TICK_SIZE: "),
+            "{err}"
+        );
+
+        let env = |name: &str| (name == "CODEFANG_HISTORY_TICK_SIZE").then(|| "0".to_owned());
+        let err = load(None, &[], env).unwrap_err().to_string();
+        assert_eq!(
+            err,
+            "invalid config CODEFANG_HISTORY_TICK_SIZE: history.tick_size must be > 0, got 0"
+        );
+    }
+
+    #[test]
+    fn overlay_replaces_scalars_on_the_path() {
+        let mut tree: Yaml = serde_yaml::from_str("history: 3\n").unwrap();
+        overlay(&mut tree, keys::TICK_SIZE, Yaml::Number(5.into()));
+        let cfg: Config = serde_yaml::from_value(tree).unwrap();
+        assert_eq!(cfg.history.tick_size, Some(5));
+    }
 }

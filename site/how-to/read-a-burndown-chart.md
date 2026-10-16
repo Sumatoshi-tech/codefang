@@ -54,9 +54,9 @@ you can see how much code from each era still survives at the latest sample.
    the visual form of the same matrix:
 
    ```bash
-   codefang run -a history/burndown --format plot . > burndown.html
-   xdg-open burndown.html   # Linux
-   open burndown.html       # macOS
+   codefang run -a history/burndown --format plot -o burndown .
+   xdg-open burndown/index.html   # Linux
+   open burndown/index.html       # macOS
    ```
 
 6. Extract just the tick axis for scripting or a custom plot:

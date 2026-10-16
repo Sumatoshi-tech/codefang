@@ -12,27 +12,44 @@ Static analyzers parse source files into a UAST and compute metrics in a single 
 
 | Analyzer | ID | Description |
 |---|---|---|
-| [Complexity](complexity.md) | `complexity` | Cyclomatic complexity, cognitive complexity, nesting depth |
-| [Cohesion](cohesion.md) | `cohesion` | LCOM4 class cohesion, method-field usage graphs |
-| [Halstead](halstead.md) | `halstead` | Program length, vocabulary, volume, difficulty, effort |
-| [Comments](comments.md) | `comments` | Documentation coverage, comment placement quality |
-| [Imports](imports.md) | `imports` | Import and dependency analysis |
-| [Clones](clones.md) | `clones` | Cross-file duplicate function detection via MinHash + LSH |
+| [Complexity](complexity.md) | `static/complexity` | Cyclomatic complexity, cognitive complexity, nesting depth |
+| [Cohesion](cohesion.md) | `static/cohesion` | LCOM over function–variable usage, function cohesion |
+| [Halstead](halstead.md) | `static/halstead` | Program length, vocabulary, volume, difficulty, effort |
+| [Comments](comments.md) | `static/comments` | Documentation coverage, comment placement quality |
+| [Imports](imports.md) | `static/imports` | Import and dependency analysis |
+| [Clones](clones.md) | `static/clones` | Cross-file duplicate function detection via MinHash + LSH |
+| [Composition](composition.md) | `static/composition` | File-type breakdown: source, docs, config, vendor, generated, dotfile, image, binary, other |
 
 ### Running static analyzers
 
-Pipe a UAST through `codefang analyze`:
+Point `codefang run` at a file or a directory tree; the UAST is built
+internally per file:
 
 ```bash
 # Single file, single analyzer
-uast parse main.go | codefang analyze -a complexity
+codefang run -a static/complexity main.go
 
-# Single file, all static analyzers
-uast parse main.go | codefang analyze
+# Entire directory tree, single analyzer
+codefang run -a static/complexity ./src/
 
-# Entire directory tree
-codefang analyze -a complexity ./src/
+# Entire directory tree, all static analyzers
+codefang run -a 'static/*' ./src/
 ```
+
+Every static analyzer reads the **same** walk of the tree, so
+`-a 'static/*'` reports exactly the numbers the single runs report: the
+walk visits directories in lexical order (skipping `.git`, cache-tagged
+directories and symlinked directories), admits the files the UAST parser
+supports and `--languages` keeps, applies the vendor / generated /
+`--extra-excluded-prefixes` policy to the root-relative path, reads each
+file once (files over 8 MiB by default, `--max-parse-file-size`, and unreadable files are skipped with one
+stderr warning each), and applies the generated-content marker
+(`DO NOT EDIT`, `Code generated`, … in the first 512 bytes) unless
+`--include-generated`. `static/composition` classifies every file instead,
+vendored and generated included. `--per-file` adds per-file entries to
+`--format json` only. See the
+[CLI reference](../guide/cli-reference.md#the-static-walk) for the full
+contract.
 
 ---
 
@@ -75,7 +92,7 @@ You can select analyzers using glob patterns with the `-a` flag:
 
 ```bash
 # All static analyzers
-codefang analyze -a 'static/*' ./src/
+codefang run -a 'static/*' ./src/
 
 # All history analyzers
 codefang run -a 'history/*' .
@@ -88,7 +105,7 @@ codefang run -a '*' .
 
 ## Output formats
 
-All analyzers support multiple output formats via the `-f` flag:
+All analyzers support multiple output formats via the `--format` flag:
 
 === "JSON"
 

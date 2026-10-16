@@ -7,7 +7,7 @@
 //! The seeds and hash values produced here are a frozen compatibility
 //! contract: sketch estimates derived from them appear in machine-format
 //! reports whose bytes are pinned against the reference implementation by
-//! `tests/compat`. Do not change the constants, seed schedule, or mixing
+//! the report e2e suites (`bins/codefang/tests`). Do not change the constants, seed schedule, or mixing
 //! algebra.
 //!
 //! # Wrapping arithmetic

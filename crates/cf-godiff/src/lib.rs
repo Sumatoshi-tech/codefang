@@ -16,8 +16,8 @@
 //!
 //! Compatibility: this is a frozen compatibility implementation — the segment
 //! stream must match the reference diff engine exactly, because the resulting
-//! added/removed line counts flow into reports. Output bytes are pinned against
-//! the reference binary by `tests/compat`; do not alter the algorithms.
+//! added/removed line counts flow into reports. Output bytes are pinned by the
+//! report e2e suites (`bins/codefang/tests`); do not alter the algorithms.
 //!
 //! # Pipeline notes
 //!

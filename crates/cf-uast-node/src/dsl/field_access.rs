@@ -1,9 +1,10 @@
 //! Field-access strategies for the DSL.
 //!
 //! A field name resolves a node to a (possibly empty) set of nodes. Built-in
-//! fields are `children`, `token`, `id`, `roles`, `type`, `first`, `last`; any
-//! other name falls back to a property lookup (yielding a literal node holding
-//! the property value).
+//! fields are `children`, `token`, `id`, `roles`, `type`, `props`, `first`,
+//! `last`; any other name falls back to a property lookup (yielding a literal
+//! node holding the property value), so `.props.name` and `.name` both read
+//! the `name` property.
 
 use crate::node::Node;
 use std::collections::HashMap;
@@ -31,6 +32,7 @@ impl FieldAccessStrategyRegistry {
         strategies.insert("id", id_strategy);
         strategies.insert("roles", roles_strategy);
         strategies.insert("type", type_strategy);
+        strategies.insert("props", props_strategy);
         strategies.insert("first", first_strategy);
         strategies.insert("last", last_strategy);
         Self { strategies }
@@ -117,6 +119,16 @@ fn type_strategy(node: &Node) -> Vec<Node> {
     }
 }
 
+/// `props` → one carrier node holding the node's properties, so a chained
+/// `.props.<key>` resolves `<key>` through the property fallback (one literal
+/// per present key, nothing for an absent one).
+fn props_strategy(node: &Node) -> Vec<Node> {
+    vec![Node {
+        props: node.props.clone(),
+        ..Node::default()
+    }]
+}
+
 /// `first` → the first child, if any.
 fn first_strategy(node: &Node) -> Vec<Node> {
     node.children.first().cloned().into_iter().collect()
@@ -181,6 +193,15 @@ mod tests {
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].token, "go");
         assert!(r.access(&tree(), "missing").is_empty());
+    }
+
+    #[test]
+    fn props_field_chains_into_a_property() {
+        let ex = FieldAccessExecutor::new();
+        let carrier = ex.execute(&tree(), "props");
+        assert_eq!(carrier.len(), 1);
+        assert_eq!(ex.execute(&carrier[0], "lang")[0].token, "go");
+        assert!(ex.execute(&carrier[0], "missing").is_empty());
     }
 
     #[test]

@@ -1,9 +1,9 @@
 //! Comment sentiment scoring.
 //!
-//! Wraps the [VADER engine](crate::vader) with SE-domain neutralizers and
-//! comment-length weighting. VADER compound scores feed machine reports, so
-//! every float operation here is part of the report contract (pinned by the
-//! differential gate).
+//! Wraps the [VADER engine](crate::vader) with the software-engineering
+//! domain adjustments ([`SE_DOMAIN_NEUTRALIZERS`], [`SE_NEGATIVE_TERMS`] —
+//! whole-word matches only) and comment-length weighting, and maps the
+//! compound score to `[0, 1]`.
 
 use std::sync::OnceLock;
 
@@ -106,72 +106,88 @@ pub fn vader_compound_to_score(compound: f64) -> f32 {
     score as f32
 }
 
-/// SE-domain terms VADER misclassifies, neutralized toward `0`.
-const SE_DOMAIN_NEUTRALIZERS: &[&str] = &[
+/// Software-engineering terms the VADER lexicon scores negative although
+/// they are neutral in code comments; a whole-word hit pulls the compound
+/// toward `0`. The list holds exactly the terms the vendored lexicon knows
+/// with a negative valence — a word VADER does not score cannot be
+/// misclassified by it, so it is not listed.
+pub const SE_DOMAIN_NEUTRALIZERS: &[&str] = &[
     "kill",
     "killed",
     "killing",
-    "abort",
-    "aborted",
-    "aborting",
+    "kills",
     "fatal",
     "dead",
-    "terminate",
-    "terminated",
     "destroy",
+    "destroyed",
     "panic",
-    "deprecated",
     "obsolete",
-    "master",
-    "execute",
     "exploit",
     "conflict",
-    "revert",
+    "conflicts",
     "reject",
     "rejected",
     "critical",
+    "argument",
+    "arguments",
+    "block",
+    "blocked",
+    "interrupt",
+    "interrupted",
+    "trap",
+    "dump",
 ];
 
-/// SE-domain terms that are genuinely negative, with their valence shift.
-const SE_NEGATIVE_TERMS: &[(&str, f64)] = &[
+/// Software-engineering terms that signal genuine negativity and that the
+/// VADER lexicon does not score, with the compound shift a whole-word (or
+/// whole-phrase) hit applies.
+pub const SE_NEGATIVE_TERMS: &[(&str, f64)] = &[
     ("hack", -0.3),
     ("hacky", -0.4),
     ("kludge", -0.5),
     ("workaround", -0.2),
     ("technical debt", -0.3),
     ("spaghetti", -0.4),
-    ("awful", -0.3),
-    ("terrible", -0.3),
     ("nightmare", -0.4),
-    ("horrible", -0.3),
 ];
 
-/// Applies SE-domain adjustment to a VADER compound score.
-///
-/// # Ordering note
-///
-/// The reference implementation iterates these term sets in nondeterministic
-/// (hash-map) order, but the result is order-independent: neutralizer targets
-/// are all `0`, so each contributes `(0 - compound) * n_weight` regardless of
-/// order, and the negative-term shifts are summed. `adjustment` and `count`
-/// therefore match exactly. This implementation uses fixed-order slices, which
-/// is numerically identical (sum of the same terms) and fully deterministic.
+/// The words of `text`: maximal runs of alphanumeric characters, lower-cased.
+fn words(text: &str) -> Vec<String> {
+    text.split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(str::to_lowercase)
+        .collect()
+}
+
+/// Whether `term` (one or more space-separated words) occurs in `words` as a
+/// run of whole words.
+fn contains_term(words: &[String], term: &str) -> bool {
+    let needle: Vec<&str> = term.split(' ').collect();
+    words
+        .windows(needle.len())
+        .any(|window| window.iter().zip(&needle).all(|(w, n)| w == n))
+}
+
+/// Applies the SE-domain adjustment to a VADER compound score: every
+/// neutralizer hit contributes `(0 - compound) * n_weight`, every negative
+/// term its shift; the mean contribution is added and the result clamped to
+/// `[-1, 1]`. Terms match whole words only (`deadline` is not `dead`,
+/// `skill` is not `kill`).
 #[must_use]
 pub fn apply_se_domain_adjustment_with_weight(text: &str, compound: f64, n_weight: f64) -> f64 {
-    let lower = text.to_lowercase();
+    let words = words(text);
     let mut adjustment = 0.0;
     let mut count = 0_i64;
 
     for term in SE_DOMAIN_NEUTRALIZERS {
-        if lower.contains(term) {
-            // shift is 0.0 for all neutralizers.
+        if contains_term(&words, term) {
             adjustment += (0.0 - compound) * n_weight;
             count += 1;
         }
     }
 
     for (term, shift) in SE_NEGATIVE_TERMS {
-        if lower.contains(term) {
+        if contains_term(&words, term) {
             adjustment += shift;
             count += 1;
         }
@@ -186,12 +202,11 @@ pub fn apply_se_domain_adjustment_with_weight(text: &str, compound: f64, n_weigh
 }
 
 /// Returns a sentiment score in `[0,1]` for `comments` using default options.
+/// An empty set has no sentiment and yields `0.0`; the metrics layer never
+/// scores a comment-free tick (see [`crate::metrics`]).
 ///
 /// ```
 /// use cf_sentiment::scorer::compute_sentiment;
-///
-/// // No comments → neutral 0.0.
-/// assert_eq!(compute_sentiment(&[]), 0.0);
 ///
 /// // A clearly positive comment scores above the 0.5 neutral midpoint.
 /// let score = compute_sentiment(&["This is a great, clean fix!".to_string()]);
@@ -227,7 +242,7 @@ pub fn compute_sentiment_with_options(comments: &[String], opts: ScorerOptions) 
         let scores = analyzer.polarity_scores(c);
         let adjusted = apply_se_domain_adjustment_with_weight(c, scores.compound, n_weight);
 
-        let weight = comment_weight_with_max(c.len(), avg_len, max_wr);
+        let weight = comment_weight_with_max(c.chars().count(), avg_len, max_wr);
         weighted_sum += f64::from(vader_compound_to_score(adjusted)) * weight;
         total_weight += weight;
     }
@@ -239,7 +254,7 @@ pub fn compute_sentiment_with_options(comments: &[String], opts: ScorerOptions) 
     (weighted_sum / total_weight) as f32
 }
 
-/// Mean byte-length of non-empty (trimmed) comments.
+/// Mean length, in characters, of non-empty (trimmed) comments.
 #[must_use]
 pub fn average_comment_length(comments: &[String]) -> f64 {
     let mut total = 0_usize;
@@ -249,7 +264,7 @@ pub fn average_comment_length(comments: &[String]) -> f64 {
         if c.is_empty() {
             continue;
         }
-        total += c.len();
+        total += c.chars().count();
         count += 1;
     }
     if count == 0 {
@@ -349,6 +364,7 @@ mod tests {
             "This deprecated API will be removed next version",
             "Panic handler catches unrecoverable errors",
             "Execute the shell command with the given arguments",
+            "Reject the request when the token is critical",
         ];
         for c in cases {
             let score = compute_sentiment(&s(&[c]));
@@ -432,6 +448,17 @@ mod tests {
         assert!((f64::from(vader_compound_to_score(2.0)) - 1.0).abs() < FLOAT_DELTA);
     }
 
+    /// Weights count characters: an English and a Russian comment of the
+    /// same length weigh the same, so the tick score is their plain mean.
+    #[test]
+    fn length_weighting_counts_characters_across_scripts() {
+        let en = "great work".to_string(); // 10 characters, 10 bytes
+        let ru = "ужасный код".to_string(); // 11 characters, 21 bytes
+        assert!((average_comment_length(std::slice::from_ref(&en)) - 10.0).abs() < FLOAT_DELTA);
+        assert!((average_comment_length(std::slice::from_ref(&ru)) - 11.0).abs() < FLOAT_DELTA);
+        assert!((average_comment_length(&[en, ru]) - 10.5).abs() < FLOAT_DELTA);
+    }
+
     #[test]
     fn comment_weight() {
         let max = ScorerOptions::default().max_weight_ratio;
@@ -476,5 +503,28 @@ mod tests {
         assert!((average_comment_length(&s(&["hello"])) - 5.0).abs() < FLOAT_DELTA);
         assert!((average_comment_length(&s(&["  ", "\t"])) - 1.0).abs() < FLOAT_DELTA);
         assert!((average_comment_length(&s(&["ab", "abcd", "abcdef"])) - 4.0).abs() < FLOAT_DELTA);
+    }
+
+    /// SE terms match whole words only: `deadline` is not `dead`, `skill` is
+    /// not `kill`, and `master` is no longer a neutralizer; the multi-word
+    /// `technical debt` matches as a phrase.
+    #[test]
+    fn se_terms_match_whole_words_only() {
+        let w = NEUTRALIZER_WEIGHT;
+        for untouched in [
+            "we shipped before the deadline",
+            "this takes real skill to read",
+            "merged into master this morning",
+            "the hacker news thread",
+        ] {
+            let r = apply_se_domain_adjustment_with_weight(untouched, 0.5, w);
+            assert!((r - 0.5).abs() < FLOAT_DELTA, "{untouched}: {r}");
+        }
+        let r = apply_se_domain_adjustment_with_weight("kill the process.", -0.6, w);
+        assert!((r - -0.12).abs() < FLOAT_DELTA, "kill is neutralized: {r}");
+        let r = apply_se_domain_adjustment_with_weight("Technical Debt, again", 0.0, w);
+        assert!(r < 0.0, "technical debt is a negative phrase: {r}");
+        let r = apply_se_domain_adjustment_with_weight("a hack, nothing more", 0.0, w);
+        assert!(r < 0.0, "punctuation does not hide a term: {r}");
     }
 }

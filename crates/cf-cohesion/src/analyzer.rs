@@ -1,92 +1,183 @@
-//! The cohesion [`Analyzer`].
-//!
-//! Drives function discovery, variable extraction, per-function cohesion, the three
-//! module scalars, and assembly of the intermediate [`Report`].
+//! The cohesion [`Analyzer`] and its per-file [`FileReport`].
 
-use crate::calc;
+use std::collections::BTreeSet;
+
+use cf_uast_node::Node;
+
+use crate::metrics::{
+    COHESION_THRESHOLD_EXCELLENT, COHESION_THRESHOLD_FAIR, COHESION_THRESHOLD_GOOD,
+};
 use crate::report_value::{Report, ReportValue};
-use crate::uast::{role, ty, Node};
-use std::collections::BTreeMap;
+use crate::{calc, visitor};
 
-/// Default maximum UAST traversal depth. The depth limit is enforced by the
-/// shared traverser in the integrated build.
-pub const MAX_DEPTH_VALUE: i64 = 10;
+// --- Per-file message thresholds on `cohesion_score` ---
 
-// --- Assessment thresholds (report contract) ---
+const MESSAGE_THRESHOLD_EXCELLENT: f64 = 0.7;
+const MESSAGE_THRESHOLD_GOOD: f64 = 0.4;
+const MESSAGE_THRESHOLD_FAIR: f64 = 0.3;
 
-const COHESION_THRESHOLD_HIGH: f64 = 0.6;
-const COHESION_THRESHOLD_MEDIUM: f64 = 0.4;
-const COHESION_THRESHOLD_LOW: f64 = 0.3;
+// --- Per-function assessment thresholds ---
 
-const COUNT_THRESHOLD_HIGH: usize = 3;
-const LINE_COUNT_THRESHOLD_HIGH: i64 = 10;
-const MAGIC7: usize = 7;
-const MAGIC30: i64 = 30;
+const VARIABLES_FEW_MAX: usize = 3;
+const VARIABLES_MODERATE_MAX: usize = 7;
+const LINES_SMALL_MAX: u64 = 10;
+const LINES_MEDIUM_MAX: u64 = 30;
 
-// --- Detail-message thresholds (shared with the aggregated-score message) ---
+/// Message of a file without functions.
+pub const EMPTY_FILE_MESSAGE: &str = "No functions found";
 
-const SCORE_THRESHOLD_HIGH: f64 = 0.7;
-const SCORE_THRESHOLD_MEDIUM: f64 = 0.4;
-const SCORE_THRESHOLD_LOW: f64 = 0.3;
-
-/// A function with its cohesion metrics.
-#[derive(Debug, Clone, Default, PartialEq)]
+/// A function and the distinct variables it uses.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Function {
-    /// Function name.
+    /// Function name, qualified `Type.name` when the UAST gives a receiver or
+    /// enclosing class.
     pub name: String,
-    /// All variable names found within the function (with duplicates;
-    /// de-duplication happens later where the algorithm requires it).
-    pub variables: Vec<String>,
-    /// Source line count.
-    pub line_count: i64,
-    /// Per-function cohesion score, filled in by
-    /// [`Analyzer::compute_per_function_cohesion`].
-    pub cohesion: f64,
+    /// Distinct variable names used by the function.
+    pub variables: BTreeSet<String>,
+    /// 1-based first source line (`0` without position).
+    pub start_line: u64,
+    /// 1-based last source line (`0` without position).
+    pub end_line: u64,
 }
 
-/// Typed per-function report item.
-///
-/// Field order here is cosmetic; the JSON shape is produced by
-/// [`Analyzer::convert_cohesion_function_items`].
-#[derive(Debug, Clone, PartialEq)]
-pub struct FunctionReportItem {
-    /// Function name.
-    pub name: String,
-    /// Emoji cohesion assessment.
-    pub cohesion_assessment: String,
-    /// Emoji variable-count assessment.
-    pub variable_assessment: String,
-    /// Emoji size assessment.
-    pub size_assessment: String,
-    /// Source line count.
-    pub line_count: i64,
-    /// Variable count, duplicates included (the length of
-    /// [`Function::variables`]).
-    pub variable_count: usize,
-    /// Per-function cohesion.
-    pub cohesion: f64,
-}
+impl Function {
+    /// A function with the given distinct variables and no position.
+    #[must_use]
+    pub fn with_variables(name: &str, variables: &[&str]) -> Self {
+        Function {
+            name: name.to_string(),
+            variables: variables.iter().map(|v| (*v).to_string()).collect(),
+            start_line: 0,
+            end_line: 0,
+        }
+    }
 
-/// The cohesion analyzer.
-///
-/// Stateless: the traversal and extraction helpers are inlined into the
-/// extraction routines, so the struct is a zero-sized marker. Construct via
-/// [`Analyzer::new`].
-#[derive(Debug, Clone, Default)]
-pub struct Analyzer;
-
-/// Error returned when [`Analyzer::analyze`] is given no root node. The error
-/// text is part of the CLI contract.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NilRootNode;
-
-impl std::fmt::Display for NilRootNode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("root node is nil")
+    /// Source lines spanned by the function node (`end - start + 1`).
+    #[must_use]
+    pub fn line_count(&self) -> u64 {
+        self.end_line.saturating_sub(self.start_line) + 1
     }
 }
 
-impl std::error::Error for NilRootNode {}
+/// Cohesion metrics of one function.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionMetrics {
+    /// Function name (see [`Function::name`]).
+    pub name: String,
+    /// 1-based first source line.
+    pub start_line: u64,
+    /// Source lines spanned by the function.
+    pub line_count: u64,
+    /// Number of distinct variables used.
+    pub variable_count: usize,
+    /// Per-function cohesion: shared variables over distinct variables.
+    pub cohesion: f64,
+}
+
+impl FunctionMetrics {
+    /// Cohesion assessment label with its traffic-light emoji.
+    #[must_use]
+    pub fn cohesion_assessment(&self) -> &'static str {
+        if self.cohesion >= COHESION_THRESHOLD_EXCELLENT {
+            "\u{1F7E2} Excellent"
+        } else if self.cohesion >= COHESION_THRESHOLD_GOOD {
+            "\u{1F7E1} Good"
+        } else if self.cohesion >= COHESION_THRESHOLD_FAIR {
+            "\u{1F7E1} Fair"
+        } else {
+            "\u{1F534} Poor"
+        }
+    }
+
+    /// Variable-count assessment label.
+    #[must_use]
+    pub fn variable_assessment(&self) -> &'static str {
+        if self.variable_count <= VARIABLES_FEW_MAX {
+            "\u{1F7E2} Few"
+        } else if self.variable_count <= VARIABLES_MODERATE_MAX {
+            "\u{1F7E1} Moderate"
+        } else {
+            "\u{1F534} Many"
+        }
+    }
+
+    /// Size assessment label.
+    #[must_use]
+    pub fn size_assessment(&self) -> &'static str {
+        if self.line_count <= LINES_SMALL_MAX {
+            "\u{1F7E2} Small"
+        } else if self.line_count <= LINES_MEDIUM_MAX {
+            "\u{1F7E1} Medium"
+        } else {
+            "\u{1F534} Large"
+        }
+    }
+}
+
+/// Cohesion of one source file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FileReport {
+    /// Number of functions found.
+    pub total_functions: usize,
+    /// LCOM-HS of the file (see [`calc::lcom`]).
+    pub lcom: f64,
+    /// `1 - lcom`.
+    pub cohesion_score: f64,
+    /// Mean per-function cohesion.
+    pub function_cohesion: f64,
+    /// Per-function metrics, in discovery order.
+    pub functions: Vec<FunctionMetrics>,
+    /// Human-readable summary (see [`file_message`]).
+    pub message: String,
+}
+
+impl FileReport {
+    /// The report of a file without functions: `lcom = 0`, perfect scores,
+    /// [`EMPTY_FILE_MESSAGE`].
+    #[must_use]
+    pub fn empty() -> Self {
+        FileReport {
+            total_functions: 0,
+            lcom: 0.0,
+            cohesion_score: calc::PERFECT_COHESION,
+            function_cohesion: calc::PERFECT_COHESION,
+            functions: Vec::new(),
+            message: EMPTY_FILE_MESSAGE.to_string(),
+        }
+    }
+
+    /// True when the file holds at least one function.
+    #[must_use]
+    pub fn has_functions(&self) -> bool {
+        self.total_functions > 0
+    }
+
+    /// The scalar view consumed by the history `quality` analyzer
+    /// (`cf_quality::analyze_file`).
+    #[must_use]
+    pub fn to_report(&self) -> Report {
+        let mut r = Report::new();
+        r.insert(
+            "total_functions".into(),
+            ReportValue::Int(self.total_functions as i64),
+        );
+        r.insert("lcom".into(), ReportValue::Float(self.lcom));
+        r.insert(
+            "cohesion_score".into(),
+            ReportValue::Float(self.cohesion_score),
+        );
+        r.insert(
+            "function_cohesion".into(),
+            ReportValue::Float(self.function_cohesion),
+        );
+        r.insert("message".into(), ReportValue::Str(self.message.clone()));
+        r
+    }
+}
+
+/// The cohesion analyzer. Stateless; construct via [`Analyzer::new`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Analyzer;
 
 impl Analyzer {
     /// Creates a new analyzer.
@@ -95,600 +186,126 @@ impl Analyzer {
         Analyzer
     }
 
-    /// The analyzer name.
+    /// Analyzes one file's UAST.
     #[must_use]
-    pub fn name(&self) -> &'static str {
-        crate::ANALYZER_NAME
+    pub fn analyze_file(&self, root: &Node) -> FileReport {
+        self.analyze_file_capped(root, None)
     }
 
-    /// The CLI flag.
+    /// [`analyze_file`](Self::analyze_file) discovering only function nodes
+    /// at depth `<= cap` below `root` (root at depth 0) when `find_depth` is
+    /// `Some(cap)`.
     #[must_use]
-    pub fn flag(&self) -> &'static str {
-        "cohesion-analysis"
-    }
-
-    /// The analyzer description.
-    #[must_use]
-    pub fn description(&self) -> &'static str {
-        "Calculates LCOM-HS (Henderson-Sellers) and cohesion metrics."
-    }
-
-    /// Performs cohesion analysis on a UAST root.
-    ///
-    /// Returns an intermediate [`Report`]; convert to the machine format with
-    /// [`crate::metrics::compute_all_metrics`].
-    ///
-    /// A subtree with no functions yields the empty-result shape: `lcom = 0`,
-    /// `cohesion_score = 1`, `function_cohesion = 1`, and no `analyzer_name` /
-    /// `functions` keys:
-    ///
-    /// ```
-    /// use cf_cohesion::Analyzer;
-    /// use cf_cohesion::report_value::ReportValue;
-    /// use cf_cohesion::uast::TestNode;
-    ///
-    /// let report = Analyzer::new().analyze(&TestNode::block(vec![])).unwrap();
-    /// assert_eq!(report.get("total_functions"), Some(&ReportValue::Int(0)));
-    /// assert_eq!(report.get("cohesion_score"), Some(&ReportValue::Float(1.0)));
-    /// assert!(report.get("functions").is_none());
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Currently never fails: the root is non-nullable, so the missing-root
-    /// error cannot fire. The `Result` signature leaves room for the integrated
-    /// traverser to surface errors. Pass an explicitly-empty subtree to model
-    /// "no functions".
-    pub fn analyze<N: Node>(&self, root: &N) -> Result<Report, NilRootNode> {
-        self.analyze_with_find_depth(root, None)
-    }
-
-    /// [`analyze`](Self::analyze) with the reference shared traverser's
-    /// `maxDepth` applied to the function DISCOVERY walk: with `Some(cap)`,
-    /// only function nodes at depth `<= cap` below the root (root at depth 0)
-    /// are found; per-function variable extraction over each found function's
-    /// whole subtree is unchanged. The history `quality` analyzer's cohesion
-    /// instance runs with `maxDepth = 10` ([`MAX_DEPTH_VALUE`]); the static
-    /// surfaces run uncapped.
-    ///
-    /// # Errors
-    ///
-    /// Currently never fails (see [`analyze`](Self::analyze)).
-    pub fn analyze_with_find_depth<N: Node>(
-        &self,
-        root: &N,
-        find_depth: Option<usize>,
-    ) -> Result<Report, NilRootNode> {
-        let functions = self.find_functions_capped(root, find_depth);
-
+    pub fn analyze_file_capped(&self, root: &Node, find_depth: Option<usize>) -> FileReport {
+        let functions = visitor::collect_functions(root, find_depth);
         if functions.is_empty() {
-            return Ok(self.build_empty_result());
+            return FileReport::empty();
         }
-
-        let mut functions = functions;
-        self.compute_per_function_cohesion(&mut functions);
-
-        let metrics = self.calculate_metrics(&functions);
-        Ok(self.build_result(&functions, &metrics))
-    }
-
-    /// Performs cohesion analysis the way the **static pipeline actually runs
-    /// it**: via the cohesion [`visitor`](crate::visitor), driven by a preorder
-    /// DFS over the UAST.
-    ///
-    /// This is NOT the same as [`analyze`](Self::analyze): the visitor's function
-    /// detection (type Function/Method OR roles {Function AND Declaration}) and
-    /// its context-stack variable attribution (variables belong to the
-    /// *innermost* enclosing function) differ from the [`find_functions`]
-    /// (Self::find_functions) path, and the static pipeline uses the visitor.
-    /// Use this for folder-walk parity.
-    #[must_use]
-    pub fn analyze_visitor<N: Node>(&self, root: &N) -> Report {
-        let functions = crate::visitor::collect_functions_via_visitor(self, root);
-        if functions.is_empty() {
-            return self.build_empty_result();
-        }
-        let mut functions = functions;
-        self.compute_per_function_cohesion(&mut functions);
-        let metrics = self.calculate_metrics(&functions);
-        self.build_result(&functions, &metrics)
-    }
-
-    /// Visitor function predicate: type Function/Method OR roles
-    /// {Function AND Declaration}. Distinct from the `find_functions` predicate.
-    #[must_use]
-    pub fn is_visitor_function<N: Node>(&self, n: &N) -> bool {
-        n.has_any_type(&[ty::FUNCTION, ty::METHOD])
-            || n.has_all_roles(&[role::FUNCTION, role::DECLARATION])
-    }
-
-    /// Computes per-function cohesion via the global shared-variable Bloom
-    /// filter.
-    pub fn compute_per_function_cohesion(&self, functions: &mut [Function]) {
-        let global_filter = calc::build_global_variable_filter(functions);
-        for f in functions.iter_mut() {
-            f.cohesion = self.calculate_function_level_cohesion(f, global_filter.as_ref());
-        }
-    }
-
-    /// Builds the empty result map (the "no functions" report shape).
-    #[must_use]
-    pub fn build_empty_result(&self) -> Report {
-        let mut r = Report::new();
-        r.insert("total_functions".into(), ReportValue::Int(0));
-        r.insert("lcom".into(), ReportValue::Float(0.0));
-        r.insert("cohesion_score".into(), ReportValue::Float(1.0));
-        r.insert("function_cohesion".into(), ReportValue::Float(1.0));
-        r.insert(
-            "message".into(),
-            ReportValue::Str("No functions found".into()),
-        );
-        r
-    }
-
-    /// Computes the three module scalars.
-    #[must_use]
-    pub fn calculate_metrics(&self, functions: &[Function]) -> Metrics {
-        let lcom = self.calculate_lcom(functions);
-        let cohesion_score = self.calculate_cohesion_score(lcom, functions.len());
-        let function_cohesion = self.calculate_function_cohesion(functions);
-        Metrics {
+        let cohesions = calc::function_cohesions(&functions);
+        let metrics: Vec<FunctionMetrics> = functions
+            .iter()
+            .zip(&cohesions)
+            .map(|(f, &cohesion)| FunctionMetrics {
+                name: f.name.clone(),
+                start_line: f.start_line,
+                line_count: f.line_count(),
+                variable_count: f.variables.len(),
+                cohesion,
+            })
+            .collect();
+        let lcom = calc::lcom(&functions);
+        let cohesion_score = calc::cohesion_score(lcom);
+        FileReport {
+            total_functions: metrics.len(),
             lcom,
             cohesion_score,
-            function_cohesion,
-        }
-    }
-
-    /// Constructs the final intermediate result.
-    #[must_use]
-    pub fn build_result(&self, functions: &[Function], metrics: &Metrics) -> Report {
-        let report_items = self.build_detailed_functions_table(functions);
-        let message = self.get_cohesion_message(metrics.cohesion_score);
-
-        let mut r = Report::new();
-        r.insert(
-            "analyzer_name".into(),
-            ReportValue::Str(crate::ANALYZER_NAME.into()),
-        );
-        r.insert(
-            "total_functions".into(),
-            ReportValue::Int(functions.len() as i64),
-        );
-        r.insert("lcom".into(), ReportValue::Float(metrics.lcom));
-        r.insert(
-            "cohesion_score".into(),
-            ReportValue::Float(metrics.cohesion_score),
-        );
-        r.insert(
-            "function_cohesion".into(),
-            ReportValue::Float(metrics.function_cohesion),
-        );
-        r.insert(
-            "functions".into(),
-            ReportValue::Functions(self.convert_cohesion_function_items(&report_items, "")),
-        );
-        r.insert("message".into(), ReportValue::Str(message));
-        r
-    }
-
-    /// Builds the typed per-function table.
-    #[must_use]
-    pub fn build_detailed_functions_table(
-        &self,
-        functions: &[Function],
-    ) -> Vec<FunctionReportItem> {
-        functions
-            .iter()
-            .map(|f| FunctionReportItem {
-                name: f.name.clone(),
-                line_count: f.line_count,
-                variable_count: f.variables.len(),
-                cohesion: f.cohesion,
-                cohesion_assessment: self.get_cohesion_assessment(f.cohesion),
-                variable_assessment: self.get_variable_assessment(f.variables.len()),
-                size_assessment: self.get_size_assessment(f.line_count),
-            })
-            .collect()
-    }
-
-    /// Converts typed items to the dynamic per-function map shape.
-    /// `source_file`, when non-empty, is attached under the `_source_file` key.
-    #[must_use]
-    pub fn convert_cohesion_function_items(
-        &self,
-        items: &[FunctionReportItem],
-        source_file: &str,
-    ) -> Vec<BTreeMap<String, ReportValue>> {
-        items
-            .iter()
-            .map(|fn_item| {
-                let mut m: BTreeMap<String, ReportValue> = BTreeMap::new();
-                m.insert("name".into(), ReportValue::Str(fn_item.name.clone()));
-                m.insert("line_count".into(), ReportValue::Int(fn_item.line_count));
-                m.insert(
-                    "variable_count".into(),
-                    ReportValue::Int(fn_item.variable_count as i64),
-                );
-                m.insert("cohesion".into(), ReportValue::Float(fn_item.cohesion));
-                m.insert(
-                    "cohesion_assessment".into(),
-                    ReportValue::Str(fn_item.cohesion_assessment.clone()),
-                );
-                m.insert(
-                    "variable_assessment".into(),
-                    ReportValue::Str(fn_item.variable_assessment.clone()),
-                );
-                m.insert(
-                    "size_assessment".into(),
-                    ReportValue::Str(fn_item.size_assessment.clone()),
-                );
-                if !source_file.is_empty() {
-                    m.insert(
-                        crate::metrics::SOURCE_FILE_KEY.into(),
-                        ReportValue::Str(source_file.into()),
-                    );
-                }
-                m
-            })
-            .collect()
-    }
-
-    /// Detail message keyed by cohesion score: the first label whose limit the
-    /// score meets or exceeds, scanning highest first.
-    #[must_use]
-    pub fn get_cohesion_message(&self, score: f64) -> String {
-        if score >= SCORE_THRESHOLD_HIGH {
-            "Excellent cohesion - functions are well-focused and cohesive".into()
-        } else if score >= SCORE_THRESHOLD_MEDIUM {
-            "Good cohesion - functions have reasonable focus".into()
-        } else if score >= SCORE_THRESHOLD_LOW {
-            "Fair cohesion - some functions could be more focused".into()
-        } else {
-            "Poor cohesion - functions lack focus and should be refactored".into()
-        }
-    }
-
-    /// Emoji cohesion assessment.
-    ///
-    /// `>= 0.6` is excellent, `>= 0.4` good, `>= 0.3` fair, otherwise poor:
-    ///
-    /// ```
-    /// use cf_cohesion::Analyzer;
-    /// let a = Analyzer::new();
-    /// assert_eq!(a.get_cohesion_assessment(0.6), "\u{1F7E2} Excellent");
-    /// assert_eq!(a.get_cohesion_assessment(0.4), "\u{1F7E1} Good");
-    /// assert_eq!(a.get_cohesion_assessment(0.3), "\u{1F7E1} Fair");
-    /// assert_eq!(a.get_cohesion_assessment(0.29), "\u{1F534} Poor");
-    /// ```
-    #[must_use]
-    pub fn get_cohesion_assessment(&self, cohesion: f64) -> String {
-        if cohesion >= COHESION_THRESHOLD_HIGH {
-            "\u{1F7E2} Excellent".into() // green circle
-        } else if cohesion >= COHESION_THRESHOLD_MEDIUM {
-            "\u{1F7E1} Good".into() // yellow circle
-        } else if cohesion >= COHESION_THRESHOLD_LOW {
-            "\u{1F7E1} Fair".into() // yellow circle
-        } else {
-            "\u{1F534} Poor".into() // red circle
-        }
-    }
-
-    /// Emoji variable-count assessment.
-    #[must_use]
-    pub fn get_variable_assessment(&self, count: usize) -> String {
-        if count <= COUNT_THRESHOLD_HIGH {
-            "\u{1F7E2} Few".into()
-        } else if count <= MAGIC7 {
-            "\u{1F7E1} Moderate".into()
-        } else {
-            "\u{1F534} Many".into()
-        }
-    }
-
-    /// Emoji size assessment.
-    #[must_use]
-    pub fn get_size_assessment(&self, line_count: i64) -> String {
-        if line_count <= LINE_COUNT_THRESHOLD_HIGH {
-            "\u{1F7E2} Small".into()
-        } else if line_count <= MAGIC30 {
-            "\u{1F7E1} Medium".into()
-        } else {
-            "\u{1F534} Large".into()
-        }
-    }
-
-    // --- Machine-format report writers ---
-
-    /// Writes the JSON machine report: the report is reduced to
-    /// [`crate::metrics::ComputedMetrics`] then encoded with two-space indent,
-    /// HTML escaping ON, and **no trailing newline**.
-    ///
-    /// # Errors
-    ///
-    /// Returns any I/O error from `w`.
-    pub fn format_report_json<W: std::io::Write>(
-        &self,
-        report: &Report,
-        w: &mut W,
-    ) -> std::io::Result<()> {
-        let metrics = crate::metrics::compute_all_metrics(report);
-        w.write_all(&crate::serialize::encode_json(&metrics))
-    }
-
-    /// Writes the YAML machine report.
-    ///
-    /// # Errors
-    ///
-    /// Returns any I/O error from `w`.
-    pub fn format_report_yaml<W: std::io::Write>(
-        &self,
-        report: &Report,
-        w: &mut W,
-    ) -> std::io::Result<()> {
-        let metrics = crate::metrics::compute_all_metrics(report);
-        w.write_all(&crate::serialize::encode_yaml(&metrics))
-    }
-
-    /// Writes the binary (CFB1) machine report.
-    ///
-    /// # Errors
-    ///
-    /// Returns any I/O error from `w`.
-    pub fn format_report_binary<W: std::io::Write>(
-        &self,
-        report: &Report,
-        w: &mut W,
-    ) -> std::io::Result<()> {
-        let metrics = crate::metrics::compute_all_metrics(report);
-        w.write_all(&crate::serialize::encode_binary(&metrics))
-    }
-
-    // --- Function discovery / extraction ---
-
-    /// Finds all functions in the tree.
-    ///
-    /// The reference implementation combines role-based and type-based matches
-    /// and deduplicates via a map with *nondeterministic* iteration order (see
-    /// the crate-level docs). This implementation deduplicates by walking once
-    /// in a deterministic preorder; because the downstream `functions` array
-    /// order is a canonicalized golden path, the only observable invariant that
-    /// must hold is the *set* of functions and the stable scalars derived from
-    /// it.
-    #[must_use]
-    pub fn find_functions<N: Node>(&self, root: &N) -> Vec<Function> {
-        self.find_functions_capped(root, None)
-    }
-
-    /// [`find_functions`](Self::find_functions) with the optional discovery
-    /// depth cap: with `Some(cap)`, only function nodes at depth `<= cap`
-    /// below `root` (`root` at depth 0) are matched. The reference traverser
-    /// filters MATCHES by depth (it still descends), so pruning the walk at
-    /// the cap is output-equivalent.
-    #[must_use]
-    pub fn find_functions_capped<N: Node>(
-        &self,
-        root: &N,
-        find_depth: Option<usize>,
-    ) -> Vec<Function> {
-        let mut out = Vec::new();
-        self.collect_functions(root, find_depth, &mut out);
-        out
-    }
-
-    fn collect_functions<N: Node>(&self, n: &N, remaining: Option<usize>, out: &mut Vec<Function>) {
-        if self.is_function_node(n) {
-            out.push(self.extract_function(n));
-        }
-        let child_remaining = match remaining {
-            Some(0) => return,
-            Some(r) => Some(r - 1),
-            None => None,
-        };
-        for child in n.children() {
-            self.collect_functions(child, child_remaining, out);
-        }
-    }
-
-    /// True if a node should be treated as a function: role `Function` OR type
-    /// `Function`/`Method`.
-    fn is_function_node<N: Node>(&self, n: &N) -> bool {
-        n.has_any_role(&[role::FUNCTION]) || n.has_any_type(&[ty::FUNCTION, ty::METHOD])
-    }
-
-    /// Extracts a [`Function`] from a node. `cohesion` starts at `0.0` and is
-    /// filled later.
-    #[must_use]
-    pub fn extract_function<N: Node>(&self, n: &N) -> Function {
-        let variables = self.extract_variables(n);
-        let name = self.extract_function_name(n);
-        let line_count = n.count_lines();
-        Function {
-            name,
-            line_count,
-            variables,
-            cohesion: 0.0,
-        }
-    }
-
-    /// Extracts the function name.
-    #[must_use]
-    pub fn extract_function_name<N: Node>(&self, n: &N) -> String {
-        n.entity_name()
-    }
-
-    /// Collects all variable names within a function subtree.
-    #[must_use]
-    pub fn extract_variables<N: Node>(&self, n: &N) -> Vec<String> {
-        let mut vars = Vec::new();
-        self.find_variables(n, &mut vars);
-        vars
-    }
-
-    fn find_variables<N: Node>(&self, n: &N, vars: &mut Vec<String>) {
-        self.process_variable_node(n, vars);
-        for child in n.children() {
-            self.find_variables(child, vars);
-        }
-    }
-
-    /// Processes a single node for variable extraction.
-    ///
-    /// NOTE: the declaration and identifier predicates are checked independently
-    /// (two `if`s, not `else if`), so a node satisfying both contributes its name
-    /// **twice** — a report-contract quirk that affects `variable_count` and is
-    /// pinned by the differential gate.
-    fn process_variable_node<N: Node>(&self, n: &N, vars: &mut Vec<String>) {
-        if self.is_variable_declaration(n) {
-            self.add_variable_if_valid(n, vars);
-        }
-        if self.is_variable_identifier(n) {
-            self.add_variable_if_valid(n, vars);
-        }
-    }
-
-    fn is_variable_declaration<N: Node>(&self, n: &N) -> bool {
-        n.has_any_type(&[ty::VARIABLE, ty::PARAMETER]) && n.has_any_role(&[role::DECLARATION])
-    }
-
-    fn is_variable_identifier<N: Node>(&self, n: &N) -> bool {
-        n.has_any_type(&[ty::IDENTIFIER]) && n.has_any_role(&[role::VARIABLE, role::NAME])
-    }
-
-    /// Public wrapper of the declaration predicate, used by the visitor module.
-    #[must_use]
-    pub fn is_variable_declaration_pub<N: Node>(&self, n: &N) -> bool {
-        self.is_variable_declaration(n)
-    }
-
-    /// Public wrapper of the identifier predicate, used by the visitor module.
-    #[must_use]
-    pub fn is_variable_identifier_pub<N: Node>(&self, n: &N) -> bool {
-        self.is_variable_identifier(n)
-    }
-
-    fn add_variable_if_valid<N: Node>(&self, n: &N, vars: &mut Vec<String>) {
-        let name = n.entity_name();
-        if !name.is_empty() {
-            vars.push(name);
+            function_cohesion: calc::mean_or(&cohesions, calc::PERFECT_COHESION),
+            functions: metrics,
+            message: file_message(cohesion_score).to_string(),
         }
     }
 }
 
-/// The three module scalars produced by [`Analyzer::calculate_metrics`].
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Metrics {
-    /// LCOM-HS.
-    pub lcom: f64,
-    /// Cohesion score (`1 - lcom`).
-    pub cohesion_score: f64,
-    /// Average per-function cohesion.
-    pub function_cohesion: f64,
+/// Per-file summary keyed on `cohesion_score`.
+#[must_use]
+pub fn file_message(score: f64) -> &'static str {
+    if score >= MESSAGE_THRESHOLD_EXCELLENT {
+        "Excellent cohesion - functions are well-focused and cohesive"
+    } else if score >= MESSAGE_THRESHOLD_GOOD {
+        "Good cohesion - functions have reasonable focus"
+    } else if score >= MESSAGE_THRESHOLD_FAIR {
+        "Fair cohesion - some functions could be more focused"
+    } else {
+        "Poor cohesion - functions lack focus and should be refactored"
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::uast::TestNode;
+
+    fn metrics(cohesion: f64, variable_count: usize, line_count: u64) -> FunctionMetrics {
+        FunctionMetrics {
+            name: "f".into(),
+            start_line: 1,
+            line_count,
+            variable_count,
+            cohesion,
+        }
+    }
 
     #[test]
-    fn empty_tree_yields_empty_result() {
-        let a = Analyzer::new();
-        let root = TestNode::block(vec![]);
-        let report = a.analyze(&root).unwrap();
-        assert_eq!(report.get("total_functions"), Some(&ReportValue::Int(0)));
-        assert_eq!(report.get("cohesion_score"), Some(&ReportValue::Float(1.0)));
+    fn line_count_is_inclusive_span() {
+        let f = Function {
+            start_line: 3,
+            end_line: 7,
+            ..Function::default()
+        };
+        assert_eq!(f.line_count(), 5);
+        assert_eq!(Function::default().line_count(), 1);
+    }
+
+    #[test]
+    fn assessments_follow_the_documented_thresholds() {
         assert_eq!(
-            report.get("function_cohesion"),
-            Some(&ReportValue::Float(1.0))
+            metrics(0.6, 0, 1).cohesion_assessment(),
+            "\u{1F7E2} Excellent"
         );
-        assert_eq!(report.get("lcom"), Some(&ReportValue::Float(0.0)));
+        assert_eq!(metrics(0.4, 0, 1).cohesion_assessment(), "\u{1F7E1} Good");
+        assert_eq!(metrics(0.3, 0, 1).cohesion_assessment(), "\u{1F7E1} Fair");
+        assert_eq!(metrics(0.29, 0, 1).cohesion_assessment(), "\u{1F534} Poor");
+        assert_eq!(metrics(1.0, 3, 1).variable_assessment(), "\u{1F7E2} Few");
+        assert_eq!(
+            metrics(1.0, 7, 1).variable_assessment(),
+            "\u{1F7E1} Moderate"
+        );
+        assert_eq!(metrics(1.0, 8, 1).variable_assessment(), "\u{1F534} Many");
+        assert_eq!(metrics(1.0, 0, 10).size_assessment(), "\u{1F7E2} Small");
+        assert_eq!(metrics(1.0, 0, 30).size_assessment(), "\u{1F7E1} Medium");
+        assert_eq!(metrics(1.0, 0, 31).size_assessment(), "\u{1F534} Large");
+    }
+
+    #[test]
+    fn file_messages_follow_the_documented_thresholds() {
+        assert!(file_message(0.7).starts_with("Excellent"));
+        assert!(file_message(0.4).starts_with("Good"));
+        assert!(file_message(0.3).starts_with("Fair"));
+        assert!(file_message(0.1).starts_with("Poor"));
+    }
+
+    #[test]
+    fn empty_report_scores_perfectly_and_round_trips() {
+        let empty = FileReport::empty();
+        assert!(!empty.has_functions());
+        let report = empty.to_report();
+        assert_eq!(report.get("total_functions"), Some(&ReportValue::Int(0)));
+        assert_eq!(
+            report.get("cohesion_score").and_then(ReportValue::as_float),
+            Some(1.0)
+        );
         assert_eq!(
             report.get("message"),
-            Some(&ReportValue::Str("No functions found".into()))
-        );
-        // The empty result has no analyzer_name / functions keys.
-        assert_eq!(report.get("functions"), None);
-    }
-
-    #[test]
-    fn finds_functions_and_variables() {
-        let a = Analyzer::new();
-        // fn f { var x; var y }  fn g { var x }
-        let f = TestNode::function(
-            "f",
-            5,
-            vec![TestNode::variable("x"), TestNode::variable("y")],
-        );
-        let g = TestNode::function("g", 3, vec![TestNode::variable("x")]);
-        let root = TestNode::block(vec![f, g]);
-
-        let funcs = a.find_functions(&root);
-        assert_eq!(funcs.len(), 2);
-        let mut names: Vec<&str> = funcs.iter().map(|f| f.name.as_str()).collect();
-        names.sort_unstable();
-        assert_eq!(names, vec!["f", "g"]);
-    }
-
-    #[test]
-    fn analyze_produces_stable_scalars() {
-        let a = Analyzer::new();
-        // f uses {x,y}, g uses {x}: m=2, a=2, sumMA=3 -> LCOM = 1 - 3/4 = 0.25.
-        let f = TestNode::function(
-            "f",
-            5,
-            vec![TestNode::variable("x"), TestNode::variable("y")],
-        );
-        let g = TestNode::function("g", 3, vec![TestNode::variable("x")]);
-        let root = TestNode::block(vec![f, g]);
-
-        let report = a.analyze(&root).unwrap();
-        assert_eq!(report.get("total_functions"), Some(&ReportValue::Int(2)));
-        let lcom = report.get("lcom").unwrap().as_float().unwrap();
-        assert!((lcom - 0.25).abs() < 1e-9, "lcom was {lcom}");
-        let score = report.get("cohesion_score").unwrap().as_float().unwrap();
-        assert!((score - 0.75).abs() < 1e-9, "score was {score}");
-        // analyzer_name present in the non-empty result.
-        assert_eq!(
-            report.get("analyzer_name"),
-            Some(&ReportValue::Str("cohesion".into()))
-        );
-    }
-
-    #[test]
-    fn assessments_match_contract_thresholds() {
-        let a = Analyzer::new();
-        assert_eq!(a.get_cohesion_assessment(0.6), "\u{1F7E2} Excellent");
-        assert_eq!(a.get_cohesion_assessment(0.4), "\u{1F7E1} Good");
-        assert_eq!(a.get_cohesion_assessment(0.3), "\u{1F7E1} Fair");
-        assert_eq!(a.get_cohesion_assessment(0.29), "\u{1F534} Poor");
-
-        assert_eq!(a.get_variable_assessment(3), "\u{1F7E2} Few");
-        assert_eq!(a.get_variable_assessment(7), "\u{1F7E1} Moderate");
-        assert_eq!(a.get_variable_assessment(8), "\u{1F534} Many");
-
-        assert_eq!(a.get_size_assessment(10), "\u{1F7E2} Small");
-        assert_eq!(a.get_size_assessment(30), "\u{1F7E1} Medium");
-        assert_eq!(a.get_size_assessment(31), "\u{1F534} Large");
-    }
-
-    #[test]
-    fn detail_messages_match_contract() {
-        let a = Analyzer::new();
-        assert_eq!(
-            a.get_cohesion_message(0.7),
-            "Excellent cohesion - functions are well-focused and cohesive"
-        );
-        assert_eq!(
-            a.get_cohesion_message(0.4),
-            "Good cohesion - functions have reasonable focus"
-        );
-        assert_eq!(
-            a.get_cohesion_message(0.3),
-            "Fair cohesion - some functions could be more focused"
-        );
-        assert_eq!(
-            a.get_cohesion_message(0.1),
-            "Poor cohesion - functions lack focus and should be refactored"
+            Some(&ReportValue::Str(EMPTY_FILE_MESSAGE.into()))
         );
     }
 }

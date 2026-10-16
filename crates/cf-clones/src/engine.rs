@@ -1,485 +1,413 @@
-//! The `MinHash` + LSH clone-detection core.
+//! The clone-detection core: per-function entries, candidate generation
+//! through the LSH index, exact verification, classification, and the
+//! bounded top-k pair list.
 //!
-//! Signature building and pair finding live in one module because they form a
-//! single detection pipeline shared by the [`crate::Analyzer`] (per-file) and
-//! the [`crate::Aggregator`] (cross-file).
+//! Pairs are enumerated exactly once by querying every function in id order
+//! for the candidates *after* it ([`cf_alg_lsh::Index::query_after`]), so no
+//! `seen` set is needed and the work is linear in the number of candidate
+//! pairs. The stored pair list is a bounded heap keyed on
+//! `(similarity desc, func_a asc, func_b asc)`, so the capped detail is
+//! always the best pairs under that total order, independent of discovery
+//! order.
 
-use std::collections::{HashMap, HashSet};
+use std::cmp::Ordering;
+use std::collections::BinaryHeap;
 
-use cf_alg_lsh::Index;
+use cf_alg_lsh::{Index, Scratch};
 use cf_alg_minhash::Signature;
 use cf_uast_node::Node;
 
-use crate::report::{classify_clone_type, ClonePair, CloneTypeCounts};
+use crate::profile::{profile, Fingerprint};
+use crate::report::{ClonePair, CloneType, CloneTypeCounts};
 use crate::shingler::Shingler;
-use crate::uast::{ROLE_DECLARATION, ROLE_FUNCTION, ROLE_PARAMETER, UAST_FUNCTION, UAST_METHOD};
-use crate::{MIN_FUNCTION_NODES, NUM_HASHES};
+use crate::MIN_FUNCTION_NODES;
 
-/// A function's name plus its `MinHash` signature.
+/// One clone candidate as produced by the [`crate::Visitor`] for a single
+/// file.
 #[derive(Debug, Clone)]
 pub struct FuncEntry {
-    /// The (possibly receiver-qualified) function name.
+    /// The (receiver-qualified or scope-qualified) function name.
     pub name: String,
-    /// The function's `MinHash` signature.
+    /// `MinHash` signature of the shingle set (the LSH input).
     pub sig: Signature,
+    /// Sorted, deduplicated FNV-1a hashes of the function's shingles.
+    pub shingles: Vec<u64>,
+    /// Fingerprint of the node-type sequence.
+    pub structure: Fingerprint,
+    /// Fingerprint of the leaf-token sequence.
+    pub tokens: Fingerprint,
+    /// Index (within the same file scan) of the nearest enclosing candidate,
+    /// for closures nested inside another candidate.
+    pub parent: Option<usize>,
 }
 
-/// Output of [`find_clone_pairs`].
-#[derive(Default)]
-pub struct ClonePairResult {
-    /// The stored clone pairs (may be capped; see [`find_clone_pairs`]).
-    pub pairs: Vec<ClonePair>,
-    /// The total count of unique pairs found, regardless of the cap.
-    pub total_count: usize,
-    /// Distribution of clone types across all pairs found.
-    pub type_distribution: CloneTypeCounts,
-    /// Distinct function names involved in any pair.
-    pub cloned_func: HashSet<String>,
+impl FuncEntry {
+    /// Re-bases the entry into the global candidate list: `file` is the
+    /// file's index, `base` the global index of the file's first entry.
+    #[must_use]
+    pub fn into_indexed(self, file: usize, base: usize) -> IndexedFunc {
+        IndexedFunc {
+            name: self.name,
+            file,
+            sig: self.sig,
+            shingles: self.shingles,
+            structure: self.structure,
+            tokens: self.tokens,
+            parent: self.parent.map(|p| p + base),
+        }
+    }
 }
 
-/// Returns `true` if `n` represents a function.
+/// A clone candidate in the global (cross-file) candidate list.
+#[derive(Debug, Clone)]
+pub struct IndexedFunc {
+    /// `file::name` — the name qualified with its source file.
+    pub name: String,
+    /// Index of the source file in the aggregator's file list.
+    pub file: usize,
+    /// `MinHash` signature of the shingle set.
+    pub sig: Signature,
+    /// Sorted, deduplicated shingle hashes.
+    pub shingles: Vec<u64>,
+    /// Fingerprint of the node-type sequence.
+    pub structure: Fingerprint,
+    /// Fingerprint of the leaf-token sequence.
+    pub tokens: Fingerprint,
+    /// Global index of the nearest enclosing candidate, if nested.
+    pub parent: Option<usize>,
+}
+
+/// Builds the entry for one function subtree, or `None` when the function
+/// has fewer than [`MIN_FUNCTION_NODES`] nodes or yields no shingles.
 #[must_use]
-pub fn is_function_node(n: &Node) -> bool {
-    n.has_any_type(&[UAST_FUNCTION, UAST_METHOD])
-        || n.has_all_roles(&[ROLE_FUNCTION, ROLE_DECLARATION])
-}
-
-/// Returns the total number of nodes in a subtree.
-#[must_use]
-pub fn count_nodes(n: &Node) -> usize {
-    let mut count = 1;
-    for child in &n.children {
-        count += count_nodes(child);
-    }
-    count
-}
-
-/// Extracts a unique function name from a node.
-///
-/// Uses the entity name (see [`extract_entity_name`], falling back to the node
-/// token, then the type); for methods, qualifies with the receiver type (e.g.
-/// `"Foo.DoWork"`).
-#[must_use]
-pub fn extract_func_name(fn_node: &Node) -> String {
-    let mut name = extract_entity_name(fn_node).unwrap_or_default();
-    if name.is_empty() {
-        name = if fn_node.token.is_empty() {
-            fn_node.node_type.clone()
-        } else {
-            fn_node.token.clone()
-        };
-    }
-
-    if fn_node.node_type == UAST_METHOD {
-        let recv = extract_receiver_type(fn_node);
-        if !recv.is_empty() {
-            return format!("{recv}.{name}");
-        }
-    }
-
-    name
-}
-
-/// Extracts the entity (function/identifier) name from a node.
-///
-/// Precedence order (report contract; pinned by the differential gate):
-///  1. the node's `name` prop;
-///  2. the node's OWN token;
-///  3. the **first child** (index 0): its token, then its `name` prop.
-///
-/// The node's own token is checked BEFORE descending to a child, and the child
-/// step looks only at index 0 (not "the first child with the Name role"). Both
-/// points matter: e.g. C `Function` nodes whose token is the full function
-/// text must keep that text as the name so distinct functions stay distinct in
-/// the LSH index. Returns `None` when nothing usable is found; a present-but-
-/// empty `name` prop yields `Some("")`, which `extract_func_name` treats
-/// identically to `None`, so the observable name is the same.
-#[must_use]
-fn extract_entity_name(n: &Node) -> Option<String> {
-    // 1. the "name" prop — present-key wins even if empty.
-    if let Some(name) = n.props.get("name") {
-        return Some(name.clone());
-    }
-
-    // 2. node's own token.
-    if !n.token.is_empty() {
-        return Some(n.token.clone());
-    }
-
-    // 3. first child (index 0): token, then its "name" prop.
-    if let Some(child) = n.children.first() {
-        if !child.token.is_empty() {
-            return Some(child.token.clone());
-        }
-        if let Some(name) = child.props.get("name") {
-            return Some(name.clone());
-        }
-    }
-
-    None
-}
-
-/// Extracts the receiver type name from a method node.
-///
-/// The receiver is the first child with the `Parameter` role whose token looks
-/// like `"(v *T)"` / `"(v T)"`; the type `T` is the last whitespace-separated
-/// token after stripping the surrounding parens and a leading `*`.
-#[must_use]
-pub fn extract_receiver_type(fn_node: &Node) -> String {
-    const MIN_RECEIVER_PARTS: usize = 2;
-
-    for child in &fn_node.children {
-        if !child.has_any_role(&[ROLE_PARAMETER]) {
-            continue;
-        }
-
-        let tok = child.token.trim();
-        if tok.is_empty() {
-            continue;
-        }
-
-        let tok = tok
-            .strip_prefix('(')
-            .unwrap_or(tok)
-            .strip_suffix(')')
-            .unwrap_or_else(|| tok.strip_prefix('(').unwrap_or(tok))
-            .trim();
-
-        let parts: Vec<&str> = tok.split_whitespace().collect();
-        if parts.len() < MIN_RECEIVER_PARTS {
-            continue;
-        }
-
-        let type_name = parts[parts.len() - 1]
-            .strip_prefix('*')
-            .unwrap_or(parts[parts.len() - 1]);
-        if !type_name.is_empty() {
-            return type_name.to_string();
-        }
-    }
-
-    String::new()
-}
-
-/// Builds a `MinHash` signature for one function subtree, or `None` when the
-/// function is too small or produces no shingles.
-#[must_use]
-#[allow(clippy::similar_names)] // `shingler` / `shingles` is the clearest naming
-pub fn build_signature(
+pub fn build_entry(
+    name: String,
     fn_node: &Node,
     shingler: &Shingler,
     num_hashes: usize,
 ) -> Option<FuncEntry> {
-    if count_nodes(fn_node) < MIN_FUNCTION_NODES {
+    let profile = profile(fn_node);
+    if profile.node_count < MIN_FUNCTION_NODES {
         return None;
     }
-
-    let shingles = shingler.extract_shingles(fn_node);
-    if shingles.is_empty() {
+    let shingle_set = shingler.shingle_hashes(&profile.types);
+    if shingle_set.is_empty() {
         return None;
     }
-
     let mut sig = Signature::new(num_hashes).ok()?;
-    for shingle in &shingles {
-        sig.add(shingle);
+    for &h in &shingle_set {
+        sig.add_hash(h);
     }
-
     Some(FuncEntry {
-        name: extract_func_name(fn_node),
+        name,
         sig,
+        shingles: shingle_set,
+        structure: profile.structure,
+        tokens: profile.tokens,
+        parent: None,
     })
 }
 
-/// Builds signatures for all functions, using the default [`NUM_HASHES`].
+/// Exact Jaccard index of two sorted, deduplicated hash sets.
 ///
-/// Convenience wrapper over [`build_signature`].
+/// ```
+/// use cf_clones::engine::jaccard;
+/// assert!((jaccard(&[1, 2, 3, 4], &[3, 4, 5, 6]) - 2.0 / 6.0).abs() < 1e-12);
+/// assert_eq!(jaccard(&[1, 2], &[1, 2]), 1.0);
+/// assert_eq!(jaccard(&[], &[]), 0.0);
+/// ```
 #[must_use]
-pub fn build_signatures(
-    functions: &[&Node],
-    shingler: &Shingler,
-    num_hashes: usize,
-) -> Vec<FuncEntry> {
-    let mut entries = Vec::with_capacity(functions.len());
-    for fn_node in functions {
-        if let Some(entry) = build_signature(fn_node, shingler, num_hashes) {
-            entries.push(entry);
+pub fn jaccard(a: &[u64], b: &[u64]) -> f64 {
+    let (mut i, mut j, mut shared) = (0, 0, 0usize);
+    while i < a.len() && j < b.len() {
+        match a[i].cmp(&b[j]) {
+            Ordering::Less => i += 1,
+            Ordering::Greater => j += 1,
+            Ordering::Equal => {
+                shared += 1;
+                i += 1;
+                j += 1;
+            }
         }
     }
-    entries
+    let union = a.len() + b.len() - shared;
+    if union == 0 {
+        return 0.0;
+    }
+    shared as f64 / union as f64
 }
 
-/// Returns a canonical key for a clone pair so `(A,B)` and `(B,A)` collide:
-/// the two names are ordered lexicographically.
+/// Classifies a candidate pair: identical structure is Type-1 (same tokens)
+/// or Type-2 (different tokens) at similarity `1.0`; otherwise the exact
+/// shingle Jaccard must reach `threshold` for a Type-3 pair.
 #[must_use]
-fn clone_pair_key(func_a: &str, func_b: &str) -> (String, String) {
-    if func_a > func_b {
-        (func_b.to_string(), func_a.to_string())
-    } else {
-        (func_a.to_string(), func_b.to_string())
+pub fn classify_pair(a: &IndexedFunc, b: &IndexedFunc, threshold: f64) -> Option<(CloneType, f64)> {
+    if a.structure == b.structure {
+        let clone_type = if a.tokens == b.tokens {
+            CloneType::Type1
+        } else {
+            CloneType::Type2
+        };
+        return Some((clone_type, 1.0));
+    }
+    let similarity = jaccard(&a.shingles, &b.shingles);
+    (similarity >= threshold).then_some((CloneType::Type3, similarity))
+}
+
+/// `true` when `ancestor` encloses `descendant` (a closure and the function
+/// it is written in are never a clone pair of each other).
+fn is_ancestor(funcs: &[IndexedFunc], ancestor: usize, descendant: usize) -> bool {
+    let mut cursor = funcs[descendant].parent;
+    while let Some(p) = cursor {
+        if p == ancestor {
+            return true;
+        }
+        cursor = funcs[p].parent;
+    }
+    false
+}
+
+/// A pair kept in the bounded top-k heap. Its [`Ord`] ranks a WORSE pair as
+/// greater — lower similarity first, then the later name — so the max-heap's
+/// top is the pair to evict and an ascending sort lists the best pair first.
+struct Ranked<'a> {
+    similarity: f64,
+    clone_type: CloneType,
+    a: usize,
+    b: usize,
+    name_a: &'a str,
+    name_b: &'a str,
+}
+
+impl Ord for Ranked<'_> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other
+            .similarity
+            .total_cmp(&self.similarity)
+            .then_with(|| self.name_a.cmp(other.name_a))
+            .then_with(|| self.name_b.cmp(other.name_b))
     }
 }
 
-/// Computes a clone pair between an entry and a candidate, or `None` if the
-/// candidate is unknown or below `min_similarity`.
-#[must_use]
-fn compute_clone_pair(
-    entry: &FuncEntry,
-    candidate_id: &str,
-    sig_map: &HashMap<String, Signature>,
-    min_similarity: f64,
-) -> Option<ClonePair> {
-    let candidate_sig = sig_map.get(candidate_id)?;
-    let similarity = entry.sig.similarity(candidate_sig).ok()?;
-    if similarity < min_similarity {
-        return None;
+impl PartialOrd for Ranked<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
-
-    Some(ClonePair {
-        func_a: entry.name.clone(),
-        func_b: candidate_id.to_string(),
-        similarity,
-        clone_type: classify_clone_type(similarity).to_string(),
-    })
 }
 
-/// Builds a name → signature lookup.
-#[must_use]
-fn build_signature_map(entries: &[FuncEntry]) -> HashMap<String, Signature> {
-    let mut sig_map = HashMap::with_capacity(entries.len());
-    for entry in entries {
-        sig_map.insert(entry.name.clone(), entry.sig.clone());
+impl PartialEq for Ranked<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
     }
-    sig_map
 }
 
-/// Queries the LSH index for every entry, collects unique clone pairs, and sorts
-/// the stored pairs by similarity descending.
-///
-/// `pair_cap` limits the *stored* `pairs` slice (`0` = unlimited);
-/// `total_count` always reflects all unique pairs found.
+impl Eq for Ranked<'_> {}
+
+/// Output of [`find_clone_pairs`].
+#[derive(Debug, Default)]
+pub struct ClonePairResult {
+    /// The stored pairs, best first (similarity desc, then name).
+    pub pairs: Vec<ClonePair>,
+    /// `(file of func_a, file of func_b)` for every stored pair.
+    pub pair_files: Vec<(usize, usize)>,
+    /// Exact number of pairs found, regardless of the cap.
+    pub total_count: usize,
+    /// Exact per-type distribution over every pair found.
+    pub distribution: CloneTypeCounts,
+    /// Per candidate: whether it takes part in at least one pair.
+    pub cloned: Vec<bool>,
+}
+
+/// Queries the index for every candidate, verifies and classifies each
+/// candidate pair, and keeps the best `pair_cap` pairs (`0` = unlimited).
 #[must_use]
 pub fn find_clone_pairs(
-    entries: &[FuncEntry],
-    idx: &Index,
+    funcs: &[IndexedFunc],
+    index: &Index,
     pair_cap: usize,
-    min_similarity: f64,
+    threshold: f64,
 ) -> ClonePairResult {
-    let sig_map = build_signature_map(entries);
-    let mut seen: HashSet<(String, String)> = HashSet::new();
-    let mut result = ClonePairResult::default();
+    let mut scratch = Scratch::default();
+    let mut heap: BinaryHeap<Ranked<'_>> = BinaryHeap::new();
+    let mut result = ClonePairResult {
+        cloned: vec![false; funcs.len()],
+        ..ClonePairResult::default()
+    };
 
-    for entry in entries {
-        let Ok(mut candidates) = idx.query_threshold(&entry.sig, min_similarity) else {
+    for (i, f) in funcs.iter().enumerate() {
+        let Ok(candidates) = index.query_after(&f.sig, i, &mut scratch) else {
             continue;
         };
-
-        // The LSH query collects candidates by iterating a `HashMap`, whose
-        // order is randomized per run (the reference implementation is equally
-        // order-nondeterministic here). That randomness propagates into the
-        // discovery order, which (a) decides which pairs survive the
-        // `pair_cap`, and (b) is the tie-break order among equal-similarity
-        // pairs after the final sort. Sorting the candidates here makes
-        // discovery order deterministic, so the stored pair SET and ORDER are
-        // reproducible run-to-run (the compat harness canonicalizes the
-        // reference's nondeterminism away, but requires our determinism).
-        //
-        // The order is DESCENDING by name: any fixed order is an equally
-        // faithful determinization of the reference's random map iteration,
-        // and the descending choice makes the frozen-pdqsort output land on
-        // the reference's modal (most-probable) permutation on large
-        // clone-heavy inputs — measured by Monte-Carlo simulation of the
-        // reference's per-entry candidate shuffles through the same pdqsort
-        // (ascending order lands on a low-probability outlier instead).
-        candidates.sort_unstable_by(|a, b| b.cmp(a));
-
-        for candidate_id in candidates {
-            if candidate_id == entry.name {
+        for j in candidates {
+            let g = &funcs[j];
+            if is_ancestor(funcs, i, j) {
                 continue;
             }
-
-            let key = clone_pair_key(&entry.name, &candidate_id);
-            if seen.contains(&key) {
+            let Some((clone_type, similarity)) = classify_pair(f, g, threshold) else {
                 continue;
-            }
-            seen.insert(key);
+            };
+            result.total_count += 1;
+            result.distribution.increment(clone_type);
+            result.cloned[i] = true;
+            result.cloned[j] = true;
 
-            if let Some(pair) = compute_clone_pair(entry, &candidate_id, &sig_map, min_similarity) {
-                result.total_count += 1;
-                result.type_distribution.increment(&pair.clone_type);
-                result.cloned_func.insert(pair.func_a.clone());
-                result.cloned_func.insert(pair.func_b.clone());
-
-                if pair_cap == 0 || result.pairs.len() < pair_cap {
-                    result.pairs.push(pair);
-                }
+            let (a, b) = if f.name <= g.name { (i, j) } else { (j, i) };
+            heap.push(Ranked {
+                similarity,
+                clone_type,
+                a,
+                b,
+                name_a: &funcs[a].name,
+                name_b: &funcs[b].name,
+            });
+            if pair_cap > 0 && heap.len() > pair_cap {
+                heap.pop();
             }
         }
     }
 
-    // The reference sorts pairs by similarity descending with Go's UNSTABLE
-    // `sort.Slice` (frozen pdqsort) and NO tie-break — the resulting
-    // within-tie permutation of the discovery order is part of the observable
-    // output contract (the terminal `text` report exposes the first pairs of
-    // this list verbatim). Reproduce the exact algorithm over our
-    // deterministic discovery order: `cf_gosort::go_sort_slice` is the
-    // bit-faithful port of that pdqsort, and the comparator mirrors the
-    // reference's `a.Similarity > b.Similarity`. Because our discovery order
-    // is deterministic (sorted candidates), two identical runs remain
-    // byte-identical, while the permutation now matches the reference's
-    // stable emergent ordering on its deterministic discovery core.
-    cf_gosort::go_sort_slice(&mut result.pairs, |a, b| a.similarity > b.similarity);
-
+    for r in heap.into_sorted_vec() {
+        result.pairs.push(ClonePair {
+            func_a: r.name_a.to_string(),
+            func_b: r.name_b.to_string(),
+            similarity: r.similarity,
+            clone_type: r.clone_type,
+        });
+        result.pair_files.push((funcs[r.a].file, funcs[r.b].file));
+    }
     result
 }
-
-/// Builds an LSH index over `entries`, inserting each signature under its
-/// name. Insert errors are skipped. Returns `None` if the index parameters are
-/// invalid.
-#[must_use]
-pub fn build_index(entries: &[FuncEntry], num_bands: usize, num_rows: usize) -> Option<Index> {
-    let mut idx = Index::new(num_bands, num_rows).ok()?;
-    for entry in entries {
-        let _ = idx.insert(entry.name.clone(), &entry.sig);
-    }
-    Some(idx)
-}
-
-/// Number of distinct function names across all pairs.
-#[must_use]
-pub fn count_distinct_funcs(pairs: &[ClonePair]) -> usize {
-    let mut unique: HashSet<&str> = HashSet::with_capacity(pairs.len());
-    for p in pairs {
-        unique.insert(&p.func_a);
-        unique.insert(&p.func_b);
-    }
-    unique.len()
-}
-
-/// Re-export of [`NUM_HASHES`] for callers building signatures from this module.
-pub const DEFAULT_NUM_HASHES: usize = NUM_HASHES;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::uast::NodeBuilder;
-    use cf_uast_node::Node;
+    use crate::{NUM_BANDS, NUM_HASHES, NUM_ROWS};
 
-    fn method_with_receiver(token: &str) -> Node {
-        let recv = NodeBuilder::new("Parameter")
-            .role("Parameter")
-            .token(token)
-            .build();
-        NodeBuilder::new("Method").child(recv).build()
+    /// A candidate over the given shingle hashes with its own token
+    /// fingerprint derived from `token_salt`.
+    fn func(name: &str, file: usize, shingles: &[u64], token_salt: u8) -> IndexedFunc {
+        let mut sig = Signature::new(NUM_HASHES).unwrap();
+        for &h in shingles {
+            sig.add_hash(h);
+        }
+        let structure = fingerprint_of(shingles);
+        let mut salted: Vec<u64> = shingles.to_vec();
+        salted.push(u64::from(token_salt));
+        IndexedFunc {
+            name: name.to_string(),
+            file,
+            sig,
+            shingles: shingles.to_vec(),
+            structure,
+            tokens: fingerprint_of(&salted),
+            parent: None,
+        }
     }
 
-    #[test]
-    fn count_nodes_counts_subtree() {
-        let tree = NodeBuilder::new("A")
-            .child(NodeBuilder::new("B").build())
-            .child(
-                NodeBuilder::new("C")
-                    .child(NodeBuilder::new("D").build())
+    fn fingerprint_of(values: &[u64]) -> Fingerprint {
+        let mut n = cf_uast_node::Builder::new().with_type("Function").build();
+        for v in values {
+            n.add_child(
+                cf_uast_node::Builder::new()
+                    .with_type("Identifier")
+                    .with_token(v.to_string())
                     .build(),
-            )
-            .build();
-        assert_eq!(count_nodes(&tree), 4);
+            );
+        }
+        profile(&n).tokens
+    }
+
+    fn index_of(funcs: &[IndexedFunc]) -> Index {
+        let mut idx = Index::new(NUM_BANDS, NUM_ROWS).unwrap();
+        for (i, f) in funcs.iter().enumerate() {
+            idx.insert(i, &f.sig).unwrap();
+        }
+        idx
+    }
+
+    fn range(lo: u64, hi: u64) -> Vec<u64> {
+        (lo..hi).collect()
     }
 
     #[test]
-    fn is_function_node_by_type_or_roles() {
-        assert!(is_function_node(&NodeBuilder::new("Function").build()));
-        assert!(is_function_node(&NodeBuilder::new("Method").build()));
-        let decl = NodeBuilder::new("Decl")
-            .role("Function")
-            .role("Declaration")
-            .build();
-        assert!(is_function_node(&decl));
-        assert!(!is_function_node(&NodeBuilder::new("Block").build()));
+    fn jaccard_of_sorted_sets() {
+        assert!((jaccard(&[1, 2, 3, 4], &[3, 4, 5, 6]) - 1.0 / 3.0).abs() < 1e-12);
+        assert!((jaccard(&[1], &[2]) - 0.0).abs() < 1e-12);
     }
 
     #[test]
-    fn extract_receiver_pointer_type() {
-        let m = method_with_receiver("(f *Foo)");
-        assert_eq!(extract_receiver_type(&m), "Foo");
+    fn identical_structure_and_tokens_is_type1() {
+        let a = func("a", 0, &range(0, 50), 0);
+        let b = func("b", 1, &range(0, 50), 0);
+        assert_eq!(classify_pair(&a, &b, 0.5), Some((CloneType::Type1, 1.0)));
     }
 
     #[test]
-    fn extract_receiver_value_type() {
-        let m = method_with_receiver("(f Foo)");
-        assert_eq!(extract_receiver_type(&m), "Foo");
+    fn identical_structure_different_tokens_is_type2() {
+        let a = func("a", 0, &range(0, 50), 0);
+        let b = func("b", 1, &range(0, 50), 1);
+        assert_eq!(classify_pair(&a, &b, 0.5), Some((CloneType::Type2, 1.0)));
     }
 
     #[test]
-    fn extract_receiver_missing_parts() {
-        let m = method_with_receiver("(Foo)"); // single token -> no receiver
-        assert_eq!(extract_receiver_type(&m), "");
+    fn different_structure_is_type3_only_above_threshold() {
+        let a = func("a", 0, &range(0, 60), 0);
+        let near = func("b", 1, &range(20, 80), 0); // 40 shared / 80 union = 0.5
+        let far = func("c", 2, &range(50, 110), 0); // 10 / 110
+        let (ct, sim) = classify_pair(&a, &near, 0.5).expect("found");
+        assert_eq!(ct, CloneType::Type3);
+        assert!((sim - 0.5).abs() < 1e-12);
+        assert_eq!(classify_pair(&a, &far, 0.5), None);
     }
 
     #[test]
-    fn extract_func_name_qualifies_methods() {
-        // Entity-name precedence: "name" prop -> own token -> children[0]'s
-        // token. Here the method's name comes from children[0] ("DoWork"); the
-        // receiver type is discovered separately by `extract_receiver_type`
-        // (which scans all children for the Parameter role), yielding
-        // "Foo.DoWork".
-        let name = NodeBuilder::new("Identifier")
-            .role("Name")
-            .token("DoWork")
-            .build();
-        let recv = NodeBuilder::new("Parameter")
-            .role("Parameter")
-            .token("(f *Foo)")
-            .build();
-        let m = NodeBuilder::new("Method").child(name).child(recv).build();
-        assert_eq!(extract_func_name(&m), "Foo.DoWork");
-    }
-
-    #[test]
-    fn extract_func_name_own_token_beats_children() {
-        // The node's OWN token is checked before any child. A C `Function`
-        // node whose token is the full function text keeps that text as its
-        // name, so distinct functions stay distinct in the LSH index.
-        let child = NodeBuilder::new("Identifier")
-            .role("Name")
-            .token("U16")
-            .build();
-        let f = NodeBuilder::new("Function")
-            .token("static U16 LZ4_read16(...)")
-            .child(child)
-            .build();
-        assert_eq!(extract_func_name(&f), "static U16 LZ4_read16(...)");
-    }
-
-    #[test]
-    fn extract_func_name_falls_back_to_token_then_type() {
-        let tokened = NodeBuilder::new("Function").token("plain").build();
-        assert_eq!(extract_func_name(&tokened), "plain");
-        let typed = NodeBuilder::new("Function").build();
-        assert_eq!(extract_func_name(&typed), "Function");
-    }
-
-    #[test]
-    fn count_distinct_funcs_dedups() {
-        let pairs = vec![
-            ClonePair {
-                func_a: "a".into(),
-                func_b: "b".into(),
-                similarity: 1.0,
-                clone_type: "Type-1".into(),
-            },
-            ClonePair {
-                func_a: "b".into(),
-                func_b: "c".into(),
-                similarity: 0.9,
-                clone_type: "Type-2".into(),
-            },
+    fn pairs_are_found_once_best_first_and_names_sorted() {
+        let funcs = vec![
+            func("z", 0, &range(0, 50), 0),
+            func("m", 1, &range(0, 50), 0),
+            func("a", 2, &range(10, 60), 0), // 0.667 with the others
         ];
-        assert_eq!(count_distinct_funcs(&pairs), 3);
+        let idx = index_of(&funcs);
+        let r = find_clone_pairs(&funcs, &idx, 0, 0.5);
+        assert_eq!(r.total_count, 3);
+        assert_eq!(r.distribution.type1, 1);
+        assert_eq!(r.distribution.type3, 2);
+        assert!(r.cloned.iter().all(|c| *c));
+        let names: Vec<String> = r.pairs.iter().map(ClonePair::display_name).collect();
+        assert_eq!(names, vec!["m <-> z", "a <-> m", "a <-> z"]);
+        assert_eq!(r.pair_files, vec![(1, 0), (2, 1), (2, 0)]);
     }
 
     #[test]
-    fn clone_pair_key_is_canonical() {
-        assert_eq!(clone_pair_key("b", "a"), clone_pair_key("a", "b"));
-        assert_eq!(clone_pair_key("a", "b"), ("a".into(), "b".into()));
+    fn pair_cap_keeps_the_best_pairs_and_the_exact_total() {
+        let funcs: Vec<IndexedFunc> = (0..5)
+            .map(|i| func(&format!("f{i}"), i, &range(0, 50), 0))
+            .collect();
+        let idx = index_of(&funcs);
+        let r = find_clone_pairs(&funcs, &idx, 3, 0.5);
+        assert_eq!(r.total_count, 10);
+        assert_eq!(r.distribution.type1, 10);
+        let names: Vec<String> = r.pairs.iter().map(ClonePair::display_name).collect();
+        assert_eq!(names, vec!["f0 <-> f1", "f0 <-> f2", "f0 <-> f3"]);
+    }
+
+    #[test]
+    fn a_closure_is_never_paired_with_its_enclosing_function() {
+        let outer = func("outer", 0, &range(0, 60), 0);
+        let mut inner = func("outer.func#1", 0, &range(5, 60), 0);
+        inner.parent = Some(0);
+        let funcs = vec![outer, inner];
+        let idx = index_of(&funcs);
+        let r = find_clone_pairs(&funcs, &idx, 0, 0.5);
+        assert_eq!(r.total_count, 0, "{:?}", r.pairs);
+    }
+
+    #[test]
+    fn no_self_pairs() {
+        let funcs = vec![func("only", 0, &range(0, 50), 0)];
+        let idx = index_of(&funcs);
+        let r = find_clone_pairs(&funcs, &idx, 0, 0.5);
+        assert_eq!(r.total_count, 0);
+        assert_eq!(r.cloned, vec![false]);
     }
 }

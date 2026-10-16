@@ -2,12 +2,15 @@
 //!
 //! A clap **builder**-API mirror of the cobra CLI in `cmd/uast/*.go`
 //! (DESIGN §4.2). Root: `Use "uast"`, Short "UAST (Universal Abstract Syntax
-//! Tree) parser and analyzer". Persistent flags `--config`, `--verbose`/`-v`,
-//! `--quiet`/`-q`. The 9 subcommands are: parse, diff, query, explore,
-//! analyze, completion, version, validate, mapping. Every
-//! subcommand's `Use`/`Short`, flag long/short/default/help string, and valid
-//! format-value list is copied verbatim from the Go source so help/usage and
-//! error wording match cobra (the Layer-D CLI golden, DESIGN §6).
+//! Tree) parser and analyzer". The root carries no flags of its own. The 9
+//! subcommands are: parse, diff, query, explore, analyze, completion,
+//! version, validate, mapping.
+//!
+//! The help text is a contract: every flag a subcommand lists is read by that
+//! subcommand. The Go-era persistent `--config` / `--verbose` / `--quiet`, the
+//! `parse --progress` / `--workers`, `validate --color` / `--no-color` and
+//! `mapping --mapping` / `--coverage` flags had no reader and are not
+//! accepted (`specs/bugs/BUG-cli-inert-surface.md`).
 //!
 //! ## Error-handling asymmetry (DESIGN §4)
 //!
@@ -41,7 +44,7 @@ mod validate;
 
 use std::process::exit;
 
-use clap::{Arg, ArgAction, Command};
+use clap::Command;
 
 /// The `"json"` output-format constant (Go `formatJSON`, main.go:14).
 pub const FORMAT_JSON: &str = "json";
@@ -50,8 +53,28 @@ pub const FORMAT_COMPACT: &str = "compact";
 /// The `"none"` output-format constant (Go `formatNone`, parse.go:28).
 pub const FORMAT_NONE: &str = "none";
 
-/// The percent multiplier used by `analyze`/`mapping` (Go `coveragePercent`).
+/// The percent multiplier used by `analyze` (Go `coveragePercent`).
 pub const COVERAGE_PERCENT: f64 = 100.0;
+
+/// The file argument that means "read stdin" for `parse` and `query`.
+pub const STDIN_ARG: &str = "-";
+
+/// Opens the `-o/--output` destination of `parse` / `query` ONCE per run:
+/// stdout for an empty path, else the file (created or truncated). Every
+/// input's document is appended to the same writer, so a multi-file run keeps
+/// every input instead of only the last one.
+///
+/// # Errors
+///
+/// `failed to create output file: <cause>` when the file cannot be created.
+pub fn open_output(path: &str) -> Result<Box<dyn std::io::Write>, String> {
+    if path.is_empty() {
+        return Ok(Box::new(std::io::stdout()));
+    }
+    std::fs::File::create(path)
+        .map(|f| Box::new(f) as Box<dyn std::io::Write>)
+        .map_err(|e| format!("failed to create output file: {e}"))
+}
 
 /// Builds the root `uast` command with all 9 subcommands.
 ///
@@ -59,38 +82,11 @@ pub const COVERAGE_PERCENT: f64 = 100.0;
 /// server) and `server` (the UAST development HTTP server + web playground).
 /// Both, along with the `.uastmap` DSL data they edited, were removed from the
 /// Rust product — analysis runs off the native `cf-uast-mappings` tables, so
-/// the DSL editor tooling had no remaining consumer. This is a deliberate
-/// divergence from the frozen Go oracle's CLI surface (see the cli-surface
-/// gate's intentional-divergence allowlist).
+/// the DSL editor tooling had no remaining consumer.
 fn build_cli() -> Command {
     Command::new("uast")
         .about("UAST (Universal Abstract Syntax Tree) parser and analyzer")
         .long_about("UAST is a tool for parsing source code into Universal Abstract Syntax Trees.")
-        // Persistent flags (main.go:29-31).
-        .arg(
-            Arg::new("config")
-                .long("config")
-                .help("config file (default is $HOME/.uast.yaml)")
-                .global(true)
-                .default_value("")
-                .action(ArgAction::Set),
-        )
-        .arg(
-            Arg::new("verbose")
-                .long("verbose")
-                .short('v')
-                .help("verbose output")
-                .global(true)
-                .action(ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("quiet")
-                .long("quiet")
-                .short('q')
-                .help("suppress output")
-                .global(true)
-                .action(ArgAction::SetTrue),
-        )
         // Subcommands in main.go AddCommand order.
         .subcommand(parse::command())
         .subcommand(diff::command())

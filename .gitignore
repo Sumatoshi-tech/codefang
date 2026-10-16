@@ -4,8 +4,6 @@
 /vendor
 cmd/codefang/plugin_template_source.go
 coverage.txt
-build/bin/codefang
-build/bin/uast
 python/dist
 python/build
 
@@ -51,6 +49,7 @@ _testmain.go
 !crates/cf-langpath/data/enry-v2.1.0.tsv
 !crates/cf-langpath/data/enry-frequencies-v2.1.0.tsv
 !crates/cf-langpath/data/enry-interpreters-v2.1.0.tsv
+!crates/cf-langpath/data/enry-types-v2.1.0.tsv
 !crates/cf-sentiment-lexicons/data/**
 !crates/cf-gojson/tests/oracle_data/**
 
@@ -67,7 +66,6 @@ third_party/go-sitter-forest/
 test/benchmarks/
 test/benchmarks/benchmark_results.txt
 debug/
-build/bin/
 build.log
 .backend.pid
 .vite.pid

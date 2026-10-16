@@ -26,7 +26,7 @@
 //!
 //! Compatibility: configuration defaults and parsing semantics feed analyzer
 //! output paths indirectly; output bytes are pinned against the reference
-//! implementation by `tests/compat`.
+//! implementation by the report e2e suites (`bins/codefang/tests`).
 //!
 //! # Example
 //!

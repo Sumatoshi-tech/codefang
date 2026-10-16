@@ -4,7 +4,7 @@
 //!
 //! `cf-pathfilter` reproduces `github.com/src-d/enry/v2` `IsVendor`, whose
 //! decision changes *which* files are analysed and therefore which bytes appear
-//! in machine-format reports (pinned by `tests/compat`). The design
+//! in machine-format reports. The design
 //! (`specs/rust-rewrite/DESIGN.md` §2.6) mandates vendoring the **same** data
 //! tables enry uses, byte-for-byte, instead of hand-translating a generated
 //! artifact or swapping detectors.

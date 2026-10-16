@@ -40,12 +40,12 @@ checking out a working tree.
      -type d > /tmp/repo_paths.txt
    ```
 
-4. Run a single bare repo with a memory budget so the streaming pipeline stays
-   bounded on large histories:
+4. Run a single bare repo; bound the commit window with `--limit` on large
+   histories:
 
    ```bash
    codefang run /data/extract/repositories/@hashed/ab/cd/abcdef.git \
-     -a 'history/*' --memory-budget 4GiB --workers 4 --format json --silent
+     -a 'history/*' --limit 5000 --format json --silent
    ```
 
 5. For periodic scans, analyze only new commits with `--since` rather than

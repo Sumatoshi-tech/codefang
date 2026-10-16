@@ -310,7 +310,7 @@ pub fn compute_bus_factor(input: &BusFactorInput, opts: &MetricOptions) -> Vec<B
         }
 
         if let Some(&(id, lines)) = contribs.get(1) {
-            bf.secondary_dev_id = id;
+            bf.secondary_dev_id = Some(id);
             let (n, e) = dev_name_and_email(id, input.names);
             bf.secondary_dev_name = n;
             bf.secondary_dev_email = e;

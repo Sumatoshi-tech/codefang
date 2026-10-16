@@ -60,20 +60,11 @@ agent can run code analysis as a tool.
    }
    ```
 
-5. If a call misbehaves, enable debug logging to stderr by adding the `--debug`
-   argument to the server registration:
-
-   ```json
-   {
-     "mcpServers": {
-       "codefang": {
-         "command": "codefang",
-         "args": ["mcp", "--debug"],
-         "env": {}
-       }
-     }
-   }
-   ```
+5. If a call misbehaves, reproduce it on the command line: the tool result
+   equals what `codefang run` prints for the same input (for example
+   `codefang run -a history/devs --format json --limit 500 /home/user/projects/myapp`),
+   and the server writes its own failures to stderr, which most clients
+   show in their MCP log.
 
 ## Result
 

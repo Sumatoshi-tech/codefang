@@ -7,10 +7,9 @@
 //!   * `1` — validation FAILED (document is well-formed JSON but violates schema);
 //!   * `2` — error (bad JSON, schema read failure, open failure, engine error).
 //!
-//! `--no-color` wins over `--color` (cosmetic). The schema defaults to the
-//! embedded `cf-uast-spec` schema when `--schema` is empty or the Go default
-//! path string; otherwise the path is read from disk. The compliance percentage
-//! mirrors `calculateCompliance`/`countNodes`.
+//! The schema is the embedded `cf-uast-spec` schema unless `--schema` names a
+//! file to read instead. The report is plain text (no color toggles). The
+//! compliance percentage mirrors `calculateCompliance`/`countNodes`.
 
 use std::io::{self, Read};
 use std::process::exit;
@@ -24,8 +23,8 @@ const EXIT_INVALID: i32 = 1;
 const EXIT_ERROR: i32 = 2;
 /// Maximum compliance percentage (validate.go `complianceMax`).
 const COMPLIANCE_MAX: i64 = 100;
-/// The Go default `--schema` value, which selects the embedded schema.
-const DEFAULT_SCHEMA_PATH: &str = "pkg/uast/spec/uast-schema.json";
+/// The `--schema` default: empty selects the embedded schema.
+const EMBEDDED_SCHEMA: &str = "";
 
 /// Builds the `validate` subcommand (validate.go:24-43).
 pub fn command() -> Command {
@@ -36,21 +35,9 @@ pub fn command() -> Command {
         .arg(
             Arg::new("schema")
                 .long("schema")
-                .help("path to UAST JSON schema")
-                .default_value(DEFAULT_SCHEMA_PATH)
+                .help("path to a UAST JSON schema (default: the embedded UAST schema)")
+                .default_value(EMBEDDED_SCHEMA)
                 .action(ArgAction::Set),
-        )
-        .arg(
-            Arg::new("color")
-                .long("color")
-                .help("force colored output")
-                .action(ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("no-color")
-                .long("no-color")
-                .help("disable colored output")
-                .action(ArgAction::SetTrue),
         )
 }
 
@@ -65,9 +52,7 @@ pub fn run(m: &ArgMatches) -> Result<(), String> {
     let schema_path = m
         .get_one::<String>("schema")
         .map(String::as_str)
-        .unwrap_or(DEFAULT_SCHEMA_PATH);
-    // --no-color wins over --color (validate.go); both are cosmetic.
-    let _color = !m.get_flag("no-color") && m.get_flag("color");
+        .unwrap_or(EMBEDDED_SCHEMA);
 
     let (input_bytes, label) = load_input(file);
     let input: Value = match serde_json::from_slice(&input_bytes) {
@@ -145,11 +130,10 @@ fn load_input(path: &str) -> (Vec<u8>, String) {
     }
 }
 
-/// Loads the schema bytes (validate.go `loadSchema`). An empty path or the Go
-/// default path selects the embedded `cf-uast-spec` schema; otherwise the file
-/// is read (failure exits 2).
+/// Loads the schema bytes (validate.go `loadSchema`). An empty path selects the
+/// embedded `cf-uast-spec` schema; otherwise the file is read (failure exits 2).
 fn load_schema(path: &str) -> Vec<u8> {
-    if path.is_empty() || path == DEFAULT_SCHEMA_PATH {
+    if path == EMBEDDED_SCHEMA {
         return cf_uast_spec::schema().as_bytes().to_vec();
     }
     match std::fs::read(path) {
@@ -230,7 +214,7 @@ mod tests {
 
     #[test]
     fn embedded_schema_is_loaded_for_default_path() {
-        let bytes = load_schema(DEFAULT_SCHEMA_PATH);
+        let bytes = load_schema(EMBEDDED_SCHEMA);
         assert!(!bytes.is_empty());
         assert!(String::from_utf8_lossy(&bytes).contains("$schema"));
     }

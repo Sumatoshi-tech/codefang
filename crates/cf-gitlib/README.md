@@ -11,10 +11,10 @@ reference binary byte-for-byte.
 ## Why
 
 The history analyzers (burndown, couples, devs, file_history, ...) need a single
-git access layer whose output is reproducible and parity-stable. Pinning libgit2
-keeps diff line counts, tree-change ordering, and hash rendering identical to the
-reference implementation; those surface into machine reports whose bytes are
-pinned by `tests/compat`.
+git access layer whose output is reproducible. Pinning libgit2 keeps diff line
+counts, tree-change ordering, and hash rendering stable across machines; those
+surface into machine reports whose bytes are pinned by the CLI-level end-to-end
+tests.
 
 ## Model
 

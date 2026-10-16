@@ -2,7 +2,7 @@
 
 > Codefang is a comprehensive code analysis platform that understands your code deeply — not just as text, but as structure (AST) and history (Git) — for tracking technical debt, analyzing developer churn, and feeding context to AI agents.
 
-Codefang is a spiritual successor to source{d}'s `hercules`, rebuilt on a modern engine. It splits into two binaries: `uast` (the parser, turning source into a Universal Abstract Syntax Tree across 60+ languages via Tree-sitter) and `codefang` (the analyzer, consuming UASTs for static analysis or Git repositories for history mining). Analyzers are pluggable, and the tool is designed to be AI-agent ready through an MCP server and a UNIX-pipe-friendly CLI.
+Codefang is a spiritual successor to source{d}'s `hercules`, rebuilt on a modern engine. It splits into two binaries: `uast` (the parser, turning source into a Universal Abstract Syntax Tree across 60+ languages via Tree-sitter) and `codefang` (the analyzer, consuming UASTs for static analysis or Git repositories for history mining). Analyzers are pluggable, every report has deterministic machine formats (JSON, YAML, NDJSON, time series, binary), and the CLI is UNIX-pipe-friendly; an MCP server library exists but no command launches it yet.
 
 ## README
 
@@ -18,7 +18,7 @@ Codefang is a spiritual successor to source{d}'s `hercules`, rebuilt on a modern
 - [How to run Codefang in CI](https://sumatoshi-tech.github.io/codefang/how-to/run-in-ci/): wire Codefang into a continuous-integration pipeline.
 - [How to read a burndown chart](https://sumatoshi-tech.github.io/codefang/how-to/read-a-burndown-chart/): interpret the survival-over-time output of the burndown analyzer.
 - [How to analyze a bare repository](https://sumatoshi-tech.github.io/codefang/how-to/analyze-a-bare-repo/): run history analysis against a bare Git clone with no working tree.
-- [How to attach an MCP client](https://sumatoshi-tech.github.io/codefang/how-to/attach-an-mcp-client/): connect an AI agent to Codefang through the MCP server.
+- [How to attach an MCP client](https://sumatoshi-tech.github.io/codefang/how-to/attach-an-mcp-client/): how an AI agent will connect through the MCP server once a launcher ships (not available in this release).
 
 ## Reference
 

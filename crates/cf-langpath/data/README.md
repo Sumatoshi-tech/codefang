@@ -33,69 +33,30 @@ Cardinalities (enry v2.1.0): **750** aliases, **504** extension-languages,
 **234** filename records (1488 lines total, 32053 bytes, pure ASCII). The
 `vendored_tables_loaded` unit test pins all three counts.
 
+## Language types (`enry-types-v2.1.0.tsv`)
+
+enry's `GetLanguageType` table, `data.LanguagesType`: one `language<TAB>code` row
+per Linguist language, where the code is enry's `Type` enum (1 data, 2
+programming, 3 markup, 4 prose; `unknown` is never stored). It is loaded by
+`src/linguist_type.rs`, which exposes `language_type(name)`. Names are enry's
+exact canonical names (`JSON`, `Go`), not the UAST's lowercase language names.
+
 ## Regenerating
 
 The canonical, committed dumper lives at `tools/enrydump/main.go`. Run it from
 the Go module root (so enry resolves from `go.sum`):
 
 ```sh
-go run ./tools/enrydump crates/cf-langpath/data/enry-v2.1.0.tsv
+go run ./tools/enrydump crates/cf-langpath/data/enry-v2.1.0.tsv crates/cf-langpath/data/enry-types-v2.1.0.tsv
 ```
 
+Run it from the enry v2.1.0 module (`git clone --branch v2.1.0
+https://github.com/src-d/enry`), with the dumper copied to `tools/enrydump` in that
+module, so the import resolves to the pinned data. The first file is
+byte-identical to the vendored lookup table, and the second has 519 type rows.
 It prints `aliases=750 extensions=504 filenames=234`. The dumper sorts every
 section and each map's keys, so its output is byte-stable across runs. If enry is
 upgraded, regenerate, bump the `include_str!` path in `src/lib.rs`, and update
 the cardinality assertions in the `vendored_tables_loaded` test. The dumper
-source, for reference:
-
-```go
-package main
-
-import (
-	"fmt"
-	"os"
-	"sort"
-
-	"github.com/src-d/enry/v2/data"
-)
-
-func main() {
-	f, _ := os.Create(os.Args[1])
-	defer f.Close()
-
-	keys := make([]string, 0, len(data.LanguageByAliasMap))
-	for k := range data.LanguageByAliasMap {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		fmt.Fprintf(f, "A\t%s\t%s\n", k, data.LanguageByAliasMap[k])
-	}
-
-	ek := make([]string, 0, len(data.ExtensionsByLanguage))
-	for k := range data.ExtensionsByLanguage {
-		ek = append(ek, k)
-	}
-	sort.Strings(ek)
-	for _, k := range ek {
-		fmt.Fprintf(f, "E\t%s", k)
-		for _, e := range data.ExtensionsByLanguage[k] {
-			fmt.Fprintf(f, "\t%s", e)
-		}
-		fmt.Fprintln(f)
-	}
-
-	fk := make([]string, 0, len(data.LanguagesByFilename))
-	for k := range data.LanguagesByFilename {
-		fk = append(fk, k)
-	}
-	sort.Strings(fk)
-	for _, k := range fk {
-		fmt.Fprintf(f, "F\t%s", k)
-		for _, l := range data.LanguagesByFilename[k] {
-			fmt.Fprintf(f, "\t%s", l)
-		}
-		fmt.Fprintln(f)
-	}
-}
-```
+source is `tools/enrydump/main.go`, committed in this repository. The
+lookup table was checked against it byte for byte.

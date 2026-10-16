@@ -23,8 +23,10 @@ graph LR
     E --> F[Data Warehouse]
 ```
 
-The streaming pipeline, checkpointing, and bounded-memory execution make each
-individual run safe on large repositories without manual tuning.
+Each run walks the requested commit window once and is a pure function of the
+repository and the flags, so runs are independent and safe to retry. What a
+run costs is set by the size of its window — see
+[Bounding each run](#bounding-each-run).
 
 ## Bare repository support
 
@@ -117,8 +119,7 @@ cat "$REPOS" | parallel -j 8 --joblog /tmp/codefang-jobs.log '
   codefang run {} \
     -a history/* \
     --format json \
-    --memory-budget 4GiB \
-    --workers 4 \
+    --limit 5000 \
     --silent \
     2>/tmp/codefang-logs/${REPO_NAME}.log \
   | aws s3 cp - '"${S3_BUCKET}/${DATE}"'/${REPO_NAME}.json
@@ -151,17 +152,13 @@ spec:
               codefang run /workspace \
                 -a history/* \
                 --format json \
-                --memory-budget 4GiB \
-                --workers 4 \
-                --checkpoint \
+                --limit 5000 \
                 --silent \
               | aws s3 cp - s3://bucket/results.json
           volumeMounts:
             - name: repo
               mountPath: /workspace
               readOnly: true
-            - name: checkpoint
-              mountPath: /tmp/codefang-checkpoints
           resources:
             requests:
               cpu: "4"
@@ -172,31 +169,34 @@ spec:
         - name: repo
           persistentVolumeClaim:
             claimName: repo-myrepo
-        - name: checkpoint
-          emptyDir: {}
       restartPolicy: OnFailure
 ```
 
 !!! info "Key considerations"
-    - **Resource requests**: 4 CPU / 6 Gi memory per pod handles most repositories
-    - **Checkpoint volume**: use `emptyDir` for ephemeral or a PVC for crash-recovery
-    - **Parallelism**: 50-100 concurrent pods is typical for 60k repositories
+    - **Resource requests**: size them from a measured run of your largest
+      repository with the same window flags (`/usr/bin/time -v` reports the
+      maximum resident set size)
+    - **Retries**: a run writes no state to disk, so `backoffLimit` retries
+      simply re-run the same window
     - **Scheduling**: use a CronJob or Argo CronWorkflow for periodic scans
 
-## Memory budget and streaming
+## Bounding each run
 
-The `--memory-budget` flag controls how Codefang splits a repository's commit
-history into chunks. See [Streaming Pipeline](../architecture/streaming-pipeline.md)
-for details.
+There is no memory-budget, worker or cache flag: the history phase walks the
+commit window once and every analyzer reduces it in chronological order.
+Bound the window to bound a run:
 
-| Repository Size | Memory Budget | Expected Behavior |
-|-----------------|---------------|-------------------|
-| < 1k commits | 2 GiB | Single chunk, no hibernation |
-| 1k-10k commits | 4 GiB | 2-10 chunks |
-| 10k-100k commits | 4-8 GiB | 10-100 chunks with checkpoints |
-| 100k+ commits | 8 GiB | Many chunks, checkpointing essential |
+| Flag | Effect |
+|------|--------|
+| `--limit N` | Only the N newest commits |
+| `--since <time or revision>` | Only commits authored at/after the cutoff |
+| `--first-parent` | Skip the side branches of merges |
+| `--max-changes-per-commit N` | Drop commits whose tree diff exceeds N changes (default 10000) |
+| `--languages go,python` | Only changes in these languages reach the analyzers |
+| `--head` | The single HEAD commit |
 
-When unset, the budget defaults to 50% of system memory (capped at 4 GiB).
+Measured on the hercules repository, `codefang run -a 'history/*' --limit 500`
+peaks at 752 MB resident memory and finishes in 4.7 s wall time.
 
 ## Incremental scanning with `--since`
 
@@ -216,28 +216,17 @@ codefang run /path/to/repo -a history/* --format json --since 2025-01-01T00:00:0
 
 | Format | Example | Meaning |
 |--------|---------|---------|
-| Go duration | `168h` | 7 days before now |
+| Duration (`h`/`m`/`s`) | `168h` | 7 days before now |
 | Date only | `2025-01-01` | Midnight UTC on that date |
 | RFC3339 | `2025-01-01T00:00:00Z` | Exact timestamp |
 
-## Checkpointing and crash recovery
+## Interrupted runs
 
-Checkpointing is enabled by default. After each fully processed chunk, the
-pipeline saves analyzer state to disk. If a run is interrupted (OOM kill, pod
-eviction, timeout), the next invocation with `--resume` automatically restarts
-from the last completed chunk.
-
-```bash
-codefang run /path/to/repo \
-  -a history/* \
-  --format json \
-  --checkpoint \
-  --resume \
-  --checkpoint-dir /tmp/codefang-checkpoints
-```
-
-!!! tip "Kubernetes"
-    Mount the checkpoint directory on a PVC to survive pod restarts.
+There is no checkpoint or resume: a run either writes its whole report or
+none. The first SIGINT / SIGTERM cancels the run — no report is written,
+stderr shows `Error: interrupted` and the exit code is 130; a second signal
+terminates the process immediately. Retry an interrupted scan with the same
+flags (or a `--since` window covering the missed period).
 
 ## DWH loading
 
@@ -286,69 +275,35 @@ devs_df = df.select("repo", explode("results.devs.authors").alias("author"))
 devs_df.write.partitionBy("scan_date").parquet("s3://warehouse/codefang/devs/")
 ```
 
-## Static analysis memory monitoring
+## Monitoring a run
 
-The static analysis phase logs progress events at regular intervals (every
-1000 files). By default, only phase and file count are shown:
+`codefang run` writes its report to stdout (or to the `-o` file) and its
+diagnostics to stderr:
 
-```text
-static: processing files=1000
-static: processing files=2000
-static: complete   files=5432
-```
+- `progress:` lines — the resolved selection at start, the skipped-file
+  count and the elapsed time at the end; `-q` / `--quiet` (alias `--silent`)
+  suppresses them, `-v` / `--verbose` adds the config file and the resolved
+  analyzer ids;
+- `warning:` lines — skipped unreadable or oversized files, ignored config
+  keys; printed even with `--quiet`;
+- `Error: <cause>` on failure, with exit code 1.
 
-With `--verbose`, RSS and aggregator buffer sizes are included:
-
-```text
-static: processing files=1000 RSS=245MiB agg=12MiB
-static: processing files=2000 RSS=312MiB agg=18MiB
-static: complete   files=5432 RSS=280MiB agg=6MiB
-```
-
-For live profiling, use `--profile` to start a pprof HTTP server on
-`localhost:6060` and a memory watchdog that dumps heap profiles when RSS
-exceeds 4 GiB.
-
-These logs appear every 1000 files and after completion. The budget solver
-(`budget.SolveStaticBudget`) automatically derives worker count and spill
-threshold from the memory budget:
-
-| Budget | Max Workers | Spill Threshold |
-|--------|-------------|-----------------|
-| 512 MiB | 4 | 5,461 |
-| 1 GiB | 8 | 17,476 |
-| 2 GiB | 8 | 41,530 |
-| 4 GiB | 8 | 89,641 |
-
-For text/compact output formats, the `SummaryOnly` aggregation mode is
-automatically enabled, reducing heap usage by ~97% (no per-function data
-retained in memory).
+`--profile` adds a memory watchdog: `MEM t=<s> RSS=<MiB> threads=<n>` on
+stderr at start and every 2 s, a `/proc/self/maps` snapshot in the temp
+directory (`$TMPDIR`, else `/tmp`) at start, and another one when RSS exceeds
+4096 MiB.
 
 ## Observability
 
-Codefang includes OpenTelemetry support for monitoring scan fleet health.
-See [Observability](observability.md) for full details.
+See [Observability](observability.md) for the stderr diagnostics, exit codes
+and the `--profile` watchdog a fleet orchestrator can collect.
 
-```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
-codefang run /path/to/repo -a history/* --format json --silent
-```
+## Measured reference
 
-| Metric | Use |
-|--------|-----|
-| `codefang.request.duration.seconds` | Identify slow repositories |
-| `codefang.errors.total` | Track failure rate across the fleet |
-| `codefang.cache.hits` / `codefang.cache.misses` | Tune cache sizes |
+| Run | Max RSS | Wall time |
+|-----|---------|-----------|
+| hercules, `-a 'history/*' --limit 500` | 752 MB | 4.7 s |
 
-## Sizing estimates
-
-| Parameter | Typical Value |
-|-----------|---------------|
-| Per-repo runtime (4 cores, 4 GiB) | 1-10 min |
-| JSON output per repo | 100 KB - 50 MB |
-| 60k repos at 100 concurrent pods | 10-100 hours per full scan |
-| Total S3 per full scan | 10-100 GB |
-| Incremental scan (7 days) | 5-20x faster than full |
-
-The primary bottleneck is I/O (reading Git objects). Bare repos on local SSD
-or NVMe-backed EBS deliver the best throughput.
+Measure your own fleet's largest repository with the window flags you plan
+to use (`/usr/bin/time -v codefang run …`) before sizing pod requests. Bare
+repositories on local SSD or NVMe-backed volumes keep Git object reads fast.

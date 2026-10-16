@@ -4,6 +4,14 @@
 //! components.
 
 use cf_plotpage::components::{BadgeColor, GridLayout, Renderable, Stat};
+use cf_plotpage::echarts::TreeMapNode;
+
+/// Treemap ranking: the larger value first, then by name — a total order,
+/// so equal values list identically on every run.
+#[must_use]
+pub fn by_value_then_name(a: &TreeMapNode, b: &TreeMapNode) -> std::cmp::Ordering {
+    b.value.cmp(&a.value).then_with(|| a.name.cmp(&b.name))
+}
 
 /// The reference `fmt.Sprintf("%.<prec>f", v)` (round-half-to-even is NOT what the reference implementation does —
 /// `fmt` rounds half away from zero via strconv shortest-then-fixed; Rust's

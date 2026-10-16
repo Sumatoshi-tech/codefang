@@ -13,8 +13,8 @@ These notes describe the upcoming first release line of Codefang. No `v*` tag ha
 - The tool ships as two composable binaries: `uast` (a Tree-sitter-based Universal AST parser for 60+ languages) and `codefang` (the static and history analysis engine).
 - Several output formats target both humans and data warehouses: `timeseries`, `plot` (interactive HTML), and `ndjson` (streaming, warehouse-friendly).
 - An MCP server (`codefang mcp`) exposes analysis to AI agents over the Model Context Protocol.
-- A streaming pipeline with checkpointing and crash recovery makes bounded-memory analysis of very large repositories practical.
-- OpenTelemetry observability provides distributed tracing, RED metrics, and structured logging.
+- One shared history walk per run: every history analyzer reduces the same commit window in chronological order, and the window flags (`--limit`, `--since`, `--first-parent`, `--max-changes-per-commit`, `--languages`) bound what a run costs.
+- Every `codefang` flag and subcommand listed by `--help` has an effect; the configuration file (`--config`, `./.codefang.yaml`, `$HOME/.codefang.yaml`) supplies the defaults of the `run` flags.
 
 ## Upgrade notes
 
@@ -23,7 +23,8 @@ This is the first release line, so there is no prior version to upgrade from. If
 - **Default file filtering changed.** Analysis now excludes vendored and generated files by default, matching mature multi-language analyzers. To restore the previous behavior, pass `--include-vendored --include-generated`.
 - **`--languages` is now cross-phase.** It narrows both static and history analysis through a single source of truth and fails fast on unknown language tokens. Pipelines that relied on static analysis ignoring this flag must drop it or supply valid tokens.
 - **Output schema changes.** Several fields moved from maps to sorted arrays so they can be UNNEST'd in columnar warehouses: `developers[].languages`, `activity[].by_developer`, and `file_contributors[].contributors`. Clone-pair `func_a` / `func_b` paths are now relative. Update any consumers that read these fields.
-- **Deprecated flags.** `--skip-blacklist` is now a no-op, and `--blacklisted-prefixes` is superseded by `--extra-excluded-prefixes` (identical semantics). Both emit a deprecation warning when passed.
+- **Removed flags.** Flags that were accepted but had no effect are gone and now fail as unknown arguments: `--checkpoint`, `--checkpoint-dir`, `--resume`, `--clear-checkpoint`, `--cache-dir`, `--no-cache`, `--debug-trace`, `--skip-blacklist`, `--blacklisted-prefixes` (use `--extra-excluded-prefixes`), and the Go-era tuning flags (`--memory-budget`, `--workers`, `--static-workers`, `--gogc`, `--ballast-size`, the cache / arena / batch sizes, `--tmp-dir`, `--keep-store`, `--input`, `--input-format`, …). Drop them from scripts. The `codefang render` subcommand is removed; use `codefang run --format plot -o <dir>`.
+- **Configuration keys.** Only the keys that map to a live `run` flag are read (`analyzers`, `pipeline.max_changes_per_commit`, `history.tick_size`, burndown granularity / sampling / tracking, devs empty-commits / anonymize, sentiment minimum length, shotness DSL, typos distance, anomaly threshold / window). Every other key — the Go-era `pipeline:` tuning tree, `checkpoint:`, hibernation and analyzer threshold keys — is ignored with one `warning: ignoring unsupported config keys: …` line.
 
 ## Added
 
@@ -34,18 +35,13 @@ This is the first release line, so there is no prior version to upgrade from. If
 - MCP server (`codefang mcp`) exposing analysis capabilities as tools for AI agents via the Model Context Protocol (stdio transport, JSON-RPC 2.0), with the `codefang_analyze`, `uast_parse`, and `codefang_history` tools.
 - Docker support with a multi-stage Dockerfile and a `debian:bookworm-slim` runtime image that runs as a non-root `codefang` user by default.
 - GitHub Actions integration (`action.yml`) for automated code-quality checks in CI pipelines with configurable analyzers, formats, and quality gates.
-- OpenTelemetry observability with distributed tracing, RED metrics (rate, errors, duration), and structured logging with trace-context injection. Supports Jaeger, Prometheus, and OTLP collectors.
-- Streaming pipeline for bounded-memory processing of large repositories via chunk-based processing with hibernate/boot cycles.
-- Double-buffered chunk pipelining that overlaps pipeline prefetch with analyzer consumption for higher throughput on multi-chunk workloads.
-- Checkpointing with automatic save after each processed chunk and crash recovery via the `--resume` flag. Checkpoint format v2 preserves aggregator spill state so resumed runs produce identical output.
-- Configuration system (`.codefang.yaml`) with file, environment-variable, and CLI-flag support. Merge priority: CLI > env > file > defaults.
+- Configuration system (`.codefang.yaml`, explicit `--config <file>`, else `./.codefang.yaml`, else `$HOME/.codefang.yaml`) with file, `CODEFANG_*` environment-variable and CLI-flag support. Merge priority: explicit CLI flag > env > file > compiled defaults.
+- `-o <file>` writes any non-plot report to a file instead of stdout; `-q` / `--quiet` (alias `--silent`) suppresses the `progress:` lines and `-v` / `--verbose` adds the config file and resolved analyzers to them.
 - Large-scale scanning support for fleet analysis of thousands of repositories, with bare-repo support, GNU Parallel and Kubernetes orchestration patterns, and data-warehouse loading guides (Athena, Snowflake, Spark).
 - Deep context propagation that eliminates `context.Background()` calls in production hot paths for end-to-end tracing.
 - Attribute-filter span processor that enforces an allow-list of attribute key prefixes to prevent PII leakage to collectors.
 - Health-check endpoints (`/healthz`, `/readyz`, `/metrics`) for server-mode deployments.
 - Incremental scanning with the `--since` flag, supporting Go durations, date strings, and RFC 3339 timestamps.
-- Memory-budget auto-tuning via the `--memory-budget` flag with automatic chunk-size calculation.
-- Watchdog stall detection with a configurable `worker_timeout` for identifying hung workers.
 - `--include-vendored` flag (bool, default `false`) to re-include paths detected as vendored by enry/Linguist (`vendor/`, `node_modules/`, `third_party/`, `testdata/`, `dist/`, minified bundles, and more).
 - `--include-generated` flag (bool, default `false`) to re-include auto-generated files (`*.pb.go`, `zz_generated_*.go`, `*_pb2.py`, `*.min.js`, and content-header markers such as `DO NOT EDIT`, `Code generated`, `@generated`).
 - `--extra-excluded-prefixes` flag (strings, default `[]`) for additional UNIX path prefixes to exclude for ecosystems enry does not know (for example `.venv/`, `target/`, `.gradle/`).
@@ -76,17 +72,17 @@ This is the first release line, so there is no prior version to upgrade from. If
 - Changed `file_contributors[].contributors` from a `map[int]LineStats` to a sorted `[]ContributorEntry` array of `{dev_id, added, removed, changed}`. **Breaking change to output schema.**
 - Changed clone-pair `func_a` / `func_b` paths from absolute to relative.
 
-## Deprecated
-
-- `--skip-blacklist` is now a no-op (the new default already excludes vendor and generated files); a Cobra deprecation warning fires when it is passed.
-- `--blacklisted-prefixes` is superseded by `--extra-excluded-prefixes` (identical semantics); a Cobra deprecation warning fires when it is passed.
-
 ## Removed
+
+- Accepted-but-inert `codefang run` flags: `--checkpoint`, `--checkpoint-dir`, `--resume`, `--clear-checkpoint`, `--cache-dir`, `--no-cache`, `--debug-trace`, the hidden `--skip-blacklist` / `--blacklisted-prefixes`, and the Go-era memory / worker / cache / profiling flags. The `codefang render` subcommand (it only printed "not available").
 
 - Removed `// FRD: specs/frds/FRD-...md` comments from all `.go` files; `specs/` is gitignored, so those references broke for anyone cloning the repo. Traceability now lives in FRDs and PR descriptions.
 
 ## Fixed
 
+- Static analysis of large data files no longer exhausts memory. The function analyzers (`static/complexity`, `static/halstead`, `static/cohesion`, `static/clones`) skip parsing a file that enry types as data and whose UAST mapping cannot produce a function or an import (JSON, YAML, TOML, and similar); reports are byte-identical. SQL and GraphQL, which declare functions, and Protocol Buffers, which declare imports, are still parsed. `static/comments` always parses, since YAML, TOML, and INI comments are counted. A 19 MB JSON file previously needed over 3 GB. Source files over 8 MiB are now skipped with a warning; `--max-parse-file-size` raises the limit.
+- Full-report schemas now declare exactly the fields each analyzer emits. `history/typos`, `history/imports`, `history/burndown` (`interactions`), and `static/clones` (`message`) had registry entries that named fields the reports did not contain, or omitted fields they did contain.
+- A shallow clone no longer produces empty history reports silently. History analyzers still see no commits in a shallow repository, but the run prints one `warning: shallow clone` line on stderr naming the remedy (`git fetch --unshallow`).
 - Fixed a data race in `internal/framework.PipelineSampler`: `t1Captured` was a plain `bool` read by the sampler goroutine and written by the caller, causing intermittent races under `go test -race`. It is now a `sync/atomic.Bool` using `CompareAndSwap`, so at most one t1 heap profile is captured. Removed the unused `t0Captured` field.
 
 ## Security

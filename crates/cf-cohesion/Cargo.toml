@@ -8,11 +8,12 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-# Pinned unstable sort (pdqsort) for tie ordering in report tables.
-cf-gosort = { workspace = true }
-# UAST node type the analyzer/visitor traverse.
+# UAST node type the analyzer walks.
 cf-uast-node = { path = "../cf-uast-node" }
-# Shared Bloom filter; its exact hash family is load-bearing for the cohesion
-# scores (false positives are part of the defined behavior).
-cf-alg-bloom = { path = "../cf-alg-bloom" }
+# On-demand stack growth for the recursive walk over deeply nested sources.
 stacker = "0.1.24"
+
+[dev-dependencies]
+# The crate's tests run the analyzer over REAL parsed trees: the parser facade
+# is a test-only dependency (grammars are already built for the workspace).
+cf-uast = { path = "../cf-uast" }

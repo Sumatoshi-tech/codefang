@@ -6,7 +6,8 @@
 //! # Overview
 //!
 //! - [`File`] encapsulates a [`TreapTimeline`] plus a set of [`Updater`]
-//!   callbacks. [`File::update`] applies an edit (insert/delete a line range at
+//!   callbacks. A segment value is a plain tick, or a `(person, tick)` pair
+//!   packed by a [`ValuePacking`] when the caller tracks authors. [`File::update`] applies an edit (insert/delete a line range at
 //!   a position) and notifies the updaters with `(current, previous, delta)`
 //!   reports so the caller can maintain its burndown counters.
 //! - [`TreapTimeline`] is an implicit treap where a node's position is the size
@@ -41,7 +42,7 @@
 //! [`File::dump`] string and [`Segment`] values that the burndown analyzer
 //! serializes downstream. Machine-format report bytes must be produced by the
 //! shared `cf-gojson` / `cf-goyaml` crates (the byte contract is pinned by
-//! `tests/compat`), so this crate intentionally has no serialization
+//! the report e2e suites (`bins/codefang/tests`)), so this crate intentionally has no serialization
 //! dependency: `cf-analyzer-burndown` is responsible for routing [`Segment`] /
 //! matrix data through `cf-gojson`.
 
@@ -49,35 +50,28 @@
 
 mod file;
 mod interval;
+mod packing;
 mod range_query;
 mod timeline;
 mod timeline_treap;
 
 pub use file::{File, Updater};
+pub use packing::{ValuePacking, MAX_TICK_BITS};
 pub use range_query::OwnershipSegment;
 pub use timeline::{DeltaReport, TimeKey, Timeline};
 pub use timeline_treap::{Segment, TreapTimeline};
 
-/// The value of the last leaf in the tree (the `u32::MAX` sentinel).
+/// The value of the last leaf in the tree (the `u32::MAX` sentinel). Every
+/// packed `(person, tick)` value a [`ValuePacking`] produces is below it.
 pub const TREE_END: TimeKey = u32::MAX;
-
-/// The binary power corresponding to the maximum tick that can be stored.
-pub const TREE_MAX_BIN_POWER: u32 = 14;
-
-/// The special "day" which disables status updates; used in [`File::merge`].
-///
-/// Equals `(1 << TREE_MAX_BIN_POWER) - 1`.
-pub const TREE_MERGE_MARK: TimeKey = (1 << TREE_MAX_BIN_POWER) - 1;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// The exported constants match the reference-implementation values.
+    /// The tree-end sentinel is the one reserved value.
     #[test]
-    fn constants_are_stable() {
+    fn tree_end_is_the_only_sentinel() {
         assert_eq!(TREE_END, u32::MAX);
-        assert_eq!(TREE_MAX_BIN_POWER, 14);
-        assert_eq!(TREE_MERGE_MARK, 16383);
     }
 }

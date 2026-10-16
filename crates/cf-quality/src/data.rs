@@ -1,21 +1,19 @@
-//! Per-tick / per-commit quality data containers.
+//! The per-tick quality sample container.
 //!
-//! [`TickQuality`] and [`TickData`] hold per-file scalar samples gathered while
-//! consuming commits; summary statistics are computed at output time
-//! ([`crate::metrics`]).
-//!
-//! Order-independence: the composite quality analyzer keys per-commit
-//! [`TickQuality`] by commit hash and merges by concatenation, so the result is
-//! independent of the order commits are consumed.
+//! [`TickQuality`] holds the per-file scalar samples
+//! ([`crate::analyzer::FileSample`]) pushed while consuming commits; summary
+//! statistics are computed at output time ([`crate::metrics`]). Samples are
+//! concatenated, so a tick's statistics do not depend on the order its
+//! commits were consumed in.
 
-use std::collections::BTreeMap;
+use crate::analyzer::FileSample;
 
-/// Per-file quality metric values for a single tick.
+/// Per-file quality metric values for a single tick (or one commit).
 ///
-/// Values are appended per file while consuming a commit; statistics are
-/// computed at output time. The vector field order is the declaration order,
-/// which is the order [`merge`](TickQuality::merge) concatenates in.
-#[derive(Debug, Clone, Default, PartialEq)]
+/// One value per analyzed file in every vector except `cohesion_scores`,
+/// which holds one value per file WITH functions (a function-free file has no
+/// cohesion data). Statistics are computed at output time.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TickQuality {
     /// Cyclomatic complexity per file (`total_complexity`).
     pub complexities: Vec<f64>,
@@ -47,6 +45,35 @@ impl TickQuality {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Appends one analyzed file's sample.
+    ///
+    /// ```
+    /// use cf_quality::{FileSample, TickQuality};
+    ///
+    /// let mut tq = TickQuality::new();
+    /// tq.push(&FileSample {
+    ///     complexity: 3.0, cognitive: 1.0, max_complexity: 2, functions: 2,
+    ///     halstead_volume: 69.2, halstead_effort: 317.1, delivered_bugs: 0.023,
+    ///     comment_score: 1.0, doc_coverage: 0.5, cohesion: None,
+    /// });
+    /// assert_eq!(tq.files_analyzed(), 1);
+    /// assert!(tq.cohesion_scores.is_empty(), "no cohesion data for a function-free sample");
+    /// ```
+    pub fn push(&mut self, sample: &FileSample) {
+        self.complexities.push(sample.complexity);
+        self.cognitives.push(sample.cognitive);
+        self.max_complexities.push(sample.max_complexity);
+        self.functions.push(sample.functions);
+        self.halstead_volumes.push(sample.halstead_volume);
+        self.halstead_efforts.push(sample.halstead_effort);
+        self.delivered_bugs.push(sample.delivered_bugs);
+        self.comment_scores.push(sample.comment_score);
+        self.doc_coverages.push(sample.doc_coverage);
+        if let Some(cohesion) = sample.cohesion {
+            self.cohesion_scores.push(cohesion);
+        }
     }
 
     /// Incorporates values from `other` into `self` by concatenation.
@@ -96,22 +123,38 @@ impl TickQuality {
     }
 }
 
-/// Per-tick aggregated payload.
-///
-/// `commit_quality` maps commit hash (lowercase hex) to that commit's
-/// [`TickQuality`]. A [`BTreeMap`] is used so that any direct iteration is
-/// deterministic; the canonical machine output sorts keys regardless.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct TickData {
-    /// Maps commit hash (hex) to per-commit [`TickQuality`].
-    pub commit_quality: BTreeMap<String, TickQuality>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // Mirrors the reference suite's TestTickQuality_Merge.
+    #[test]
+    fn push_appends_one_value_per_metric() {
+        let mut tq = TickQuality::new();
+        let with_functions = FileSample {
+            complexity: 2.0,
+            cognitive: 1.0,
+            max_complexity: 2,
+            functions: 1,
+            halstead_volume: 25.0,
+            halstead_effort: 129.0,
+            delivered_bugs: 0.008,
+            comment_score: 1.0,
+            doc_coverage: 1.0,
+            cohesion: Some(1.0),
+        };
+        let function_free = FileSample {
+            functions: 0,
+            cohesion: None,
+            ..with_functions.clone()
+        };
+        tq.push(&with_functions);
+        tq.push(&function_free);
+        assert_eq!(tq.files_analyzed(), 2);
+        assert_eq!(tq.functions, vec![1, 0]);
+        assert_eq!(tq.cohesion_scores, vec![1.0]);
+        assert_eq!(tq.halstead_volumes.len(), 2);
+    }
+
     #[test]
     fn merge_concatenates_per_field() {
         let mut tq1 = TickQuality {

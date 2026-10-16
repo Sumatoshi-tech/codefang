@@ -4,8 +4,8 @@
 //! verbatim from `go-sitter-forest` at the **exact** grammar revision the
 //! reference build links (see each vendored `grammar.json`). Because
 //! tree-sitter node kinds and spans flow into machine report bytes (DESIGN
-//! §5), using the identical grammar revision is what keeps `uast parse
-//! --format json` byte-identical (pinned by tests/compat).
+//! §5), using one pinned grammar revision is what keeps `uast parse
+//! --format json` stable across builds.
 //!
 //! Each grammar exports a `tree_sitter_<lang>()` C entry point (some ship an
 //! external `scanner.c` as well). All sources compile into a single static

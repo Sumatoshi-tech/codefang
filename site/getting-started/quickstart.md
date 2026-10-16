@@ -120,7 +120,7 @@ column shows how many of those lines survive into subsequent windows.
 
 ## 4. Developer analysis
 
-See per-developer contribution statistics with a single commit snapshot:
+See per-developer contribution statistics for the latest commit:
 
 ```bash
 codefang run -a history/devs --head --format yaml .
@@ -129,24 +129,37 @@ codefang run -a history/devs --head --format yaml .
 ??? example "Expected output (truncated)"
 
     ```yaml
-    devs:
-      developers:
-        - name: "Alice"
-          commits: 142
-          added: 12400
-          removed: 3200
-          changed: 8900
-        - name: "Bob"
-          commits: 87
-          added: 6300
-          removed: 1800
-          changed: 4100
+    codefang (v2):
+      version: 0
+      hash: <unknown>
+    history/devs:
+    aggregate:
+        total_commits: 1
+        total_lines_added: 2
+        total_lines_removed: 0
+        total_developers: 1
+        active_developers: 1
+    developers:
+        - id: 0
+          name: alice
+          email: alice@example.com
+          commits: 1
+          lines_added: 2
+          lines_removed: 0
+          lines_changed: 0
+          net_lines: 2
+          languages:
+            - language: Go
+              added: 2
+              removed: 0
+              changed: 0
     ```
 
 !!! info "The `--head` flag"
-    `--head` tells the history pipeline to analyze only the HEAD commit's
-    state rather than walking the full history. It is much faster and useful
-    for snapshot metrics like developer totals.
+    `--head` analyzes exactly one commit — `HEAD`, diffed against its first
+    parent — and ignores `--limit` and `--since`. It is the same window
+    `--limit 1` selects, so the two produce identical reports. Use it for a
+    fast snapshot of the latest change; drop it to walk the full history.
 
 ---
 
@@ -188,16 +201,16 @@ invocation:
 Generate a self-contained HTML report with interactive charts:
 
 ```bash
-codefang run -a history/burndown,history/devs --format plot .
+codefang run -a history/burndown,history/devs --format plot -o report .
 ```
 
-This writes an HTML page to **stdout**. Redirect it to a file and open in your
-browser:
+`-o` names the output **directory** (required with `--format plot`). It
+receives `index.html`, one page per analyzer (`burndown.html`, `devs.html`)
+and `report.json`. Open the index in your browser:
 
 ```bash
-codefang run -a history/burndown --format plot . > burndown.html
-open burndown.html   # macOS
-xdg-open burndown.html  # Linux
+xdg-open report/index.html  # Linux
+open report/index.html      # macOS
 ```
 
 ---
@@ -205,8 +218,8 @@ xdg-open burndown.html  # Linux
 ## 7. Pipe into AI
 
 Any `--format json` output is machine-friendly and can be fed to an LLM or an
-agent. Codefang also provides a **Model Context Protocol** server (the `cf-mcp`
-crate) so agents can query analysis results programmatically; see the
+agent. Codefang also provides a **Model Context Protocol** server (`codefang mcp`)
+so agents can query analysis results programmatically; see the
 [MCP Integration](../integrations/mcp.md) guide for how to wire it up.
 
 !!! note "AI-ready output"

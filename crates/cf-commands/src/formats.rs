@@ -47,14 +47,6 @@ pub const FORMAT_TIMESERIES_NDJSON: &str = "timeseries+ndjson";
 /// `text` — human-readable table / plain output.
 pub const FORMAT_TEXT: &str = "text";
 
-/// `auto` — the sentinel that asks [`resolve_input_format`] to infer the input
-/// format from the file extension.
-pub const INPUT_FORMAT_AUTO: &str = "auto";
-/// `json` input format.
-pub const INPUT_FORMAT_JSON: &str = "json";
-/// `binary` input format.
-pub const INPUT_FORMAT_BINARY: &str = "binary";
-
 /// Error returned when a format string is not recognized.
 ///
 /// `Display` formats as the exact reference string `unsupported format: <fmt>`, where
@@ -176,7 +168,7 @@ pub fn validate_universal_format(format: &str) -> Result<String, FormatError> {
 /// // Static-only accepts `compact` (a static output format)...
 /// assert_eq!(resolve_formats("compact", true, false).unwrap(), ("compact".to_string(), String::new()));
 /// // ...but a mixed run validates against the universal set, which excludes it.
-/// assert!(resolve_formats("compact", true, true).is_err());
+/// assert!(resolve_formats("bogus", true, true).is_err());
 /// ```
 pub fn resolve_formats(
     format: &str,
@@ -200,14 +192,16 @@ pub fn resolve_formats(
         return Ok((static_fmt, history_fmt));
     }
 
-    // Mirror the reference `ResolveFormats` branching exactly:
-    //   * mixed (static && history) -> ValidateUniversalFormat (text yes, compact no)
-    //   * static-only               -> ValidateFormat(staticOutputFormats) (text & compact yes)
-    //   * history-only              -> ValidateUniversalFormat (text yes, compact no)
-    // The earlier port validated EVERY non-plot path against the universal set,
-    // which wrongly rejected static-only `text` (reference: accepts it) and wrongly
-    // accepted history/mixed `compact` (reference: rejects it).
+    // Per-phase branching:
+    //   * mixed (static && history) -> the universal set plus `compact`: text
+    //     and compact render each phase in turn (`handlers::render_mixed`)
+    //   * static-only               -> the per-analyzer set (text & compact yes)
+    //   * history-only              -> the universal set plus `compact` (one
+    //     compact section per leaf, see `history_formats::history_compact`)
     if has_static && has_history {
+        if normalized == FORMAT_COMPACT {
+            return Ok((normalized.clone(), normalized));
+        }
         let validated = validate_universal_format(format)?;
         return Ok((validated.clone(), validated));
     }
@@ -216,51 +210,14 @@ pub fn resolve_formats(
         return Ok((validated, String::new()));
     }
     if has_history {
+        if normalized == FORMAT_COMPACT {
+            return Ok((String::new(), normalized));
+        }
         let validated = validate_universal_format(format)?;
         return Ok((String::new(), validated));
     }
 
     Ok((String::new(), String::new()))
-}
-
-/// Determines the input format from the path and explicit flag, mirror of the reference implementation
-/// `ResolveInputFormat`.
-///
-/// When `input_format` is not [`INPUT_FORMAT_AUTO`] it is normalized and
-/// returned. Otherwise the file extension drives the choice: `.json` → `json`,
-/// `.bin`/`.binary` → `binary`, anything else → `json` (the reference implementation's `default`).
-///
-/// This never errors (the reference signature returns an error, but the body has no
-/// failure path); the `Result` is kept for signature parity with the reference caller.
-///
-/// # Errors
-///
-/// Never returns `Err`; the `Result` mirrors the reference signature.
-#[allow(clippy::missing_panics_doc)]
-pub fn resolve_input_format(input_path: &str, input_format: &str) -> Result<String, FormatError> {
-    if input_format != INPUT_FORMAT_AUTO {
-        return Ok(normalize_format(input_format));
-    }
-
-    let ext = extension_lower(input_path);
-    match ext.as_str() {
-        ".json" => Ok(INPUT_FORMAT_JSON.to_string()),
-        ".bin" | ".binary" => Ok(INPUT_FORMAT_BINARY.to_string()),
-        _ => Ok(INPUT_FORMAT_JSON.to_string()),
-    }
-}
-
-/// Returns the lower-cased file extension (including the leading dot), mirroring
-/// the reference `strings.ToLower(filepath.Ext(path))`. the reference implementation's `filepath.Ext` returns the
-/// suffix from the final dot of the final path element, or "" if none.
-fn extension_lower(path: &str) -> String {
-    // Restrict to the final path element so dots in directory names are ignored,
-    // matching the reference implementation's filepath.Ext.
-    let base = path.rsplit(['/', '\\']).next().unwrap_or(path);
-    match base.rfind('.') {
-        Some(idx) => base[idx..].to_lowercase(),
-        None => String::new(),
-    }
 }
 
 /// Applies the `--ndjson` modifier to a resolved format: when set and the format
@@ -378,10 +335,24 @@ mod tests {
 
     #[test]
     fn resolve_formats_propagates_unsupported_error() {
-        // `compact` is rejected on the MIXED path (reference `ResolveFormats` ->
-        // ValidateUniversalFormat, which excludes compact).
-        let err = resolve_formats("compact", true, true).unwrap_err();
-        assert_eq!(err.to_string(), "unsupported format: compact");
+        let err = resolve_formats("bogus", true, true).unwrap_err();
+        assert_eq!(err.to_string(), "unsupported format: bogus");
+    }
+
+    #[test]
+    fn resolve_formats_mixed_accepts_text_and_compact() {
+        // A mixed selection renders text and compact phase by phase.
+        let (s, h) = resolve_formats("text", true, true).unwrap();
+        assert_eq!((s.as_str(), h.as_str()), ("text", "text"));
+        let (s, h) = resolve_formats("compact", true, true).unwrap();
+        assert_eq!((s.as_str(), h.as_str()), ("compact", "compact"));
+        assert!(resolve_formats("ndjson", true, true).is_ok());
+    }
+
+    #[test]
+    fn resolve_formats_history_only_accepts_compact() {
+        let (s, h) = resolve_formats("compact", false, true).unwrap();
+        assert_eq!((s.as_str(), h.as_str()), ("", "compact"));
     }
 
     #[test]
@@ -392,30 +363,6 @@ mod tests {
         assert_eq!((s.as_str(), h.as_str()), ("text", ""));
         let (s, h) = resolve_formats("compact", true, false).unwrap();
         assert_eq!((s.as_str(), h.as_str()), ("compact", ""));
-    }
-
-    #[test]
-    fn resolve_input_format_explicit_is_normalized() {
-        assert_eq!(resolve_input_format("x.dat", "bin").unwrap(), "binary");
-        assert_eq!(resolve_input_format("x.dat", "JSON").unwrap(), "json");
-    }
-
-    #[test]
-    fn resolve_input_format_auto_uses_extension() {
-        assert_eq!(resolve_input_format("report.json", "auto").unwrap(), "json");
-        assert_eq!(
-            resolve_input_format("report.BIN", "auto").unwrap(),
-            "binary"
-        );
-        assert_eq!(
-            resolve_input_format("report.binary", "auto").unwrap(),
-            "binary"
-        );
-        // Unknown / no extension -> json.
-        assert_eq!(resolve_input_format("report.txt", "auto").unwrap(), "json");
-        assert_eq!(resolve_input_format("report", "auto").unwrap(), "json");
-        // Dot in directory, none in basename -> no extension -> json.
-        assert_eq!(resolve_input_format("a.b/report", "auto").unwrap(), "json");
     }
 
     #[test]

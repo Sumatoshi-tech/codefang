@@ -15,3 +15,9 @@ publish.workspace = true
 [dependencies]
 cf-gojson = { workspace = true }
 cf-uast-node = { path = "../cf-uast-node" }
+
+[dev-dependencies]
+# Unit tests analyze REAL parsed trees (tree-sitter grammars through the UAST
+# parser) so the placement rules are proven against the language mappings,
+# not against hand-built nodes alone.
+cf-uast = { path = "../cf-uast" }

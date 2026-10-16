@@ -4,7 +4,7 @@
 //! serializable output for the JSON and YAML renderers. The trait returns a
 //! [`GoValue`](crate::gocompat::GoValue) so serialization routes through the
 //! report-format byte-compatible encoders rather than `serde_json` (output
-//! bytes are pinned by `tests/compat`).
+//! bytes are pinned by the report e2e suites (`bins/codefang/tests`)).
 
 use crate::gocompat::{Encoder, GoValue};
 

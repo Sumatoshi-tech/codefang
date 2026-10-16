@@ -12,8 +12,6 @@ use cf_plotpage::echarts::{
 };
 use cf_plotpage::{build_pie_chart, get_chart_palette, ChartOpts, Hint, Section, Theme};
 
-use crate::handlers::go_sort;
-
 /// Reference plot-section constants.
 const TOP_FUNCTIONS_LIMIT: usize = 20;
 const X_AXIS_ROTATE: f64 = 45.0;
@@ -153,10 +151,14 @@ fn function_coverage_chart(report: &GoValue) -> Option<Chart> {
         return Some(empty_comments_chart());
     }
 
-    // mapx.SortAndLimit by lines desc (the reference implementation's unstable sort.Slice over the
-    // walk-order input — go_sort reproduces the tie permutation).
+    // The longest functions first, then by name (stable: equal names keep
+    // the report order).
     let mut sorted = functions.clone();
-    go_sort::slice(&mut sorted, |a, b| lines_value(a) > lines_value(b));
+    sorted.sort_by(|a, b| {
+        lines_value(b)
+            .cmp(&lines_value(a))
+            .then_with(|| function_name(a).cmp(function_name(b)))
+    });
     sorted.truncate(TOP_FUNCTIONS_LIMIT);
 
     let co = ChartOpts::default_dark();

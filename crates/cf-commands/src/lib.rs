@@ -1,50 +1,50 @@
 //! `cf-commands` — command wiring and analyzer registration for the `codefang`
 //! binary.
 //!
-//! This is the **tier-8 aggregation point** (specs/rust-rewrite/DESIGN.md §1
-//! tier 8, §4): it registers every analyzer, builds the `run` / `render` /
-//! `version` command tree with all of `run`'s literal flags and the dynamic
-//! per-analyzer flags, drives the analysis pipeline, and routes report
+//! This is the aggregation point: it registers every analyzer, builds the
+//! `run` / `version` / `completion` command tree with all of `run`'s literal
+//! flags and the dynamic per-analyzer flags, layers the configuration file
+//! under the flags, drives the analysis pipeline, and routes report
 //! serialization through the shared report-format crates (cf-gojson /
 //! cf-goyaml) — never raw `serde`.
 //!
-//! # CLI parity (DESIGN §4)
-//!
-//! The command tree is built with clap's **builder API** (not derive) so command
-//! and flag declaration order, help strings, defaults, and error wording can be
-//! matched verbatim to the reference binary's CLI (a cobra surface). The three
-//! wired subcommands are [`build_run_command`], [`build_render_command`], and
-//! [`build_version_command`]. The reference `mcp` command is not shipped by
-//! default; it is mirrored behind the non-default `mcp` Cargo feature.
+//! The command tree is built with clap's **builder API** (not derive) so
+//! command and flag declaration order, help strings and defaults are explicit.
 //!
 //! The major pieces:
 //!
 //! - [`formats`] — format constants and validation (`normalize_format`,
-//!   `validate_format`, `validate_universal_format`, the `resolve_formats` /
-//!   `resolve_input_format` conversion logic and the `--ndjson` + `--format
-//!   timeseries` → `timeseries+ndjson` composition). The error string is the
-//!   exact CLI-contract `unsupported format: <fmt>`.
-//! - [`version`] — the `version` subcommand output (`codefang <v> (commit: <c>,
-//!   built: <d>)\n`), via [`cf_version`].
-//! - [`flags`] — the full `run`/`render` clap command tree: every literal `run`
-//!   flag (names, shorts, defaults, verbatim help), the tri-state
-//!   `--checkpoint`/`--resume`, the deprecated `--skip-blacklist` /
-//!   `--blacklisted-prefixes` (exact messages), and the **dynamic per-analyzer
-//!   flag** registration driven by [`cf_pipeline::ConfigurationOption`].
-//! - [`handlers`] / [`pipeline`] — the run/render execution path: analyzer
-//!   dispatch, the static folder walk and shared history revwalk, and
-//!   per-format report serialization.
+//!   `validate_format`, `validate_universal_format`, `resolve_formats` and the
+//!   `--ndjson` + `--format timeseries` → `timeseries+ndjson` composition).
+//! - [`version`] — the `version` subcommand output.
+//! - [`flags`] — the `run` / `completion` clap command trees: every literal
+//!   `run` flag, the dynamic per-analyzer flags driven by
+//!   [`cf_pipeline::ConfigurationOption`], and the configuration-key → flag
+//!   map ([`flags::CONFIG_KEY_FLAGS`]).
+//! - [`handlers`] / [`pipeline`] — the run execution path: the shared run
+//!   preflight, analyzer dispatch, the static folder walk and shared history
+//!   revwalk, and per-format report serialization.
 //!
-//! Compatibility: every machine-report surface this crate emits is pinned
-//! byte-for-byte against the reference binary by the differential gate in
-//! `tests/compat`.
+//! # Configuration
+//!
+//! `codefang run` loads `--config <file>` (else `./.codefang.yaml`, else
+//! `$HOME/.codefang.yaml`) plus the `CODEFANG_*` environment through
+//! `cf-config`, installs every configured key as the default of its flag and
+//! parses the command line again: an explicit flag > the environment > the
+//! file > the compiled default. Unsupported keys print one
+//! `warning: ignoring unsupported config keys: …` line.
+//!
+//! # Errors
+//!
+//! Every user error prints `Error: <message>` to stderr and exits 1, with
+//! the message naming the cause ([`pipeline::HandlerError`]): `path not
+//! found: <p>`, `cannot open repository: <p>`, `unsupported format: <f>`,
+//! `format <f> is not supported for <analyzer>`, `invalid --limit: …`,
+//! `cannot resolve --since "<v>": …`, `unknown analyzer id: <id>`,
+//! `cannot read --config <p>: …`, `invalid config <p>: …`,
+//! `cannot write --output <p>: …`.
 //!
 //! # Example: resolve the run-command output format
-//!
-//! The format gate drives the `run` command: a user-supplied `--format` string
-//! is normalized, validated, and split into per-phase formats. The `bin` alias
-//! normalizes to `binary`, and a static-only run resolves an empty history
-//! format:
 //!
 //! ```
 //! use cf_commands::{normalize_format, resolve_formats};
@@ -62,48 +62,46 @@
 pub mod flags;
 pub mod formats;
 pub mod handlers;
-#[cfg(feature = "runtime")]
-mod observability;
+pub mod mcp;
 pub mod pipeline;
 pub mod registry;
 pub mod version;
 
-pub use flags::{
-    build_completion_command, build_render_command, build_run_command, deprecated_flag_message,
-};
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
+
+pub use flags::{build_completion_command, build_run_command};
 // `FORMAT_JSON` is part of the public format-constant API (used by the binary
-// and golden harness); rustc emits a spurious unused-import warning for the
-// re-export because it is also referenced internally via `crate::formats`.
+// and tests); rustc emits a spurious unused-import warning for the re-export
+// because it is also referenced internally via `crate::formats`.
 #[allow(unused_imports)]
 pub use formats::{
-    apply_ndjson_modifier, normalize_format, resolve_formats, resolve_input_format,
-    validate_format, validate_universal_format, FormatError, FORMAT_BINARY, FORMAT_BIN_ALIAS,
-    FORMAT_COMPACT, FORMAT_JSON, FORMAT_NDJSON, FORMAT_PLOT, FORMAT_TEXT, FORMAT_TIMESERIES,
-    FORMAT_TIMESERIES_NDJSON, FORMAT_YAML, INPUT_FORMAT_AUTO, INPUT_FORMAT_BINARY,
-    INPUT_FORMAT_JSON,
+    apply_ndjson_modifier, normalize_format, resolve_formats, validate_format,
+    validate_universal_format, FormatError, FORMAT_BINARY, FORMAT_BIN_ALIAS, FORMAT_COMPACT,
+    FORMAT_JSON, FORMAT_NDJSON, FORMAT_PLOT, FORMAT_TEXT, FORMAT_TIMESERIES,
+    FORMAT_TIMESERIES_NDJSON, FORMAT_YAML,
 };
+pub use pipeline::HandlerError;
 pub use registry::{ConfigOptionProvider, RegistrationError};
 pub use version::{build_version_command, version_output};
 
 /// Crate name, used by smoke tests to confirm the module links.
 pub const CRATE_NAME: &str = "cf-commands";
 
-/// Build the top-level `codefang` [`clap::Command`] with the `run`, `render`,
-/// and `version` subcommands wired in declaration order, matching the
-/// reference command tree.
+/// The `--verbose` flag id.
+const FLAG_VERBOSE: &str = "verbose";
+/// The `--quiet` flag id (`--silent` is its alias).
+const FLAG_QUIET: &str = "quiet";
+
+/// Build the top-level `codefang` [`clap::Command`] with the `run`,
+/// `version` and `completion` subcommands wired in declaration order.
 ///
-/// The root carries the persistent flags `--verbose`/`-v`, `--quiet`/`-q`, and
-/// `--profile` (all default `false`), matching cobra's persistent flags. The
-/// binary-level error-handling asymmetry (codefang sets `SilenceErrors` +
-/// `SilenceUsage`) is configured by the `codefang` binary crate, not here.
+/// The root carries the global flags `--verbose`/`-v`, `--quiet`/`-q`
+/// (alias `--silent`) and `--profile` (all default `false`).
 #[must_use]
 pub fn build_codefang_command() -> clap::Command {
     clap::Command::new("codefang")
         .about("Codefang Code Analysis - Unified code analysis tool")
-        // Trailer DIVERGES from the reference top-level help (cobra prints no
-        // examples block) — an additive usability hint pointing at the most
-        // common entrypoint. The cli-surface gate compares the structured
-        // command/flag surface, not help prose, so this adds no surface row.
         .after_help(
             "Getting started:\n  \
              codefang run .                       # analyze the current repo with every analyzer\n  \
@@ -113,76 +111,77 @@ pub fn build_codefang_command() -> clap::Command {
              Run 'codefang <command> --help' for details on any command.",
         )
         .arg(
-            clap::Arg::new("verbose")
-                .long("verbose")
+            clap::Arg::new(FLAG_VERBOSE)
+                .long(FLAG_VERBOSE)
                 .short('v')
                 .global(true)
                 .action(clap::ArgAction::SetTrue)
-                .help("Enable verbose output"),
+                .help(
+                    "Print run details on stderr: the configuration file used and the \
+                     resolved analyzer ids",
+                ),
         )
         .arg(
-            clap::Arg::new("quiet")
-                .long("quiet")
+            clap::Arg::new(FLAG_QUIET)
+                .long(FLAG_QUIET)
                 .short('q')
+                .visible_alias("silent")
                 .global(true)
                 .action(clap::ArgAction::SetTrue)
-                .help("Suppress non-error output"),
+                .help("Suppress the progress lines on stderr (warnings and errors still print)"),
         )
         .arg(
             clap::Arg::new("profile")
                 .long("profile")
                 .global(true)
                 .action(clap::ArgAction::SetTrue)
-                .help("Enable profiling server and memory watchdog"),
+                .help(
+                    "Log RSS and thread count to stderr at start and every 2 s; snapshot \
+                     /proc/self/maps into the temp directory at start and on RSS spikes",
+                ),
         )
         .subcommand(build_run_command())
-        .subcommand(build_render_command())
         .subcommand(build_version_command())
         .subcommand(build_completion_command())
+        .subcommand(mcp::build_mcp_command())
 }
 
-/// Sentinel error message for run/render dispatch when no registered handler can
-/// produce a report for the requested `(analyzer, format)` selection. Mirrors
-/// the codefang error path (`Error: <msg>\n`, exit 1, no usage).
-const DISPATCH_BLOCKED_MSG: &str =
-    "command dispatch is blocked on cf-commands (tier 8); see DESIGN.md \u{00A7}4.1";
+/// Parses `args` with `cmd`. clap prints help / usage / errors itself; a
+/// usage error (bad flag / unknown command / missing arg) is exit code 1, a
+/// displayed help or version is 0.
+fn parse(cmd: clap::Command, args: &[OsString]) -> Result<clap::ArgMatches, i32> {
+    cmd.try_get_matches_from(args).map_err(|e| {
+        e.print().ok();
+        i32::from(e.use_stderr())
+    })
+}
 
 /// The single `codefang` entry point: build the command tree, parse `args`
 /// (which MUST start with the program name, like `std::env::args`), and dispatch
-/// `run` / `render` / `version` through the general pipeline + registry.
-/// Returns the process exit code (the reference `RunCommand.run` → cobra `Execute` exit).
-///
-/// This is the thin shell the `codefang` binary calls; all dispatch flows
-/// through [`pipeline::run_pipeline`] over [`handlers::default_registry`] — there
-/// is no per-`(analyzer, format)` branching here.
+/// `run` / `version` / `completion` through the general pipeline + registry.
+/// Returns the process exit code.
 #[must_use]
 pub fn run<I, T>(args: I) -> i32
 where
     I: IntoIterator<Item = T>,
-    T: Into<std::ffi::OsString> + Clone,
+    T: Into<OsString> + Clone,
 {
-    let matches = match build_codefang_command().try_get_matches_from(args) {
+    let args: Vec<OsString> = args.into_iter().map(Into::into).collect();
+    let matches = match parse(build_codefang_command(), &args) {
         Ok(m) => m,
-        Err(e) => {
-            // clap prints help/usage/version itself. cobra exits 1 on a usage
-            // error (bad flag / unknown command / missing arg) and 0 when it
-            // merely displayed help/version; mirror that exit-code contract
-            // (the cli-surface error-path probes assert rc==1, not clap's 2).
-            e.print().ok();
-            return i32::from(e.use_stderr());
-        }
+        Err(code) => return code,
     };
 
     install_signal_handlers();
 
     match matches.subcommand() {
         Some(("version", _)) => {
-            print!("{}", cf_version::codefang_version_line());
+            print!("{}", version_output());
             0
         }
-        Some(("run", sub)) => run_subcommand(sub),
-        Some(("render", sub)) => render_subcommand(sub),
+        Some(("run", sub)) => run_command(&args, sub),
         Some(("completion", sub)) => completion_subcommand(sub),
+        Some(("mcp", _)) => mcp::mcp_subcommand(),
         _ => {
             build_codefang_command().print_help().ok();
             println!();
@@ -191,19 +190,77 @@ where
     }
 }
 
-/// Dispatches `codefang completion <shell>`; generates the shell-completion
-/// script to stdout, the Rust analogue of the bytes cobra's auto-registered
-/// completion command emits (`bash`/`fish`/`powershell`/`zsh`). The script bytes
-/// are clap-vs-cobra cosmetic (Layer-D informational), but a real generator (not
-/// a help stub) is required so the command behaves like the reference implementation's. With no shell
-/// subcommand cobra prints the completion command's help (rc 0).
+/// `codefang run`: `--list-analyzers` answers without a configuration;
+/// otherwise the configuration is loaded, installed as the flag defaults, the
+/// command line parsed again, and the run dispatched.
+fn run_command(args: &[OsString], first: &clap::ArgMatches) -> i32 {
+    if first.get_flag("list-analyzers") {
+        use std::io::Write as _;
+        let mut out = std::io::stdout();
+        for id in handlers::default_registry().ids() {
+            let _ = writeln!(out, "{id}");
+        }
+        return 0;
+    }
+    if let Err(message) = check_verbosity(first) {
+        return fail(&message);
+    }
+    let loaded = match load_config(first) {
+        Ok(loaded) => loaded,
+        Err(message) => return fail(&message),
+    };
+    if !loaded.unsupported_keys.is_empty() {
+        eprintln!(
+            "warning: ignoring unsupported config keys: {}",
+            loaded.unsupported_keys.join(", ")
+        );
+    }
+    let cmd = flags::with_config_defaults(build_codefang_command(), &loaded.config.settings());
+    let matches = match parse(cmd, args) {
+        Ok(m) => m,
+        Err(code) => return code,
+    };
+    match matches.subcommand_matches("run") {
+        Some(sub) => run_subcommand(sub, loaded.path.as_deref()),
+        None => fail(&"the configured command line no longer selects `run`"),
+    }
+}
+
+/// `--verbose` asks for more stderr, `--quiet` for less: both at once is a
+/// usage error. (clap's `conflicts_with` misses a pair split across the root
+/// and the subcommand, `codefang -v run -q`.)
+fn check_verbosity(sub: &clap::ArgMatches) -> Result<(), &'static str> {
+    if sub.get_flag(FLAG_VERBOSE) && sub.get_flag(FLAG_QUIET) {
+        Err("--verbose and --quiet cannot be used together")
+    } else {
+        Ok(())
+    }
+}
+
+/// Loads the configuration `--config` names (or discovers), with the
+/// process environment as the `CODEFANG_*` layer.
+fn load_config(sub: &clap::ArgMatches) -> Result<cf_config::Loaded, String> {
+    let explicit = sub
+        .get_one::<String>("config")
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from);
+    cf_config::load(
+        explicit.as_deref(),
+        &cf_config::default_search_dirs(),
+        |name| std::env::var(name).ok(),
+    )
+    .map_err(|e| match (&e, &explicit) {
+        (cf_config::LoadError::Read { path, cause }, Some(_)) => {
+            format!("cannot read --config {}: {cause}", path.display())
+        }
+        _ => e.to_string(),
+    })
+}
+
 /// Installs SIGINT/SIGTERM handlers for cooperative cancellation: the first
 /// signal sets the shared cancel flag (the static folder walks poll it and
 /// bail out), a second signal falls through to the default disposition and
-/// kills the process — the standard double-Ctrl-C escape hatch. Without this
-/// the walks are uninterruptible computation and a signal simply dies
-/// mid-run with the default handler, which is indistinguishable from a hang
-/// when stdout is redirected.
+/// kills the process — the standard double-Ctrl-C escape hatch.
 fn install_signal_handlers() {
     for sig in [signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM] {
         let flag = std::sync::Arc::clone(handlers::cancel_flag());
@@ -218,34 +275,82 @@ fn install_signal_handlers() {
 /// the shell convention for signal death.
 const EXIT_INTERRUPTED: i32 = 130;
 
-/// Writes report bytes to stdout. A closed downstream pipe
-/// (`codefang run ... | head`) is not a bug: the Go reference dies silently
-/// of SIGPIPE (exit 128+13); Rust ignores SIGPIPE and surfaces `EPIPE`
-/// instead, so mirror the reference exit rather than panicking mid-report.
-fn write_stdout_or_exit(bytes: &[u8]) {
-    use std::io::Write as _;
-    // An interrupted run must not emit a truncated report that looks
-    // complete: surface the interruption and exit with the signal convention.
-    if handlers::run_cancelled() {
-        eprintln!("Error: interrupted");
-        std::process::exit(EXIT_INTERRUPTED);
-    }
-    if let Err(e) = std::io::stdout().write_all(bytes) {
-        if e.kind() == std::io::ErrorKind::BrokenPipe {
-            std::process::exit(141);
+/// Exit code for a closed downstream pipe (128 + SIGPIPE).
+const EXIT_BROKEN_PIPE: i32 = 141;
+
+/// Where a run writes its report: stdout, or the `-o` file (every format but
+/// `plot`, whose `-o` is the page directory).
+enum ReportSink {
+    /// The process stdout.
+    Stdout,
+    /// The `-o` file, created (truncated) on the first write.
+    File {
+        /// The path as given.
+        path: String,
+        /// The open file once created.
+        file: Option<std::fs::File>,
+    },
+}
+
+impl ReportSink {
+    /// The sink `-o` selects for a run whose format is (`plot`) or is not
+    /// the plot directory renderer.
+    fn new(sub: &clap::ArgMatches, plot: bool) -> Self {
+        match sub.get_one::<String>("output").filter(|o| !o.is_empty()) {
+            Some(path) if !plot => Self::File {
+                path: path.clone(),
+                file: None,
+            },
+            _ => Self::Stdout,
         }
-        panic!("write stdout: {e}");
+    }
+
+    /// Writes `bytes` and returns the exit code (0 on success). An
+    /// interrupted run never emits a truncated report that looks complete
+    /// (exit 130); a closed downstream pipe (`codefang run … | head`) exits
+    /// with the SIGPIPE convention (141). Writing nothing still creates the
+    /// `-o` file, so a successful run always leaves its report behind.
+    fn emit(&mut self, bytes: &[u8]) -> i32 {
+        use std::io::Write as _;
+        if handlers::run_cancelled() {
+            eprintln!("Error: interrupted");
+            std::process::exit(EXIT_INTERRUPTED);
+        }
+        match self {
+            Self::Stdout => match std::io::stdout().write_all(bytes) {
+                Ok(()) => 0,
+                Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+                    std::process::exit(EXIT_BROKEN_PIPE)
+                }
+                Err(e) => fail(&format!("cannot write stdout: {e}")),
+            },
+            Self::File { path, file } => {
+                if file.is_none() {
+                    match std::fs::File::create(path.as_str()) {
+                        Ok(f) => *file = Some(f),
+                        Err(e) => return fail(&format!("cannot write --output {path}: {e}")),
+                    }
+                }
+                match file.as_mut().map(|f| f.write_all(bytes)) {
+                    Some(Err(e)) => fail(&format!("cannot write --output {path}: {e}")),
+                    _ => 0,
+                }
+            }
+        }
     }
 }
 
+/// Dispatches `codefang completion <shell>`; generates the shell-completion
+/// script to stdout (`--no-descriptions` drops every help text from it).
+/// With no shell subcommand it prints the completion command's help (rc 0).
 fn completion_subcommand(sub: &clap::ArgMatches) -> i32 {
     use clap_complete::Shell;
 
-    let shell = match sub.subcommand_name() {
-        Some("bash") => Shell::Bash,
-        Some("fish") => Shell::Fish,
-        Some("powershell") => Shell::PowerShell,
-        Some("zsh") => Shell::Zsh,
+    let (shell, shell_matches) = match sub.subcommand() {
+        Some(("bash", m)) => (Shell::Bash, m),
+        Some(("fish", m)) => (Shell::Fish, m),
+        Some(("powershell", m)) => (Shell::PowerShell, m),
+        Some(("zsh", m)) => (Shell::Zsh, m),
         _ => {
             build_completion_command().print_help().ok();
             println!();
@@ -254,38 +359,49 @@ fn completion_subcommand(sub: &clap::ArgMatches) -> i32 {
     };
 
     let mut cmd = build_codefang_command();
+    if shell_matches.get_flag("no-descriptions") {
+        cmd = without_descriptions(cmd);
+    }
     clap_complete::generate(shell, &mut cmd, "codefang", &mut std::io::stdout());
     0
 }
 
-/// Stderr progress for a `run`, mirroring the reference implementation's
-/// `progress:` lines (the report bytes themselves go to stdout, so progress
-/// never touches the frozen output contract). Suppressed by `--silent`. A
-/// startup line announces the resolved selection immediately, and the Drop
-/// impl prints the elapsed wall time on EVERY return path — so even a long
-/// static walk is visibly working rather than looking hung.
+/// `cmd` with every command and argument description removed, recursively.
+fn without_descriptions(cmd: clap::Command) -> clap::Command {
+    cmd.about(None)
+        .long_about(None)
+        .mut_args(|a| a.help(None).long_help(None))
+        .mut_subcommands(without_descriptions)
+}
+
+/// Stderr progress for a `run`: a startup line announces the resolved
+/// selection immediately, and the Drop impl prints the elapsed wall time on
+/// EVERY return path — so even a long static walk is visibly working rather
+/// than looking hung. Suppressed by `--quiet` / `--silent`. The report bytes
+/// themselves go to stdout (or `-o`), so progress never touches the output
+/// contract.
 struct RunProgress {
     start: std::time::Instant,
-    silent: bool,
+    quiet: bool,
 }
 
 impl RunProgress {
-    fn begin(silent: bool, static_n: usize, history_n: usize, output_format: &str) -> Self {
-        if !silent {
+    fn begin(quiet: bool, static_n: usize, history_n: usize, output_format: &str) -> Self {
+        if !quiet {
             eprintln!(
                 "progress: resolved analyzers: static={static_n} history={history_n} output_format={output_format}"
             );
         }
         Self {
             start: std::time::Instant::now(),
-            silent,
+            quiet,
         }
     }
 }
 
 impl Drop for RunProgress {
     fn drop(&mut self) {
-        if self.silent {
+        if self.quiet {
             return;
         }
         // Surface silent per-file skips (unreadable / oversized / parse
@@ -305,269 +421,173 @@ impl Drop for RunProgress {
     }
 }
 
-/// Dispatches `codefang run` through the general pipeline. Emits each phase's
-/// report bytes to stdout in dispatch order; on an unsatisfiable selection it
-/// surfaces the codefang error path (`Error: <msg>\n`, exit 1).
-fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
-    use std::io::Write;
+/// The `--verbose` detail lines: the configuration file used and the
+/// resolved analyzer ids (static phase first).
+fn verbose_lines(config_path: Option<&Path>, static_ids: &[String], history_ids: &[String]) {
+    let config = config_path.map_or_else(|| "none".to_owned(), |p| p.display().to_string());
+    eprintln!("progress: config file: {config}");
+    let ids: Vec<&str> = static_ids
+        .iter()
+        .chain(history_ids)
+        .map(String::as_str)
+        .collect();
+    eprintln!("progress: analyzers: {}", ids.join(","));
+}
 
-    // Observability bracket around the whole run, mirroring the reference implementation:338-351
-    // (`rc.initObservability()` + deferred `providers.Shutdown`). With no
-    // OTEL_EXPORTER_OTLP_ENDPOINT the providers are no-op: zero output, zero
-    // report-byte impact. The guard's Drop performs the shutdown.
-    #[cfg(feature = "runtime")]
-    let _observability = match observability::init_run_observability(sub.get_flag("debug-trace")) {
-        Ok(guard) => guard,
-        Err(e) => {
-            // Reference: return fmt.Errorf("init observability: %w", err) → cobra
-            // prints `Error: <msg>` and exits 1.
-            eprintln!("Error: init observability: {e}");
-            return 1;
-        }
-    };
+/// Prints `Error: <message>` and returns the failure exit code.
+fn fail(message: &dyn std::fmt::Display) -> i32 {
+    eprintln!("Error: {message}");
+    1
+}
 
-    let registry = handlers::default_registry();
+/// True when `pat` carries a glob metacharacter.
+fn is_glob(pat: &str) -> bool {
+    pat.contains(['*', '?', '['])
+}
 
-    if sub.get_flag("list-analyzers") {
-        let mut out = std::io::stdout();
-        for id in registry.ids() {
-            let _ = writeln!(out, "{id}");
-        }
-        return 0;
+/// Dispatches `codefang run` through the general pipeline. Emits the report
+/// bytes to stdout (or the `-o` file); on any user error it prints
+/// `Error: <msg>` and exits 1. `config_path` is the configuration file the
+/// flag defaults came from, for `--verbose`.
+fn run_subcommand(sub: &clap::ArgMatches, config_path: Option<&Path>) -> i32 {
+    // `--no-color` is the flag form of the `NO_COLOR` convention every text /
+    // compact renderer reads.
+    if sub.get_flag("no-color") {
+        std::env::set_var("NO_COLOR", "1");
     }
 
     let ctx = pipeline::RunContext::from_matches(sub);
     let ids = ctx.analyzer_ids();
-
-    // Special case preserved from the reference `FormatPerAnalyzer`: a static-only glob/id set
-    // with --format bin emits the concatenated registry-ordered per-analyzer CFB1
-    // envelopes. This is a multi-id (glob) concern, not a single-id dispatch, so
-    // it is handled before the per-id pipeline (which dispatches literal ids).
     let raw_format = ctx.raw_format();
     let analyzer_strs: Vec<&str> = ids.iter().map(String::as_str).collect();
 
-    // Progress bracket: print the resolved selection now (so the user sees the
-    // run is alive and what it will compute), and the elapsed time on Drop —
-    // covering every dispatch branch's early return below. Counts use the same
-    // glob expansion the combined dispatch uses, so `*` reports the full
-    // static/history fan-out. Suppressed by `--silent`; stderr only.
-    let (_prog_static, _prog_history) = handlers::expand_combined_ids(&analyzer_strs);
+    // Progress bracket: print the resolved selection now, and the elapsed
+    // time on Drop — covering every dispatch branch's early return below.
+    let quiet = sub.get_flag(FLAG_QUIET);
+    let (prog_static, prog_history) = handlers::expand_combined_ids(&analyzer_strs);
     let _progress = RunProgress::begin(
-        sub.get_flag("silent"),
-        _prog_static.len(),
-        _prog_history.len(),
+        quiet,
+        prog_static.len(),
+        prog_history.len(),
         &formats::normalize_format(&raw_format),
     );
-
-    // The shared static-phase walk filter (--languages + --include-vendored /
-    // --include-generated). An unresolvable --languages token fails the run
-    // up front with the reference error (`applyStaticLanguageFilter`:
-    // `static --languages: unknown language: "<token>"`, exit 1) whenever the
-    // selection includes a static analyzer.
-    let static_filter = match handlers::static_filter(&ctx) {
-        Ok(filter) => filter,
-        Err(msg) => {
-            if _prog_static.is_empty() {
-                handlers::StaticFilter::default()
-            } else {
-                eprintln!("Error: {msg}");
-                return 1;
-            }
-        }
-    };
-
-    // The shared history-phase change filter (the --languages set wired into
-    // the reference TreeDiff analyzer; the include-* flags are inert there).
-    // An unresolvable --languages token fails the run up
-    // front with the reference error (`failed to configure TreeDiff: tree-diff
-    // pathspec: unknown language: "<token>"`, exit 1) whenever the selection
-    // includes a history analyzer. The reference validates the static filter
-    // first, so this check stays BELOW the static one (mixed-selection order).
-    let _history_filter = match handlers::history_filter(sub) {
-        Ok(filter) => filter,
-        Err(msg) => {
-            if _prog_history.is_empty() {
-                handlers::HistoryFilter::default()
-            } else {
-                eprintln!("Error: {msg}");
-                return 1;
-            }
-        }
-    };
-
-    // `--since` is validated against the repository BEFORE any walking, like the
-    // reference's `initHistoryPipeline` (which parsed it during pipeline init).
-    // Left to the handler, an unresolvable value surfaced only as the generic
-    // dispatch-blocked diagnostic — which blames the port for the user's typo
-    // and never names the offending flag. stdout stays empty and rc stays 1
-    // either way; this only makes the failure diagnosable. Scoped to runs with
-    // history analyzers selected, because a static-only run never reads the
-    // flag (reference parity). The repository's own frozen error text is kept
-    // verbatim so existing greps on `cannot parse time:` still match.
-    if !_prog_history.is_empty() {
-        if let handlers::SinceSpec::Active(spec) = handlers::history_since_spec(sub) {
-            let repo_path = handlers::run_repo_path(sub);
-            if let Ok(repo) = cf_gitlib::Repository::open(&repo_path) {
-                if let Err(e) = repo.resolve_time(&spec) {
-                    eprintln!("Error: cannot resolve --since {spec:?}: {e}");
-                    return 1;
-                }
-            }
-        }
+    if sub.get_flag(FLAG_VERBOSE) {
+        verbose_lines(config_path, &prog_static, &prog_history);
     }
 
-    // --format plot routes to the multi-page HTML renderer (the reference implementation: the
-    // static/history phases each call validatePlotFlags then the plot
-    // executor). The --output precheck fires for ANY plot selection (the exact
-    // reference `ErrPlotOutputRequired` wording, rc 1). A static-only selection renders
-    // pages + index + the static results report.json; a history-only selection
-    // renders <flag>.html pages + index + the {analyzer_ids, pages}
-    // report.json; a MIXED selection runs both phases into the
-    // SAME directory — the history report.json overwrites the static one and
-    // the final index is rebuilt title-sorted across both page sets (reference:
-    // rebuildPlotIndex). Any unported selection surfaces the dispatch-blocked
-    // diagnostic AFTER the flag validation, preserving the reference implementation's error ordering.
+    // ONE validation of the path, the repository, the flags and the format
+    // before any walk starts; every failure names its cause.
+    if let Err(e) = handlers::preflight(&ctx, &prog_static, &prog_history) {
+        return fail(&e);
+    }
+
     if formats::normalize_format(&raw_format) == formats::FORMAT_PLOT {
-        let output = sub.get_one::<String>("output").map_or("", String::as_str);
-        if output.is_empty() {
-            eprintln!("Error: --output flag is required when --format plot");
-            return 1;
-        }
-        // SELECTION-order expansion: the reference implementation renders plot pages (and index cards)
-        // in the resolved id order (`AnalyzerNamesByID(analyzerIDs)`).
-        let (plot_static, plot_history) = handlers::expand_selection_ids(&analyzer_strs);
-        if !plot_static.is_empty() && plot_history.is_empty() {
-            if let Some(code) = handlers::plot::run_static_plot(&ctx, &plot_static, output) {
-                return code;
-            }
-        }
-        if plot_static.is_empty() && !plot_history.is_empty() {
-            if let Some(code) =
-                handlers::history_plot::run_history_plot(&ctx, &plot_history, output, false)
-            {
-                return code;
-            }
-        }
-        if !plot_static.is_empty() && !plot_history.is_empty() {
-            // Mixed run: static phase first (pages + index + static
-            // report.json), then the history phase into the same directory
-            // (reference: runStaticPhase → runHistoryPhase → rebuildPlotIndex).
-            if let Some(code) = handlers::plot::run_static_plot(&ctx, &plot_static, output) {
-                if code != 0 {
-                    return code;
-                }
-                if let Some(history_code) =
-                    handlers::history_plot::run_history_plot(&ctx, &plot_history, output, true)
-                {
-                    return history_code;
-                }
-            }
-        }
-        eprintln!("Error: {DISPATCH_BLOCKED_MSG}");
-        return 1;
+        return run_plot(&ctx, sub, &analyzer_strs);
     }
-    if raw_format == "bin"
-        && !analyzer_strs.is_empty()
-        && analyzer_strs.iter().any(|a| a.contains(['*', '?', '[']))
+    match render_report(&ctx, &analyzer_strs) {
+        Ok(bytes) => ReportSink::new(sub, false).emit(&bytes),
+        Err(e) => fail(&e),
+    }
+}
+
+/// Renders a whole `codefang run …` command line in memory: the report bytes
+/// the CLI would write, or the error message it would print. Validation is
+/// the CLI's (the preflight); nothing is printed. `plot` is not supported
+/// (its output is a page directory).
+///
+/// # Errors
+///
+/// The message for unparsable arguments, a failed preflight or a failed
+/// render.
+pub fn render_run(argv: &[&str]) -> Result<Vec<u8>, String> {
+    let matches = build_codefang_command()
+        .try_get_matches_from(std::iter::once("codefang").chain(argv.iter().copied()))
+        .map_err(|e| e.to_string())?;
+    let sub = matches
+        .subcommand_matches("run")
+        .ok_or_else(|| "not a run command".to_owned())?;
+    let ctx = pipeline::RunContext::from_matches(sub);
+    let ids = ctx.analyzer_ids();
+    let analyzer_strs: Vec<&str> = ids.iter().map(String::as_str).collect();
+    let (static_ids, history_ids) = handlers::expand_combined_ids(&analyzer_strs);
+    handlers::preflight(&ctx, &static_ids, &history_ids).map_err(|e| e.to_string())?;
+    if formats::normalize_format(&ctx.raw_format()) == formats::FORMAT_PLOT {
+        return Err("format plot is not supported here".to_owned());
+    }
+    render_report(&ctx, &analyzer_strs)
+}
+
+/// Renders the (non-plot) report of the selection into `sink` through the
+/// matching path: the multi-analyzer static bin / json / text merges, the
+/// unified mixed document, the whole-selection history formats, or the
+/// per-id pipeline. Returns the exit code.
+fn render_report(ctx: &pipeline::RunContext, analyzer_strs: &[&str]) -> Result<Vec<u8>, String> {
+    let registry = handlers::default_registry();
+    let raw_format = ctx.raw_format();
+    let ids = ctx.analyzer_ids();
+    // Validated by the preflight; a static-free selection never reads it.
+    let static_filter = handlers::static_filter(ctx).unwrap_or_default();
+    let all_static = !analyzer_strs.is_empty()
         && analyzer_strs
             .iter()
-            .all(|a| handlers::is_static_id_or_glob(a))
-    {
-        if let Some(bytes) = handlers::static_multi_bin(&analyzer_strs, &ctx.path, &static_filter) {
-            write_stdout_or_exit(&bytes);
-            return 0;
+            .all(|a| handlers::is_static_id_or_glob(a));
+
+    // A static-only glob with --format bin emits the concatenated
+    // registry-ordered per-analyzer CFB1 envelopes.
+    if raw_format == "bin" && all_static && analyzer_strs.iter().any(|a| is_glob(a)) {
+        if let Some(bytes) = handlers::static_multi_bin(analyzer_strs, &ctx.path, &static_filter) {
+            return Ok(bytes);
         }
     }
 
-    // Special case preserved from the reference `renderer.SectionsToJSON`: a STATIC-ONLY
-    // selection (no history analyzer) of MORE THAN ONE static analyzer (a literal
-    // multi-id list or a glob like `static/*`) with `--format json` renders ONE
-    // merged JSONReport — sections in registry order, overall_score the average
-    // of the scored sections. A single static analyzer keeps its own one-section
-    // document (the per-id pipeline below); a selection that also matches a
-    // history analyzer (e.g. `*`) uses the UnifiedModel path, not this merge.
+    // A STATIC-ONLY selection of MORE THAN ONE static analyzer with
+    // `--format json` renders ONE merged report (sections in registry order,
+    // overall_score the average of the scored sections); `text` renders all
+    // selected sections through ONE text render with the executive summary.
     if (raw_format == "json" || raw_format == "text")
-        && !analyzer_strs.is_empty()
-        && analyzer_strs
-            .iter()
-            .all(|a| handlers::is_static_id_or_glob(a))
-        && handlers::static_json_selects_multiple(&analyzer_strs)
+        && all_static
+        && handlers::static_json_selects_multiple(analyzer_strs)
     {
         let bytes = if raw_format == "json" {
             handlers::static_multi_json(
-                &analyzer_strs,
+                analyzer_strs,
                 &ctx.path,
                 &static_filter,
                 ctx.matches.get_flag("per-file"),
             )
         } else {
-            // Multi-static text renders all selected sections through ONE
-            // FormatText call (the reference), so the ≥2-section executive
-            // summary header is emitted before the per-analyzer bodies.
-            handlers::static_multi_text(&analyzer_strs, &ctx.path, &static_filter)
+            handlers::static_multi_text(analyzer_strs, &ctx.path, &static_filter)
         };
         if let Some(bytes) = bytes {
-            write_stdout_or_exit(&bytes);
-            return 0;
+            return Ok(bytes);
         }
     }
 
-    // Mixed static+history selection (both phases non-empty) renders the single
-    // `codefang.run.v1` unified-model envelope, mirroring the reference `runDirect` →
-    // renderCombinedDirect. This is NOT a per-analyzer concatenation: every
-    // selected analyzer's raw report is gathered (via its bin payload) into one
-    // model with run metadata and re-serialized in the requested format by the
-    // serializer layer (cf-analyze::write_converted_output). Plot is excluded
-    // (reference: isMixedPlot keeps the separate-phase path). On any unported analyzer
-    // the helper returns None and we fall through to the per-id pipeline.
-    let (combined_static, combined_history) = handlers::expand_combined_ids(&analyzer_strs);
-    if !combined_static.is_empty()
-        && !combined_history.is_empty()
-        && raw_format != "plot"
-        && raw_format != "compact"
-    {
-        if let Some(bytes) =
-            handlers::render_combined(&ctx, &combined_static, &combined_history, &raw_format)
-        {
-            write_stdout_or_exit(&bytes);
-            return 0;
-        }
+    // Mixed static+history selection (both phases non-empty): the unified
+    // `codefang.run.v1` document, or the per-phase text / compact /
+    // time-series renderings.
+    let (combined_static, combined_history) = handlers::expand_combined_ids(analyzer_strs);
+    if !combined_static.is_empty() && !combined_history.is_empty() {
+        return handlers::render_mixed(ctx, &combined_static, &combined_history, &raw_format)
+            .map_err(|e| e.to_string());
     }
 
-    // Expand globs / literal ids to the concrete registry ids the per-id pipeline
-    // dispatches (the reference `registry.Split` resolves patterns before the phase loop).
-    // `run_pipeline` matches literal ids only, so an unexpanded glob like
-    // `history/*` would otherwise miss every handler. The static phase uses the
-    // registry static order; the history phase uses the reference implementation's SEPARATE-phase emit order
-    // (`HISTORY_PHASE_EMIT_ORDER` — `runHistoryPhase` over the glob-expanded leaf
-    // set), which differs from the combined-model order, so a history-only glob's
-    // per-analyzer reports concatenate in the same sequence the reference implementation writes them. Fall
-    // back to the raw selection when nothing expands (preserves the reference implementation's unknown-id
-    // error). A glob in `analyzer_strs` forces the expanded ordering even for a
-    // mixed selection; a purely literal selection keeps its request order.
-    let resolved_ids = {
-        let is_glob = |p: &&str| p.contains(['*', '?', '[']);
-        if analyzer_strs.iter().any(is_glob) {
-            let (s, _h) = handlers::expand_combined_ids(&analyzer_strs);
-            let mut v = s;
-            v.extend(handlers::expand_history_phase_ids(&analyzer_strs));
-            if v.is_empty() {
-                ids.clone()
-            } else {
-                v
-            }
+    // Expand globs / literal ids to the concrete registry ids the per-id
+    // pipeline dispatches: the static phase uses the registry static order;
+    // the history phase uses the separate-phase emit order. A purely literal
+    // selection keeps its request order.
+    let resolved_ids = if analyzer_strs.iter().any(|a| is_glob(a)) {
+        let mut v = combined_static;
+        v.extend(handlers::expand_history_phase_ids(analyzer_strs));
+        if v.is_empty() {
+            ids
         } else {
-            ids.clone()
+            v
         }
+    } else {
+        ids
     };
 
-    // Centralized history-phase formats (reference: OutputHistoryResults / StreamingSink):
-    // text, ndjson, and timeseries are NOT per-analyzer encodings — the reference implementation routes the
-    // whole selected leaf set through one history output function (header + per-
-    // leaf sections for text; per-commit TC lines for ndjson; one merged document
-    // for timeseries). A history-only selection in one of those formats dispatches
-    // here; `None` (an unported leaf) falls through to the per-id pipeline and its
-    // existing dispatch-blocked diagnostic.
     let all_history = !resolved_ids.is_empty()
         && resolved_ids.iter().all(|id| {
             registry
@@ -575,72 +595,101 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
                 .is_some_and(|e| matches!(e.mode, pipeline::Mode::History))
         });
     if all_history {
-        let normalized = formats::normalize_format(&raw_format);
-        let history_format = formats::apply_ndjson_modifier(&normalized, ctx.ndjson());
-        let special = match history_format.as_str() {
-            formats::FORMAT_TEXT => handlers::history_formats::history_text(&ctx, &resolved_ids),
-            formats::FORMAT_NDJSON => {
-                handlers::history_formats::history_ndjson(&ctx, &resolved_ids)
-            }
-            formats::FORMAT_TIMESERIES => {
-                handlers::history_formats::history_timeseries(&ctx, &resolved_ids, false)
-            }
-            // `timeseries+ndjson` (the --ndjson modifier) is NOT the merged
-            // document as lines: the reference implementation routes it through the per-chunk
-            // TimeSeriesChunkFlusher (DrainCommitStats), which devs/burndown
-            // reproduce in their per-analyzer handlers — fall through.
-            _ => None,
-        };
-        match special {
-            Some(Ok(bytes)) => {
-                write_stdout_or_exit(&bytes);
-                return 0;
-            }
-            Some(Err(fail)) => {
-                // The reference implementation streams the partial bytes to stdout BEFORE the serializer
-                // fails; cobra then prints `Error: <msg>` to stderr and exits 1.
-                write_stdout_or_exit(&fail.partial);
-                eprintln!("Error: {}", fail.message);
-                return 1;
-            }
-            None => {}
+        if let Some(rendered) = render_history_whole_selection(ctx, &resolved_ids, &raw_format) {
+            return rendered;
         }
     }
 
-    match pipeline::run_pipeline(&registry, &ctx, &resolved_ids) {
-        Ok(outputs) => {
-            for phase in &outputs {
-                write_stdout_or_exit(&phase.bytes);
+    pipeline::run_pipeline(&registry, ctx, &resolved_ids)
+        .map(|outputs| outputs.into_iter().flat_map(|phase| phase.bytes).collect())
+        .map_err(|e| e.to_string())
+}
+
+/// `--format plot`: the multi-page HTML renderer. `--output` is required. A
+/// static-only selection renders pages + index + the static results
+/// report.json; a history-only selection renders the per-flag pages + index +
+/// report.json; a MIXED selection runs both phases into the SAME directory
+/// and the final index is rebuilt across both page sets.
+fn run_plot(ctx: &pipeline::RunContext, sub: &clap::ArgMatches, analyzer_strs: &[&str]) -> i32 {
+    let output = sub.get_one::<String>("output").map_or("", String::as_str);
+    if output.is_empty() {
+        return fail(&"--output flag is required when --format plot");
+    }
+    // SELECTION-order expansion: pages (and index cards) render in the
+    // resolved id order.
+    let (plot_static, plot_history) = handlers::expand_selection_ids(analyzer_strs);
+    let no_pages = || {
+        fail(&format!(
+            "no plot pages produced for {}",
+            analyzer_strs.join(",")
+        ))
+    };
+    match (plot_static.is_empty(), plot_history.is_empty()) {
+        (false, true) => {
+            handlers::plot::run_static_plot(ctx, &plot_static, output).unwrap_or_else(no_pages)
+        }
+        (true, false) => {
+            handlers::history_plot::run_history_plot(ctx, &plot_history, output, false)
+                .unwrap_or_else(no_pages)
+        }
+        (false, false) => {
+            // Mixed run: static phase first, then the history phase into the
+            // same directory.
+            match handlers::plot::run_static_plot(ctx, &plot_static, output) {
+                Some(0) => {
+                    handlers::history_plot::run_history_plot(ctx, &plot_history, output, true)
+                        .unwrap_or_else(no_pages)
+                }
+                Some(code) => code,
+                None => no_pages(),
             }
-            0
         }
-        // An unknown analyzer id surfaces the specific reference diagnostic
-        // ("unknown analyzer id: <id>", reference `ErrUnknownAnalyzer`) so the error
-        // path is byte-class-identical to cobra (the cli-surface runtime probe
-        // requires the "analyzer" diagnostic, not a generic stub message).
-        Err(pipeline::PipelineError::UnknownAnalyzer(id)) => {
-            eprintln!("Error: unknown analyzer id: {id}");
-            1
-        }
-        // Any other unsatisfiable selection (no handler for this analyzer/format)
-        // routes to the same codefang error path the legacy dispatch fell through to.
-        Err(_) => {
-            eprintln!("Error: {DISPATCH_BLOCKED_MSG}");
-            1
-        }
+        (true, true) => no_pages(),
     }
 }
 
-/// Dispatches `codefang render <store-dir>`; reproduces the `--output` precheck
-/// (the reference implementation `ErrNoOutputDir`) before the (still-blocked) render body.
-fn render_subcommand(sub: &clap::ArgMatches) -> i32 {
-    let output = sub.get_one::<String>("output").map_or("", String::as_str);
-    if output.is_empty() {
-        eprintln!("Error: output directory is required (use --output)");
-        return 1;
+/// The whole-selection history formats (`text`, `compact`, `ndjson`,
+/// `timeseries`, `timeseries --ndjson`), and the one-document rule for a
+/// multi-analyzer `json` / `yaml` selection, written into `sink`. Returns
+/// `None` when the selection+format is a plain per-analyzer dispatch (handled
+/// by the per-id pipeline).
+fn render_history_whole_selection(
+    ctx: &pipeline::RunContext,
+    resolved_ids: &[String],
+    raw_format: &str,
+) -> Option<Result<Vec<u8>, String>> {
+    let normalized = formats::normalize_format(raw_format);
+    let history_format = formats::apply_ndjson_modifier(&normalized, ctx.ndjson());
+
+    // Several history analyzers in json/yaml: ONE unified-model document
+    // (`{version, metadata, analyzers: [{id, mode, report}]}`), never a
+    // concatenation of per-analyzer documents.
+    if resolved_ids.len() > 1
+        && (history_format == formats::FORMAT_JSON || history_format == formats::FORMAT_YAML)
+    {
+        return Some(
+            handlers::render_combined(ctx, &[], resolved_ids, raw_format)
+                .map_err(|e| e.to_string()),
+        );
     }
-    eprintln!("Error: {DISPATCH_BLOCKED_MSG}");
-    1
+
+    // Every whole-selection renderer builds its complete output first: a
+    // failure writes nothing to stdout.
+    let rendered = match history_format.as_str() {
+        formats::FORMAT_TEXT => handlers::history_formats::history_text(ctx, resolved_ids),
+        formats::FORMAT_COMPACT => handlers::history_formats::history_compact(ctx, resolved_ids),
+        formats::FORMAT_NDJSON => handlers::history_formats::history_ndjson(ctx, resolved_ids),
+        formats::FORMAT_TIMESERIES => {
+            handlers::history_formats::history_timeseries(ctx, resolved_ids, false)
+        }
+        // `--format timeseries --ndjson`: the merged document's commits, one
+        // line per commit.
+        formats::FORMAT_TIMESERIES_NDJSON => {
+            handlers::history_formats::history_timeseries(ctx, resolved_ids, true)
+        }
+        _ => return None,
+    };
+    Some(rendered.map_err(|e| e.to_string()))
 }
 
 #[cfg(test)]
@@ -652,25 +701,43 @@ mod tests {
         assert_eq!(CRATE_NAME, "cf-commands");
     }
 
+    /// A whole `run` command renders in memory: the report bytes, or the
+    /// error the CLI would print.
+    #[test]
+    fn a_run_renders_in_memory() {
+        let dir = tempfile::tempdir().expect("dir");
+        std::fs::write(
+            dir.path().join("m.go"),
+            "package m\n\nfunc f(x int) int {\n\tif x > 0 {\n\t\treturn 1\n\t}\n\treturn 0\n}\n",
+        )
+        .expect("write");
+        let path = dir.path().to_str().expect("utf-8");
+        let bytes = render_run(&["run", "-a", "static/complexity", "--format", "json", path])
+            .expect("render");
+        let report: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+        assert!(report.get("sections").is_some(), "{report}");
+
+        let err = render_run(&["run", "-a", "static/nope", path]).expect_err("unknown id");
+        assert!(err.contains("nope"), "{err}");
+        let err = render_run(&["run", "--format"]).expect_err("bad flags");
+        assert!(!err.is_empty());
+    }
+
     #[test]
     fn root_has_subcommands_in_order() {
         let cmd = build_codefang_command();
         let names: Vec<&str> = cmd.get_subcommands().map(clap::Command::get_name).collect();
-        // `completion` mirrors the command cobra auto-registers (cli-surface
-        // parity); it is wired last, after the three explicit subcommands.
-        assert_eq!(names, vec!["run", "render", "version", "completion"]);
+        assert_eq!(names, vec!["run", "version", "completion", "mcp"]);
     }
 
     #[test]
-    fn root_has_persistent_flags() {
+    fn root_has_global_flags() {
         let cmd = build_codefang_command();
         let longs: Vec<_> = cmd
             .get_arguments()
             .filter_map(clap::Arg::get_long)
             .collect();
-        assert!(longs.contains(&"verbose"));
-        assert!(longs.contains(&"quiet"));
-        assert!(longs.contains(&"profile"));
+        assert_eq!(longs, vec!["verbose", "quiet", "profile"]);
     }
 
     #[test]
@@ -678,5 +745,55 @@ mod tests {
         let cmd = build_codefang_command();
         let m = cmd.try_get_matches_from(["codefang", "version"]).unwrap();
         assert_eq!(m.subcommand_name(), Some("version"));
+    }
+
+    /// `render` printed "not available" for every input: it is gone.
+    #[test]
+    fn render_is_not_a_subcommand() {
+        let parsed = build_codefang_command().try_get_matches_from(["codefang", "render", "x"]);
+        assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn silent_is_an_alias_of_quiet_and_reaches_run() {
+        for flag in ["--silent", "--quiet", "-q"] {
+            let m = build_codefang_command()
+                .try_get_matches_from(["codefang", "run", flag])
+                .unwrap();
+            let run = m.subcommand_matches("run").unwrap();
+            assert!(run.get_flag(FLAG_QUIET), "{flag}");
+        }
+    }
+
+    #[test]
+    fn verbose_and_quiet_conflict_wherever_they_are_given() {
+        for argv in [
+            ["codefang", "-v", "run", "-q"],
+            ["codefang", "run", "-v", "--silent"],
+            ["codefang", "-q", "-v", "run"],
+        ] {
+            let m = build_codefang_command().try_get_matches_from(argv).unwrap();
+            let run = m.subcommand_matches("run").unwrap();
+            assert_eq!(
+                check_verbosity(run),
+                Err("--verbose and --quiet cannot be used together"),
+                "{argv:?}"
+            );
+        }
+        let m = build_codefang_command()
+            .try_get_matches_from(["codefang", "run", "-v"])
+            .unwrap();
+        assert_eq!(
+            check_verbosity(m.subcommand_matches("run").unwrap()),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn descriptions_can_be_stripped_from_the_completion_tree() {
+        let cmd = without_descriptions(build_codefang_command());
+        let run = cmd.find_subcommand("run").unwrap();
+        assert!(run.get_about().is_none());
+        assert!(run.get_arguments().all(|a| a.get_help().is_none()));
     }
 }

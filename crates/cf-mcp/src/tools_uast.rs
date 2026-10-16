@@ -10,7 +10,7 @@ use crate::errors::ToolError;
 use crate::gojson::node_to_json;
 use crate::providers::UastParser;
 use crate::result::{ToolOutput, ToolResult};
-use crate::tools::{synthetic_filename, validate_code_input, UastParseInput};
+use crate::tools::{validate_code_input, UastParseInput};
 
 /// The synthetic node type used to wrap query matches.
 pub const FILTERED_RESULTS_TYPE: &str = "filtered_results";
@@ -33,7 +33,7 @@ pub fn handle_uast_parse(
         return (ToolResult::error(&err), ToolOutput::empty());
     }
 
-    let filename = synthetic_filename(&input.language);
+    let filename = parser.filename_for(&input.language);
 
     if !parser.is_supported(&filename) {
         let err = ToolError::UnsupportedLanguage {

@@ -91,7 +91,7 @@ pub fn sections(metrics: &ComputedMetrics, external_summaries: &[ExternalSummary
                     "Anomalies indicate sudden deviations from the rolling average".to_string(),
                     "Investigate anomaly ticks for large refactors, bulk imports, or regressions"
                         .to_string(),
-                    "Adjust --anomaly-threshold to tune sensitivity (lower = more sensitive)"
+                    "The Z-score threshold (2.0) sets the sensitivity (lower = more sensitive)"
                         .to_string(),
                     "Adjust --anomaly-window to change the rolling baseline period".to_string(),
                 ],

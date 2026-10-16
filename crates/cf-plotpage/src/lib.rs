@@ -27,7 +27,7 @@
 //!
 //! All JSON routes through `cf-gojson` (never serde): the chart option JSON
 //! is report-contract output, byte-compared against the reference binary by
-//! `tests/compat`.
+//! the report e2e suites (`bins/codefang/tests`).
 //!
 //! # Example: build a one-chart page
 //!

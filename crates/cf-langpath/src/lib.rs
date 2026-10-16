@@ -11,7 +11,7 @@
 //! Per DESIGN §3.7, enry language classification is decision-parity-critical:
 //! the glob set selects which files an analysis includes, which in turn
 //! selects which bytes appear in machine reports — output that
-//! `tests/compat` pins against the reference binary. We therefore vendor
+//! the report e2e suites (`bins/codefang/tests`) pins against the reference binary. We therefore vendor
 //! the **same** three Linguist data tables that the reference binary links
 //! (`github.com/src-d/enry/v2@v2.1.0`), as a verbatim TSV snapshot in
 //! `data/enry-v2.1.0.tsv` (see `data/README.md`), and reproduce enry's lookup
@@ -32,6 +32,8 @@ use std::sync::OnceLock;
 
 pub mod content;
 pub mod content_heuristics;
+pub mod linguist_type;
+pub use linguist_type::{language_type, LanguageType};
 
 /// Resolve a candidate token to its canonical Linguist language via enry's
 /// alias table (`GetLanguageByAlias`), or `None` if unrecognized.
@@ -51,6 +53,26 @@ pub mod content_heuristics;
 #[must_use]
 pub fn canonical_language(token: &str) -> Option<String> {
     get_language_by_alias(token).map(str::to_string)
+}
+
+/// The primary file extension (with its leading dot) of the language a
+/// token names, Linguist aliases included; `None` for an unknown token or a
+/// language without extensions.
+///
+/// # Examples
+///
+/// ```
+/// use cf_langpath::primary_extension;
+///
+/// assert_eq!(primary_extension("python").as_deref(), Some(".py"));
+/// assert_eq!(primary_extension("JavaScript").as_deref(), Some(".js"));
+/// assert_eq!(primary_extension("notalang"), None);
+/// ```
+#[must_use]
+pub fn primary_extension(token: &str) -> Option<String> {
+    get_language_extensions(get_language_by_alias(token.trim())?)
+        .first()
+        .cloned()
 }
 
 /// Error returned when a user-supplied token does not resolve to any Linguist

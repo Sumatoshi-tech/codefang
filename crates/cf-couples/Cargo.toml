@@ -8,17 +8,15 @@ repository.workspace = true
 publish = false
 
 # cf-couples — file/developer co-change coupling analysis (analyzer id:
-# history/couples, non-sequential / parallelizable).
+# history/couples).
 #
 # Builds the file co-occurrence matrix (files changed in the same commit) and
 # the developer co-occurrence matrix (developers touching the same file), plus
-# per-file ownership cardinality (HyperLogLog), all from sorted indices so the
-# output is deterministic. The coupling-strength formula is code-maat's
-# `co_changes / avg(revs_a, revs_b)` capped at 1.0.
+# per-file ownership cardinality (HyperLogLog), following renames, all from
+# sorted indices so the output is deterministic. The coupling-strength formula
+# is code-maat's `co_changes / avg(revs_a, revs_b)` capped at 1.0.
 #
-# Report serialization routes exclusively through cf-gojson (and, once wired,
-# cf-goyaml); the machine-format bytes (json/yaml/ndjson/timeseries/compact/
-# bin) are pinned against the reference implementation by tests/compat.
+# Report serialization routes exclusively through cf-gojson / cf-goyaml.
 
 [features]
 default = ["hll"]

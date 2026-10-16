@@ -1,55 +1,37 @@
-//! `--format plot` history-phase orchestration — the Rust analogue of the reference implementation's
-//! plot pipeline (the reference `executePlotPipeline` → `FinalizeToStore` →
-//! `enrichAnomalyFromStore` → `renderFromStore` = the reference `runRender`).
+//! `--format plot` history-phase orchestration.
 //!
-//! Flow (per the reference `runRender` over the temp `FileReportStore`):
+//! Flow:
 //!
-//! 1. every selected history leaf writes its structured store kinds — here
-//!    each leaf's section data is computed directly from the analyzer crates'
-//!    metric surfaces (the same values the byte-verified json/yaml/bin reports
-//!    encode), so no store round-trip is needed;
-//! 2. `StorePlotSectionsFor(id)` builds the per-analyzer sections;
-//!    `RenderAnalyzerPage(safeID, id, sections)` writes `<flag>.html` (the
-//!    store id is the analyzer `Flag()`, slash-free, so `safeID == id`) and
-//!    collects its [`PageMeta`] (`{ID: flag, Title: flag}`);
-//! 3. `RenderIndex(pages)` writes `index.html`;
-//! 4. `writeRenderReportJSON` writes `report.json` —
-//!    `{"analyzer_ids": [...], "pages": [...]}`, two-space-indented
-//!    `encoding/json` with the trailing newline, 0o640, atomic temp+rename.
-//!    In a MIXED static+history run this overwrites the static phase's
-//!    `report.json` (the reference implementation's history phase runs second), and `rebuildPlotIndex`
-//!    then rescans the directory for the unified, title-sorted index.
+//! 1. every selected history analyzer's page sections are computed from its
+//!    typed metrics (the same values its json/yaml/bin reports encode) —
+//!    concurrently, after the shared UAST walk is warmed;
+//! 2. each analyzer with sections renders `<flag>.html` (the analyzer flag,
+//!    e.g. `devs`, `imports-per-dev`, is the page id and title) and adds a
+//!    [`PageMeta`] card;
+//! 3. `index.html` lists the cards;
+//! 4. `report.json` records `{"analyzer_ids": [...], "pages": [...]}`. In a
+//!    MIXED static+history run it replaces the static phase's `report.json`,
+//!    and the index is rebuilt from a directory scan so it lists both phases'
+//!    pages, title-sorted.
 //!
-//! # Ordering
-//!
-//! The reference implementation's `analyzer_ids` order is the store-manifest write order — the pipeline
-//! leaf order, which is MAP-RANDOM in the reference implementation (verified: three star runs produced
-//! three different orders). The deterministic Rust stand-in is the separate-
-//! phase emit order ([`crate::handlers::HISTORY_PHASE_EMIT_ORDER`]); the
-//! oracle measures the reference implementation's variance and compares those files structurally.
+//! Pages render in the separate-phase emit order
+//! ([`HISTORY_PLOT_ANALYZERS`]), so the output does not depend on the order
+//! of the selection.
 
 use std::collections::BTreeMap;
-use std::fs;
 use std::io;
-use std::path::Path;
 
 use cf_anomaly::enrich::ExtractedSeries;
-use cf_gojson::{Encoder, GoMap, GoValue, MapOrigin};
-use cf_plotpage::{MultiPageRenderer, PageMeta, Section, Theme};
+use cf_gojson::{GoMap, GoValue, MapOrigin};
+use cf_plotpage::{PageMeta, Section};
 
+use crate::handlers::plot::{create_output_dir, page_renderer, write_report_json_atomic};
 use crate::handlers::plot_sections::{
     history_anomaly, history_burndown, history_couples, history_devs, history_file_history,
     history_imports, history_quality, history_sentiment, history_shotness, history_typos,
 };
 use crate::handlers::{burndown_ndjson, couples_run, history, shotness_run};
 use crate::pipeline::RunContext;
-
-/// Project title shown on every plot page.
-const PLOT_PAGE_TITLE: &str = "Codefang";
-
-/// report.json file mode.
-#[cfg(unix)]
-const REPORT_JSON_MODE: u32 = 0o640;
 
 /// One plot-capable history analyzer: registry id, store id (the analyzer
 /// `Flag()` — page filename and title), and its section builder. The builder
@@ -61,8 +43,8 @@ pub struct HistoryPlotAnalyzer {
     /// Store id / page name (the analyzer `Flag()`, e.g. `devs`,
     /// `imports-per-dev`).
     pub flag: &'static str,
-    /// Builds the page sections; `None` mirrors a reference section-renderer error
-    /// (analyzer skipped from the page set but kept in `analyzer_ids`).
+    /// Builds the page sections; `None` when the analyzer produced no report
+    /// (it gets no page but stays in `analyzer_ids`).
     pub sections: fn(&RunContext, &[&'static str]) -> Option<Vec<Section>>,
 }
 
@@ -77,7 +59,8 @@ fn sentiment_sections(ctx: &RunContext, _selected: &[&'static str]) -> Option<Ve
 }
 
 fn shotness_sections(ctx: &RunContext, _selected: &[&'static str]) -> Option<Vec<Section>> {
-    let report = shotness_run::shotness_run_report_data(ctx.matches)?;
+    // The pages show the code that exists: ended entities stay out.
+    let report = shotness_run::shotness_run_report_data(ctx.matches)?.live();
     Some(history_shotness::sections(&report.nodes, &report.counters))
 }
 
@@ -85,7 +68,6 @@ fn couples_sections(ctx: &RunContext, _selected: &[&'static str]) -> Option<Vec<
     let data = couples_run::couples_plot_data(ctx.matches)?;
     Some(history_couples::sections(
         &data.file_coupling,
-        &data.dev_names,
         &data.ownership,
     ))
 }
@@ -102,15 +84,10 @@ fn typos_sections(ctx: &RunContext, _selected: &[&'static str]) -> Option<Vec<Se
 }
 
 fn anomaly_sections(ctx: &RunContext, selected: &[&'static str]) -> Option<Vec<Section>> {
-    let metrics = if ctx.head() {
-        history::anomaly_head_report(ctx.matches)?
-    } else {
-        history::anomaly_run_metrics(ctx.matches)?
-    };
+    let metrics = history::anomaly_run_metrics(ctx.matches)?;
 
-    // The reference `enrichAnomalyFromStore` → `runStoreEnrichment`: cross-analyzer
-    // anomalies over the OTHER selected analyzers' store time series. Only
-    // quality and sentiment register store extractors.
+    // Cross-analyzer enrichment: anomalies over the OTHER selected
+    // analyzers' time series. Only quality and sentiment provide one.
     let mut extracted: BTreeMap<String, ExtractedSeries> = BTreeMap::new();
     if selected.contains(&"quality") {
         if let Some(qm) = history::quality_metrics(ctx.matches) {
@@ -160,32 +137,8 @@ fn anomaly_sections(ctx: &RunContext, selected: &[&'static str]) -> Option<Vec<S
 }
 
 fn burndown_sections(ctx: &RunContext, _selected: &[&'static str]) -> Option<Vec<Section>> {
-    if ctx.head() {
-        // Head pipeline: one TC at tick 0 — the global dense history is a
-        // single `[total_current_lines]` sample; endTime is the HEAD commit's
-        // committer time (the only TC timestamp).
-        let metrics = history::burndown_head_metrics(ctx.matches)?;
-        let repo = cf_gitlib::Repository::open(&ctx.path).ok()?;
-        let head = repo.head().ok()?;
-        let commit = repo.lookup_commit(head).ok()?;
-        let end_time_ns = commit
-            .committer()
-            .when
-            .seconds()
-            .saturating_mul(1_000_000_000);
-        let chart_data = history_burndown::ChartData {
-            global_history: vec![vec![metrics.aggregate.total_current_lines]],
-            sampling: 30,
-            granularity: 30,
-            tick_size_ns: 24 * 3_600_000_000_000,
-            end_time_ns,
-            project_name: burndown_ndjson::repo_base_name(&ctx.path),
-        };
-        return Some(history_burndown::sections(&chart_data, &metrics));
-    }
-
     let agg = burndown_ndjson::burndown_run_aggregate(ctx.matches)?;
-    // The reference `buildChartData`: clamp negative dense values to zero.
+    // Clamp negative dense values to zero.
     let mut dense = agg.global_dense.clone();
     for row in &mut dense {
         for v in row.iter_mut() {
@@ -196,8 +149,8 @@ fn burndown_sections(ctx: &RunContext, _selected: &[&'static str]) -> Option<Vec
     }
     let chart_data = history_burndown::ChartData {
         global_history: dense,
-        sampling: agg.sampling,
-        granularity: agg.granularity,
+        sampling: agg.grid.sampling,
+        granularity: agg.grid.granularity,
         tick_size_ns: agg.tick_size_ns,
         end_time_ns: agg.end_time_ns,
         project_name: agg.project_name.clone(),
@@ -206,20 +159,7 @@ fn burndown_sections(ctx: &RunContext, _selected: &[&'static str]) -> Option<Vec
 }
 
 fn devs_sections(ctx: &RunContext, _selected: &[&'static str]) -> Option<Vec<Section>> {
-    // `--head` WITHOUT first-parent: the sequential TreeDiff has no
-    // predecessor for the lone non-root HEAD commit, so the devs leaf consumes
-    // an empty TC — the closed-form empty metrics (`devs_head_metrics`).
-    // WITH first-parent (forced whenever burndown is co-selected, e.g. the `*`
-    // selection), TreeDiff diffs HEAD against `parent(0)` and the full
-    // walk-path math applies — `devs_run_metrics`' walk already handles the
-    // single-HEAD window (verified against the live reference plot: head+first-parent
-    // carries the HEAD diff's languages and DMP line stats; head alone is
-    // empty).
-    let metrics = if ctx.head() && !crate::handlers::effective_first_parent(ctx.matches) {
-        history::devs_head_metrics(ctx.matches)?
-    } else {
-        history::devs_run_metrics(ctx.matches)?
-    };
+    let metrics = history::devs_run_metrics(ctx.matches)?;
     Some(history_devs::sections(&metrics))
 }
 
@@ -232,7 +172,7 @@ fn file_history_sections(ctx: &RunContext, _selected: &[&'static str]) -> Option
 }
 
 /// The plot-capable history analyzers in the separate-phase emit order
-/// (the reference `pl.Leaves` order is map-random; see the module docs).
+/// (see the module docs).
 pub const HISTORY_PLOT_ANALYZERS: &[HistoryPlotAnalyzer] = &[
     HistoryPlotAnalyzer {
         id: "history/quality",
@@ -290,9 +230,9 @@ pub const HISTORY_PLOT_ANALYZERS: &[HistoryPlotAnalyzer] = &[
 /// page set + `report.json` into `output_dir`. When `mixed` (the static plot
 /// phase already wrote into the same directory), the final index is rebuilt
 /// from the directory scan, title-sorted across both
-/// phases. Returns `None` when any selected id has no plot entry (caller falls
-/// through to the dispatch-blocked diagnostic), `Some(0)` on success,
-/// `Some(1)` on an I/O failure.
+/// phases. Returns `None` when any selected id has no plot entry (the caller
+/// reports that no pages were produced), `Some(0)` on success, `Some(1)` on
+/// an I/O failure.
 #[must_use]
 pub fn run_history_plot(
     ctx: &RunContext,
@@ -301,7 +241,7 @@ pub fn run_history_plot(
     mixed: bool,
 ) -> Option<i32> {
     // Resolve the selection against the registry, keeping the canonical emit
-    // order (the reference implementation's leaf order is map-random; the oracle measures the variance).
+    // order.
     let selected: Vec<&HistoryPlotAnalyzer> = HISTORY_PLOT_ANALYZERS
         .iter()
         .filter(|entry| history_ids.iter().any(|id| id == entry.id))
@@ -320,8 +260,8 @@ pub fn run_history_plot(
     }
 }
 
-/// Renders pages + index + report.json (the reference `runRender` [+ `rebuildPlotIndex`
-/// for mixed runs]).
+/// Renders pages + index + report.json (+ the rebuilt cross-phase index of a
+/// mixed run).
 fn render_history_plot(
     ctx: &RunContext,
     selected: &[&HistoryPlotAnalyzer],
@@ -330,12 +270,7 @@ fn render_history_plot(
     mixed: bool,
 ) -> io::Result<()> {
     create_output_dir(output_dir)?;
-
-    let renderer = MultiPageRenderer {
-        output_dir: output_dir.to_string(),
-        title: PLOT_PAGE_TITLE.to_string(),
-        theme: Theme::Dark,
-    };
+    let renderer = page_renderer(output_dir);
 
     // Pre-compute the ONE shared UAST walk for the co-selected heavy history
     // analyzers (imports/quality/sentiment/shotness/typos) — one task — then
@@ -351,8 +286,8 @@ fn render_history_plot(
 
     let mut pages: Vec<PageMeta> = Vec::new();
     for (entry, sections) in selected.iter().zip(all_sections) {
-        // The reference `renderOneAnalyzer`: a section-build error skips the page (the
-        // analyzer stays in analyzer_ids); empty sections still render a page.
+        // An analyzer without a report gets no page (it stays in
+        // analyzer_ids); empty sections still render a page.
         let Some(sections) = sections else {
             continue;
         };
@@ -368,32 +303,17 @@ fn render_history_plot(
     write_render_report_json(output_dir, selected_flags, &pages)?;
 
     if mixed {
-        // The reference `rebuildPlotIndex`: rescan the output dir and regenerate the
-        // unified title-sorted index across both phases.
+        // Rescan the output dir and regenerate the unified title-sorted index
+        // across both phases.
         renderer.rebuild_index()?;
     }
 
     Ok(())
 }
 
-/// The reference `os.MkdirAll(outputDir, 0o750)` (reference `renderDirPerm`).
-fn create_output_dir(output_dir: &str) -> io::Result<()> {
-    let existed = Path::new(output_dir).is_dir();
-    fs::create_dir_all(output_dir)?;
-    #[cfg(unix)]
-    if !existed {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(output_dir, fs::Permissions::from_mode(0o750))?;
-    }
-    #[cfg(not(unix))]
-    let _ = existed;
-    Ok(())
-}
-
-/// The reference `writeRenderReportJSON`: `{"analyzer_ids": [...], "pages":
-/// [{"ID", "Title", "Description"}...]}` — two-space indent, trailing newline,
-/// atomic 0o640 write. `PageMeta` has no json tags, so the reference field names are
-/// capitalized.
+/// `report.json` of the history phase: `{"analyzer_ids": [...], "pages":
+/// [{"ID", "Title", "Description"}...]}` (capitalized page keys), written by
+/// [`write_report_json_atomic`].
 fn write_render_report_json(
     output_dir: &str,
     analyzer_ids: &[&'static str],
@@ -420,18 +340,5 @@ fn write_render_report_json(
         })
         .collect();
     root.push("pages", GoValue::Array(page_values));
-
-    let bytes = Encoder::indented("  ")
-        .with_trailing_newline(true)
-        .encode(&GoValue::Map(root));
-
-    let final_path = Path::new(output_dir).join("report.json");
-    let tmp_path = Path::new(output_dir).join(".report.json.tmp");
-    fs::write(&tmp_path, &bytes)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&tmp_path, fs::Permissions::from_mode(REPORT_JSON_MODE))?;
-    }
-    fs::rename(&tmp_path, &final_path)
+    write_report_json_atomic(output_dir, &GoValue::Map(root))
 }

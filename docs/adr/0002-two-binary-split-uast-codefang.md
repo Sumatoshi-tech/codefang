@@ -27,7 +27,7 @@ The original `hercules` was a monolith. Codefang has two distinct jobs: turning 
 
 Chosen option: "Two binaries — `uast` and `codefang`", because parsing and analysis are separable responsibilities with different consumers, and a pipe-friendly split lets each tool stay small while still composing into a pipeline.
 
-`uast` (`bins/uast/`) turns source code into UAST and exposes `parse`, `query`, `diff`, `explore`, `analyze`, and `server`. `codefang` (`bins/codefang/`) consumes UASTs for static analysis or Git repositories for history analysis via `run`, `render`, and related commands. Both CLIs are thin entrypoints over the shared workspace crates (`cf-uast*` for parsing, `cf-commands` and the analyzer crates for analysis), so the split is at the command surface, not a duplication of core logic. The canonical composition is `codefang run -a static/* --format json /path/to/repo`; `uast parse` can also produce a UAST for inspection or for piping into other tools.
+`uast` (`bins/uast/`) turns source code into UAST and exposes `parse`, `query`, `diff`, `explore`, `analyze`, `validate`, and `mapping`. `codefang` (`bins/codefang/`) consumes UASTs for static analysis or Git repositories for history analysis via `run` (plus `version` and `completion`). Both CLIs are thin entrypoints over the shared workspace crates (`cf-uast*` for parsing, `cf-commands` and the analyzer crates for analysis), so the split is at the command surface, not a duplication of core logic. The canonical composition is `codefang run -a static/* --format json /path/to/repo`; `uast parse` can also produce a UAST for inspection or for piping into other tools.
 
 ### Consequences
 

@@ -1,11 +1,8 @@
 //! File classification categories.
 //!
-//! The `Category` constants and canonical ordering shared by composition and
-//! file-history analysis. This crate hosts the minimal surface it depends on;
-//! when the file-history crate is fully built out, these can move there and be
-//! re-exported.
-
-use std::collections::HashMap;
+//! [`Category`] is the 8-way classification shared with file-history
+//! analysis; [`FileClass`] is what the composition analyzer reports — every
+//! `Category` plus [`FileClass::Other`] for files that match no rule.
 
 /// A file classification type.
 ///
@@ -47,79 +44,156 @@ impl Category {
         }
     }
 
-    /// Parses a wire string back into a [`Category`].
-    ///
-    /// Returns `None` for any string that is not a known category. Round-trips
-    /// with [`Category::as_str`]:
-    ///
-    /// ```
-    /// use cf_composition::Category;
-    /// assert_eq!(Category::from_str("source"), Some(Category::Source));
-    /// assert_eq!(Category::from_str(Category::Binary.as_str()), Some(Category::Binary));
-    /// assert_eq!(Category::from_str("nope"), None);
-    /// ```
+    /// Returns the capitalized display name (`Source`, `Dotfile`, …).
     #[must_use]
-    // The lookup is fallible-by-`Option` (not `Result`), so the inherent
-    // method intentionally does not implement `std::str::FromStr`.
-    #[allow(clippy::should_implement_trait)]
-    pub fn from_str(value: &str) -> Option<Category> {
-        match value {
-            "source" => Some(Category::Source),
-            "vendor" => Some(Category::Vendor),
-            "generated" => Some(Category::Generated),
-            "documentation" => Some(Category::Documentation),
-            "configuration" => Some(Category::Configuration),
-            "image" => Some(Category::Image),
-            "dotfile" => Some(Category::DotFile),
-            "binary" => Some(Category::Binary),
-            _ => None,
+    pub const fn display_name(self) -> &'static str {
+        match self {
+            Category::Source => "Source",
+            Category::Vendor => "Vendor",
+            Category::Generated => "Generated",
+            Category::Documentation => "Documentation",
+            Category::Configuration => "Configuration",
+            Category::Image => "Image",
+            Category::DotFile => "Dotfile",
+            Category::Binary => "Binary",
         }
     }
 }
 
-/// The canonical category order for display and charting:
-/// source, documentation, configuration, vendor, generated, dotfile, image,
-/// binary. This ordering is load-bearing — it governs the order of distribution
-/// items and issues in the report section, and the iteration order in
-/// [`crate::aggregator::Aggregator::get_result`].
-pub const ALL_CATEGORIES: [Category; 8] = [
-    Category::Source,
-    Category::Documentation,
-    Category::Configuration,
-    Category::Vendor,
-    Category::Generated,
-    Category::DotFile,
-    Category::Image,
-    Category::Binary,
-];
-
-/// Tracks counts per file category.
-///
-/// Unknown category strings (those not in [`ALL_CATEGORIES`]) are still counted
-/// under their raw string key so the "skips invalid category" behaviour holds:
-/// the count is recorded but never surfaces in
-/// [`crate::aggregator::Aggregator::get_result`] because the result only
-/// iterates the known categories.
-#[derive(Debug, Default, Clone)]
-pub struct CategoryCounts {
-    counts: HashMap<String, i64>,
+/// A composition bucket: one of the shared [`Category`] values, or `Other`
+/// for a file that matches no classification rule (unknown extension, no
+/// recognizable language).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FileClass {
+    /// One of the shared categories.
+    Category(Category),
+    /// Matches no rule.
+    Other,
 }
 
-impl CategoryCounts {
+/// Wire string of [`FileClass::Other`].
+pub const OTHER_STR: &str = "other";
+/// Display name of [`FileClass::Other`].
+const OTHER_DISPLAY: &str = "Other";
+
+impl FileClass {
+    /// Returns the wire string (`"source"`, …, `"other"`).
+    ///
+    /// ```
+    /// use cf_composition::{Category, FileClass};
+    /// assert_eq!(FileClass::Category(Category::Vendor).as_str(), "vendor");
+    /// assert_eq!(FileClass::Other.as_str(), "other");
+    /// ```
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            FileClass::Category(c) => c.as_str(),
+            FileClass::Other => OTHER_STR,
+        }
+    }
+
+    /// Returns the capitalized display name (`Vendor`, `Other`, …).
+    #[must_use]
+    pub const fn display_name(self) -> &'static str {
+        match self {
+            FileClass::Category(c) => c.display_name(),
+            FileClass::Other => OTHER_DISPLAY,
+        }
+    }
+
+    /// Position of this class in [`ALL_FILE_CLASSES`].
+    #[must_use]
+    pub fn index(self) -> usize {
+        ALL_FILE_CLASSES
+            .iter()
+            .position(|c| *c == self)
+            .expect("every FileClass is listed in ALL_FILE_CLASSES")
+    }
+}
+
+impl From<Category> for FileClass {
+    fn from(category: Category) -> Self {
+        FileClass::Category(category)
+    }
+}
+
+/// The canonical class order for reports and charts: source, documentation,
+/// configuration, vendor, generated, dotfile, image, binary, other. It
+/// governs the order of distribution items and issues in the report section
+/// and the iteration order of the aggregated report.
+pub const ALL_FILE_CLASSES: [FileClass; 9] = [
+    FileClass::Category(Category::Source),
+    FileClass::Category(Category::Documentation),
+    FileClass::Category(Category::Configuration),
+    FileClass::Category(Category::Vendor),
+    FileClass::Category(Category::Generated),
+    FileClass::Category(Category::DotFile),
+    FileClass::Category(Category::Image),
+    FileClass::Category(Category::Binary),
+    FileClass::Other,
+];
+
+/// Per-class file counts.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ClassCounts {
+    counts: [i64; ALL_FILE_CLASSES.len()],
+}
+
+impl ClassCounts {
     /// Creates an empty counter.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Increases the count for a category string by one.
-    pub fn increment(&mut self, category: &str) {
-        *self.counts.entry(category.to_string()).or_insert(0) += 1;
+    /// Increases the count for `class` by one.
+    pub fn increment(&mut self, class: FileClass) {
+        self.counts[class.index()] += 1;
     }
 
-    /// Returns the count for a category (zero if never incremented).
+    /// Returns the count for `class` (zero if never incremented).
     #[must_use]
-    pub fn get(&self, category: Category) -> i64 {
-        self.counts.get(category.as_str()).copied().unwrap_or(0)
+    pub fn get(&self, class: FileClass) -> i64 {
+        self.counts[class.index()]
+    }
+
+    /// Sum over every class.
+    #[must_use]
+    pub fn total(&self) -> i64 {
+        self.counts.iter().sum()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wire_strings_and_display_names() {
+        assert_eq!(Category::DotFile.as_str(), "dotfile");
+        assert_eq!(Category::DotFile.display_name(), "Dotfile");
+        assert_eq!(FileClass::Other.display_name(), "Other");
+        assert_eq!(FileClass::from(Category::Image).as_str(), "image");
+    }
+
+    #[test]
+    fn every_class_is_listed_once() {
+        for (i, class) in ALL_FILE_CLASSES.iter().enumerate() {
+            assert_eq!(class.index(), i);
+        }
+        assert_eq!(ALL_FILE_CLASSES.len(), 9);
+        assert_eq!(ALL_FILE_CLASSES[8], FileClass::Other);
+    }
+
+    #[test]
+    fn counts_increment_and_total() {
+        let mut c = ClassCounts::new();
+        c.increment(FileClass::Other);
+        c.increment(FileClass::Other);
+        c.increment(Category::Source.into());
+        assert_eq!(c.get(FileClass::Other), 2);
+        assert_eq!(c.get(Category::Source.into()), 1);
+        assert_eq!(c.get(Category::Binary.into()), 0);
+        assert_eq!(c.total(), 3);
     }
 }

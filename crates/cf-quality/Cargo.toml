@@ -8,16 +8,22 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Spill encoding of finished history results (cf-commands `spill`).
+serde = { workspace = true }
 # Serialization compat (DESIGN section 2): all machine output goes through these.
 cf-gojson = { workspace = true }
 cf-reportutil = { path = "../cf-reportutil" }
 # Numeric parity for mean/median/P95/max/min/sum (shared statistics kernel).
 cf-alg-stats = { path = "../cf-alg-stats" }
+# The per-file sample is the four static analyzers' own math over the parsed
+# UAST (`analyzer::analyze_file`), so the quality numbers are the static
+# analyzers' numbers for the same file.
+cf-uast-node = { path = "../cf-uast-node" }
+cf-complexity = { path = "../cf-complexity" }
+cf-halstead = { path = "../cf-halstead" }
+cf-comments = { path = "../cf-comments" }
+cf-cohesion = { path = "../cf-cohesion" }
 
-# NOTE: the four component analyzers (cf-complexity, cf-halstead, cf-comments,
-# cf-cohesion) are consumed only via the `ScalarReport` / `ComponentSet` traits
-# in `analyzer.rs`, so they are NOT direct build dependencies yet. They are
-# wired in when the framework layer (Consume over cf-plumbing + cf-analyze
-# BaseHistoryAnalyzer) is implemented. Listing them now would add unused deps
-# (and break the crate whenever those scaffolds lack targets), so they are
-# deferred until there are real call sites.
+[dev-dependencies]
+# Real parsed trees for the per-file sample tests.
+cf-uast = { path = "../cf-uast" }

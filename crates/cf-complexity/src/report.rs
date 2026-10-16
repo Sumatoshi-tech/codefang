@@ -1,34 +1,36 @@
-//! Static-analysis report computation for `static/complexity`.
+//! The aggregated, multi-file report view (`--format yaml|bin` payload, and
+//! the numbers behind the JSON sections report).
 //!
-//! Builds the aggregated metric view that the static pipeline's
-//! `--format json|yaml|bin` captures serialize. The streaming static framework
-//! (walk → per-file UAST parse → analyzer → stamp → aggregate) is reproduced
-//! by the caller; this module takes the aggregated, file-stamped per-function
-//! inputs and builds the exact [`cf_gojson::GoValue`] the report contract
-//! pins.
+//! The static pipeline stamps every function with its file and language and
+//! hands the whole list here; this module owns the aggregate math, the
+//! deterministic ordering, and the `ComputedMetrics` value tree:
 //!
-//! Field/key ordering follows the report-format contract: the top-level value
-//! and the per-function / aggregate values keep declaration order
-//! (struct-origin maps), while `distribution` (a string-keyed map) byte-sorts.
-//! `function_complexity` and `high_risk_functions` are ordered by the pinned
-//! unstable sort (pdqsort) over the aggregation-order input — see
-//! [`crate::gosort`].
+//! * `function_complexity`: every function with density and risk level, in
+//!   [`function_order`];
+//! * `distribution`: `simple` / `moderate` / `complex` counts;
+//! * `high_risk_functions`: functions crossing a high threshold, by risk
+//!   priority then [`function_order`];
+//! * `aggregate`: the [`Aggregate`] scalars.
 
-use crate::gosort::go_sort_slice;
+use std::cmp::Ordering;
+
 use cf_gojson::{GoMap, GoValue, MapOrigin};
 
-/// One function's aggregated, file-stamped complexity input.
-/// `source_file` / `language` / `directory` are stamped by the static
-/// pipeline.
-#[derive(Debug, Clone)]
+use crate::thresholds::{
+    complexity_message, distribution_bucket, health_score, risk_issues, risk_level, risk_priority,
+};
+use crate::FunctionMetrics;
+
+/// One function's metrics stamped with its file, language and directory.
+#[derive(Debug, Clone, PartialEq)]
 pub struct FunctionInput {
     /// Function name.
     pub name: String,
-    /// Relative source file (stamped; `_source_file`).
+    /// Source file relative to the analyzed root.
     pub source_file: String,
-    /// Language (stamped; `_language`).
+    /// Detected language.
     pub language: String,
-    /// Directory of the source file (stamped; `_directory`).
+    /// Directory of `source_file` (`.` at the root).
     pub directory: String,
     /// Cyclomatic complexity.
     pub cyclomatic_complexity: i64,
@@ -36,262 +38,250 @@ pub struct FunctionInput {
     pub cognitive_complexity: i64,
     /// Maximum nesting depth.
     pub nesting_depth: i64,
-    /// Estimated lines of code.
+    /// Lines of code.
     pub lines_of_code: i64,
+    /// 1-based line where the function starts (0 when unknown).
+    pub line: i64,
 }
 
-/// Aggregated report-level scalars (summed across files by the aggregator).
-///
-/// Note: the aggregation pipeline stores `cognitive_complexity` /
-/// `nesting_depth` as float sums, which the scalar-parsing step's strict int
-/// assertion then drops to 0 — so the aggregate view always reports those two
-/// as 0 (reference-implementation behavior, pinned by the differential gate).
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ReportScalars {
-    /// Total functions across all files.
+impl FunctionInput {
+    /// Stamps per-file metrics with their file, language and directory.
+    #[must_use]
+    pub fn stamped(
+        m: &FunctionMetrics,
+        source_file: &str,
+        language: &str,
+        directory: &str,
+    ) -> Self {
+        FunctionInput {
+            name: m.name.clone(),
+            source_file: source_file.to_string(),
+            language: language.to_string(),
+            directory: directory.to_string(),
+            cyclomatic_complexity: m.cyclomatic_complexity,
+            cognitive_complexity: m.cognitive_complexity,
+            nesting_depth: m.nesting_depth,
+            lines_of_code: m.lines_of_code,
+            line: m.line,
+        }
+    }
+
+    /// Decision points (`cyclomatic - 1`, never negative).
+    #[must_use]
+    pub fn decision_points(&self) -> i64 {
+        (self.cyclomatic_complexity - 1).max(0)
+    }
+
+    /// Cyclomatic complexity per line of code (0 without lines).
+    #[must_use]
+    pub fn density(&self) -> f64 {
+        complexity_density(self.cyclomatic_complexity, self.lines_of_code)
+    }
+
+    /// Risk level of this function (see [`risk_level`]).
+    #[must_use]
+    pub fn risk(&self) -> &'static str {
+        risk_level(
+            self.cyclomatic_complexity,
+            self.cognitive_complexity,
+            self.nesting_depth,
+        )
+    }
+}
+
+/// Cyclomatic complexity per line of code; `0.0` when there are no lines.
+#[must_use]
+pub fn complexity_density(cyclomatic: i64, lines_of_code: i64) -> f64 {
+    if lines_of_code > 0 {
+        cyclomatic as f64 / lines_of_code as f64
+    } else {
+        0.0
+    }
+}
+
+/// Report-level scalars over all functions.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Aggregate {
+    /// Number of functions.
     pub total_functions: i64,
-    /// Average complexity (`total_complexity / total_functions`).
+    /// Function-weighted average cyclomatic complexity
+    /// (`total_complexity / total_functions`; 0 without functions).
     pub average_complexity: f64,
-    /// Maximum per-function cyclomatic complexity across all files.
+    /// Maximum per-function cyclomatic complexity.
     pub max_complexity: i64,
-    /// Total cyclomatic complexity across all files.
+    /// Sum of cyclomatic complexity.
     pub total_complexity: i64,
-    /// Total decision points across all files.
+    /// Sum of cognitive complexity.
+    pub cognitive_complexity: i64,
+    /// Maximum per-function nesting depth.
+    pub nesting_depth: i64,
+    /// Sum of decision points.
     pub decision_points: i64,
+    /// Health score (0..=100) from the average.
+    pub health_score: f64,
+    /// Message for the average.
+    pub message: &'static str,
 }
 
-// --- Thresholds (report contract) ---
-const CYCLOMATIC_THRESHOLD_HIGH: i64 = 10;
-const CYCLOMATIC_THRESHOLD_MODERATE: i64 = 5;
-const COGNITIVE_THRESHOLD_HIGH: i64 = 15;
-const COGNITIVE_THRESHOLD_MODERATE: i64 = 7;
-const NESTING_THRESHOLD_HIGH: i64 = 5;
-const NESTING_THRESHOLD_MODERATE: i64 = 3;
-const RISK_SCORE_CRITICAL: i64 = 5;
-const RISK_SCORE_HIGH: i64 = 3;
-
-/// The aggregate `message` text keyed by average complexity. Note this differs
-/// from the single-file analyzer's message wording for the mid bands; both
-/// texts are part of the report contract.
-fn build_complexity_message(score: f64) -> &'static str {
-    if score <= 1.0 {
-        "Excellent complexity - functions are simple and maintainable"
-    } else if score <= 3.0 {
-        "Good complexity - functions have reasonable complexity"
-    } else if score <= 7.0 {
-        "Fair complexity - some functions could be simplified"
+/// Computes the [`Aggregate`] scalars.
+///
+/// ```
+/// use cf_complexity::report::{aggregate, FunctionInput};
+///
+/// let f = |name: &str, cc: i64, cog: i64, nest: i64| FunctionInput {
+///     name: name.into(), source_file: "a.go".into(), language: "go".into(),
+///     directory: ".".into(), cyclomatic_complexity: cc, cognitive_complexity: cog,
+///     nesting_depth: nest, lines_of_code: 10, line: 1,
+/// };
+/// let agg = aggregate(&[f("a", 3, 2, 1), f("b", 5, 7, 3)]);
+/// assert_eq!(agg.total_functions, 2);
+/// assert_eq!(agg.total_complexity, 8);
+/// assert_eq!(agg.cognitive_complexity, 9);
+/// assert_eq!(agg.nesting_depth, 3);
+/// assert_eq!(agg.max_complexity, 5);
+/// assert_eq!(agg.decision_points, 6);
+/// assert!((agg.average_complexity - 4.0).abs() < f64::EPSILON);
+/// ```
+#[must_use]
+pub fn aggregate(functions: &[FunctionInput]) -> Aggregate {
+    let total_functions = functions.len() as i64;
+    let total_complexity: i64 = functions.iter().map(|f| f.cyclomatic_complexity).sum();
+    let average_complexity = if total_functions > 0 {
+        total_complexity as f64 / total_functions as f64
     } else {
-        "High complexity - functions are complex and should be refactored"
+        0.0
+    };
+    Aggregate {
+        total_functions,
+        average_complexity,
+        max_complexity: functions
+            .iter()
+            .map(|f| f.cyclomatic_complexity)
+            .max()
+            .unwrap_or(0),
+        total_complexity,
+        cognitive_complexity: functions.iter().map(|f| f.cognitive_complexity).sum(),
+        nesting_depth: functions.iter().map(|f| f.nesting_depth).max().unwrap_or(0),
+        decision_points: functions.iter().map(FunctionInput::decision_points).sum(),
+        health_score: health_score(average_complexity),
+        message: complexity_message(average_complexity),
     }
 }
 
-fn classify_function_risk(cyclomatic: i64, cognitive: i64, nesting: i64) -> &'static str {
-    let mut score = 0;
-    if cyclomatic >= CYCLOMATIC_THRESHOLD_HIGH {
-        score += 2;
-    } else if cyclomatic >= CYCLOMATIC_THRESHOLD_MODERATE {
-        score += 1;
-    }
-    if cognitive >= COGNITIVE_THRESHOLD_HIGH {
-        score += 2;
-    } else if cognitive >= COGNITIVE_THRESHOLD_MODERATE {
-        score += 1;
-    }
-    if nesting >= NESTING_THRESHOLD_HIGH {
-        score += 2;
-    } else if nesting >= NESTING_THRESHOLD_MODERATE {
-        score += 1;
-    }
-    if score >= RISK_SCORE_CRITICAL {
-        "CRITICAL"
-    } else if score >= RISK_SCORE_HIGH {
-        "HIGH"
-    } else if score >= 1 {
-        "MEDIUM"
-    } else {
-        "LOW"
-    }
+/// The report ordering: cyclomatic descending, cognitive descending, nesting
+/// descending, then name, file and line ascending — a total order, so ties
+/// are deterministic.
+///
+/// ```
+/// use cf_complexity::report::{function_order, FunctionInput};
+/// use std::cmp::Ordering;
+///
+/// let f = |name: &str, file: &str, cc: i64| FunctionInput {
+///     name: name.into(), source_file: file.into(), language: "go".into(),
+///     directory: ".".into(), cyclomatic_complexity: cc, cognitive_complexity: 0,
+///     nesting_depth: 0, lines_of_code: 1, line: 1,
+/// };
+/// assert_eq!(function_order(&f("a", "x.go", 5), &f("b", "x.go", 2)), Ordering::Less);
+/// assert_eq!(function_order(&f("b", "x.go", 2), &f("a", "x.go", 2)), Ordering::Greater);
+/// assert_eq!(function_order(&f("a", "a/x.go", 2), &f("a", "b/x.go", 2)), Ordering::Less);
+/// ```
+#[must_use]
+pub fn function_order(a: &FunctionInput, b: &FunctionInput) -> Ordering {
+    b.cyclomatic_complexity
+        .cmp(&a.cyclomatic_complexity)
+        .then(b.cognitive_complexity.cmp(&a.cognitive_complexity))
+        .then(b.nesting_depth.cmp(&a.nesting_depth))
+        .then_with(|| a.name.cmp(&b.name))
+        .then_with(|| a.source_file.cmp(&b.source_file))
+        .then(a.line.cmp(&b.line))
 }
 
-/// Risk sort priority (CRITICAL < HIGH < MEDIUM < LOW).
-fn risk_priority(level: &str) -> i32 {
-    match level {
-        "CRITICAL" => 0,
-        "HIGH" => 1,
-        "MEDIUM" => 2,
-        _ => 3,
-    }
-}
-
-/// Distribution bucket label for a cyclomatic value.
-fn classify_complexity_level(cyclomatic: i64) -> &'static str {
-    if cyclomatic <= CYCLOMATIC_THRESHOLD_MODERATE {
-        "simple"
-    } else if cyclomatic <= CYCLOMATIC_THRESHOLD_HIGH {
-        "moderate"
-    } else {
-        "complex"
-    }
-}
-
-fn calculate_health_score(avg: f64) -> f64 {
-    if avg <= 1.0 {
-        100.0
-    } else if avg <= 3.0 {
-        80.0 + (3.0 - avg) * 10.0
-    } else if avg <= 7.0 {
-        50.0 + (7.0 - avg) * 7.5
-    } else {
-        f64::max(0.0, 50.0 - (avg - 7.0) * 5.0)
-    }
-}
-
-/// Inserts a string field only when non-empty (`omitempty` semantics for
-/// strings).
+/// Inserts a string field only when non-empty.
 fn insert_omitempty_str(m: &mut GoMap, key: &str, value: &str) {
     if !value.is_empty() {
         m.insert(key, GoValue::Str(value.to_string()));
     }
 }
 
-/// A `function_complexity` row: a function with its density and risk level.
-struct FcRow<'a> {
-    f: &'a FunctionInput,
-    density: f64,
-    risk: &'static str,
+fn stamp_fields(o: &mut GoMap, f: &FunctionInput) {
+    o.insert("name", GoValue::Str(f.name.clone()));
+    insert_omitempty_str(o, "source_file", &f.source_file);
+    insert_omitempty_str(o, "language", &f.language);
+    insert_omitempty_str(o, "directory", &f.directory);
+    o.insert(
+        "cyclomatic_complexity",
+        GoValue::Int(f.cyclomatic_complexity),
+    );
+    o.insert("cognitive_complexity", GoValue::Int(f.cognitive_complexity));
 }
 
-/// A `high_risk_functions` row: a function with at least one issue.
-struct HrRow<'a> {
-    f: &'a FunctionInput,
-    risk: &'static str,
-    issues: Vec<&'static str>,
-}
-
-/// Builds `function_complexity`: per-function with density + risk, sorted by
-/// cyclomatic desc via the pinned pdqsort.
+/// `function_complexity`: every function with density and risk, in
+/// [`function_order`].
 fn build_function_complexity(functions: &[FunctionInput]) -> Vec<GoValue> {
-    let mut fc: Vec<FcRow> = functions
-        .iter()
+    let mut sorted: Vec<&FunctionInput> = functions.iter().collect();
+    sorted.sort_by(|a, b| function_order(a, b));
+    sorted
+        .into_iter()
         .map(|f| {
-            let density = if f.lines_of_code > 0 {
-                f.cyclomatic_complexity as f64 / f.lines_of_code as f64
-            } else {
-                0.0
-            };
-            let risk = classify_function_risk(
-                f.cyclomatic_complexity,
-                f.cognitive_complexity,
-                f.nesting_depth,
-            );
-            FcRow { f, density, risk }
-        })
-        .collect();
-    go_sort_slice(&mut fc, |a, b| {
-        a.f.cyclomatic_complexity > b.f.cyclomatic_complexity
-    });
-
-    fc.iter()
-        .map(|row| {
             let mut o = GoMap::new(MapOrigin::Struct);
-            o.insert("name", GoValue::Str(row.f.name.clone()));
-            insert_omitempty_str(&mut o, "source_file", &row.f.source_file);
-            insert_omitempty_str(&mut o, "language", &row.f.language);
-            insert_omitempty_str(&mut o, "directory", &row.f.directory);
-            o.insert(
-                "cyclomatic_complexity",
-                GoValue::Int(row.f.cyclomatic_complexity),
-            );
-            o.insert(
-                "cognitive_complexity",
-                GoValue::Int(row.f.cognitive_complexity),
-            );
-            o.insert("nesting_depth", GoValue::Int(row.f.nesting_depth));
-            o.insert("lines_of_code", GoValue::Int(row.f.lines_of_code));
-            o.insert("complexity_density", GoValue::Float(row.density));
-            o.insert("risk_level", GoValue::Str(row.risk.to_string()));
+            stamp_fields(&mut o, f);
+            o.insert("nesting_depth", GoValue::Int(f.nesting_depth));
+            o.insert("lines_of_code", GoValue::Int(f.lines_of_code));
+            o.insert("complexity_density", GoValue::Float(f.density()));
+            o.insert("risk_level", GoValue::Str(f.risk().to_string()));
             GoValue::Map(o)
         })
         .collect()
 }
 
-/// Builds `distribution`: a string-keyed map (byte-sorted on encode) holding
-/// only the buckets with a non-zero count.
+/// `distribution`: the non-zero buckets (byte-sorted keys on encode).
 fn build_distribution(functions: &[FunctionInput]) -> GoMap {
-    let mut simple = 0i64;
-    let mut moderate = 0i64;
-    let mut complex = 0i64;
-    for f in functions {
-        match classify_complexity_level(f.cyclomatic_complexity) {
-            "simple" => simple += 1,
-            "moderate" => moderate += 1,
-            _ => complex += 1,
-        }
-    }
     let mut dist = GoMap::new(MapOrigin::Map);
-    if complex > 0 {
-        dist.insert("complex", GoValue::Int(complex));
-    }
-    if moderate > 0 {
-        dist.insert("moderate", GoValue::Int(moderate));
-    }
-    if simple > 0 {
-        dist.insert("simple", GoValue::Int(simple));
+    for bucket in ["complex", "moderate", "simple"] {
+        let count = functions
+            .iter()
+            .filter(|f| distribution_bucket(f.cyclomatic_complexity) == bucket)
+            .count() as i64;
+        if count > 0 {
+            dist.insert(bucket, GoValue::Int(count));
+        }
     }
     dist
 }
 
-/// Builds `high_risk_functions`: functions with issues, sorted by risk
-/// priority via the pinned pdqsort.
+/// `high_risk_functions`: functions with at least one issue, by risk
+/// priority then [`function_order`].
 fn build_high_risk_functions(functions: &[FunctionInput]) -> Vec<GoValue> {
-    let mut hr: Vec<HrRow> = Vec::new();
-    for f in functions {
-        let mut issues: Vec<&'static str> = Vec::new();
-        if f.cyclomatic_complexity >= CYCLOMATIC_THRESHOLD_HIGH {
-            issues.push("High cyclomatic complexity");
-        }
-        if f.cognitive_complexity >= COGNITIVE_THRESHOLD_HIGH {
-            issues.push("High cognitive complexity");
-        }
-        if f.nesting_depth >= NESTING_THRESHOLD_HIGH {
-            issues.push("Deep nesting");
-        }
-        if issues.is_empty() {
-            continue;
-        }
-        let risk = classify_function_risk(
-            f.cyclomatic_complexity,
-            f.cognitive_complexity,
-            f.nesting_depth,
-        );
-        hr.push(HrRow { f, risk, issues });
-    }
-    go_sort_slice(&mut hr, |a, b| {
-        risk_priority(a.risk) < risk_priority(b.risk)
+    let mut rows: Vec<(&FunctionInput, Vec<&'static str>)> = functions
+        .iter()
+        .map(|f| {
+            (
+                f,
+                risk_issues(
+                    f.cyclomatic_complexity,
+                    f.cognitive_complexity,
+                    f.nesting_depth,
+                ),
+            )
+        })
+        .filter(|(_, issues)| !issues.is_empty())
+        .collect();
+    rows.sort_by(|(a, _), (b, _)| {
+        risk_priority(a.risk())
+            .cmp(&risk_priority(b.risk()))
+            .then_with(|| function_order(a, b))
     });
-
-    hr.iter()
-        .map(|row| {
+    rows.into_iter()
+        .map(|(f, issues)| {
             let mut o = GoMap::new(MapOrigin::Struct);
-            o.insert("name", GoValue::Str(row.f.name.clone()));
-            insert_omitempty_str(&mut o, "source_file", &row.f.source_file);
-            insert_omitempty_str(&mut o, "language", &row.f.language);
-            insert_omitempty_str(&mut o, "directory", &row.f.directory);
-            o.insert(
-                "cyclomatic_complexity",
-                GoValue::Int(row.f.cyclomatic_complexity),
-            );
-            o.insert(
-                "cognitive_complexity",
-                GoValue::Int(row.f.cognitive_complexity),
-            );
-            o.insert("risk_level", GoValue::Str(row.risk.to_string()));
+            stamp_fields(&mut o, f);
+            o.insert("risk_level", GoValue::Str(f.risk().to_string()));
             o.insert(
                 "issues",
                 GoValue::Array(
-                    row.issues
-                        .iter()
-                        .map(|s| GoValue::Str((*s).to_string()))
+                    issues
+                        .into_iter()
+                        .map(|s| GoValue::Str(s.to_string()))
                         .collect(),
                 ),
             );
@@ -300,71 +290,48 @@ fn build_high_risk_functions(functions: &[FunctionInput]) -> Vec<GoValue> {
         .collect()
 }
 
-/// Builds the `aggregate` struct value.
-fn build_aggregate(scalars: &ReportScalars) -> GoMap {
-    let mut agg = GoMap::new(MapOrigin::Struct);
-    agg.insert("total_functions", GoValue::Int(scalars.total_functions));
-    agg.insert(
-        "average_complexity",
-        GoValue::Float(scalars.average_complexity),
+/// `aggregate`: the [`Aggregate`] scalars as a struct-origin map.
+fn build_aggregate(agg: &Aggregate) -> GoMap {
+    let mut m = GoMap::new(MapOrigin::Struct);
+    m.insert("total_functions", GoValue::Int(agg.total_functions));
+    m.insert("average_complexity", GoValue::Float(agg.average_complexity));
+    m.insert("max_complexity", GoValue::Int(agg.max_complexity));
+    m.insert("total_complexity", GoValue::Int(agg.total_complexity));
+    m.insert(
+        "cognitive_complexity",
+        GoValue::Int(agg.cognitive_complexity),
     );
-    agg.insert("max_complexity", GoValue::Int(scalars.max_complexity));
-    agg.insert("total_complexity", GoValue::Int(scalars.total_complexity));
-    // The aggregator's float-summed cognitive/nesting are dropped to 0 by the
-    // strict int assertion in scalar parsing (see ReportScalars docs).
-    agg.insert("cognitive_complexity", GoValue::Int(0));
-    agg.insert("nesting_depth", GoValue::Int(0));
-    agg.insert("decision_points", GoValue::Int(scalars.decision_points));
-    agg.insert(
-        "health_score",
-        GoValue::Float(calculate_health_score(scalars.average_complexity)),
-    );
-    agg.insert(
-        "message",
-        GoValue::Str(build_complexity_message(scalars.average_complexity).to_string()),
-    );
-    agg
+    m.insert("nesting_depth", GoValue::Int(agg.nesting_depth));
+    m.insert("decision_points", GoValue::Int(agg.decision_points));
+    m.insert("health_score", GoValue::Float(agg.health_score));
+    m.insert("message", GoValue::Str(agg.message.to_string()));
+    m
 }
 
-/// Builds the full computed-metrics value tree (the bin/json payload root).
-///
-/// `functions` is the aggregation-order list (walk order × per-file analyzer
-/// order); the per-metric unstable sorts are applied here exactly as the
-/// report contract pins them.
-///
-/// The returned struct-origin map carries, in declaration order,
-/// `function_complexity`, `distribution`, `high_risk_functions`, and
-/// `aggregate`:
+/// Builds the `ComputedMetrics` value tree (the yaml/bin payload root):
+/// `function_complexity`, `distribution`, `high_risk_functions`, `aggregate`
+/// in that declaration order.
 ///
 /// ```
-/// use cf_complexity::report::{computed_metrics, FunctionInput, ReportScalars};
+/// use cf_complexity::report::{computed_metrics, FunctionInput};
+/// use cf_gojson::GoValue;
 ///
 /// let funcs = vec![FunctionInput {
-///     name: "foo".into(),
-///     source_file: "a.go".into(),
-///     language: "go".into(),
-///     directory: ".".into(),
-///     cyclomatic_complexity: 2,
-///     cognitive_complexity: 1,
-///     nesting_depth: 1,
-///     lines_of_code: 10,
+///     name: "foo".into(), source_file: "a.go".into(), language: "go".into(),
+///     directory: ".".into(), cyclomatic_complexity: 2, cognitive_complexity: 1,
+///     nesting_depth: 1, lines_of_code: 10, line: 3,
 /// }];
-/// let scalars = ReportScalars {
-///     total_functions: 1,
-///     average_complexity: 2.0,
-///     max_complexity: 2,
-///     total_complexity: 2,
-///     decision_points: 1,
-/// };
-///
-/// let value = computed_metrics(&funcs, &scalars);
+/// let value = computed_metrics(&funcs);
 /// let m = value.as_map().unwrap();
 /// for key in ["function_complexity", "distribution", "high_risk_functions", "aggregate"] {
 ///     assert!(m.contains_key(key), "missing {key}");
 /// }
+/// let agg = m.get("aggregate").unwrap().as_map().unwrap();
+/// assert_eq!(agg.get("cognitive_complexity"), Some(&GoValue::Int(1)));
+/// assert_eq!(agg.get("nesting_depth"), Some(&GoValue::Int(1)));
 /// ```
 #[must_use]
-pub fn computed_metrics(functions: &[FunctionInput], scalars: &ReportScalars) -> GoValue {
+pub fn computed_metrics(functions: &[FunctionInput]) -> GoValue {
     let mut root = GoMap::new(MapOrigin::Struct);
     root.insert(
         "function_complexity",
@@ -375,6 +342,134 @@ pub fn computed_metrics(functions: &[FunctionInput], scalars: &ReportScalars) ->
         "high_risk_functions",
         GoValue::Array(build_high_risk_functions(functions)),
     );
-    root.insert("aggregate", GoValue::Map(build_aggregate(scalars)));
+    root.insert(
+        "aggregate",
+        GoValue::Map(build_aggregate(&aggregate(functions))),
+    );
     GoValue::Map(root)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{aggregate, computed_metrics, function_order, FunctionInput};
+    use crate::thresholds::{MSG_EXCELLENT, RISK_CRITICAL, RISK_LOW};
+    use cf_gojson::GoValue;
+
+    fn f(name: &str, file: &str, cc: i64, cog: i64, nest: i64) -> FunctionInput {
+        FunctionInput {
+            name: name.into(),
+            source_file: file.into(),
+            language: "go".into(),
+            directory: ".".into(),
+            cyclomatic_complexity: cc,
+            cognitive_complexity: cog,
+            nesting_depth: nest,
+            lines_of_code: 4,
+            line: 1,
+        }
+    }
+
+    fn arr<'a>(v: &'a GoValue, key: &str) -> &'a [GoValue] {
+        match v.as_map().unwrap().get(key) {
+            Some(GoValue::Array(a)) => a,
+            other => panic!("{key}: not an array: {other:?}"),
+        }
+    }
+
+    fn name_of(v: &GoValue) -> &str {
+        v.as_map().unwrap().get("name").unwrap().as_str().unwrap()
+    }
+
+    #[test]
+    fn empty_input_yields_zero_aggregate_and_empty_lists() {
+        let agg = aggregate(&[]);
+        assert_eq!(agg.total_functions, 0);
+        assert!(agg.average_complexity.abs() < f64::EPSILON);
+        assert_eq!(agg.message, MSG_EXCELLENT);
+        let v = computed_metrics(&[]);
+        assert!(arr(&v, "function_complexity").is_empty());
+        assert!(arr(&v, "high_risk_functions").is_empty());
+        assert!(v
+            .as_map()
+            .unwrap()
+            .get("distribution")
+            .unwrap()
+            .as_map()
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn function_complexity_is_sorted_by_the_total_order() {
+        let input = vec![
+            f("same", "b/x.go", 2, 1, 1),
+            f("same", "a/x.go", 2, 1, 1),
+            f("zed", "a/x.go", 2, 1, 1),
+            f("top", "a/x.go", 12, 20, 6),
+        ];
+        let v = computed_metrics(&input);
+        let names: Vec<(&str, &str)> = arr(&v, "function_complexity")
+            .iter()
+            .map(|row| {
+                (
+                    name_of(row),
+                    row.as_map()
+                        .unwrap()
+                        .get("source_file")
+                        .unwrap()
+                        .as_str()
+                        .unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                ("top", "a/x.go"),
+                ("same", "a/x.go"),
+                ("same", "b/x.go"),
+                ("zed", "a/x.go")
+            ]
+        );
+        let top = &arr(&v, "function_complexity")[0];
+        assert_eq!(
+            top.as_map().unwrap().get("risk_level").unwrap().as_str(),
+            Some(RISK_CRITICAL)
+        );
+        assert_eq!(
+            arr(&v, "function_complexity")[1]
+                .as_map()
+                .unwrap()
+                .get("risk_level")
+                .unwrap()
+                .as_str(),
+            Some(RISK_LOW)
+        );
+        assert_eq!(arr(&v, "high_risk_functions").len(), 1);
+        assert_eq!(name_of(&arr(&v, "high_risk_functions")[0]), "top");
+    }
+
+    #[test]
+    fn ordering_is_total_and_antisymmetric() {
+        let a = f("a", "x.go", 3, 3, 1);
+        let b = f("a", "x.go", 3, 2, 1);
+        assert_eq!(function_order(&a, &b), std::cmp::Ordering::Less);
+        assert_eq!(function_order(&b, &a), std::cmp::Ordering::Greater);
+        assert_eq!(function_order(&a, &a), std::cmp::Ordering::Equal);
+    }
+
+    #[test]
+    fn distribution_counts_only_non_empty_buckets() {
+        let v = computed_metrics(&[f("a", "x.go", 1, 0, 0), f("b", "x.go", 11, 0, 0)]);
+        let dist = v
+            .as_map()
+            .unwrap()
+            .get("distribution")
+            .unwrap()
+            .as_map()
+            .unwrap();
+        assert_eq!(dist.get("simple"), Some(&GoValue::Int(1)));
+        assert_eq!(dist.get("complex"), Some(&GoValue::Int(1)));
+        assert!(dist.get("moderate").is_none());
+    }
 }

@@ -12,8 +12,8 @@
 //! # Serialization
 //!
 //! The data types in this crate ([`TimeSeriesPoint`], [`RiskResult`]) appear in
-//! MACHINE-format reports, whose bytes are a frozen contract (pinned against the
-//! reference implementation by `tests/compat`). Machine-format bytes (json,
+//! MACHINE-format reports, whose bytes are a frozen contract (pinned by the
+//! report e2e suites, `bins/codefang/tests`). Machine-format bytes (json,
 //! yaml, ndjson, timeseries, compact, bin) must be produced by the shared
 //! `cf-gojson` / `cf-goyaml` report-format crates, **not** by raw `serde_json` /
 //! `serde_yaml` defaults.

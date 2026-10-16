@@ -4,7 +4,7 @@
 //! user-visible options that mirror the CLI flags (`--include-vendored`,
 //! `--include-generated`, `--extra-excluded-prefixes`). Pure, stateless,
 //! cross-phase. The decision selects which files feed machine reports, whose
-//! bytes are pinned against the reference binary by `tests/compat`.
+//! bytes are pinned by the report e2e suites (`bins/codefang/tests`).
 //!
 //! Exclusion-rule precedence (part of that contract):
 //!

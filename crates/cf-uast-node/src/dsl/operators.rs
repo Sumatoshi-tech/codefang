@@ -23,14 +23,46 @@ pub fn apply_reduce(nodes: &[Node], f: &dyn Fn(&[Node]) -> Vec<Node>) -> Vec<Nod
     f(nodes)
 }
 
+/// Applies a recursive filter: every node of each input's subtree (the input
+/// itself first, then its descendants in pre-order) that satisfies
+/// `predicate` is kept, in that order.
+pub fn apply_rfilter(nodes: &[Node], predicate: &dyn Fn(&Node) -> bool) -> Vec<Node> {
+    let mut result = Vec::new();
+    for n in nodes {
+        n.visit_pre_order(|d| {
+            if predicate(d) {
+                result.push(d.clone());
+            }
+        });
+    }
+    result
+}
+
+/// Applies a recursive map: runs `f` on every node of each input's subtree
+/// (pre-order, the input itself first) and concatenates the results.
+pub fn apply_rmap(nodes: &[Node], f: &dyn Fn(&[Node]) -> Vec<Node>) -> Vec<Node> {
+    let mut result = Vec::new();
+    for n in nodes {
+        n.visit_pre_order(|d| result.extend(f(std::slice::from_ref(d))));
+    }
+    result
+}
+
 /// Extracts a string value from a node by field name: `type`/`token`/`id` are
 /// built-ins, else a prop lookup.
 pub fn extract_string_value(n: &Node, field: &str) -> String {
+    with_string_value(n, field, str::to_owned)
+}
+
+/// Runs `f` on the node's string value for `field` (see
+/// [`extract_string_value`]) without copying it — the per-node predicate
+/// path of a recursive query.
+pub fn with_string_value<R>(n: &Node, field: &str, f: impl FnOnce(&str) -> R) -> R {
     match field {
-        "type" => n.node_type.clone(),
-        "token" => n.token.clone(),
-        "id" => String::from_utf8_lossy(&n.id).into_owned(),
-        _ => n.props.get(field).cloned().unwrap_or_default(),
+        "type" => f(&n.node_type),
+        "token" => f(&n.token),
+        "id" => f(&String::from_utf8_lossy(&n.id)),
+        _ => f(n.props.get(field).map_or("", String::as_str)),
     }
 }
 
@@ -215,5 +247,31 @@ mod tests {
     #[test]
     fn unknown_builtin_passes_through() {
         assert_eq!(apply_builtin("nope", &nodes(), &[]).len(), 3);
+    }
+
+    /// `outer { inner { leaf } }`.
+    fn nested() -> Node {
+        let mut inner = Node::with_token("Function", "inner");
+        inner.add_child(Node::with_token("Identifier", "leaf"));
+        let mut outer = Node::with_token("Function", "outer");
+        outer.add_child(inner);
+        outer
+    }
+
+    #[test]
+    fn rfilter_walks_the_subtree_in_pre_order() {
+        let out = apply_rfilter(&[nested()], &|n| n.node_type == "Function");
+        let tokens: Vec<&str> = out.iter().map(|n| n.token.as_str()).collect();
+        assert_eq!(tokens, vec!["outer", "inner"]);
+        assert!(apply_filter(&[nested()], &|n| n.token == "inner").is_empty());
+    }
+
+    #[test]
+    fn rmap_concatenates_over_the_subtree() {
+        let out = apply_rmap(&[nested()], &|ns| {
+            ns.iter().map(|n| Node::literal(n.token.clone())).collect()
+        });
+        let tokens: Vec<&str> = out.iter().map(|n| n.token.as_str()).collect();
+        assert_eq!(tokens, vec!["outer", "inner", "leaf"]);
     }
 }

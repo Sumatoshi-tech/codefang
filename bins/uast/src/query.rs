@@ -11,7 +11,6 @@
 //! number of results). `interactive` opens a REPL (non-binding human output).
 //! Input UAST JSON decoding uses `serde_json` (DESIGN §2 permits input decode).
 
-use std::fs::File;
 use std::io::{self, Read, Write};
 
 use cf_textutil::{GoMap, GoValue};
@@ -19,7 +18,7 @@ use cf_uast::{Node, Parser};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 
 use crate::govalue_bridge::node_to_value;
-use crate::{FORMAT_COMPACT, FORMAT_JSON};
+use crate::{FORMAT_COMPACT, FORMAT_JSON, STDIN_ARG};
 
 /// Builds the `query` subcommand (query.go:33-61).
 pub fn command() -> Command {
@@ -31,7 +30,7 @@ pub fn command() -> Command {
             "input",
             'i',
             "",
-            "input file (UAST JSON or source code)",
+            "input file (UAST JSON or source code), queried before any positional files",
         ))
         .arg(opt("output", 'o', "", "output file (default: stdout)"))
         .arg(opt(
@@ -64,7 +63,16 @@ pub fn run(m: &ArgMatches) -> Result<(), String> {
     let interactive = m.get_flag("interactive");
 
     if interactive {
-        return run_interactive(input);
+        // The REPL explores ONE tree: the `--input` file, else the single
+        // positional file, else source read from stdin.
+        let targets = query_targets(input, &args);
+        if targets.len() > 1 {
+            return Err(format!(
+                "interactive mode queries one file, got {}",
+                targets.len()
+            ));
+        }
+        return run_interactive(targets.first().map_or("", String::as_str));
     }
 
     // Go: `if len(args) == 0 { return ErrQueryExprRequired }`.
@@ -72,21 +80,37 @@ pub fn run(m: &ArgMatches) -> Result<(), String> {
         return Err("query expression required".to_string());
     }
     let query = &args[0];
-    let files = &args[1..];
+    let files = query_targets(input, &args[1..]);
 
-    if files.is_empty() && input.is_empty() {
-        return query_stdin(query, output, format);
+    let mut writer = crate::open_output(output)?;
+    if files.is_empty() {
+        return query_stdin(query, &mut *writer, format);
     }
 
-    for file in files {
-        query_file(file, query, output, format)
+    for file in &files {
+        if file == STDIN_ARG {
+            query_stdin(query, &mut *writer, format)?;
+            continue;
+        }
+        query_file(file, query, &mut *writer, format)
             .map_err(|e| format!("failed to query {file}: {e}"))?;
     }
     Ok(())
 }
 
+/// The files a query runs over: the `--input` file (when set) first, then the
+/// positional files. Empty means the query reads a UAST tree from stdin, as
+/// does a `-` target.
+fn query_targets(input: &str, files: &[String]) -> Vec<String> {
+    std::iter::once(input)
+        .filter(|i| !i.is_empty())
+        .map(str::to_owned)
+        .chain(files.iter().cloned())
+        .collect()
+}
+
 /// Queries a UAST tree decoded from stdin (query.go `queryStdin`).
-fn query_stdin(query: &str, output: &str, format: &str) -> Result<(), String> {
+fn query_stdin(query: &str, writer: &mut dyn Write, format: &str) -> Result<(), String> {
     let mut buf = Vec::new();
     io::stdin()
         .read_to_end(&mut buf)
@@ -95,16 +119,16 @@ fn query_stdin(query: &str, output: &str, format: &str) -> Result<(), String> {
     let results = node
         .find_dsl(query)
         .map_err(|e| format!("query error: {e}"))?;
-    output_results(&results, output, format)
+    output_results(&results, writer, format)
 }
 
 /// Queries a single file (query.go `queryFile` / `parseFileForQuery`).
-fn query_file(file: &str, query: &str, output: &str, format: &str) -> Result<(), String> {
+fn query_file(file: &str, query: &str, writer: &mut dyn Write, format: &str) -> Result<(), String> {
     let node = load_query_node(file)?;
     let results = node
         .find_dsl(query)
         .map_err(|e| format!("query error: {e}"))?;
-    output_results(&results, output, format)
+    output_results(&results, writer, format)
 }
 
 /// Loads a UAST node from a file, auto-detecting JSON vs source (query.go
@@ -133,7 +157,8 @@ fn load_uast_from_json(file: &str) -> Result<Node, String> {
     decode_uast(&bytes).map_err(|e| format!("failed to decode UAST from {file}: {e}"))
 }
 
-/// The interactive REPL (query.go `runInteractiveQuery`). Human/non-binding.
+/// The interactive REPL (query.go `runInteractiveQuery`) over `input` (a
+/// UAST JSON or source file; empty reads source from stdin). Human/non-binding.
 fn run_interactive(input: &str) -> Result<(), String> {
     let node = if input.is_empty() {
         let mut buf = Vec::new();
@@ -197,22 +222,16 @@ fn run_interactive(input: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Serializes results (query.go `outputResults`).
-fn output_results(results: &[Node], output: &str, format: &str) -> Result<(), String> {
-    let mut writer: Box<dyn Write> = if output.is_empty() {
-        Box::new(io::stdout())
-    } else {
-        Box::new(File::create(output).map_err(|e| format!("failed to create output file: {e}"))?)
-    };
-
+/// Serializes results to `writer` (query.go `outputResults`).
+fn output_results(results: &[Node], writer: &mut dyn Write, format: &str) -> Result<(), String> {
     let mapped = nodes_to_value(results);
 
     match format {
         FORMAT_JSON => {
-            cf_textutil::write_json(&mut writer, &mapped, true).map_err(|e| e.to_string())
+            cf_textutil::write_json(&mut *writer, &mapped, true).map_err(|e| e.to_string())
         }
         FORMAT_COMPACT => {
-            cf_textutil::write_json(&mut writer, &mapped, false).map_err(|e| e.to_string())
+            cf_textutil::write_json(&mut *writer, &mapped, false).map_err(|e| e.to_string())
         }
         "count" => {
             let count = result_count(&mapped);
@@ -407,6 +426,14 @@ mod tests {
 {ZERO_POS},\"roles\":[],\"type\":\"File\"}}\n"
             )
         );
+    }
+
+    #[test]
+    fn query_targets_put_the_input_file_first() {
+        let files = vec!["b.go".to_string()];
+        assert_eq!(query_targets("a.go", &files), ["a.go", "b.go"]);
+        assert_eq!(query_targets("", &files), ["b.go"]);
+        assert!(query_targets("", &[]).is_empty(), "no target reads stdin");
     }
 
     #[test]

@@ -1,194 +1,63 @@
-//! Static-analysis YAML report path for the UAST `static/comments` analyzer.
-//!
-//! Reproduces the reference static pipeline for the single-analyzer
-//! `codefang run --analyzers static/comments --format yaml` capture
-//! (`StaticService.streamFiles` → `analyzeFile` → `comments.Analyzer.Analyze` →
-//! `StampSourceFile`/`StampLanguage` → `comments.Aggregator` (base metrics
-//! processor + `DetailedDataCollector`) → `comments.ComputeAllMetrics` →
-//! `yaml.Marshal(ComputedMetrics)`).
+//! Report paths for the `static/comments` analyzer: the folder walk, the
+//! per-file stamping and every serialization (`json` section report, `yaml`
+//! / `bin` computed metrics, the raw report behind `plot`, the `text` /
+//! `compact` summary).
 //!
 //! # Pipeline
 //!
-//!  1. Walk `root_path` lexically (`filepath.WalkDir` order), keeping every
-//!     regular file the UAST parser supports (`Parser::is_supported`) that is not
-//!     excluded by the path policy. `--languages` is empty here, so the language
-//!     glob filter is a no-op.
-//!  2. Parse each file → UAST `Node`; run [`cf_comments::Analyzer::analyze`] to
-//!     get the per-file report map (`comments`/`functions` collections + scalar
-//!     metrics).
-//!  3. Stamp `_source_file` (path relative to `root_path`), `_directory`
-//!     (`filepath.Dir` of the relative path), and `_language`
-//!     (`Parser::get_language`) onto every collected comment/function item.
-//!  4. Aggregate across files exactly as `common.Aggregator`:
-//!     - `comments` / `functions` are **concatenated** in file order
-//!       (`DetailedDataCollector`, no dedup);
-//!     - count keys (`total_comments`, `good_comments`, `bad_comments`,
-//!       `total_functions`, `documented_functions`, `total_comment_details`) are
-//!       summed;
-//!     - numeric keys (`overall_score`, `good_comments_ratio`,
-//!       `documentation_coverage`) are summed and divided by the processed-report
-//!       count (the mean over all parsed files).
-//!  5. Feed the aggregated report to the `comments.ComputeAllMetrics` closed form
-//!     (`ParseReportData` reads only `line` + the stamped source metadata off each
-//!     collection item; the convert maps carry neither `quality`/`type`/`score`
-//!     for comments nor `name`/`has_comment`/… for functions, so those per-item
-//!     fields stay at their zero values, exactly as in the golden capture), and emit
-//!     `ComputedMetrics` through cf-goyaml (gopkg.in/yaml.v3 parity).
+//!  1. The shared static walk ([`super::walk_source_files`]) admits every
+//!     UAST-supported file that passes the run filter (`--languages`, path
+//!     policy, generated-content marker, read cap). A file root analyzes
+//!     that one file.
+//!  2. Parse each file and run [`cf_comments::Analyzer::analyze_metrics`].
+//!     A supported file the parser cannot handle is kept as an empty file
+//!     (all counters zero) so it still appears under `--per-file`.
+//!  3. Stamp every file with its root-relative path, directory and language.
+//!  4. Aggregate with [`cf_comments::Aggregator`]: counters are summed and
+//!     every ratio is Σ/Σ (coverage = Σdocumented / Σfunctions, good ratio =
+//!     Σgood / Σcomments); the section score and status follow the weighted
+//!     good ratio.
+//!
+//! All machine formats share one aggregation, so `json`, `yaml`, `bin`,
+//! `text` and `plot` report the same counts.
 
-use std::fs;
-use std::path::Path;
-
-use super::StaticFilter;
+use super::{SourceFile, StaticFilter};
+use cf_comments::{
+    comment_preview, Aggregator, CommentCounts, CommentDetail, FileReport, FileStamp, FunctionInfo,
+};
 use cf_gojson::{GoMap, GoValue, MapOrigin};
 use cf_uast::Parser;
 
-/// One collected comment item (post-stamp): the full the reference implementation
-/// `convertCommentReportItems` map — the raw aggregated
-/// report (plot path / report.json) serializes every key; the YAML
-/// `ParseReportData` reads only `line` + the stamped source metadata.
-struct CommentItem {
-    line: i64,
-    comment: String,
-    placement: String,
-    target: String,
-    assessment: String,
-    source_file: String,
-    language: String,
-    directory: String,
-}
+/// An undocumented declaration spanning at least this many lines is a
+/// `HIGH` documentation risk.
+const RISK_HIGH_MIN_LINES: i64 = 50;
+/// ... at least this many lines is a `MEDIUM` risk; shorter ones are `LOW`.
+const RISK_MEDIUM_MIN_LINES: i64 = 10;
 
-/// One collected function item (post-stamp): the full the reference implementation
-/// `convertFunctionReportItems` map. The machine
-/// `ComputeAllMetrics` payload reads only the stamped source metadata; the raw
-/// aggregated report serializes every key.
-struct FunctionItem {
-    source_file: String,
-    language: String,
-    directory: String,
-    /// The function's name (`function` key).
-    function_name: String,
-    /// The function's kind (`type` key, e.g. `"Function"`).
-    kind: String,
-    /// The function's line count (`lines` key).
-    lines: i64,
-    /// The associated comment type (`comment` key; `"None"` when undocumented).
-    comment: String,
-    /// The per-function documentation assessment (`assessment` key, e.g.
-    /// `"❌ No Comment"`); the JSON section emits an issue for each bad one.
-    assessment: String,
-}
+/// The section title.
+const SECTION_TITLE: &str = "COMMENTS";
+/// Issue value / severity for an undocumented declaration.
+const ISSUE_VALUE: &str = "undocumented";
+const ISSUE_SEVERITY: &str = "poor";
 
-/// Cross-file accumulator mirroring `comments.Aggregator`.
-#[derive(Default)]
-struct Aggregated {
-    comments: Vec<CommentItem>,
-    functions: Vec<FunctionItem>,
-    total_comments: i64,
-    good_comments: i64,
-    bad_comments: i64,
-    total_functions: i64,
-    documented_functions: i64,
-    total_comment_details: i64,
-    // Numeric-key running sums + processed-report count (for the mean).
-    sum_overall_score: f64,
-    sum_good_comments_ratio: f64,
-    sum_documentation_coverage: f64,
-    report_count: i64,
-    /// Per-file snapshots (the reference `PerFileRetainer` clones of each
-    /// analyzer report) consumed by the `--per-file` section enrichment; walk
-    /// order.
-    per_file: Vec<PerFileComments>,
-}
-
-/// One retained per-file comments report: the analyzer result's scalars,
-/// per-file `message`, and this file's undocumented function names.
-struct PerFileComments {
-    /// Path relative to the analyzed root (the `StampSourceFile` stamp).
-    rel: String,
-    message: String,
-    overall_score: f64,
-    total_comments: i64,
-    good_comments: i64,
-    bad_comments: i64,
-    doc_coverage: f64,
-    good_ratio: f64,
-    total_functions: i64,
-    documented_functions: i64,
-    /// Function names with the `"❌ No Comment"` assessment.
-    undocumented: Vec<String>,
-}
-
-impl PerFileComments {
-    /// The reference `buildEmptyResult` snapshot: what the analyzer reports
-    /// for a file with no comments (all zeros, the empty-result message).
-    fn empty(rel: String) -> Self {
-        PerFileComments {
-            rel,
-            message: "No comments found".to_string(),
-            overall_score: 0.0,
-            total_comments: 0,
-            good_comments: 0,
-            bad_comments: 0,
-            doc_coverage: 0.0,
-            good_ratio: 0.0,
-            total_functions: 0,
-            documented_functions: 0,
-            undocumented: Vec::new(),
-        }
-    }
-}
-
-/// Builds the `static/comments --format yaml` report bytes for `root_path`, or
-/// `None` when the path cannot be read (the caller then falls through to the
-/// blocked-dependency sentinel).
+/// Builds the `static/comments --format yaml` report bytes for `root_path`.
 #[must_use]
 pub fn comments_report_yaml(root_path: &str, filter: &StaticFilter) -> Option<Vec<u8>> {
-    let metrics = comments_metrics(root_path, filter)?;
-    Some(cf_goyaml::marshal(&metrics))
+    let agg = aggregate(root_path, filter);
+    Some(cf_goyaml::marshal(&computed_metrics(&agg)))
 }
 
-/// Builds the `static/comments --format bin` report bytes for `root_path`, or
-/// `None` when the path cannot be read.
-///
-/// The CFB1 bin payload is the **same** `ComputedMetrics` value as the yaml
-/// sibling (`comments.FormatReportBinary` and `FormatReportYAML` both call
-/// `ComputeAllMetrics(report)`), so it reuses [`comments_metrics`] verbatim and
-/// only swaps the encoder: cf-reportutil's CFB1 envelope
-/// (`reportutil.EncodeBinaryEnvelope`: magic `CFB1` + little-endian u32 payload
-/// length + compact `encoding/json` payload) instead of cf-goyaml.
+/// Builds the `static/comments --format bin` report bytes for `root_path`:
+/// the same computed-metrics value as the yaml sibling inside the CFB1
+/// envelope. `None` when the payload exceeds the envelope's length cap.
 #[must_use]
 pub fn comments_report_bin(root_path: &str, filter: &StaticFilter) -> Option<Vec<u8>> {
-    let metrics = comments_metrics(root_path, filter)?;
-    Some(
-        cf_reportutil::encode_binary_envelope(&metrics)
-            .expect("comments metrics never exceed the CFB1 length cap"),
-    )
+    let agg = aggregate(root_path, filter);
+    cf_reportutil::encode_binary_envelope(&computed_metrics(&agg)).ok()
 }
 
-/// Builds the `static/comments --format json` structured-report bytes for
-/// `root_path`, or `None` when the folder cannot be walked.
-///
-/// The reference JSON path (`StaticService.FormatJSON` → `comments.CreateReportSection`
-/// → `renderer.SectionToJSON` → `json.Encoder.SetIndent("","  ").Encode`) emits
-/// a scored COMMENTS section: key metrics (Total/Good/Bad Comments, Doc
-/// Coverage, Good Ratio, Total Functions), a Documented/Undocumented
-/// distribution, and one info issue per UNDOCUMENTED function (assessment
-/// `"❌ No Comment"`), sorted by name. the reference implementation sorts via an unstable `sort.Slice`
-/// over functions collected in (parallel/map) order, so the tie order of
-/// same-named functions is intrinsically nondeterministic in the reference binary (the project
-/// MANIFEST marks static_comments.json nonBinding). We emit the deterministic
-/// computation: the section score/labels/metrics/distribution are exact, and the
-/// issue list is sorted by name (file-walk order within equal names).
-#[must_use]
-pub fn comments_report_json(root_path: &str) -> Option<Vec<u8>> {
-    comments_report_json_flags(root_path, &StaticFilter::default(), false)
-}
-
-/// [`comments_report_json`] with the `--per-file` flag applied: `per_file`
-/// enables the reference implementation's section enrichment
-/// (`StaticService.enrichWithPerFileData` → `JSONReport.EnrichWithPerFileData`
-/// over the `PerFileRetainer` snapshots — one `JSONFileEntry` per ANALYZED
-/// file, comment-free files included, keyed into the section's `files` array).
+/// Builds the `static/comments --format json` report bytes for `root_path`;
+/// `per_file` adds one `files` entry per analyzed file.
 #[must_use]
 pub fn comments_report_json_flags(
     root_path: &str,
@@ -203,366 +72,189 @@ pub fn comments_report_json_flags(
     )
 }
 
-/// Builds the `static/comments` `renderer.JSONReport` GoValue (single scored
-/// section), shared by the single-analyzer byte path and the multi-analyzer
-/// static-JSON merge. `None` when the path cannot be walked.
-#[must_use]
-pub fn comments_report_value(root_path: &str) -> Option<GoValue> {
-    comments_report_value_flags(root_path, &StaticFilter::default(), false)
-}
-
-/// [`comments_report_value`] with the `--per-file` section enrichment.
+/// Builds the single-section `static/comments` JSON report value, shared by
+/// the single-analyzer path and the multi-analyzer static-JSON merge.
 #[must_use]
 pub fn comments_report_value_flags(
     root_path: &str,
     filter: &StaticFilter,
     per_file: bool,
 ) -> Option<GoValue> {
-    comments_report_value_mode_flags(root_path, filter, false, per_file)
+    Some(section_report(
+        &aggregate(root_path, filter),
+        per_file,
+        false,
+    ))
 }
 
-/// Builds the `static/comments` section tree in the reference implementation's `AggregationModeSummaryOnly`
-/// shape (`text` / `compact`): the detailed `comments`/`functions` collections are
-/// no-ops, so the top-issues list (undocumented functions, read from `functions`)
-/// is absent, while the Documented/Undocumented distribution — computed from the
-/// always-on scalar `total_functions`/`documented_functions` counts — and the Key
-/// Metrics are unchanged.
+/// The `text` / `compact` summary: the section without its issue list.
 #[must_use]
 pub fn comments_report_value_summary(root_path: &str, filter: &StaticFilter) -> Option<GoValue> {
-    comments_report_value_mode(root_path, filter, true)
+    Some(section_report(&aggregate(root_path, filter), false, true))
 }
 
-fn comments_report_value_mode(
-    root_path: &str,
-    filter: &StaticFilter,
-    summary_only: bool,
-) -> Option<GoValue> {
-    comments_report_value_mode_flags(root_path, filter, summary_only, false)
-}
+// --- section report (json / text / compact) -----------------------------------
 
-fn comments_report_value_mode_flags(
-    root_path: &str,
-    filter: &StaticFilter,
-    summary_only: bool,
-    per_file: bool,
-) -> Option<GoValue> {
-    let mut agg = comments_aggregate_opts(root_path, filter)?;
-
-    // --per-file: one JSONFileEntry per ANALYZED file, in walk order (the
-    // reference implementation ranges the retainer map here — run-to-run
-    // random; the oracle's measured-variance canonicalization compares the set).
-    let file_entries: Option<Vec<GoValue>> = if per_file {
-        Some(
-            agg.per_file
-                .iter()
-                .map(|pf| build_file_entry(pf, root_path))
-                .collect(),
-        )
-    } else {
-        None
-    };
-
-    if summary_only {
-        agg.functions.clear();
-    }
-    let report_count = agg.report_count.max(0);
-    let mean = |sum: f64| {
-        if report_count > 0 {
-            sum / report_count as f64
-        } else {
-            0.0
-        }
-    };
-    let overall_score = mean(agg.sum_overall_score);
-    let good_ratio = mean(agg.sum_good_comments_ratio);
-    let doc_coverage = mean(agg.sum_documentation_coverage);
-
-    // --- section score / labels ---
-    let score = overall_score;
+fn section_report(agg: &Aggregator, per_file: bool, summary_only: bool) -> GoValue {
+    let counts = agg.counts();
+    let score = counts.overall_score();
     let score_label = format_score(score);
 
-    // --- status: NewReportSection reads the aggregate `message`. With ZERO
-    // analyzed files the aggregator returns `buildEmptyResult` (message
-    // "No comments found"); otherwise we emit the deterministic
-    // ThresholdLabeler value (matches the common reference output). ---
-    let status = if report_count == 0 {
-        "No comments found".to_string()
-    } else {
-        comment_message(overall_score)
-    };
-
-    // --- metrics (reference KeyMetrics order) ---
-    let metric = |label: &str, value: String| {
-        let mut m = GoMap::new(MapOrigin::Struct);
-        m.push("label", GoValue::Str(label.to_string()));
-        m.push("value", GoValue::Str(value));
-        GoValue::Map(m)
-    };
-    let metrics = vec![
-        metric(
-            "Total Comments",
-            cf_reportutil::format_int(agg.total_comments),
-        ),
-        metric(
-            "Good Comments",
-            cf_reportutil::format_int(agg.good_comments),
-        ),
-        metric("Bad Comments", cf_reportutil::format_int(agg.bad_comments)),
-        metric("Doc Coverage", format_percent(doc_coverage)),
-        metric("Good Ratio", format_percent(good_ratio)),
-        metric(
-            "Total Functions",
-            cf_reportutil::format_int(agg.total_functions),
-        ),
-    ];
-
-    // --- distribution (Documented / Undocumented); nil when no functions ---
-    let total_fns = agg.total_functions;
-    let distribution: Vec<GoValue> = if total_fns == 0 {
+    let issues = if summary_only {
         Vec::new()
     } else {
-        let documented = agg.documented_functions;
-        let undocumented = total_fns - documented;
-        let pct = |c: i64| {
-            if total_fns == 0 {
-                0.0
-            } else {
-                c as f64 / total_fns as f64
-            }
-        };
-        let dist = |label: &str, count: i64| {
-            let mut m = GoMap::new(MapOrigin::Struct);
-            m.push("label", GoValue::Str(label.to_string()));
-            m.push("percent", GoValue::Float(pct(count)));
-            m.push("count", GoValue::Int(count));
-            GoValue::Map(m)
-        };
-        vec![
-            dist("Documented", documented),
-            dist("Undocumented", undocumented),
-        ]
+        undocumented_issues(agg.functions())
     };
 
-    // --- issues: undocumented functions (assessment "❌ No Comment"), name asc ---
-    let mut issue_fns: Vec<&FunctionItem> = agg
-        .functions
-        .iter()
-        .filter(|f| f.assessment == "❌ No Comment")
-        .collect();
-    // Reference: mapx.SortAndLimit(buildIssues(), commentNameLess, 0) — unstable
-    // sort.Slice by Name ascending. Reproduce the pdqsort permutation.
-    crate::handlers::go_sort::slice(&mut issue_fns, |a, b| a.function_name < b.function_name);
-    let issues: Vec<GoValue> = issue_fns
-        .iter()
-        .map(|f| {
-            let mut m = GoMap::new(MapOrigin::Struct);
-            m.push("name", GoValue::Str(f.function_name.clone()));
-            m.push("location", GoValue::Str(f.source_file.clone()));
-            m.push("value", GoValue::Str("undocumented".to_string()));
-            m.push("severity", GoValue::Str("poor".to_string()));
-            GoValue::Map(m)
-        })
-        .collect();
-
-    // --- section (JSONSection field order) ---
     let mut section = GoMap::new(MapOrigin::Struct);
-    section.push("title", GoValue::Str("COMMENTS".to_string()));
+    section.push("title", GoValue::Str(SECTION_TITLE.to_string()));
     section.push("score_label", GoValue::Str(score_label.clone()));
-    section.push("status", GoValue::Str(status));
-    section.push("metrics", GoValue::Array(metrics));
-    if !distribution.is_empty() {
-        section.push("distribution", GoValue::Array(distribution));
-    }
+    section.push("status", GoValue::Str(counts.message().to_string()));
+    section.push("metrics", GoValue::Array(key_metrics(&counts)));
+    push_distribution(&mut section, &counts);
     section.push("issues", GoValue::Array(issues));
-    // --per-file enrichment: `files` sits between `issues` and `score`
-    // (renderer.JSONSection field order; omitempty without the flag).
-    if let Some(entries) = file_entries {
+    if per_file {
+        let entries = agg.files().iter().map(file_entry).collect();
         section.push("files", GoValue::Array(entries));
     }
     section.push("score", GoValue::Float(score));
 
-    // --- top-level JSONReport: single scored section ⇒ overall == section ---
     let mut root = GoMap::new(MapOrigin::Struct);
     root.push("overall_score_label", GoValue::Str(score_label));
     root.push("sections", GoValue::Array(vec![GoValue::Map(section)]));
     root.push("overall_score", GoValue::Float(score));
-
-    Some(GoValue::Map(root))
+    GoValue::Map(root)
 }
 
-/// Builds one `renderer.JSONFileEntry` for `--per-file` (the reference
-/// `SectionToJSONFileEntry` over `comments.NewReportSection(perFileReport)`):
-/// score/status come from the PER-FILE report (`overall_score` / `message`),
-/// the metrics are the per-file scalars, the Documented/Undocumented
-/// distribution covers this file's functions, and the issues are this file's
-/// undocumented functions sorted by name.
-fn build_file_entry(pf: &PerFileComments, root_path: &str) -> GoValue {
-    let score = pf.overall_score;
-    let status = if pf.message.is_empty() {
-        "No comment data available".to_string()
-    } else {
-        pf.message.clone()
-    };
-
-    let metric = |label: &str, value: String| {
-        let mut m = GoMap::new(MapOrigin::Struct);
-        m.push("label", GoValue::Str(label.to_string()));
-        m.push("value", GoValue::Str(value));
-        GoValue::Map(m)
-    };
-    let metrics = vec![
-        metric(
-            "Total Comments",
-            cf_reportutil::format_int(pf.total_comments),
-        ),
-        metric("Good Comments", cf_reportutil::format_int(pf.good_comments)),
-        metric("Bad Comments", cf_reportutil::format_int(pf.bad_comments)),
-        metric("Doc Coverage", format_percent(pf.doc_coverage)),
-        metric("Good Ratio", format_percent(pf.good_ratio)),
-        metric(
-            "Total Functions",
-            cf_reportutil::format_int(pf.total_functions),
-        ),
-    ];
-
-    // Distribution over THIS file's functions (absent for function-free files
-    // — Distribution() returns nil ⇒ omitempty).
-    let total_fns = pf.total_functions;
-    let distribution: Vec<GoValue> = if total_fns == 0 {
-        Vec::new()
-    } else {
-        let documented = pf.documented_functions;
-        let undocumented = total_fns - documented;
-        let dist = |label: &str, count: i64| {
-            let mut m = GoMap::new(MapOrigin::Struct);
-            m.push("label", GoValue::Str(label.to_string()));
-            m.push("percent", GoValue::Float(count as f64 / total_fns as f64));
-            m.push("count", GoValue::Int(count));
-            GoValue::Map(m)
-        };
-        vec![
-            dist("Documented", documented),
-            dist("Undocumented", undocumented),
-        ]
-    };
-
-    // Issues: this file's undocumented functions, name ascending.
-    let mut names: Vec<&String> = pf.undocumented.iter().collect();
-    names.sort();
-    let issues: Vec<GoValue> = names
-        .iter()
-        .map(|name| {
-            let mut m = GoMap::new(MapOrigin::Struct);
-            m.push("name", GoValue::Str((*name).clone()));
-            m.push("location", GoValue::Str(pf.rel.clone()));
-            m.push("value", GoValue::Str("undocumented".to_string()));
-            m.push("severity", GoValue::Str("poor".to_string()));
-            GoValue::Map(m)
-        })
-        .collect();
+/// One `--per-file` entry: this file's score, status, metrics, distribution
+/// and undocumented declarations.
+fn file_entry(file: &FileReport) -> GoValue {
+    let counts = file.metrics.counts;
+    let score = counts.overall_score();
+    let issues = undocumented_issues(file.metrics.functions.iter().map(|f| (&file.stamp, f)));
 
     let mut entry = GoMap::new(MapOrigin::Struct);
-    // The reference retainer keys the entry by `filepath.Rel(root, stamp)` —
-    // a DOUBLE relativization (the stamp is already root-relative). With an
-    // absolute root Rel errors and the stamp passes through unchanged; with a
-    // relative root the key walks back out of it (`Rel("full","a.go")` →
-    // `"../a.go"`). Issue locations below keep the plain stamp.
-    let file_path = go_rel(root_path, &pf.rel).unwrap_or_else(|| pf.rel.clone());
-    entry.push("file_path", GoValue::Str(file_path));
+    entry.push("file_path", GoValue::Str(file.stamp.source_file.clone()));
     entry.push("score_label", GoValue::Str(format_score(score)));
-    entry.push("status", GoValue::Str(status));
-    entry.push("metrics", GoValue::Array(metrics));
-    if !distribution.is_empty() {
-        entry.push("distribution", GoValue::Array(distribution));
-    }
+    entry.push("status", GoValue::Str(counts.message().to_string()));
+    entry.push("metrics", GoValue::Array(key_metrics(&counts)));
+    push_distribution(&mut entry, &counts);
     entry.push("issues", GoValue::Array(issues));
     entry.push("score", GoValue::Float(score));
     GoValue::Map(entry)
 }
 
-/// Builds the AGGREGATED RAW `analyze.Report` GoValue for `static/comments` —
-/// the value the reference implementation's `comments.Aggregator.GetResult()` returns (the base
-/// `BuildCollectionResult` + the `DetailedDataCollector.AddToResult`
-/// overwrite), which is what `--format plot` consumes and what
-/// `writeReportJSON` serializes into `report.json`:
-///
-/// * `analyzer_name`, `message` (`buildMessage` over a random numeric average;
-///   all three averages land in the same threshold bucket on real corpora —
-///   we key it off `overall_score` like the section),
-/// * counts (summed): `total_comments`, `good_comments`, `bad_comments`,
-///   `total_functions`, `documented_functions`, `total_comment_details`,
-/// * averages: `overall_score`, `good_comments_ratio`,
-///   `documentation_coverage`,
-/// * `comments` / `functions`: the per-file convert maps concatenated in
-///   walk order, each stamped `_source_file`/`_language`/`_directory`
-///   (`stampCollectionMetadata`). The base spillable collector contributes an
-///   empty `comments` slice (its `line` identifier is an int, never a string),
-///   so with zero comments the key stays `[]`; `functions` appears only when
-///   the detailed collection is non-empty.
-///
-/// With no parsed files the reference implementation returns `buildEmptyResult` instead (8 keys, no
-/// `analyzer_name`/collections).
+fn key_metrics(counts: &CommentCounts) -> Vec<GoValue> {
+    let metric = |label: &str, value: String| {
+        let mut m = GoMap::new(MapOrigin::Struct);
+        m.push("label", GoValue::Str(label.to_string()));
+        m.push("value", GoValue::Str(value));
+        GoValue::Map(m)
+    };
+    vec![
+        metric(
+            "Total Comments",
+            cf_reportutil::format_int(counts.total_comments),
+        ),
+        metric(
+            "Good Comments",
+            cf_reportutil::format_int(counts.good_comments),
+        ),
+        metric(
+            "Bad Comments",
+            cf_reportutil::format_int(counts.bad_comments),
+        ),
+        metric(
+            "Doc Coverage",
+            format_percent(counts.documentation_coverage()),
+        ),
+        metric("Good Ratio", format_percent(counts.overall_score())),
+        metric(
+            "Total Functions",
+            cf_reportutil::format_int(counts.total_functions),
+        ),
+    ]
+}
+
+/// The Documented / Undocumented distribution; absent without declarations.
+fn push_distribution(section: &mut GoMap, counts: &CommentCounts) {
+    let total = counts.total_functions;
+    if total == 0 {
+        return;
+    }
+    let dist = |label: &str, count: i64| {
+        let mut m = GoMap::new(MapOrigin::Struct);
+        m.push("label", GoValue::Str(label.to_string()));
+        m.push("percent", GoValue::Float(count as f64 / total as f64));
+        m.push("count", GoValue::Int(count));
+        GoValue::Map(m)
+    };
+    let documented = counts.documented_functions;
+    section.push(
+        "distribution",
+        GoValue::Array(vec![
+            dist("Documented", documented),
+            dist("Undocumented", total - documented),
+        ]),
+    );
+}
+
+/// One issue per undocumented declaration, sorted by name, then file, then
+/// line.
+fn undocumented_issues<'a>(
+    functions: impl Iterator<Item = (&'a FileStamp, &'a FunctionInfo)>,
+) -> Vec<GoValue> {
+    let mut undocumented: Vec<(&FileStamp, &FunctionInfo)> =
+        functions.filter(|(_, f)| !f.is_documented()).collect();
+    undocumented.sort_by_key(|(stamp, f)| (f.name.clone(), stamp.source_file.clone(), f.line));
+    undocumented
+        .into_iter()
+        .map(|(stamp, f)| {
+            let mut m = GoMap::new(MapOrigin::Struct);
+            m.push("name", GoValue::Str(f.name.clone()));
+            m.push("location", GoValue::Str(stamp.source_file.clone()));
+            m.push("value", GoValue::Str(ISSUE_VALUE.to_string()));
+            m.push("severity", GoValue::Str(ISSUE_SEVERITY.to_string()));
+            GoValue::Map(m)
+        })
+        .collect()
+}
+
+// --- raw report (plot / report.json) -------------------------------------------
+
+/// Builds the aggregated raw report value for `static/comments` — what
+/// `--format plot` consumes: the counters and ratios, the quality message,
+/// and the stamped `comments` / `functions` rows of every file (`functions`
+/// only when there is at least one declaration).
 #[must_use]
 pub fn comments_raw_report_value(root_path: &str, filter: &StaticFilter) -> Option<GoValue> {
-    let agg = comments_aggregate_opts(root_path, filter)?;
+    let agg = aggregate(root_path, filter);
+    let counts = agg.counts();
 
-    if agg.report_count == 0 {
-        let mut m = GoMap::new(MapOrigin::Map);
-        m.push("total_comments", GoValue::Int(0));
-        m.push("good_comments", GoValue::Int(0));
-        m.push("bad_comments", GoValue::Int(0));
-        m.push("overall_score", GoValue::Float(0.0));
-        m.push("total_functions", GoValue::Int(0));
-        m.push("documented_functions", GoValue::Int(0));
-        m.push("total_comment_details", GoValue::Int(0));
-        m.push("message", GoValue::Str("No comments found".to_string()));
-        return Some(GoValue::Map(m));
-    }
-
-    let mean = |sum: f64| {
-        if agg.report_count > 0 {
-            sum / agg.report_count as f64
-        } else {
-            0.0
-        }
-    };
-    let overall_score = mean(agg.sum_overall_score);
-
-    // Stamped item maps (map-origin: keys byte-sort at encode time).
-    let push_stamps = |m: &mut GoMap, sf: &str, lang: &str, dir: &str| {
-        m.push("_source_file", GoValue::Str(sf.to_string()));
-        if !lang.is_empty() {
-            m.push("_language", GoValue::Str(lang.to_string()));
-        }
-        if !dir.is_empty() {
-            m.push("_directory", GoValue::Str(dir.to_string()));
-        }
-    };
     let comments: Vec<GoValue> = agg
-        .comments
-        .iter()
-        .map(|c| {
+        .comments()
+        .map(|(stamp, c)| {
             let mut m = GoMap::new(MapOrigin::Map);
             m.push("line", GoValue::Int(c.line));
-            m.push("comment", GoValue::Str(c.comment.clone()));
-            m.push("placement", GoValue::Str(c.placement.clone()));
-            m.push("target", GoValue::Str(c.target.clone()));
-            m.push("assessment", GoValue::Str(c.assessment.clone()));
-            push_stamps(&mut m, &c.source_file, &c.language, &c.directory);
+            m.push("comment", GoValue::Str(comment_preview(&c.text)));
+            m.push("placement", GoValue::Str(c.placement.as_str().to_string()));
+            m.push("target", GoValue::Str(c.target_name.clone()));
+            m.push("assessment", GoValue::Str(c.assessment().to_string()));
+            push_stamps(&mut m, stamp);
             GoValue::Map(m)
         })
         .collect();
     let functions: Vec<GoValue> = agg
-        .functions
-        .iter()
-        .map(|f| {
+        .functions()
+        .map(|(stamp, f)| {
             let mut m = GoMap::new(MapOrigin::Map);
-            m.push("function", GoValue::Str(f.function_name.clone()));
+            m.push("function", GoValue::Str(f.name.clone()));
             m.push("type", GoValue::Str(f.kind.clone()));
+            m.push("line", GoValue::Int(f.line));
             m.push("lines", GoValue::Int(f.lines));
-            m.push("comment", GoValue::Str(f.comment.clone()));
-            m.push("assessment", GoValue::Str(f.assessment.clone()));
-            push_stamps(&mut m, &f.source_file, &f.language, &f.directory);
+            m.push("doc_line", GoValue::Int(f.doc_line.unwrap_or(0)));
+            m.push("assessment", GoValue::Str(f.assessment().to_string()));
+            push_stamps(&mut m, stamp);
             GoValue::Map(m)
         })
         .collect();
@@ -573,369 +265,96 @@ pub fn comments_raw_report_value(root_path: &str, filter: &StaticFilter) -> Opti
     if !functions.is_empty() {
         m.push("functions", GoValue::Array(functions));
     }
-    m.push("message", GoValue::Str(comment_message(overall_score)));
-    m.push("total_comments", GoValue::Int(agg.total_comments));
-    m.push("good_comments", GoValue::Int(agg.good_comments));
-    m.push("bad_comments", GoValue::Int(agg.bad_comments));
-    m.push("total_functions", GoValue::Int(agg.total_functions));
-    m.push(
-        "documented_functions",
-        GoValue::Int(agg.documented_functions),
-    );
-    m.push(
-        "total_comment_details",
-        GoValue::Int(agg.total_comment_details),
-    );
-    m.push("overall_score", GoValue::Float(overall_score));
-    m.push(
-        "good_comments_ratio",
-        GoValue::Float(mean(agg.sum_good_comments_ratio)),
-    );
-    m.push(
-        "documentation_coverage",
-        GoValue::Float(mean(agg.sum_documentation_coverage)),
-    );
+    m.push("message", GoValue::Str(counts.message().to_string()));
+    push_counts(&mut m, &counts);
     Some(GoValue::Map(m))
 }
 
-/// `terminal.FormatScore`: `round(score*10)/10` → `"N/10"`.
-fn format_score(score: f64) -> String {
-    let scaled = (score * 10.0).round() as i64;
-    format!("{scaled}/10")
-}
-
-/// `reportutil.FormatPercent`: `"%.1f%%"` of `v*100`.
-fn format_percent(v: f64) -> String {
-    format!("{:.1}%", v * 100.0)
-}
-
-/// Runs the static pipeline over `root_path` and returns the assembled
-/// `ComputedMetrics` go-value (the shared report value behind every machine
-/// encoding). Returns `None` when the path does not exist.
-fn comments_metrics(root_path: &str, filter: &StaticFilter) -> Option<GoValue> {
-    let agg = comments_aggregate_opts(root_path, filter)?;
-    Some(compute_metrics(&agg))
-}
-
-/// Runs the static pipeline over `root_path` and returns the cross-file
-/// [`Aggregated`] accumulator (shared by the machine-format `ComputeAllMetrics`
-/// path and the JSON-section path). Returns `None` when the path is missing.
-fn comments_aggregate_opts(root_path: &str, filter: &StaticFilter) -> Option<Aggregated> {
-    // The reference static pipeline swallows walk errors: a nonexistent (or
-    // unreadable) root analyzes ZERO files and still emits the empty report
-    // with exit 0 ("static: complete files=0"), so an empty accumulator — not
-    // None — is the parity behavior here.
-    let root = Path::new(root_path);
-    if !root.exists() {
-        return Some(Aggregated::default());
+/// Pushes the file stamp keys of a row (map-origin: keys byte-sort at encode
+/// time).
+fn push_stamps(m: &mut GoMap, stamp: &FileStamp) {
+    m.push("_source_file", GoValue::Str(stamp.source_file.clone()));
+    if !stamp.language.is_empty() {
+        m.push("_language", GoValue::Str(stamp.language.clone()));
     }
-    let parser = Parser::new();
-
-    let analyzer = cf_comments::Analyzer::new();
-
-    let mut files: Vec<std::path::PathBuf> = Vec::new();
-    collect_files(root, &parser, filter, &mut files);
-    // filepath.WalkDir visits entries in lexical (byte-sorted) path order.
-    files.sort();
-
-    let mut agg = Aggregated::default();
-
-    for path in &files {
-        let Some(content) = super::read_source_capped(path) else {
-            continue;
-        };
-        let path_str = path.to_string_lossy();
-
-        // The reference implementation's static pipeline parses EVERY UAST-supported file and runs the
-        // analyzer; files whose tree has no functions/comments (markdown
-        // READMEs) yield an empty report that still counts as one file in the
-        // cross-file averages (`report_count`). Rust may lack a wired grammar
-        // for some supported extensions (markdown), so a parse failure on a
-        // supported file is folded as that same empty report — keeping the mean
-        // denominator (and thus the averaged scalar metrics) byte-identical.
-        // Stamp metadata exactly as StampSourceFile / StampLanguage.
-        let stamped = make_relative_path(&path_str, root_path);
-
-        let Ok(node) = parser.parse(&path_str, &content) else {
-            super::note_skipped_file();
-            agg.report_count += 1;
-            agg.per_file.push(PerFileComments::empty(stamped));
-            continue;
-        };
-        let Ok(report) = analyzer.analyze(Some(&node)) else {
-            agg.report_count += 1;
-            agg.per_file.push(PerFileComments::empty(stamped));
-            continue;
-        };
-
-        let directory = parent_dir(&stamped);
-        let language = parser.get_language(&path_str);
-
-        aggregate_report(&mut agg, &report, &stamped, &directory, &language);
-    }
-
-    Some(agg)
-}
-
-/// Recursively collects UAST-supported, non-excluded regular files under `dir`.
-fn collect_files(
-    dir: &Path,
-    parser: &Parser,
-    filter: &StaticFilter,
-    out: &mut Vec<std::path::PathBuf>,
-) {
-    // Go parity: filepath.WalkDir visits a FILE root as a single entry, so
-    // `codefang run <analyzer> path/to/file.c` analyzes that one file.
-    if dir.is_file() {
-        visit_file(dir, parser, filter, out);
-        return;
-    }
-    let Ok(read) = fs::read_dir(dir) else {
-        return;
-    };
-    for entry in read.filter_map(Result::ok) {
-        // SIGINT/SIGTERM: bail out of the walk promptly (durability, not
-        // output-affecting: the run exits 130 before any report is written).
-        if super::run_cancelled() {
-            return;
-        }
-        let path = entry.path();
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        if file_type.is_dir() {
-            if super::should_skip_walk_dir(&entry.path(), &entry.file_name()) {
-                continue; // filepath.SkipDir on .git
-            }
-            collect_files(&path, parser, filter, out);
-            continue;
-        }
-        visit_file(&path, parser, filter, out);
+    if !stamp.directory.is_empty() {
+        m.push("_directory", GoValue::Str(stamp.directory.clone()));
     }
 }
 
-/// Collects one file entry of the walk (the non-directory branch of the
-/// `filepath.WalkDir` callback): parser support + path policy filters.
-fn visit_file(
-    path: &Path,
-    parser: &Parser,
-    filter: &StaticFilter,
-    out: &mut Vec<std::path::PathBuf>,
-) {
-    let path_str = path.to_string_lossy();
-    // ShouldSkipFolderNode: skip files the parser does not support.
-    if !parser.is_supported(&path_str) {
-        return;
-    }
-    // matchesLanguageGlobs: --languages empty → all match (no-op).
-    // pathpolicy.Exclude(path, nil, opts).
-    if filter.skips(&path_str) {
-        return;
-    }
-    out.push(path.to_path_buf());
+/// Pushes the counters and their ratios.
+fn push_counts(m: &mut GoMap, counts: &CommentCounts) {
+    m.push("total_comments", GoValue::Int(counts.total_comments));
+    m.push("good_comments", GoValue::Int(counts.good_comments));
+    m.push("bad_comments", GoValue::Int(counts.bad_comments));
+    m.push("total_functions", GoValue::Int(counts.total_functions));
+    m.push(
+        "documented_functions",
+        GoValue::Int(counts.documented_functions),
+    );
+    m.push("overall_score", GoValue::Float(counts.overall_score()));
+    m.push(
+        "good_comments_ratio",
+        GoValue::Float(counts.overall_score()),
+    );
+    m.push(
+        "documentation_coverage",
+        GoValue::Float(counts.documentation_coverage()),
+    );
 }
 
-/// Folds one per-file report into the cross-file accumulator.
-fn aggregate_report(
-    agg: &mut Aggregated,
-    report: &GoValue,
-    source_file: &str,
-    directory: &str,
-    language: &str,
-) {
-    agg.report_count += 1;
+// --- computed metrics (yaml / bin) --------------------------------------------
 
-    // DetailedDataCollector: append the file's comment/function items (stamped).
-    let item_str = |item: &GoValue, key: &str| {
-        map_get(item, key)
-            .and_then(as_str)
-            .unwrap_or_default()
-            .to_string()
-    };
-    if let Some(items) = map_get(report, "comments").and_then(as_array) {
-        for item in items {
-            let line = map_get(item, "line").and_then(as_int).unwrap_or(0);
-            agg.comments.push(CommentItem {
-                line,
-                comment: item_str(item, "comment"),
-                placement: item_str(item, "placement"),
-                target: item_str(item, "target"),
-                assessment: item_str(item, "assessment"),
-                source_file: source_file.to_string(),
-                language: language.to_string(),
-                directory: directory.to_string(),
-            });
-        }
-    }
-    if let Some(items) = map_get(report, "functions").and_then(as_array) {
-        for item in items {
-            agg.functions.push(FunctionItem {
-                source_file: source_file.to_string(),
-                language: language.to_string(),
-                directory: directory.to_string(),
-                function_name: item_str(item, "function"),
-                kind: item_str(item, "type"),
-                lines: map_get(item, "lines").and_then(as_int).unwrap_or(0),
-                comment: item_str(item, "comment"),
-                assessment: item_str(item, "assessment"),
-            });
-        }
-    }
-
-    // MetricsProcessor: sum count keys, sum numeric keys (mean computed later).
-    agg.total_comments += scalar_int(report, "total_comments");
-    agg.good_comments += scalar_int(report, "good_comments");
-    agg.bad_comments += scalar_int(report, "bad_comments");
-    agg.total_functions += scalar_int(report, "total_functions");
-    agg.documented_functions += scalar_int(report, "documented_functions");
-    agg.total_comment_details += scalar_int(report, "total_comment_details");
-
-    agg.sum_overall_score += scalar_float(report, "overall_score");
-    agg.sum_good_comments_ratio += scalar_float(report, "good_comments_ratio");
-    agg.sum_documentation_coverage += scalar_float(report, "documentation_coverage");
-
-    // PerFileRetainer.Retain: snapshot the per-file report for --per-file.
-    let undocumented: Vec<String> = map_get(report, "functions")
-        .and_then(as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter(|item| {
-                    map_get(item, "assessment").and_then(as_str) == Some("❌ No Comment")
-                })
-                .map(|item| item_str(item, "function"))
-                .collect()
-        })
-        .unwrap_or_default();
-    agg.per_file.push(PerFileComments {
-        rel: source_file.to_string(),
-        message: map_get(report, "message")
-            .and_then(as_str)
-            .unwrap_or_default()
-            .to_string(),
-        overall_score: scalar_float(report, "overall_score"),
-        total_comments: scalar_int(report, "total_comments"),
-        good_comments: scalar_int(report, "good_comments"),
-        bad_comments: scalar_int(report, "bad_comments"),
-        doc_coverage: scalar_float(report, "documentation_coverage"),
-        good_ratio: scalar_float(report, "good_comments_ratio"),
-        total_functions: scalar_int(report, "total_functions"),
-        documented_functions: scalar_int(report, "documented_functions"),
-        undocumented,
-    });
-}
-
-/// Builds the `comments.ComputedMetrics` GoValue (struct-origin: declaration
-/// key order) from the aggregated report, applying the `ComputeAllMetrics` /
-/// metric `Compute` transforms and sorts.
-fn compute_metrics(agg: &Aggregated) -> GoValue {
-    let report_count = agg.report_count.max(0);
-    let mean = |sum: f64| {
-        if report_count > 0 {
-            sum / report_count as f64
-        } else {
-            0.0
-        }
-    };
-    let overall_score = mean(agg.sum_overall_score);
-    let good_comments_ratio = mean(agg.sum_good_comments_ratio);
-    let documentation_coverage = mean(agg.sum_documentation_coverage);
-
-    // --- comment_quality: sorted by line_number ascending via the reference `sort.Slice` ---
-    // CommentQualityMetric.Compute calls sort.Slice (unstable pdqsort); the
-    // equal-line ties must follow pdqsort's permutation, not a stable order.
-    let mut comment_order: Vec<&CommentItem> = agg.comments.iter().collect();
-    crate::handlers::go_sort::slice(&mut comment_order, |a, b| a.line < b.line);
-    let comment_quality: Vec<GoValue> = comment_order
-        .iter()
-        .map(|&c| {
-            // CommentQualityData declaration order; quality/type/target_name
-            // empty + score 0 (not present on the convert map) — recommendation
-            // omitempty (empty → omitted).
-            let mut m = GoMap::new(MapOrigin::Struct);
-            m.push("line_number", GoValue::Int(c.line));
-            m.push("source_file", GoValue::Str(c.source_file.clone()));
-            m.push("language", GoValue::Str(c.language.clone()));
-            m.push("directory", GoValue::Str(c.directory.clone()));
-            m.push("quality", GoValue::Str(String::new()));
-            m.push("type", GoValue::Str(String::new()));
-            m.push("target_name", GoValue::Str(String::new()));
-            m.push("score", GoValue::Int(0));
-            GoValue::Map(m)
-        })
+/// Builds the computed-metrics value (struct-origin: declaration key order):
+/// `comment_quality` (one row per comment), `function_documentation` (one
+/// row per declaration), `undocumented_functions` (the undocumented subset
+/// with a length-based risk level) and the `aggregate` counters. Rows are
+/// sorted by file, then line.
+fn computed_metrics(agg: &Aggregator) -> GoValue {
+    let mut comments: Vec<(&FileStamp, &CommentDetail)> = agg.comments().collect();
+    comments.sort_by_key(|(stamp, c)| (stamp.source_file.clone(), c.line));
+    let comment_quality: Vec<GoValue> = comments
+        .into_iter()
+        .map(|(stamp, c)| comment_quality_row(stamp, c))
         .collect();
 
-    // --- function_documentation: sorted by documentation_score asc (sort.Slice) ---
-    // documentation_score is 0 for every function (the convert map carries no
-    // `comment_score`), so every key is equal; the emitted order is pdqsort's
-    // permutation of the equal-key input, reproduced via go_sort.
-    let mut doc_order: Vec<&FunctionItem> = agg.functions.iter().collect();
-    crate::handlers::go_sort::slice(&mut doc_order, |_a, _b| false);
-    let function_documentation: Vec<GoValue> = doc_order
+    let mut functions: Vec<(&FileStamp, &FunctionInfo)> = agg.functions().collect();
+    functions.sort_by_key(|(stamp, f)| (stamp.source_file.clone(), f.line));
+    let function_documentation: Vec<GoValue> = functions
         .iter()
-        .map(|&f| {
-            // !HasComment → status "Undocumented", is_documented false, score 0.
-            let mut m = GoMap::new(MapOrigin::Struct);
-            m.push("name", GoValue::Str(String::new()));
-            m.push("source_file", GoValue::Str(f.source_file.clone()));
-            m.push("language", GoValue::Str(f.language.clone()));
-            m.push("directory", GoValue::Str(f.directory.clone()));
-            m.push("is_documented", GoValue::Bool(false));
-            m.push("documentation_score", GoValue::Int(0));
-            m.push("status", GoValue::Str("Undocumented".to_string()));
-            GoValue::Map(m)
-        })
+        .map(|(stamp, f)| function_documentation_row(stamp, f))
+        .collect();
+    let undocumented_functions: Vec<GoValue> = functions
+        .iter()
+        .filter(|(_, f)| !f.is_documented())
+        .map(|(stamp, f)| undocumented_row(stamp, f))
         .collect();
 
-    // --- undocumented_functions: every function (none documented), risk MEDIUM ---
-    // needs_comment false for all → all MEDIUM → all equal RiskPriority; the
-    // emitted order is pdqsort's permutation of the equal-key input (sort.Slice).
-    let mut risk_order: Vec<&FunctionItem> = agg.functions.iter().collect();
-    crate::handlers::go_sort::slice(&mut risk_order, |_a, _b| false);
-    let undocumented_functions: Vec<GoValue> = risk_order
-        .iter()
-        .map(|&f| {
-            let mut m = GoMap::new(MapOrigin::Struct);
-            m.push("name", GoValue::Str(String::new()));
-            m.push("source_file", GoValue::Str(f.source_file.clone()));
-            m.push("language", GoValue::Str(f.language.clone()));
-            m.push("directory", GoValue::Str(f.directory.clone()));
-            m.push("needs_comment", GoValue::Bool(false));
-            m.push("risk_level", GoValue::Str("MEDIUM".to_string()));
-            GoValue::Map(m)
-        })
-        .collect();
-
-    // --- aggregate ---
+    let counts = agg.counts();
     let mut aggregate = GoMap::new(MapOrigin::Struct);
-    aggregate.push("total_comments", GoValue::Int(agg.total_comments));
-    aggregate.push("good_comments", GoValue::Int(agg.good_comments));
-    aggregate.push("bad_comments", GoValue::Int(agg.bad_comments));
-    aggregate.push("overall_score", GoValue::Float(overall_score));
-    aggregate.push("total_functions", GoValue::Int(agg.total_functions));
+    aggregate.push("total_comments", GoValue::Int(counts.total_comments));
+    aggregate.push("good_comments", GoValue::Int(counts.good_comments));
+    aggregate.push("bad_comments", GoValue::Int(counts.bad_comments));
+    aggregate.push("overall_score", GoValue::Float(counts.overall_score()));
+    aggregate.push("total_functions", GoValue::Int(counts.total_functions));
     aggregate.push(
         "documented_functions",
-        GoValue::Int(agg.documented_functions),
+        GoValue::Int(counts.documented_functions),
     );
-    aggregate.push("good_comments_ratio", GoValue::Float(good_comments_ratio));
+    aggregate.push(
+        "good_comments_ratio",
+        GoValue::Float(counts.overall_score()),
+    );
     aggregate.push(
         "documentation_coverage",
-        GoValue::Float(documentation_coverage),
+        GoValue::Float(counts.documentation_coverage()),
     );
-    aggregate.push("health_score", GoValue::Float(overall_score * 100.0));
-    // buildMessage over the overall_score average (the value captured in the
-    // golden); ThresholdLabeler: ≥0.8 Excellent, ≥0.6 Good, ≥0.4 Fair, else Poor.
-    // With ZERO analyzed files the aggregator instead returns `buildEmptyResult`,
-    // whose message is "No comments found".
-    let message = if report_count == 0 {
-        "No comments found".to_string()
-    } else {
-        comment_message(overall_score)
-    };
-    aggregate.push("message", GoValue::Str(message));
+    aggregate.push(
+        "health_score",
+        GoValue::Float(counts.overall_score() * 100.0),
+    );
+    aggregate.push("message", GoValue::Str(counts.message().to_string()));
 
-    // ComputedMetrics struct order: comment_quality, function_documentation,
-    // undocumented_functions, aggregate.
     let mut root = GoMap::new(MapOrigin::Struct);
     root.push("comment_quality", GoValue::Array(comment_quality));
     root.push(
@@ -950,159 +369,178 @@ fn compute_metrics(agg: &Aggregated) -> GoValue {
     GoValue::Map(root)
 }
 
-/// `common.ThresholdLabeler` for comments (reference thresholds).
-fn comment_message(score: f64) -> String {
-    if score >= 0.8 {
-        "Excellent comment quality and placement".to_string()
-    } else if score >= 0.6 {
-        "Good comment quality with room for improvement".to_string()
-    } else if score >= 0.4 {
-        "Fair comment quality - consider improving placement".to_string()
+fn comment_quality_row(stamp: &FileStamp, c: &CommentDetail) -> GoValue {
+    let quality = if c.is_good() { "good" } else { "bad" };
+    let mut m = GoMap::new(MapOrigin::Struct);
+    m.push("line_number", GoValue::Int(c.line));
+    push_location(&mut m, stamp);
+    m.push("quality", GoValue::Str(quality.to_string()));
+    m.push("placement", GoValue::Str(c.placement.as_str().to_string()));
+    m.push("target_type", GoValue::Str(c.target_type.clone()));
+    m.push("target_name", GoValue::Str(c.target_name.clone()));
+    m.push("score", GoValue::Float(c.score));
+    GoValue::Map(m)
+}
+
+fn function_documentation_row(stamp: &FileStamp, f: &FunctionInfo) -> GoValue {
+    let status = if f.is_documented() {
+        "Documented"
     } else {
-        "Poor comment quality - significant improvement needed".to_string()
+        "Undocumented"
+    };
+    let mut m = GoMap::new(MapOrigin::Struct);
+    push_identity(&mut m, f);
+    push_location(&mut m, stamp);
+    m.push("is_documented", GoValue::Bool(f.is_documented()));
+    m.push("doc_line", GoValue::Int(f.doc_line.unwrap_or(0)));
+    m.push("status", GoValue::Str(status.to_string()));
+    GoValue::Map(m)
+}
+
+fn undocumented_row(stamp: &FileStamp, f: &FunctionInfo) -> GoValue {
+    let mut m = GoMap::new(MapOrigin::Struct);
+    push_identity(&mut m, f);
+    push_location(&mut m, stamp);
+    m.push("risk_level", GoValue::Str(risk_level(f.lines).to_string()));
+    GoValue::Map(m)
+}
+
+fn push_identity(m: &mut GoMap, f: &FunctionInfo) {
+    m.push("name", GoValue::Str(f.name.clone()));
+    m.push("type", GoValue::Str(f.kind.clone()));
+    m.push("line", GoValue::Int(f.line));
+    m.push("lines", GoValue::Int(f.lines));
+}
+
+fn push_location(m: &mut GoMap, stamp: &FileStamp) {
+    m.push("source_file", GoValue::Str(stamp.source_file.clone()));
+    m.push("language", GoValue::Str(stamp.language.clone()));
+    m.push("directory", GoValue::Str(stamp.directory.clone()));
+}
+
+/// Documentation risk of an undocumented declaration, by its length.
+fn risk_level(lines: i64) -> &'static str {
+    if lines >= RISK_HIGH_MIN_LINES {
+        "HIGH"
+    } else if lines >= RISK_MEDIUM_MIN_LINES {
+        "MEDIUM"
+    } else {
+        "LOW"
     }
 }
 
-// --- report-map accessors over cf-gojson GoValue ----------------------------
-
-fn map_get<'a>(v: &'a GoValue, key: &str) -> Option<&'a GoValue> {
-    match v {
-        GoValue::Map(m) => m.get(key),
-        _ => None,
-    }
+/// `round(score*10)/10` → `"N/10"`.
+fn format_score(score: f64) -> String {
+    let scaled = (score * 10.0).round() as i64;
+    format!("{scaled}/10")
 }
 
-fn as_array(v: &GoValue) -> Option<&Vec<GoValue>> {
-    match v {
-        GoValue::Array(a) => Some(a),
-        _ => None,
-    }
+/// `"%.1f%%"` of `v*100`.
+fn format_percent(v: f64) -> String {
+    format!("{:.1}%", v * 100.0)
 }
 
-fn as_int(v: &GoValue) -> Option<i64> {
-    match v {
-        GoValue::Int(n) => Some(*n),
-        _ => None,
-    }
-}
+// --- folder walk + per-file analysis ------------------------------------------
 
-fn as_str(v: &GoValue) -> Option<&str> {
-    match v {
-        GoValue::Str(s) => Some(s.as_str()),
-        _ => None,
-    }
-}
-
-/// `ParseReportData` reads `total_comments` etc. as the reference `int`; the analyzer emits
-/// them as `GoValue::Int`.
-fn scalar_int(report: &GoValue, key: &str) -> i64 {
-    map_get(report, key).and_then(as_int).unwrap_or(0)
-}
-
-/// Reads a numeric metric key as a float; absent (e.g. the empty result lacks
-/// `good_comments_ratio`/`documentation_coverage`) contributes 0 to the sum but
-/// the report still counts toward the mean denominator.
-fn scalar_float(report: &GoValue, key: &str) -> f64 {
-    match map_get(report, key) {
-        Some(GoValue::Float(f)) => *f,
-        Some(GoValue::Int(n)) => *n as f64,
-        _ => 0.0,
-    }
-}
-
-// --- path helpers (filepath.Rel / filepath.Dir parity for this flat case) ----
-
-/// `analyze.MakeRelativePath`: the path made relative to `root` (slash-joined).
-/// For files directly under `root` this is the bare basename.
-fn make_relative_path(path: &str, root: &str) -> String {
-    let root_trimmed = root.trim_end_matches('/');
-    if let Some(rest) = path.strip_prefix(root_trimmed) {
-        let rest = rest.trim_start_matches('/');
-        if !rest.is_empty() {
-            return rest.to_string();
+/// Runs the static pipeline over `root_path` through the shared static walk
+/// and returns the cross-file aggregation. A nonexistent root analyzes zero
+/// files (the empty report).
+fn aggregate(root_path: &str, filter: &StaticFilter) -> Aggregator {
+    let mut agg = Aggregator::new();
+    let parser = Parser::new();
+    let Ok(walk) = super::walk_source_files(root_path, &parser, filter) else {
+        return agg;
+    };
+    let analyzer = cf_comments::Analyzer::new();
+    for file in walk {
+        let stamp = file_stamp(&file);
+        let Ok(node) = parser.parse(&file.rel_path, &file.bytes) else {
+            // A supported extension without a usable grammar (markdown):
+            // listed as an empty file, never a skip.
+            agg.add_empty(stamp);
+            continue;
+        };
+        match analyzer.analyze_metrics(Some(&node), None) {
+            Ok(metrics) => agg.add(stamp, metrics),
+            Err(_) => agg.add_empty(stamp),
         }
-        // filepath.Rel(root, root) == "." (a FILE root stamps ".").
-        return ".".to_string();
     }
-    path.to_string()
+    agg
 }
 
-/// `filepath.Rel(base, target)` over slash paths — the reference per-file
-/// retainer key is `Rel(root, stamp)` where `stamp` is ALREADY root-relative
-/// (a double relativization). Returns `None` where Go's `Rel` errors (mixed
-/// absolute/relative arguments — i.e. an absolute root with a relative stamp);
-/// the caller then keeps `target`, the reference fallback.
-fn go_rel(base: &str, target: &str) -> Option<String> {
-    if base.starts_with('/') != target.starts_with('/') {
-        return None;
-    }
-    fn clean(p: &str) -> Vec<&str> {
-        p.split('/')
-            .filter(|c| !c.is_empty() && *c != ".")
-            .collect()
-    }
-    let b = clean(base);
-    let t = clean(target);
-    let common = b.iter().zip(t.iter()).take_while(|(x, y)| x == y).count();
-    let mut parts: Vec<&str> = vec![".."; b.len() - common];
-    parts.extend_from_slice(&t[common..]);
-    if parts.is_empty() {
-        return Some(".".to_string());
-    }
-    Some(parts.join("/"))
-}
-
-/// `filepath.Dir(stamped)`: the directory portion, or "." when none.
-fn parent_dir(stamped: &str) -> String {
-    match stamped.rfind('/') {
-        Some(0) => "/".to_string(),
-        Some(idx) => stamped[..idx].to_string(),
-        None => ".".to_string(),
+/// The file's stamp: root-relative path, its directory and its language.
+fn file_stamp(file: &SourceFile) -> FileStamp {
+    FileStamp {
+        directory: file.directory(),
+        language: file.language.clone(),
+        source_file: file.rel_path.clone(),
     }
 }
 
 #[cfg(test)]
-mod per_file_tests {
+mod tests {
     use super::*;
 
-    /// Fixture: one file with a documented + an undocumented function, one
-    /// function-free file.
+    /// One documented (`add`) and one undocumented (`sub`) function.
+    const A_GO: &str = "package main\n\n// add sums two ints.\nfunc add(a, b int) int {\n\treturn a + b\n}\n\nfunc sub(a, b int) int {\n\treturn a - b\n}\n";
+    /// One documented function out of four.
+    const B_GO: &str = "package main\n\n// g does g.\nfunc g() int {\n\treturn 1\n}\n\nfunc h() int {\n\treturn 2\n}\n\nfunc i() int {\n\treturn 3\n}\n\nfunc j() int {\n\treturn 4\n}\n";
+    /// A parser-supported file with neither declarations nor comments.
+    const README_MD: &str = "# Title\n\nSome text.\n";
+    /// A declaration-free, comment-free Go file.
+    const EMPTY_GO: &str = "package main\n\nvar version = \"1\"\n";
+
+    fn write(dir: &tempfile::TempDir, name: &str, content: &str) {
+        std::fs::write(dir.path().join(name), content).expect("fixture file");
+    }
+
+    /// Fixture: `a.go` (1/2 documented) and a declaration-free `empty.go`.
     fn fixture() -> tempfile::TempDir {
         let dir = tempfile::tempdir().expect("tempdir");
-        std::fs::write(
-            dir.path().join("a.go"),
-            "package main\n\n// add sums two ints.\nfunc add(a, b int) int {\n\treturn a + b\n}\n\nfunc sub(a, b int) int {\n\treturn a - b\n}\n",
-        )
-        .unwrap();
-        std::fs::write(
-            dir.path().join("types.go"),
-            "package main\n\ntype Config struct {\n\tName string\n}\n",
-        )
-        .unwrap();
+        write(&dir, "a.go", A_GO);
+        write(&dir, "empty.go", EMPTY_GO);
         dir
+    }
+
+    fn root(dir: &tempfile::TempDir) -> &str {
+        dir.path().to_str().expect("utf-8 tempdir")
+    }
+
+    fn json(dir: &tempfile::TempDir, per_file: bool) -> String {
+        let bytes = comments_report_json_flags(root(dir), &StaticFilter::default(), per_file)
+            .expect("json report");
+        String::from_utf8(bytes).expect("utf-8 json")
+    }
+
+    fn yaml(dir: &tempfile::TempDir) -> String {
+        let bytes = comments_report_yaml(root(dir), &StaticFilter::default()).expect("yaml");
+        String::from_utf8(bytes).expect("utf-8 yaml")
+    }
+
+    fn metric_value(json: &str, label: &str) -> String {
+        let needle = format!("\"label\": \"{label}\",\n          \"value\": \"");
+        let start = json
+            .find(&needle)
+            .unwrap_or_else(|| panic!("{label} missing:\n{json}"))
+            + needle.len();
+        json[start..].split('"').next().expect("value").to_string()
     }
 
     #[test]
     fn per_file_flag_emits_files_entries() {
         let dir = fixture();
-        let bytes = comments_report_json_flags(
-            dir.path().to_str().unwrap(),
-            &StaticFilter::default(),
-            true,
-        )
-        .unwrap();
-        let json = String::from_utf8(bytes).unwrap();
+        let json = json(&dir, true);
         assert!(json.contains("\"files\""), "files key missing:\n{json}");
         assert!(
             json.contains("\"file_path\": \"a.go\""),
             "a.go entry missing:\n{json}"
         );
         assert!(
-            json.contains("\"file_path\": \"types.go\""),
-            "types.go entry missing:\n{json}"
+            json.contains("\"file_path\": \"empty.go\""),
+            "empty.go entry missing:\n{json}"
         );
-        // Per-file status is the ANALYZER's per-file message; a comment-free
-        // file reports the empty-result message.
+        // A file with neither comments nor declarations reports the
+        // empty-result message.
         assert!(
             json.contains("\"status\": \"No comments found\""),
             "per-file empty-result status missing:\n{json}"
@@ -1117,17 +555,186 @@ mod per_file_tests {
     #[test]
     fn no_per_file_flag_omits_files() {
         let dir = fixture();
-        let bytes = comments_report_json_flags(
-            dir.path().to_str().unwrap(),
-            &StaticFilter::default(),
-            false,
-        )
-        .unwrap();
-        let json = String::from_utf8(bytes).unwrap();
+        let json = json(&dir, false);
         assert!(
             !json.contains("\"files\""),
             "files key must be omitted:\n{json}"
         );
         assert!(!json.contains("\"file_path\""));
+    }
+
+    #[test]
+    fn coverage_and_good_ratio_are_weighted_over_all_files() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(&dir, "a.go", A_GO);
+        write(&dir, "b.go", B_GO);
+        write(&dir, "README.md", README_MD);
+        let json = json(&dir, false);
+        // 2 documented of 6 functions (1/2 + 1/4), never the mean of the
+        // per-file ratios (0.5, 0.25, 0) and never diluted by the README.
+        assert_eq!(metric_value(&json, "Total Functions"), "6");
+        assert_eq!(metric_value(&json, "Doc Coverage"), "33.3%");
+        assert_eq!(metric_value(&json, "Good Ratio"), "100.0%");
+        assert_eq!(metric_value(&json, "Total Comments"), "2");
+        assert!(
+            json.contains("\"overall_score\": 1\n"),
+            "score follows the weighted good ratio:\n{json}"
+        );
+    }
+
+    #[test]
+    fn zero_comment_file_counts_its_functions() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            &dir,
+            "a.go",
+            "package main\n\nfunc add() int {\n\treturn 1\n}\n\nfunc sub() int {\n\treturn 2\n}\n",
+        );
+        let json = json(&dir, false);
+        assert_eq!(metric_value(&json, "Total Functions"), "2");
+        assert_eq!(metric_value(&json, "Doc Coverage"), "0.0%");
+        assert!(json.contains("\"name\": \"add\""), "{json}");
+        assert!(json.contains("\"name\": \"sub\""), "{json}");
+    }
+
+    #[test]
+    fn yaml_rows_carry_real_names_and_status() {
+        let dir = fixture();
+        let yaml = yaml(&dir);
+        for needle in [
+            "name: add\n",
+            "is_documented: true",
+            "status: Documented",
+            "name: sub\n",
+            "is_documented: false",
+            "status: Undocumented",
+            "target_name: add",
+            "quality: good",
+            "placement: above",
+            "total_functions: 2",
+            "documented_functions: 1",
+            "documentation_coverage: 0.5",
+        ] {
+            assert!(yaml.contains(needle), "yaml lacks {needle:?}:\n{yaml}");
+        }
+        let undocumented = yaml
+            .split("undocumented_functions:")
+            .nth(1)
+            .and_then(|rest| rest.split("aggregate:").next())
+            .expect("undocumented_functions block");
+        assert_eq!(undocumented.matches("- name:").count(), 1, "{undocumented}");
+        assert!(undocumented.contains("name: sub"), "{undocumented}");
+        assert!(undocumented.contains("risk_level: LOW"), "{undocumented}");
+    }
+
+    #[test]
+    fn risk_level_follows_the_declaration_length() {
+        assert_eq!(risk_level(RISK_MEDIUM_MIN_LINES - 1), "LOW");
+        assert_eq!(risk_level(RISK_MEDIUM_MIN_LINES), "MEDIUM");
+        assert_eq!(risk_level(RISK_HIGH_MIN_LINES), "HIGH");
+    }
+
+    #[test]
+    fn bin_payload_is_the_yaml_value_in_a_cfb1_envelope() {
+        let dir = fixture();
+        let bytes = comments_report_bin(root(&dir), &StaticFilter::default()).expect("bin");
+        assert_eq!(&bytes[..4], b"CFB1");
+        let payload = String::from_utf8_lossy(&bytes[8..]);
+        assert!(payload.contains("\"documented_functions\":1"), "{payload}");
+        assert!(payload.contains("\"name\":\"sub\""), "{payload}");
+    }
+
+    #[test]
+    fn file_root_stamps_the_file_name() {
+        let dir = fixture();
+        let file = dir.path().join("a.go");
+        let bytes =
+            comments_report_json_flags(file.to_str().unwrap(), &StaticFilter::default(), true)
+                .expect("json report");
+        let json = String::from_utf8(bytes).expect("utf-8 json");
+        assert!(json.contains("\"file_path\": \"a.go\""), "{json}");
+        assert!(json.contains("\"location\": \"a.go\""), "{json}");
+        assert!(!json.contains("\"file_path\": \".\""), "{json}");
+    }
+
+    #[test]
+    fn nested_files_are_stamped_root_relative() {
+        let dir = fixture();
+        std::fs::create_dir_all(dir.path().join("sub")).expect("sub dir");
+        std::fs::write(dir.path().join("sub").join("c.go"), A_GO).expect("sub/c.go");
+        let json = json(&dir, true);
+        assert!(json.contains("\"file_path\": \"sub/c.go\""), "{json}");
+        assert!(json.contains("\"location\": \"sub/c.go\""), "{json}");
+        assert!(!json.contains("\"../"), "{json}");
+    }
+
+    #[test]
+    fn empty_directory_yields_the_empty_report() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let json = json(&dir, false);
+        assert!(json.contains("\"status\": \"No comments found\""), "{json}");
+        assert_eq!(metric_value(&json, "Total Functions"), "0");
+        assert!(!json.contains("\"distribution\""), "{json}");
+        let raw = comments_raw_report_value(root(&dir), &StaticFilter::default()).expect("raw");
+        assert_eq!(
+            raw.as_map().and_then(|m| m.get("total_functions")),
+            Some(&GoValue::Int(0))
+        );
+        assert!(raw.as_map().and_then(|m| m.get("functions")).is_none());
+    }
+
+    #[test]
+    fn unparsable_supported_file_is_an_empty_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(&dir, "README.md", README_MD);
+        let json = json(&dir, true);
+        assert!(json.contains("\"file_path\": \"README.md\""), "{json}");
+        assert!(json.contains("\"status\": \"No comments found\""), "{json}");
+        assert_eq!(metric_value(&json, "Total Functions"), "0");
+    }
+
+    #[test]
+    fn text_summary_shares_the_weighted_metrics() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(&dir, "a.go", A_GO);
+        write(&dir, "b.go", B_GO);
+        let summary = comments_report_value_summary(root(&dir), &StaticFilter::default())
+            .expect("summary value");
+        let encoded = cf_gojson::Encoder::indented("  ").encode(&summary);
+        let text = String::from_utf8(encoded).expect("utf-8");
+        assert_eq!(metric_value(&text, "Doc Coverage"), "33.3%");
+        assert!(
+            !text.contains("\"name\""),
+            "summary carries no issues:\n{text}"
+        );
+    }
+
+    #[test]
+    fn raw_report_rows_are_stamped() {
+        let dir = fixture();
+        let raw = comments_raw_report_value(root(&dir), &StaticFilter::default()).expect("raw");
+        let functions = match raw.as_map().and_then(|m| m.get("functions")) {
+            Some(GoValue::Array(rows)) => rows.clone(),
+            other => panic!("functions missing: {other:?}"),
+        };
+        assert_eq!(functions.len(), 2);
+        let first = functions[0].as_map().expect("row map");
+        assert_eq!(
+            first.get("function"),
+            Some(&GoValue::Str("add".to_string()))
+        );
+        assert_eq!(
+            first.get("_source_file"),
+            Some(&GoValue::Str("a.go".to_string()))
+        );
+        assert_eq!(
+            first.get("_language"),
+            Some(&GoValue::Str("go".to_string()))
+        );
+        assert_eq!(
+            first.get("_directory"),
+            Some(&GoValue::Str(".".to_string()))
+        );
+        assert_eq!(first.get("doc_line"), Some(&GoValue::Int(3)));
     }
 }

@@ -8,8 +8,8 @@
 //! Repository handles are per-thread (`!Send`/`!Sync`) and rely on RAII `Drop`
 //! to free libgit2 objects. Everything that surfaces into machine reports
 //! (hash rendering, diff line counts, tree-change streams) reproduces the
-//! reference implementation exactly; output bytes are pinned against the
-//! reference binary by `tests/compat`.
+//! reference implementation exactly; output bytes are pinned by the report
+//! e2e suites (`bins/codefang/tests`).
 
 // Compile the README's usage example as a doctest (without injecting the README
 // into the rendered crate docs, which the `//!` block above already covers).
@@ -41,7 +41,7 @@ pub use blob::Blob;
 pub use commit::{Commit, CommitIter};
 pub use error::{GitCause, GitError, Result};
 pub use hash::Hash;
-pub use repository::{LogOptions, Repository};
+pub use repository::{limit_native_memory, LogOptions, NativeLimits, Repository};
 pub use revwalk::RevWalk;
 pub use signature::Signature;
 

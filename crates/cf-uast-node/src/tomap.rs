@@ -2,7 +2,7 @@
 //! representation.
 //!
 //! The report-format contract requires map keys to serialize in raw-UTF-8 byte
-//! order (pinned by `tests/compat`). To guarantee that, `to_map` returns a
+//! order (pinned by the report e2e suites (`bins/codefang/tests`)). To guarantee that, `to_map` returns a
 //! [`cf_gojson::GoValue`] whose objects are built with
 //! [`cf_gojson::GoMap::from_map`] (sort-on-encode). The full key set a node can
 //! emit is `children, id, pos, props, roles, token, type`, which in byte order
@@ -14,7 +14,7 @@ use cf_gojson::{GoMap, GoValue};
 impl Node {
     /// Converts this node (and its subtree) into a [`GoValue`] whose
     /// serialization is part of the report-format contract (pinned by
-    /// `tests/compat`).
+    /// the report e2e suites (`bins/codefang/tests`)).
     ///
     /// Map-origin objects are used throughout so keys byte-sort on encode. The
     /// field-population rules are frozen:

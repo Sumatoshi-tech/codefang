@@ -24,10 +24,12 @@
 //!
 //! # Speed and side-effects
 //!
-//! History `run` commands get `--checkpoint=false --resume=false --no-cache
-//! --workers 1` appended when absent (no behavioural change to the documented
-//! flags — they only disable on-disk caches and pin determinism) and a
-//! `--limit`/`--head` cap is enforced so a single doc command stays fast.
+//! A `--limit`/`--head` cap is appended to `run` commands so a single doc
+//! command stays fast. Every command runs with `HOME` and the working
+//! directory pointed at empty temporary directories, so a developer's own
+//! `.codefang.yaml` never changes what a documented command does and the
+//! files a command writes (`-o report.json`, plot directories) never land in
+//! the source tree.
 //!
 //! # Fixture
 //!
@@ -387,22 +389,10 @@ fn plan_run(rest: &[String], fixture: Option<&Path>) -> Plan {
         // No explicit repo arg — point at the fixture.
         args.push(fixture.display().to_string());
     }
-    // Determinism + no on-disk cache side-effects.
-    ensure_flag(&mut args, "--checkpoint=false");
-    ensure_flag(&mut args, "--resume=false");
-    ensure_flag(&mut args, "--no-cache");
-    if !has_flag(&args, "--workers") {
-        args.push("--workers".into());
-        args.push("1".into());
-    }
     // Speed cap: keep one doc command fast.
     let is_static = args.iter().any(|a| a.contains("static/"));
     if is_static {
         ensure_flag(&mut args, "--head");
-        if !has_flag(&args, "--static-workers") {
-            args.push("--static-workers".into());
-            args.push("1".into());
-        }
     } else if !has_flag(&args, "--limit") && !has_flag(&args, "--head") {
         args.push("--limit".into());
         args.push("30".into());
@@ -482,7 +472,7 @@ fn has_flag(args: &[String], flag: &str) -> bool {
 }
 
 fn ensure_flag(args: &mut Vec<String>, flag: &str) {
-    // flag is like "--no-cache" or "--checkpoint=false".
+    // flag is like "--head" or "--limit=30".
     let name = flag.split('=').next().unwrap_or(flag);
     if !has_flag(args, name) {
         args.push(flag.to_string());
@@ -529,6 +519,8 @@ fn markdown_examples_run() {
         "no codefang/uast commands extracted from docs — extraction likely broke"
     );
 
+    let home = tempfile::tempdir().expect("empty HOME for the doc commands");
+    let workdir = tempfile::tempdir().expect("working directory for the doc commands");
     let mut ran = 0usize;
     let mut skipped: BTreeMap<String, usize> = BTreeMap::new();
     let mut failures: Vec<String> = Vec::new();
@@ -546,6 +538,8 @@ fn markdown_examples_run() {
                 let exe = if bin == "uast" { &uast } else { &codefang };
                 let output = Command::new(exe)
                     .args(&args)
+                    .current_dir(workdir.path())
+                    .env("HOME", home.path())
                     .env("TZ", "UTC")
                     .env("NO_COLOR", "1")
                     .env("LANG", "C")

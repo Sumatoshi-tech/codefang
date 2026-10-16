@@ -296,9 +296,8 @@ version = "0.0.0"
 name = "cf-analyzers-plumbing"
 version = "0.0.0"
 dependencies = [
- "git2",
+ "cf-identity",
  "tempfile",
- "thiserror",
 ]
 
 [[package]]
@@ -308,6 +307,7 @@ dependencies = [
  "cf-alg-stats",
  "cf-gojson",
  "cf-gosort",
+ "cf-goyaml",
 ]
 
 [[package]]
@@ -353,12 +353,12 @@ dependencies = [
 name = "cf-clones"
 version = "0.0.0"
 dependencies = [
+ "cf-alg-hashutil",
  "cf-alg-lsh",
  "cf-alg-minhash",
- "cf-analyze",
  "cf-gojson",
- "cf-gosort",
  "cf-reportutil",
+ "cf-uast",
  "cf-uast-node",
 ]
 
@@ -366,8 +366,7 @@ dependencies = [
 name = "cf-cohesion"
 version = "0.0.0"
 dependencies = [
- "cf-alg-bloom",
- "cf-gosort",
+ "cf-uast",
  "cf-uast-node",
  "stacker",
 ]
@@ -376,7 +375,6 @@ dependencies = [
 name = "cf-commands"
 version = "0.0.0"
 dependencies = [
- "cf-alg-bloom",
  "cf-alg-levenshtein",
  "cf-analyze",
  "cf-analyzer-burndown",
@@ -384,7 +382,6 @@ dependencies = [
  "cf-anomaly",
  "cf-budget",
  "cf-burndown-core",
- "cf-checkpoint",
  "cf-clones",
  "cf-cohesion",
  "cf-comments",
@@ -403,8 +400,9 @@ dependencies = [
  "cf-imports",
  "cf-langpath",
  "cf-mcp",
- "cf-observability",
+ "cf-meminfo",
  "cf-pathpolicy",
+ "cf-persist",
  "cf-pipeline",
  "cf-plotpage",
  "cf-quality",
@@ -412,18 +410,20 @@ dependencies = [
  "cf-reportutil",
  "cf-sentiment",
  "cf-shotness",
- "cf-storage",
+ "cf-streaming",
  "cf-terminal",
  "cf-textutil",
  "cf-typos",
  "cf-uast",
  "cf-uast-node",
+ "cf-units",
  "cf-version",
  "clap",
  "clap_complete",
  "git2",
+ "serde",
+ "serde_json",
  "signal-hook",
- "stacker",
  "tempfile",
  "thiserror",
 ]
@@ -433,6 +433,7 @@ name = "cf-comments"
 version = "0.0.0"
 dependencies = [
  "cf-gojson",
+ "cf-uast",
  "cf-uast-node",
 ]
 
@@ -441,7 +442,8 @@ name = "cf-complexity"
 version = "0.0.0"
 dependencies = [
  "cf-gojson",
- "cf-gosort",
+ "cf-uast",
+ "cf-uast-node",
  "stacker",
 ]
 
@@ -450,10 +452,8 @@ name = "cf-composition"
 version = "0.0.0"
 dependencies = [
  "cf-gojson",
- "cf-goyaml",
  "cf-langpath",
  "cf-pathfilter",
- "serde_json",
 ]
 
 [[package]]
@@ -483,6 +483,7 @@ dependencies = [
  "cf-alg-stats",
  "cf-gojson",
  "cf-gosort",
+ "cf-goyaml",
  "cf-identity",
  "cf-metrics",
 ]
@@ -511,6 +512,7 @@ dependencies = [
  "cf-safeconv",
  "cf-textutil",
  "git2",
+ "libgit2-sys",
  "thiserror",
 ]
 
@@ -537,6 +539,7 @@ dependencies = [
 name = "cf-halstead"
 version = "0.0.0"
 dependencies = [
+ "cf-uast",
  "cf-uast-node",
 ]
 
@@ -549,7 +552,10 @@ name = "cf-imports"
 version = "0.0.0"
 dependencies = [
  "cf-gojson",
- "cf-reportutil",
+ "cf-goyaml",
+ "cf-uast",
+ "cf-uast-node",
+ "serde",
 ]
 
 [[package]]
@@ -666,8 +672,15 @@ name = "cf-quality"
 version = "0.0.0"
 dependencies = [
  "cf-alg-stats",
+ "cf-cohesion",
+ "cf-comments",
+ "cf-complexity",
  "cf-gojson",
+ "cf-halstead",
  "cf-reportutil",
+ "cf-uast",
+ "cf-uast-node",
+ "serde",
 ]
 
 [[package]]
@@ -708,6 +721,7 @@ name = "cf-shotness"
 version = "0.0.0"
 dependencies = [
  "cf-gojson",
+ "serde",
 ]
 
 [[package]]
@@ -760,6 +774,11 @@ dependencies = [
 [[package]]
 name = "cf-typos"
 version = "0.0.0"
+dependencies = [
+ "cf-alg-levenshtein",
+ "cf-gojson",
+ "serde",
+]
 
 [[package]]
 name = "cf-uast"
@@ -791,6 +810,9 @@ version = "0.0.0"
 dependencies = [
  "cf-uast",
  "cf-uast-mapping",
+ "cf-uast-node",
+ "cf-uast-spec",
+ "serde_json",
  "tree-sitter",
 ]
 
@@ -878,9 +900,12 @@ name = "codefang"
 version = "0.0.0"
 dependencies = [
  "cf-commands",
+ "cf-couples",
  "cf-gitlib",
  "clap",
  "git2",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -957,8 +982,7 @@ dependencies = [
 name = "doc-examples"
 version = "0.0.0"
 dependencies = [
- "codefang",
- "uast",
+ "tempfile",
 ]
 
 [[package]]
@@ -1150,16 +1174,6 @@ name = "glob"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
-
-[[package]]
-name = "golden-harness"
-version = "0.0.0"
-dependencies = [
- "codefang",
- "serde",
- "serde_json",
- "uast",
-]
 
 [[package]]
 name = "hashbrown"
@@ -2426,6 +2440,8 @@ dependencies = [
  "clap_complete",
  "jsonschema",
  "serde_json",
+ "tempfile",
+ "tree-sitter",
 ]
 
 [[package]]

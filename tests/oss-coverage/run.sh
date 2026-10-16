@@ -5,8 +5,7 @@
 # (manifest.tsv), runs `codefang run -a static/complexity,static/cohesion
 # --per-file` over each, and prints a per-language function-detection matrix
 # via summarize.py. Zero-function rates flag uastmap gaps on real code that
-# the synthetic corpus test (internal/analyzers/language_coverage_test.go)
-# cannot catch.
+# the synthetic fixtures in the crate unit tests cannot catch.
 #
 # Usage:
 #   tests/oss-coverage/run.sh [workdir]

@@ -4,10 +4,16 @@
 //! trend, low-sentiment periods, aggregate), the commit→tick aggregation, and
 //! [`compute_all_metrics_with_options`].
 //!
-//! Commit hashes are modeled as their hex strings (the analyzer keys and
-//! aggregates by the hash's string form), so the pure computation needs no git
-//! dependency. The untyped report-map parsing lives in the `cf-analyze`
-//! conversion hub.
+//! # Tick semantics
+//!
+//! A tick carries a score only when at least one of its commits introduced or
+//! changed a comment ([`aggregate_commits_to_ticks`]). A comment-free tick
+//! has no entry in `emotions_by_tick`: it is absent from the time series, the
+//! trend fit and the low-sentiment periods, and it is not classified — its
+//! commits still count in [`AggregateData::total_commits`].
+//!
+//! Commit hashes are modeled as their hex strings, so the pure computation
+//! needs no git dependency.
 
 use std::collections::BTreeMap;
 
@@ -72,14 +78,14 @@ pub struct TickBounds {
 ///
 /// `commits_by_tick` maps a tick to the hex hashes of its commits;
 /// `comments_by_commit` (consumed by [`aggregate_commits_to_ticks`]) maps a hex
-/// hash to its comments.
+/// hash to its new or changed comments.
 #[derive(Debug, Clone, Default)]
 pub struct ReportData {
-    /// Per-tick sentiment scores.
+    /// Per-tick sentiment scores — only the ticks with at least one comment.
     pub emotions_by_tick: BTreeMap<i64, f32>,
-    /// Per-tick comments.
+    /// Per-tick comments — only the ticks with at least one comment.
     pub comments_by_tick: BTreeMap<i64, Vec<String>>,
-    /// Per-tick commit hashes (hex).
+    /// Per-tick commit hashes (hex) — every tick of the window.
     pub commits_by_tick: BTreeMap<i64, Vec<String>>,
     /// Per-tick time bounds.
     pub tick_bounds: BTreeMap<i64, TickBounds>,
@@ -115,7 +121,22 @@ impl ReportData {
 
 /// Groups per-commit comments into per-tick comments and emotions.
 ///
-/// Returns empty maps when either input is empty.
+/// A tick appears in the returned maps only when its commits carry at least
+/// one comment: comment-free ticks are unscored, never scored `0.0`.
+///
+/// ```
+/// use std::collections::BTreeMap;
+/// use cf_sentiment::metrics::aggregate_commits_to_ticks;
+///
+/// let comments = BTreeMap::from([
+///     ("a".to_string(), vec!["great, clean fix".to_string()]),
+///     ("b".to_string(), Vec::new()),
+/// ]);
+/// let commits = BTreeMap::from([(0, vec!["a".to_string()]), (1, vec!["b".to_string()])]);
+/// let (by_tick, emotions) = aggregate_commits_to_ticks(&comments, &commits);
+/// assert_eq!(by_tick.keys().copied().collect::<Vec<_>>(), vec![0]);
+/// assert!(!emotions.contains_key(&1), "a comment-free tick carries no score");
+/// ```
 #[must_use]
 pub fn aggregate_commits_to_ticks(
     comments_by_commit: &BTreeMap<String, Vec<String>>,
@@ -124,20 +145,17 @@ pub fn aggregate_commits_to_ticks(
     let mut cbt: BTreeMap<i64, Vec<String>> = BTreeMap::new();
     let mut ebt: BTreeMap<i64, f32> = BTreeMap::new();
 
-    if comments_by_commit.is_empty() || commits_by_tick.is_empty() {
-        return (cbt, ebt);
-    }
-
     for (&tick, hashes) in commits_by_tick {
-        for hash in hashes {
-            if let Some(comments) = comments_by_commit.get(hash) {
-                cbt.entry(tick)
-                    .or_default()
-                    .extend(comments.iter().cloned());
-            }
+        let tick_comments: Vec<String> = hashes
+            .iter()
+            .filter_map(|hash| comments_by_commit.get(hash))
+            .flat_map(|comments| comments.iter().cloned())
+            .collect();
+        if tick_comments.is_empty() {
+            continue;
         }
-        let tick_comments = cbt.get(&tick).cloned().unwrap_or_default();
         ebt.insert(tick, compute_sentiment(&tick_comments));
+        cbt.insert(tick, tick_comments);
     }
 
     (cbt, ebt)
@@ -225,7 +243,15 @@ pub fn compute_time_series(input: &ReportData, opts: MetricOptions) -> Vec<TimeS
     result
 }
 
-/// Computes the trend.
+/// The score range every reported sentiment lies in.
+const SCORE_MIN: f32 = 0.0;
+/// See [`SCORE_MIN`].
+const SCORE_MAX: f32 = 1.0;
+
+/// Computes the trend over the scored ticks: the least-squares line through
+/// the per-tick scores, evaluated at the first and last scored tick and
+/// clamped to `[0, 1]` (a fitted line may overshoot the score range); the
+/// change percentage is computed from the clamped endpoints.
 #[must_use]
 pub fn compute_trend(input: &ReportData, opts: MetricOptions) -> TrendData {
     if input.emotions_by_tick.is_empty() {
@@ -236,8 +262,9 @@ pub fn compute_trend(input: &ReportData, opts: MetricOptions) -> TrendData {
     let start_tick = ticks[0];
     let end_tick = ticks[ticks.len() - 1];
 
-    let (regression_start, regression_end) =
-        linear_regression_endpoints(&ticks, &input.emotions_by_tick);
+    let (fitted_start, fitted_end) = linear_regression_endpoints(&ticks, &input.emotions_by_tick);
+    let regression_start = fitted_start.clamp(SCORE_MIN, SCORE_MAX);
+    let regression_end = fitted_end.clamp(SCORE_MIN, SCORE_MAX);
 
     let mut change_percent = 0.0;
     if regression_start > 0.0 {
@@ -257,12 +284,9 @@ pub fn compute_trend(input: &ReportData, opts: MetricOptions) -> TrendData {
     }
 }
 
-/// Least-squares regression endpoints.
-///
-/// The float arithmetic (sums in `f64`, the `n*sumXY - sumX*sumY` form, and the
-/// final `f32` casts of `intercept + slope*tick`) is part of the report
-/// contract: the reported 32-bit endpoints depend on this exact operation
-/// order.
+/// Least-squares regression endpoints: the fitted line evaluated at the first
+/// and last tick (unclamped; [`compute_trend`] clamps). Sums run in `f64`;
+/// the endpoints are cast to the 32-bit report fields.
 #[must_use]
 #[allow(clippy::similar_names)] // sum_x / sum_y / sum_xy are canonical regression names
 pub fn linear_regression_endpoints(ticks: &[i64], emotions: &BTreeMap<i64, f32>) -> (f32, f32) {
@@ -344,17 +368,20 @@ pub fn compute_low_sentiment_periods(
     result
 }
 
-/// Computes aggregate statistics.
+/// Computes aggregate statistics: the classification counts and the mean
+/// score over the SCORED ticks, the comment total, and the commit total over
+/// EVERY tick of the window (comment-free ticks included).
 #[must_use]
 pub fn compute_aggregate(input: &ReportData, opts: MetricOptions) -> AggregateData {
     let mut agg = AggregateData {
         total_ticks: input.emotions_by_tick.len() as i64,
+        total_commits: input
+            .commits_by_tick
+            .values()
+            .map(|commits| commits.len() as i64)
+            .sum(),
         ..Default::default()
     };
-
-    if agg.total_ticks == 0 {
-        return agg;
-    }
 
     let mut tick_sentiments: Vec<f32> = Vec::with_capacity(input.emotions_by_tick.len());
 
@@ -372,79 +399,20 @@ pub fn compute_aggregate(input: &ReportData, opts: MetricOptions) -> AggregateDa
         if let Some(comments) = input.comments_by_tick.get(&tick) {
             agg.total_comments += comments.len() as i64;
         }
-        if let Some(commits) = input.commits_by_tick.get(&tick) {
-            agg.total_commits += commits.len() as i64;
-        }
     }
 
-    agg.average_sentiment = modal_f32_mean(&tick_sentiments);
+    agg.average_sentiment = mean_f32(&tick_sentiments);
 
     agg
 }
 
-/// Modal float32 mean over summation orders.
-///
-/// Go computes the aggregate average by iterating `emotionsByTick` (a Go map,
-/// randomized iteration order) and accumulating in `float32`; the resulting
-/// value therefore varies by a few ULPs from run to run with a strongly modal
-/// distribution (the most likely rounding outcome dominates). A deterministic
-/// port cannot reproduce randomized iteration, so we compute the SAME
-/// quantity — the f32 sum-then-divide of the same values — under a
-/// deterministically sampled set of permutations and return the modal result,
-/// i.e. the value the Go binary is most likely to print. Ties break toward the
-/// smaller bit pattern so the result is fully deterministic.
-fn modal_f32_mean(values: &[f32]) -> f32 {
-    const SAMPLES: usize = 201;
-
-    let n = values.len();
-    if n == 0 {
+/// The arithmetic mean of `values` (accumulated in `f64`), `0.0` when empty.
+fn mean_f32(values: &[f32]) -> f32 {
+    if values.is_empty() {
         return 0.0;
     }
-    let count = n as f32;
-
-    // Cheap exit: if ascending and descending index-order sums agree, the sum
-    // is order-insensitive at f32 precision and sampling is unnecessary.
-    let fwd: f32 = values.iter().fold(0.0_f32, |s, &v| s + v);
-    let rev: f32 = values.iter().rev().fold(0.0_f32, |s, &v| s + v);
-    if fwd.to_bits() == rev.to_bits() {
-        return fwd / count;
-    }
-
-    // Deterministic xorshift64* PRNG with a fixed seed: the output depends only
-    // on the input values, never on wall clock or address-space randomness.
-    let mut state: u64 = 0x9E37_79B9_7F4A_7C15;
-    let mut next = move || {
-        state ^= state >> 12;
-        state ^= state << 25;
-        state ^= state >> 27;
-        state.wrapping_mul(0x2545_F491_4F6C_DD1D)
-    };
-
-    let mut perm: Vec<f32> = values.to_vec();
-    let mut tallies: Vec<(u32, u32)> = Vec::new(); // (f32 bits, count)
-
-    for _ in 0..SAMPLES {
-        // Fisher-Yates shuffle.
-        for i in (1..n).rev() {
-            #[allow(clippy::cast_possible_truncation)]
-            let j = (next() % (i as u64 + 1)) as usize;
-            perm.swap(i, j);
-        }
-        let sum: f32 = perm.iter().fold(0.0_f32, |s, &v| s + v);
-        let bits = (sum / count).to_bits();
-        match tallies.iter_mut().find(|(b, _)| *b == bits) {
-            Some(entry) => entry.1 += 1,
-            None => tallies.push((bits, 1)),
-        }
-    }
-
-    // Modal value; ties break toward the smaller bit pattern.
-    let (bits, _) = tallies
-        .iter()
-        .copied()
-        .max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(&a.0)))
-        .unwrap_or((0, 0));
-    f32::from_bits(bits)
+    let sum: f64 = values.iter().map(|&v| f64::from(v)).sum();
+    (sum / values.len() as f64) as f32
 }
 
 #[cfg(test)]
@@ -679,6 +647,8 @@ mod tests {
             commits_by_tick: [
                 (0, vec!["abc".into()]),
                 (2, vec!["def".into(), "ghi".into()]),
+                // An unscored tick: its commits count, nothing else.
+                (3, vec!["jkl".into()]),
             ]
             .into_iter()
             .collect(),
@@ -687,7 +657,7 @@ mod tests {
         let r = compute_aggregate(&input, MetricOptions::default());
         assert_eq!(r.total_ticks, 3);
         assert_eq!(r.total_comments, 3);
-        assert_eq!(r.total_commits, 3);
+        assert_eq!(r.total_commits, 4);
         assert_eq!(r.positive_ticks, 1);
         assert_eq!(r.neutral_ticks, 1);
         assert_eq!(r.negative_ticks, 1);
@@ -698,6 +668,11 @@ mod tests {
     #[test]
     fn aggregate_commits_empty() {
         let (cbt, ebt) = aggregate_commits_to_ticks(&BTreeMap::new(), &BTreeMap::new());
+        assert!(cbt.is_empty());
+        assert!(ebt.is_empty());
+        // Commits without comments: ticks exist, none is scored.
+        let cbt_in: BTreeMap<i64, Vec<String>> = [(0, vec!["a".into()])].into_iter().collect();
+        let (cbt, ebt) = aggregate_commits_to_ticks(&BTreeMap::new(), &cbt_in);
         assert!(cbt.is_empty());
         assert!(ebt.is_empty());
     }
@@ -751,5 +726,86 @@ mod tests {
         assert_eq!(r.time_series.len(), 2);
         assert_eq!(r.aggregate.total_ticks, 2);
         assert_eq!(r.aggregate.total_comments, 3);
+    }
+
+    /// A tick whose commits carry no new or changed comment has NO score: it
+    /// is absent from the time series, never a low-sentiment period, and not
+    /// counted in the classification totals — while its commits still count.
+    #[test]
+    fn comment_free_ticks_carry_no_score() {
+        let cbc: BTreeMap<String, Vec<String>> = [
+            ("a".to_string(), vec!["good work on this".into()]),
+            ("b".to_string(), Vec::new()),
+            ("c".to_string(), Vec::new()),
+        ]
+        .into_iter()
+        .collect();
+        let cbt: BTreeMap<i64, Vec<String>> =
+            [(0, vec!["a".into()]), (1, vec!["b".into(), "c".into()])]
+                .into_iter()
+                .collect();
+        let input = ReportData::from_commit_data(&cbc, cbt, BTreeMap::new());
+        assert!(!input.emotions_by_tick.contains_key(&1));
+
+        let r = compute_all_metrics(&input);
+        assert_eq!(r.time_series.len(), 1, "{:?}", r.time_series);
+        assert_eq!(r.time_series[0].tick, 0);
+        assert!(
+            r.low_sentiment_periods.is_empty(),
+            "{:?}",
+            r.low_sentiment_periods
+        );
+        assert_eq!(r.aggregate.total_ticks, 1);
+        assert_eq!(r.aggregate.total_commits, 3);
+        assert_eq!(r.aggregate.total_comments, 1);
+        assert_eq!(
+            r.aggregate.positive_ticks + r.aggregate.neutral_ticks + r.aggregate.negative_ticks,
+            1
+        );
+        assert_eq!(r.trend.trend_direction, "stable");
+    }
+
+    /// The fitted endpoints stay in `[0, 1]` and the change is computed from
+    /// the clamped values.
+    #[test]
+    fn trend_endpoints_are_clamped_to_unit_interval() {
+        // Fit over (0, 1.0), (1, 0.0), (2, 0.0): intercept 0.8333, slope -0.5
+        // → raw end -0.1667, clamped to 0.
+        let input = ReportData {
+            emotions_by_tick: m_f32(&[(0, 1.0), (1, 0.0), (2, 0.0)]),
+            ..Default::default()
+        };
+        let r = compute_trend(&input, MetricOptions::default());
+        assert!((0.0..=1.0).contains(&r.start_sentiment), "{r:?}");
+        assert!((0.0..=1.0).contains(&r.end_sentiment), "{r:?}");
+        assert!((r.end_sentiment).abs() < FLOAT_DELTA, "{r:?}");
+        assert!((r.change_percent - -100.0).abs() < 0.01, "{r:?}");
+
+        // Fit over (0, 0.9), (1, 0.9), (2, 0.0): intercept 1.05 → start clamped to 1.
+        let input = ReportData {
+            emotions_by_tick: m_f32(&[(0, 0.9), (1, 0.9), (2, 0.0)]),
+            ..Default::default()
+        };
+        let r = compute_trend(&input, MetricOptions::default());
+        assert!((r.start_sentiment - 1.0).abs() < FLOAT_DELTA, "{r:?}");
+        assert!((r.end_sentiment - 0.15).abs() < FLOAT_DELTA, "{r:?}");
+        assert!((r.change_percent - -85.0).abs() < 0.1, "{r:?}");
+    }
+
+    /// The aggregate average is the plain arithmetic mean of the scored ticks.
+    #[test]
+    fn aggregate_average_is_the_plain_mean() {
+        let values: Vec<f32> = (0..50).map(|i| 0.1 + (i as f32) * 0.017).collect();
+        let input = ReportData {
+            emotions_by_tick: values
+                .iter()
+                .enumerate()
+                .map(|(i, v)| (i as i64, *v))
+                .collect(),
+            ..Default::default()
+        };
+        let r = compute_aggregate(&input, MetricOptions::default());
+        let expected = (values.iter().map(|v| f64::from(*v)).sum::<f64>() / 50.0) as f32;
+        assert!((r.average_sentiment - expected).abs() < 1e-6, "{r:?}");
     }
 }

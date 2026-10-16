@@ -11,18 +11,15 @@
 //! * [`vader`] — the self-contained VADER scoring engine.
 //! * [`scorer`] — comment sentiment scoring with multilingual lexicon injection
 //!   and SE-domain neutralizers.
-//! * [`metrics`] — per-tick metric computation.
+//! * [`metrics`] — per-tick metric computation (only ticks with new or
+//!   changed comments carry a score).
 //! * [`model`] — report-bearing types with [`model::ToGoValue`] for byte-stable
 //!   serialization through [`cf_gojson`].
-//! * [`store`] — store record kinds + store-time-series extraction.
+//! * [`store`] — the per-tick series the cross-analyzer anomaly path reads.
 //!
-//! # Compatibility
-//!
-//! Output bytes are pinned against the reference implementation by
-//! `tests/compat`. All report serialization routes through [`cf_gojson`]
-//! (and `cf-goyaml` for YAML) via [`model::ToGoValue`] — never raw
-//! `serde_json`. VADER scores and the multilingual lexicon are reproduced
-//! exactly, with the base lexicon vendored byte-for-byte under `data/`.
+//! All report serialization routes through [`cf_gojson`] (and `cf-goyaml` for
+//! YAML) via [`model::ToGoValue`] — never raw `serde_json`. The VADER base
+//! lexicon and emoji table are vendored under `data/`.
 
 #![forbid(unsafe_code)]
 // Deliberate parity casts (usize -> i64 lengths, f64 -> f32 report fields) are
@@ -50,10 +47,10 @@ pub use model::{
     AggregateData, ComputedMetrics, LowSentimentPeriodData, TimeSeriesData, ToGoValue, TrendData,
 };
 pub use scorer::{compute_sentiment, compute_sentiment_with_options, ScorerOptions};
-pub use store::{KIND_AGGREGATE, KIND_TIME_SERIES, KIND_TREND};
+pub use store::extract_store_time_series;
 pub use vader::{Sentiment, SentimentIntensityAnalyzer};
 
-pub use analyzer::ANALYZER_ID;
+pub use analyzer::{new_or_changed, ANALYZER_ID, DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH};
 
 /// Crate name, used by smoke tests to confirm the module links.
 pub const CRATE_NAME: &str = "cf-sentiment";

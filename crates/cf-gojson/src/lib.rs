@@ -9,7 +9,7 @@
 //! strategy.
 //!
 //! Compatibility: output bytes are pinned against the reference implementation
-//! by the differential gate in `tests/compat`.
+//! by the report e2e suites (`bins/codefang/tests`).
 //!
 //! # Modules
 //!

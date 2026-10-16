@@ -6,10 +6,13 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
-description = "Halstead complexity metrics: operator/operand detection, derived measures (vocabulary/length/volume/difficulty/effort/time/bugs), and the standalone file-level analysis consumed by the quality analyzer. Output bytes are pinned by the differential gate (tests/compat); the static-pipeline report builder lives in cf-commands."
+description = "Halstead complexity metrics: operator/operand classification and source-span recovery, derived measures (vocabulary/length/volume/difficulty/effort/time/bugs), the union aggregate with thresholds and health score, and the file-level analysis consumed by the quality analyzer. The static-pipeline report serialization lives in cf-commands."
 
 [dependencies]
-# UAST node type the standalone analysis traverses.
+# UAST node type the detector walks.
 cf-uast-node = { path = "../cf-uast-node" }
 
 [dev-dependencies]
+# Real-source tests: parse Go / Python / JavaScript / Rust / Java / C with the
+# production parser and assert hand-computed Halstead numbers.
+cf-uast = { path = "../cf-uast" }

@@ -18,8 +18,9 @@
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
+use cf_uast_mapping::UastSpec;
 use cf_uast_mapping::{LanguageInfo, Parser as MappingParser, PatternMatcher, Rule};
-use cf_uast_node::Node;
+use cf_uast_node::{Node, ROLE_DECLARATION, ROLE_FUNCTION, UAST_FUNCTION, UAST_METHOD};
 
 use crate::lowering::{resolve_rules, Lowering, ResolvedRule};
 use crate::types::{LanguageParser, ParseError};
@@ -356,6 +357,23 @@ impl LanguageParser for LazyDslParser {
     fn extensions(&self) -> Vec<String> {
         self.extensions.clone()
     }
+
+    fn may_yield(&self, wanted: &dyn Fn(&UastSpec) -> bool) -> bool {
+        match self.init() {
+            Ok(state) => state.resolved.iter().any(|r| wanted(&r.rule.uast_spec)),
+            Err(_) => true,
+        }
+    }
+}
+
+/// Whether an output spec is a function node, by the shape the complexity
+/// analyzer discovers: type `Function` or `Method`, or the `Function` and
+/// `Declaration` roles together.
+#[must_use]
+pub fn spec_yields_function(spec: &UastSpec) -> bool {
+    let has_role = |name: &str| spec.roles.iter().any(|r| r == name);
+    matches!(spec.r#type.as_str(), UAST_FUNCTION | UAST_METHOD)
+        || (has_role(ROLE_FUNCTION) && has_role(ROLE_DECLARATION))
 }
 
 /// Returns the embedded precompiled mappings.

@@ -183,6 +183,12 @@ fn clamp_filled(value: f64, bar_width: usize) -> usize {
     filled as usize
 }
 
+/// Renders an all-empty bar of `bar_width` cells (used for info-only
+/// sections, which have no score to fill the bar with).
+pub fn format_empty_bar(bar_width: usize) -> String {
+    format!("[{}]", BAR_EMPTY.repeat(bar_width))
+}
+
 /// Renders a score as a visual progress bar with an `"N/10"` suffix.
 pub fn format_score_bar(score: f64, bar_width: usize) -> String {
     let filled = clamp_filled(score, bar_width);

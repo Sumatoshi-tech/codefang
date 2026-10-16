@@ -9,7 +9,7 @@ publish.workspace = true
 description = "Analyzer registry/dispatch hub + analyzer interfaces, BaseHistoryAnalyzer, and cross-format report conversion (json/yaml/ndjson/timeseries/binary). Stays BELOW the framework layer. See specs/rust-rewrite/DESIGN.md §3."
 
 [dependencies]
-# Tier-0 report-format serialization crates (byte-pinned by tests/compat).
+# Tier-0 report-format serialization crates (byte-pinned by the report e2e suites in bins/codefang/tests).
 # ALL machine-format report
 # bytes (json, yaml, ndjson, timeseries, timeseries+ndjson, compact, bin) flow
 # through these — never serde_json/serde_yaml for output (DESIGN §2).

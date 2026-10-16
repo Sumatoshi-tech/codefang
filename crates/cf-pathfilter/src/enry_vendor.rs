@@ -2,7 +2,7 @@
 //!
 //! enry classification is decision-parity-critical (DESIGN §2.6): the set of
 //! files included in an analysis selects which bytes appear in machine reports,
-//! which `tests/compat` pins against the reference binary. We therefore
+//! which the report e2e suites (`bins/codefang/tests`) pins against the reference binary. We therefore
 //! vendor the **same** regex table enry embeds in its generated
 //! `data/vendor.go` (itself extracted from GitHub Linguist's `vendor.yml`),
 //! instead of swapping to a different detector.

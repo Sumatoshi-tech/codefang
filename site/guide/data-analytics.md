@@ -13,10 +13,10 @@ Analyze a repository and produce DWH-ready output:
 
 ```bash
 # JSON for small-to-medium repos (< 5K files, < 10K commits)
-codefang run --format json --per-file --memory-budget 4GB /path/to/repo > report.json
+codefang run --format json --per-file /path/to/repo > report.json
 
-# NDJSON for large repos (streaming, one line per analyzer)
-codefang run --format ndjson --per-file --memory-budget 8GB /path/to/repo > report.ndjson
+# NDJSON for large repos (one line per analyzer)
+codefang run --format ndjson /path/to/repo > report.ndjson
 
 # Limit history depth for faster iteration
 codefang run --format json --per-file --limit 5000 /path/to/repo > report.json
@@ -89,31 +89,30 @@ cat report.ndjson | clickhouse-client --query "INSERT INTO codefang_raw FORMAT J
 
 ---
 
-## Memory budget
+## Bounding a history run
 
-**Always set `--memory-budget`** for repos with history analysis. Without it,
-the streaming pipeline uses a conservative 2GB default that may OOM on large
-repos.
+`--memory-budget` (default: half the RAM, at most 2 GiB) bounds what the
+history walks hold in flight: each walk plans its chunk size and worker count
+from its share, and `-v` prints the plan. The output never depends on the
+budget. The analyzers' own aggregates still grow with the commit window, so
+on a very large repository also bound the window:
 
-| Machine RAM | Recommended Budget | Handles |
-|-------------|-------------------|---------|
-| 8 GB | `--memory-budget 2GB` | Repos up to ~10K commits |
-| 16 GB | `--memory-budget 4GB` | Repos up to ~30K commits |
-| 32 GB | `--memory-budget 8GB` | Repos up to ~60K commits |
-| 64 GB | `--memory-budget 16GB` | Repos up to ~150K commits |
+| Flag | Effect |
+|------|--------|
+| `--limit N` | Only the N newest commits |
+| `--since <time or revision>` | Only commits authored at/after the cutoff (`4380h`, `2025-01-01`, `v1.2.0`) |
+| `--first-parent` | Skip the side branches of merges |
+| `--max-changes-per-commit N` | Drop commits whose tree diff exceeds N changes (default 10000) — vendoring dumps, mass renames |
+| `--languages go,python` | Only changes in these languages reach the analyzers |
+| `--head` | The single HEAD commit |
 
-The budget controls the streaming chunk planner — larger budgets mean fewer,
-bigger chunks and faster processing. The actual RSS will be ~2x the budget
-due to Go runtime overhead and native memory.
+Measured on the hercules repository, `codefang run -a 'history/*' --limit 500`
+peaks at 752 MB resident memory and finishes in 4.7 s wall time.
 
 ```bash
-# 64GB machine, kubernetes-sized repo (~56K commits)
-codefang run --format ndjson --per-file --memory-budget 8GB ~/sources/kubernetes
+# The newest 5000 commits of a kubernetes-sized repository
+codefang run --format ndjson --limit 5000 ~/sources/kubernetes > report.ndjson
 ```
-
-!!! warning "Without `--memory-budget`"
-    The default 2GB budget may cause the process to be killed by the OS OOM
-    killer on large repos. Always set this flag explicitly.
 
 ---
 
@@ -126,14 +125,14 @@ Use `--limit N` to analyze only the most recent N commits. This is useful for:
 - **Memory control**: Fewer commits = less memory, faster processing
 
 ```bash
-# Last 1000 commits (fast, ~2 min)
+# Last 1000 commits
 codefang run --format json --per-file --limit 1000 /repo > recent.json
 
-# Last 10000 commits (moderate, ~15 min)
-codefang run --format json --per-file --limit 10000 --memory-budget 4GB /repo > report.json
+# Last 10000 commits
+codefang run --format json --per-file --limit 10000 /repo > report.json
 
-# Full history (slow, may take hours for large repos)
-codefang run --format json --per-file --memory-budget 8GB /repo > full.json
+# Full history
+codefang run --format json --per-file /repo > full.json
 ```
 
 ---
@@ -385,7 +384,7 @@ codefang run \
 ### Full analysis (everything)
 
 ```bash
-codefang run --format ndjson --per-file --memory-budget 8GB /repo
+codefang run --format ndjson /repo
 ```
 
 **Produces**: All 17 analyzers. Use NDJSON for large repos.
@@ -394,28 +393,24 @@ codefang run --format ndjson --per-file --memory-budget 8GB /repo
 
 ## Performance tuning
 
-### Static analysis workers
+### Static analysis
 
-Control parallelism for the UAST parsing phase:
-
-```bash
-# Use all CPUs (default: min(NumCPU, 8))
-codefang run --static-workers 16 --format json /repo
-```
-
-More workers = faster static phase but higher peak memory.
+The static phase is one walk of the working tree shared by every `static/*`
+analyzer; each admitted file is read once. Narrow it with `--languages` and
+`--extra-excluded-prefixes`; vendored and generated files are excluded by
+default (`--include-vendored` / `--include-generated` re-include them).
 
 ### History analysis
 
-The streaming pipeline auto-tunes chunk sizes based on `--memory-budget`.
-No manual tuning needed. Key parameters:
+The history phase has no tuning flags beyond the commit window (see
+[Bounding a history run](#bounding-a-history-run)):
 
 | Parameter | Flag | Default | Effect |
 |-----------|------|---------|--------|
-| Memory budget | `--memory-budget` | 2GB | Controls chunk size |
 | Commit limit | `--limit` | 0 (all) | Analyze at most N commits — the N **newest** |
-| First parent | `--first-parent` | false | Skip merge commits |
+| First parent | `--first-parent` | false | Skip merge side branches |
 | Since | `--since` | none | Time- or revision-based filtering |
+| Change cap | `--max-changes-per-commit` | 0 (= 10000) | Drop oversized commits |
 
 ```bash
 # Analyze only the last 6 months (4380 h), first-parent only
@@ -436,156 +431,40 @@ Duration units are `h`/`m`/`s` only — there is no `d`/`w`, and `m` is
 
 ---
 
-## Incremental analysis & checkpointing
+## Recurring loads
 
-Codefang supports two persistence mechanisms for long-running analysis:
-**incremental caching** (skip already-processed commits) and **checkpointing**
-(crash recovery).
-
-### Incremental cache
-
-The incremental cache stores analysis results keyed by repository root SHA and
-branch. On subsequent runs, only new commits since the last cached position
-are processed.
-
-!!! warning "History-only mode required"
-    The incremental cache currently works with history-only runs
-    (`-a 'history/*'`). In the default combined mode (static + history),
-    the cache directory is accepted but may not produce cache files.
-    For incremental DWH loads, run history and static phases separately.
-
-```bash
-# History-only run with cache (incremental)
-codefang run -a 'history/*' --format json --memory-budget 8GB \
-  --cache-dir ~/.codefang/cache /repo > history.json
-
-# Static run (always full, no caching needed — fast)
-codefang run -a 'static/*' --format json --per-file /repo > static.json
-
-# Force full re-analysis (ignore cache)
-codefang run -a 'history/*' --format json --memory-budget 8GB \
-  --cache-dir ~/.codefang/cache --no-cache /repo > history-full.json
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--cache-dir` | none | Directory for incremental cache storage |
-| `--no-cache` | false | Force full re-analysis, ignore existing cache |
-
-The cache stores a metadata file (`cache.json`) with head SHA, branch, commit
-count, and analyzer IDs. If the root SHA changes (force-push or history
-rewrite), the cache is automatically invalidated.
-
-!!! tip "Ideal for daily DWH loads"
-    Point `--cache-dir` to a persistent directory on your CI machine.
-    Each daily run only processes the new commits since yesterday,
-    cutting analysis time from hours to minutes.
-
-### Checkpointing (crash recovery)
-
-For very long runs (e.g., full kubernetes at ~3 hours), checkpointing saves
-progress periodically so a crash doesn't lose all work.
-
-```bash
-# Enable checkpointing (on by default)
-codefang run --format json --memory-budget 8GB \
-  --checkpoint --checkpoint-dir ~/.codefang/checkpoints /repo
-
-# Resume from checkpoint after crash
-codefang run --format json --memory-budget 8GB \
-  --resume --checkpoint-dir ~/.codefang/checkpoints /repo
-
-# Clear old checkpoint and start fresh
-codefang run --format json --memory-budget 8GB \
-  --clear-checkpoint /repo
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--checkpoint` | true | Enable periodic checkpointing |
-| `--checkpoint-dir` | `~/.codefang/checkpoints` | Directory for checkpoint files |
-| `--resume` | true | Resume from checkpoint if available |
-| `--clear-checkpoint` | false | Clear existing checkpoint before run |
-
-The checkpoint stores:
-
-- Current chunk position (which commits have been processed)
-- Aggregator spill state (intermediate results on disk)
-- Repository hash (for validation on resume)
-
-!!! info "Auto-cleanup on success"
-    Checkpoint files are **automatically deleted** after a successful run.
-    They only persist if the process crashes mid-analysis. This is by design —
-    checkpoints are for crash recovery, not persistent storage.
-
-!!! warning "Checkpoint vs Cache"
-    **Checkpoint** = crash recovery within a single run (temporary, auto-cleaned on success).
-    **Cache** = incremental analysis across runs (persistent, reused on next invocation).
-    For DWH pipelines, you want **both**: `--cache-dir` for incremental loads and
-    `--checkpoint` for resilience.
-
-### Production pipeline example
-
-A daily cron job that incrementally analyzes a repository:
+There is no incremental cache and no checkpoint: every run analyzes the whole
+requested window. For a recurring (for example daily) load, bound each run to
+the commits that are new since the previous one with `--since`, and load the
+static snapshot separately:
 
 ```bash
 #!/bin/bash
 REPO=/opt/repos/kubernetes
-CACHE_DIR=/var/lib/codefang/cache
-CHECKPOINT_DIR=/var/lib/codefang/checkpoints
 OUTPUT_DIR=/var/lib/codefang/output
+DAY=$(date +%Y%m%d)
 
 # Pull latest
 cd "$REPO" && git pull --ff-only
 
-# Static analysis (always full, fast)
-codefang run \
-  -a 'static/*' \
-  --format ndjson \
-  --per-file \
-  "$REPO" > "$OUTPUT_DIR/static-$(date +%Y%m%d).ndjson"
+# Static snapshot of the working tree
+codefang run -a 'static/*' --format json --per-file \
+  -o "$OUTPUT_DIR/static-$DAY.json" "$REPO"
 
-# History analysis (incremental via cache)
-codefang run \
-  -a 'history/*' \
-  --format ndjson \
-  --memory-budget 8GB \
-  --cache-dir "$CACHE_DIR" \
-  --checkpoint-dir "$CHECKPOINT_DIR" \
-  "$REPO" > "$OUTPUT_DIR/history-$(date +%Y%m%d).ndjson"
+# History of the last 24 hours, one line per commit and analyzer
+codefang run -a 'history/*' --format ndjson --since 24h \
+  -o "$OUTPUT_DIR/history-$DAY.ndjson" "$REPO"
 
 # Load into ClickHouse
-cat "$OUTPUT_DIR/report-$(date +%Y%m%d).ndjson" \
-  | clickhouse-client --query "INSERT INTO codefang_raw FORMAT JSONEachRow"
+clickhouse-client --query "INSERT INTO codefang_raw FORMAT JSONEachRow" \
+  < "$OUTPUT_DIR/history-$DAY.ndjson"
 ```
 
-### Advanced tuning for history pipeline
-
-Fine-tune the history streaming pipeline for specific hardware:
-
-```bash
-codefang run \
-  --memory-budget 8GB \
-  --commit-batch-size 200 \
-  --blob-cache-size 2GB \
-  --diff-cache-size 20000 \
-  --blob-arena-size 8MB \
-  --tmp-dir /fast-ssd/tmp \
-  --format ndjson /repo
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--commit-batch-size` | 100 | Commits per processing batch |
-| `--blob-cache-size` | 1GB | Max blob cache (LRU, keeps hot files in memory) |
-| `--diff-cache-size` | 10000 | Max diff cache entries |
-| `--blob-arena-size` | 4MB | Memory arena for blob loading |
-| `--tmp-dir` | system temp | Directory for spill files (use fast SSD) |
-| `--keep-store` | false | Keep temp ReportStore after rendering (for debugging) |
-
-!!! tip "SSD for tmp-dir"
-    The streaming pipeline spills intermediate data to disk when memory
-    pressure is high. Point `--tmp-dir` to a fast SSD for best performance.
+A window-bounded history run starts from the tree of the commit just before
+the window, so a commit's lines added / removed are the lines it changed, as
+in a full-history run. Whole-history aggregates (totals, bus factor, coupling
+strength) describe the window only, and burndown counts the lines that
+existed before the window as its oldest band.
 
 ---
 
@@ -640,17 +519,15 @@ GROUP BY repo_id, week;
 
 ## Troubleshooting
 
-### OOM kills
+### High memory on long histories
 
-**Symptom**: Process killed during history analysis.
-**Fix**: Set `--memory-budget` explicitly.
+**Symptom**: the process is killed or swaps during history analysis.
+**Fix**: bound the window — `--limit`, `--since`, `--first-parent`,
+`--max-changes-per-commit`, `--languages`.
 
 ```bash
-# Check available RAM
-free -h
-
-# Set budget to ~25% of available RAM
-codefang run --memory-budget 4GB --format ndjson /repo
+# The newest 10000 commits only
+codefang run --limit 10000 --format ndjson /repo
 ```
 
 ### Empty history analyzers
@@ -659,9 +536,9 @@ Some analyzers require specific conditions:
 
 | Analyzer | Requirement |
 |----------|-------------|
-| `burndown` (developer/file survival) | Enable via config: `Burndown.TrackPeople: true`, `Burndown.TrackFiles: true` |
-| `history/imports` | Requires UAST-enabled pipeline mode |
-| `history/typos` | Requires UAST-enabled pipeline mode |
+| `burndown` (developer/file survival) | `--burndown-people` / `--burndown-files` (config: `history.burndown.track_people` / `track_files`) |
+| `history/imports` | Only files in a language the UAST parser supports contribute |
+| `history/typos` | Only files in a language the UAST parser supports contribute |
 
 ### Large file coupling tables
 

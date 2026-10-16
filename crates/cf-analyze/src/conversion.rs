@@ -123,6 +123,21 @@ impl AnalyzerResult {
         m.insert("report", GoValue::Map(self.report.clone()));
         GoValue::Map(m)
     }
+
+    /// [`Self::to_go_value`], moving the report instead of copying it.
+    #[must_use]
+    pub fn into_go_value(self) -> GoValue {
+        let mut m = GoMap::new(MapOrigin::Struct);
+        m.insert("id", GoValue::Str(self.id));
+        m.insert("mode", GoValue::Str(self.mode.as_str().to_string()));
+        if let Some(schema) = &self.schema {
+            if !schema.is_empty() {
+                m.insert("schema", schema_to_go_value(schema));
+            }
+        }
+        m.insert("report", GoValue::Map(self.report));
+        GoValue::Map(m)
+    }
 }
 
 /// Converts an [`AnalyzerSchema`] into a byte-sorted
@@ -175,6 +190,26 @@ impl UnifiedModel {
                 self.analyzers
                     .iter()
                     .map(AnalyzerResult::to_go_value)
+                    .collect(),
+            ),
+        );
+        GoValue::Map(m)
+    }
+
+    /// [`Self::to_go_value`], moving the reports instead of copying them.
+    #[must_use]
+    pub fn into_go_value(self) -> GoValue {
+        let mut m = GoMap::new(MapOrigin::Struct);
+        m.insert("version", GoValue::Str(self.version));
+        if let Some(meta) = &self.metadata {
+            m.insert("metadata", meta.to_go_value());
+        }
+        m.insert(
+            "analyzers",
+            GoValue::Array(
+                self.analyzers
+                    .into_iter()
+                    .map(AnalyzerResult::into_go_value)
                     .collect(),
             ),
         );
@@ -438,25 +473,16 @@ pub fn write_converted_output(
     plot_renderer: Option<&PlotRenderer>,
 ) -> Result<(), ConversionError> {
     match output_format {
-        FORMAT_JSON => {
-            let enc = Encoder::indented("  ").with_trailing_newline(true);
-            let bytes = enc.encode(&model.to_go_value());
-            writer
-                .write_all(&bytes)
-                .map_err(|e| ConversionError::Encode(format!("encode converted json: {e}")))
-        }
-        FORMAT_YAML => {
-            let bytes = cf_goyaml::marshal(&model.to_go_value());
-            writer
-                .write_all(&bytes)
-                .map_err(|e| ConversionError::Encode(format!("converted yaml write: {e}")))
-        }
-        FORMAT_BINARY => {
-            let bytes = cf_reportutil::binary::encode_binary_envelope(&model.to_go_value())
-                .map_err(|e| ConversionError::Encode(format!("encode converted binary: {e}")))?;
-            writer
-                .write_all(&bytes)
-                .map_err(|e| ConversionError::Encode(format!("encode converted binary: {e}")))
+        FORMAT_JSON | FORMAT_YAML | FORMAT_BINARY => {
+            let bytes = encode_document(&model.to_go_value(), output_format)?;
+            writer.write_all(&bytes).map_err(|e| {
+                let context = match output_format {
+                    FORMAT_JSON => "encode converted json",
+                    FORMAT_YAML => "converted yaml write",
+                    _ => "encode converted binary",
+                };
+                ConversionError::Encode(format!("{context}: {e}"))
+            })
         }
         FORMAT_TIMESERIES => write_converted_time_series(model, false, writer),
         FORMAT_TIMESERIES_NDJSON => write_converted_time_series(model, true, writer),
@@ -475,6 +501,46 @@ pub fn write_converted_output(
             },
         )),
     }
+}
+
+/// The bytes of a whole-document format (json, yaml, binary) for `value`.
+fn encode_document(value: &GoValue, output_format: &str) -> Result<Vec<u8>, ConversionError> {
+    match output_format {
+        FORMAT_JSON => Ok(Encoder::indented("  ")
+            .with_trailing_newline(true)
+            .encode(value)),
+        FORMAT_YAML => Ok(cf_goyaml::marshal(value)),
+        FORMAT_BINARY => cf_reportutil::binary::encode_binary_envelope(value)
+            .map_err(|e| ConversionError::Encode(format!("encode converted binary: {e}"))),
+        other => Err(ConversionError::UnsupportedFormat(
+            FormatError::Unsupported {
+                format: other.to_string(),
+            },
+        )),
+    }
+}
+
+/// [`write_converted_output`] for a model the caller no longer needs,
+/// returning the bytes. The whole-document formats (json, yaml, binary)
+/// encode the reports in place instead of from a copy and hand back the
+/// encoder's buffer, so a run holds one copy of its reports and one of its
+/// output, never two of each (a 31,923-commit kubernetes `history/*` report
+/// is 538 MB of json).
+///
+/// # Errors
+///
+/// As [`write_converted_output`].
+pub fn render_converted_output(
+    model: UnifiedModel,
+    output_format: &str,
+    plot_renderer: Option<&PlotRenderer>,
+) -> Result<Vec<u8>, ConversionError> {
+    if matches!(output_format, FORMAT_JSON | FORMAT_YAML | FORMAT_BINARY) {
+        return encode_document(&model.into_go_value(), output_format);
+    }
+    let mut out = Vec::new();
+    write_converted_output(&model, output_format, &mut out, plot_renderer)?;
+    Ok(out)
 }
 
 /// Writes one compact JSON line per analyzer result, with a leading
@@ -673,6 +739,47 @@ mod tests {
         assert!(!meta["codefang_version"].as_str().unwrap().is_empty());
         // Indented output: trailing newline + two-space indent.
         assert!(s.ends_with('\n'));
+    }
+
+    /// Rendering a model the caller gives up yields exactly the bytes the
+    /// borrowing writer produces, in every format both accept.
+    #[test]
+    fn rendering_an_owned_model_matches_the_writer() {
+        let model = UnifiedModel {
+            version: UNIFIED_MODEL_VERSION.to_string(),
+            metadata: Some(AnalysisMetadata::with_clock(
+                "/home/user/sources/kubernetes",
+                &FixedClock,
+            )),
+            analyzers: vec![
+                AnalyzerResult {
+                    id: "history/devs".into(),
+                    mode: AnalyzerMode::history(),
+                    schema: schema_for_analyzer("history/devs"),
+                    report: report(&[("total", GoValue::Int(3))]),
+                },
+                AnalyzerResult {
+                    id: "static/test".into(),
+                    mode: AnalyzerMode::static_mode(),
+                    schema: None,
+                    report: report(&[("files", GoValue::Array(vec![GoValue::Str("a".into())]))]),
+                },
+            ],
+        };
+        for format in [
+            FORMAT_JSON,
+            FORMAT_YAML,
+            FORMAT_BINARY,
+            FORMAT_NDJSON,
+            FORMAT_TIMESERIES,
+            FORMAT_TIMESERIES_NDJSON,
+        ] {
+            let mut written = Vec::new();
+            write_converted_output(&model, format, &mut written, None).expect("write");
+            let rendered = render_converted_output(model.clone(), format, None).expect("render");
+            assert_eq!(rendered, written, "{format}");
+        }
+        assert!(render_converted_output(model, "html", None).is_err());
     }
 
     #[test]

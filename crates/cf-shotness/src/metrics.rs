@@ -23,6 +23,8 @@ pub struct NodeHotnessData {
     pub coupled_nodes: i64,
     /// Hotness score normalized to `[0, 1]` against the hottest node.
     pub hotness_score: f64,
+    /// The node's declaration (or file) was removed in the window.
+    pub ended: bool,
 }
 
 /// Coupling between two code nodes.
@@ -70,8 +72,10 @@ pub struct AggregateData {
     pub avg_changes_per_node: f64,
     /// Average coupling strength across all pairs.
     pub avg_coupling_strength: f64,
-    /// Number of nodes at MEDIUM risk or above.
+    /// Number of live nodes at MEDIUM risk or above.
     pub hot_nodes: i64,
+    /// Number of nodes that ended in the window.
+    pub ended_nodes: i64,
 }
 
 /// All computed metric results.
@@ -88,6 +92,9 @@ pub struct ComputedMetrics {
     pub hotspot_nodes: Vec<HotspotNodeData>,
     /// Aggregate statistics.
     pub aggregate: AggregateData,
+    /// Ended entities were kept (`--shotness-keep-ended`): the report then
+    /// carries the `ended` and `ended_nodes` fields.
+    pub ended_tracked: bool,
 }
 
 /// Self-change threshold for HIGH risk.
@@ -103,6 +110,11 @@ pub const RISK_LEVEL_MEDIUM: &str = "MEDIUM";
 pub const RISK_LEVEL_LOW: &str = "LOW";
 
 /// Looks up `row[idx]`, returning 0 when absent.
+/// Whether node `i` ended (a missing flag means live).
+fn is_ended(input: &ReportData, i: usize) -> bool {
+    input.ended.get(i).copied().unwrap_or(false)
+}
+
 fn counter_at(row: &HashMap<usize, i64>, idx: usize) -> i64 {
     row.get(&idx).copied().unwrap_or(0)
 }
@@ -148,6 +160,7 @@ pub fn compute_node_hotness(input: &ReportData) -> Vec<NodeHotnessData> {
             change_count,
             coupled_nodes,
             hotness_score,
+            ended: is_ended(input, i),
         });
     }
 
@@ -262,6 +275,11 @@ pub fn compute_hotspot_nodes(input: &ReportData) -> Vec<HotspotNodeData> {
             continue;
         }
 
+        // A hotspot is a risk in the code that exists: ended nodes are not.
+        if is_ended(input, i) {
+            continue;
+        }
+
         let counters = &input.counters[i];
         let change_count = counter_at(counters, i);
 
@@ -300,6 +318,7 @@ pub fn compute_aggregate(input: &ReportData) -> AggregateData {
     let mut total_changes: i64 = 0;
     let mut total_couplings: i64 = 0;
     let mut hot_nodes: i64 = 0;
+    let mut ended_nodes: i64 = 0;
     let mut strength_sum: f64 = 0.0;
     let mut pair_count: i64 = 0;
 
@@ -307,7 +326,9 @@ pub fn compute_aggregate(input: &ReportData) -> AggregateData {
         let self_i = counter_at(counters, i);
         total_changes += self_i;
 
-        if self_i >= HOTSPOT_THRESHOLD_MEDIUM {
+        if is_ended(input, i) {
+            ended_nodes += 1;
+        } else if self_i >= HOTSPOT_THRESHOLD_MEDIUM {
             hot_nodes += 1;
         }
 
@@ -337,6 +358,7 @@ pub fn compute_aggregate(input: &ReportData) -> AggregateData {
     agg.total_changes = total_changes;
     agg.total_couplings = total_couplings;
     agg.hot_nodes = hot_nodes;
+    agg.ended_nodes = ended_nodes;
 
     if agg.total_nodes > 0 {
         agg.avg_changes_per_node = total_changes as f64 / agg.total_nodes as f64;
@@ -357,6 +379,7 @@ pub fn compute_all_metrics(input: &ReportData) -> ComputedMetrics {
         node_coupling: compute_node_coupling(input),
         hotspot_nodes: compute_hotspot_nodes(input),
         aggregate: compute_aggregate(input),
+        ended_tracked: input.ended_tracked,
     }
 }
 
@@ -379,6 +402,41 @@ mod tests {
         pairs.iter().copied().collect()
     }
 
+    /// Two hot entities, the second ended.
+    fn one_live_one_ended() -> ReportData {
+        ReportData {
+            nodes: vec![
+                NodeSummary::new("function", "live", "a.go"),
+                NodeSummary::new("function", "gone", "a.go"),
+            ],
+            counters: vec![hm(&[(0, 25), (1, 4)]), hm(&[(0, 4), (1, 30)])],
+            ended: vec![false, true],
+            ended_tracked: true,
+        }
+    }
+
+    #[test]
+    fn node_hotness_marks_ended_entities() {
+        let rows = compute_node_hotness(&one_live_one_ended());
+        let flags: Vec<(&str, bool)> = rows.iter().map(|r| (r.name.as_str(), r.ended)).collect();
+        assert_eq!(flags, vec![("gone", true), ("live", false)]);
+    }
+
+    #[test]
+    fn hotspots_and_hot_nodes_count_only_live_entities() {
+        let input = one_live_one_ended();
+        let names: Vec<String> = compute_hotspot_nodes(&input)
+            .into_iter()
+            .map(|h| h.name)
+            .collect();
+        assert_eq!(names, vec!["live"]);
+        let agg = compute_aggregate(&input);
+        assert_eq!(agg.hot_nodes, 1);
+        assert_eq!(agg.ended_nodes, 1);
+        assert_eq!(agg.total_nodes, 2, "ended entities stay in the report");
+        assert_eq!(agg.total_changes, 55);
+    }
+
     // Mirrors reference test TestNodeHotnessMetric_Empty.
     #[test]
     fn compute_node_hotness_empty() {
@@ -394,6 +452,8 @@ mod tests {
                 NodeSummary::new("function", "TestFunc2", "file1.go"),
             ],
             counters: vec![hm(&[(0, 10), (1, 5)]), hm(&[(0, 5), (1, 20)])],
+            ended: Vec::new(),
+            ended_tracked: false,
         };
         let result = compute_node_hotness(&input);
         assert_eq!(result.len(), 2);
@@ -416,6 +476,8 @@ mod tests {
                 NodeSummary::new("", "TestFunc2", ""),
             ],
             counters: vec![hm(&[(0, 10)])],
+            ended: Vec::new(),
+            ended_tracked: false,
         };
         let result = compute_node_hotness(&input);
         assert_eq!(result.len(), 1);
@@ -442,6 +504,8 @@ mod tests {
                 hm(&[(0, 5), (1, 20), (2, 8)]),
                 hm(&[(0, 2), (1, 8), (2, 5)]),
             ],
+            ended: Vec::new(),
+            ended_tracked: false,
         };
         let result = compute_node_coupling(&input);
         assert_eq!(result.len(), 3);
@@ -466,6 +530,8 @@ mod tests {
                 NodeSummary::new("", "TestFunc2", ""),
             ],
             counters: vec![hm(&[(0, 10), (1, 0)]), hm(&[(0, 0), (1, 20)])],
+            ended: Vec::new(),
+            ended_tracked: false,
         };
         assert_eq!(compute_node_coupling(&input), vec![]);
     }
@@ -479,6 +545,8 @@ mod tests {
                 NodeSummary::new("function", "TestFunc2", "file2.go"),
             ],
             counters: vec![hm(&[(0, 10), (1, 5)]), hm(&[(0, 5), (1, 20)])],
+            ended: Vec::new(),
+            ended_tracked: false,
         };
         let result = compute_node_coupling(&input);
         assert_eq!(result.len(), 1);
@@ -516,6 +584,8 @@ mod tests {
                 hm(&[(0, 0), (1, HOTSPOT_THRESHOLD_HIGH)]),
                 hm(&[(0, 0), (1, 0), (2, HOTSPOT_THRESHOLD_MEDIUM)]),
             ],
+            ended: Vec::new(),
+            ended_tracked: false,
         };
         let result = compute_hotspot_nodes(&input);
         assert_eq!(result.len(), 2);
@@ -573,6 +643,8 @@ mod tests {
                 hm(&[(0, HOTSPOT_THRESHOLD_HIGH), (1, 5)]),
                 hm(&[(0, 5), (1, 10)]),
             ],
+            ended: Vec::new(),
+            ended_tracked: false,
         };
         let result = compute_aggregate(&input);
         assert_eq!(result.total_nodes, 2);
@@ -592,6 +664,8 @@ mod tests {
                 NodeSummary::new("", "TestFunc2", ""),
             ],
             counters: vec![hm(&[(0, 10), (1, 5)]), hm(&[(0, 5), (1, 10)])],
+            ended: Vec::new(),
+            ended_tracked: false,
         };
         let result = compute_aggregate(&input);
         assert!((result.avg_coupling_strength - 0.5).abs() < 0.01);

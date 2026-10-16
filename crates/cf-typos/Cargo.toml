@@ -6,5 +6,12 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
+description = "history/typos: typo-fix identifier pair detection over commit diffs and the typos report metrics."
 
 [dependencies]
+# Spill encoding of finished history results (cf-commands `spill`).
+serde = { workspace = true }
+# Levenshtein distance for the line prefilter and the identifier-pair bound.
+cf-alg-levenshtein = { path = "../cf-alg-levenshtein" }
+# The report value every machine format (json/yaml/bin) encodes.
+cf-gojson = { path = "../cf-gojson" }

@@ -9,7 +9,7 @@
 //! implementation's permutation bit-for-bit.
 //!
 //! Compatibility: output ordering is pinned against the reference binary by
-//! `tests/compat`; do not swap in `slice::sort_unstable` or alter the
+//! the report e2e suites (`bins/codefang/tests`); do not swap in `slice::sort_unstable` or alter the
 //! constants.
 //!
 //! # Example

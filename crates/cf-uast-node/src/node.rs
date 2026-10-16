@@ -189,6 +189,10 @@ pub mod roles {
     pub const ROLE_DOC: &str = "Doc";
     /// `"Comment"`.
     pub const ROLE_COMMENT: &str = "Comment";
+    /// `"Else"` — the alternative branch of an `If` (an else-if `If` or an
+    /// else `Block`); added by the lowering from the tree-sitter
+    /// `alternative` field.
+    pub const ROLE_ELSE: &str = "Else";
     /// `"Attribute"`.
     pub const ROLE_ATTRIBUTE: &str = "Attribute";
     /// `"Annotation"`.

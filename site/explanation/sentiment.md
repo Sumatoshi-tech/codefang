@@ -1,39 +1,51 @@
 # Understanding comment sentiment analysis
 
 This page explains the mental model behind the sentiment analyzer: how it
-extracts and filters comments, how VADER and the multilingual lexicon score
-them, and the software-engineering domain adjustments that keep technical
-language from skewing the result. For configuration keys and the output schema,
-see the [Sentiment reference](../analyzers/sentiment.md).
+finds the comments a commit introduced or changed, how it filters them, how
+VADER and the multilingual lexicon score them, and the software-engineering
+domain adjustments that keep technical language from skewing the result. For
+the flags and the output schema, see the
+[Sentiment reference](../analyzers/sentiment.md).
 
 ---
 
 ## What it measures
 
-The sentiment analyzer classifies **comment sentiment** across Git history. For
-each commit, it extracts new or changed comments via UAST parsing, filters out
-noise, and classifies the remaining comments as positive, negative, or neutral.
-This reveals how developer sentiment evolves over time.
+The sentiment analyzer tracks the **emotional tone of the comments developers
+write** over Git history. For each commit it looks at the comments that
+commit added or edited, filters out noise, scores the rest, and reports one
+score per tick that received such comments. This reveals how developer
+sentiment evolves over time — without re-counting the unchanged comments of
+every touched file.
 
 ### Per-commit comment extraction
 
-For each commit, the analyzer:
+For every Insert or Modify change of a commit that survives the shared change
+filter, the analyzer:
 
-1. Computes the UAST diff between the old and new file versions
-2. Extracts comment nodes from the new UAST
-3. Merges adjacent comment lines into single blocks
-4. Filters out noise (short comments, license headers, function signatures)
-5. Returns the filtered comments as a `TC` payload (`sentiment.CommitResult`)
+1. Parses the **new** version of the file into a UAST and collects its
+   `Comment` nodes; for a Modify it parses the **old** version too (both
+   parses go through the per-commit parse cache, so each blob is parsed once).
+2. Merges adjacent comment lines into blocks on each side (a block comment, a
+   run of `//` lines, a Javadoc / Doxygen block whose ` * ` continuation
+   markers are stripped).
+3. Filters each side's blocks (see below).
+4. Keeps the **multiset difference new − old**: a block whose text also
+   occurs in the old version cancels one occurrence and is not counted. A
+   commit that only adds code to a commented file therefore contributes no
+   comment; an edited comment counts once, as new text; a brand-new file
+   contributes all of its comments.
 
 ### Comment filtering
 
 Comments are filtered using several heuristics:
 
-- **Minimum length**: Comments shorter than the threshold are skipped
-- **Letter ratio**: At least 60% of characters must be Unicode letters (filters out commented-out code)
-- **First character**: Must start with a Unicode letter or digit (supports all scripts)
-- **License detection**: Comments matching license/copyright patterns (including UK "licence" spelling) are excluded
-- **Function name removal**: Inline function references like `doThing()` are stripped before analysis
+- **Minimum length**: comments shorter than `--min-comment-len` characters (default
+  20, after delimiters are stripped) are skipped; `0` disables the check
+- **Letter ratio**: at least 60% of the bytes must be Unicode letters (filters out commented-out code)
+- **First character**: must be a Unicode letter or digit (supports all scripts)
+- **License detection**: comments matching license/copyright patterns (including UK "licence" spelling) are excluded
+- **Function name removal**: inline function references like `doThing()` are stripped before analysis
 
 ### Multilingual support
 
@@ -45,18 +57,29 @@ The analyzer supports comments in any language that uses Unicode letters:
 - **Latin**: English, French, German, Spanish, etc.
 - All other Unicode letter scripts
 
-Comment filtering uses Unicode-aware regex patterns (`\p{L}` for letters, `\p{N}` for digits) rather than ASCII-only ranges, ensuring comments in non-English languages are not silently dropped.
+Comment filtering uses Unicode-aware character classes (`\p{L}` for letters,
+`\p{N}` for digits) rather than ASCII-only ranges, ensuring comments in
+non-English languages are not silently dropped.
 
 !!! info "Multilingual sentiment scoring"
     Sentiment scoring uses VADER's English lexicon as the base, extended with **93,000+ multilingual word entries** from the Chen-Skiena lexicon dataset (ACL 2014) covering **32 languages**. Non-ASCII words from the dataset are injected into VADER's lexicon at startup, enabling basic sentiment scoring for comments in Russian, Chinese, Japanese, Korean, Arabic, and 27 other languages. VADER's grammatical rules (negation, intensifiers) still operate on English syntax, so scoring accuracy for non-English comments is lower than for English — but significantly better than no coverage.
 
-### Sentiment classification
+### Sentiment scoring
 
-Filtered comments are classified as positive, negative, or neutral using **VADER** (Valence Aware Dictionary and sEntiment Reasoner) via the [GoVader](https://github.com/jonreiter/govader) library, enhanced with **software engineering domain adjustments**.
+Filtered comments are scored with **VADER** (Valence Aware Dictionary and
+sEntiment Reasoner), implemented in `cf-sentiment` over the vendored VADER
+lexicon and emoji table, enhanced with **software engineering domain
+adjustments**.
 
 #### VADER base scoring
 
-VADER is a lexicon and rule-based sentiment analyzer designed for social media and short text. It handles negations, intensifiers, and punctuation. The compound score (-1 to 1) is mapped to our [0, 1] range.
+VADER is a lexicon and rule-based sentiment analyzer designed for social
+media and short text. It handles negations, intensifiers, contrastive `but`,
+idioms, ALLCAPS emphasis, `!` / `?` emphasis and emoji. The compound score in
+`[-1, 1]` is mapped to the reported `[0, 1]` range (`score = (compound + 1) /
+2`, so `0.5` is neutral). The implementation reproduces the published VADER
+example scores (for instance `VADER is smart, handsome, and funny!` →
+compound `0.8439`).
 
 #### Multilingual lexicon extension
 
@@ -81,56 +104,72 @@ step is required.
 
 #### SE-domain adjustments
 
-VADER frequently misclassifies technical terms that sound negative in natural language but are neutral in software engineering. The analyzer applies domain-specific adjustments:
+VADER scores some words negative that are neutral in software engineering,
+and it does not know some words that are negative there. The scorer matches
+the lists below as **whole words** (or whole phrases) — `deadline` is not
+`dead`, `skill` is not `kill`, `hacker` is not `hack` — and adjusts the
+comment's compound score:
 
-**Neutralized terms** (pushed toward neutral):
-`kill`, `abort`, `fatal`, `terminate`, `dead`, `destroy`, `panic`, `deprecated`, `obsolete`, `execute`, `exploit`, `conflict`, `revert`, `reject`, `critical`
+- every **neutralizer** hit contributes `(0 − compound) × 0.8`;
+- every **negative term** hit contributes its shift;
+- the mean contribution is added to the compound, which is then clamped to
+  `[-1, 1]`.
 
-**Genuinely negative in SE** (pushed toward negative):
-`hack`, `hacky`, `kludge`, `workaround`, `spaghetti`, `nightmare`, `technical debt`
-
-#### Comment length weighting
-
-Longer comments carry more weight in the sentiment score, as they tend to contain more meaningful sentiment signal. Weight is capped at 3x the average to prevent a single long comment from dominating.
-
-#### Trend analysis
-
-Sentiment trend is computed using **linear regression** (least squares) rather than a simple first-to-last comparison. This makes the trend robust to outliers and intermediate noise.
-
----
-
-## SE-domain lexicon
-
-The following terms have special handling in the sentiment scorer:
-
-### Technical terms neutralized (not negative)
-
-These terms are common in SE but trigger VADER's negative scoring:
+**Neutralized terms** (whole-word hits pull the comment toward neutral). The
+list holds exactly the terms the VADER lexicon scores negative that are
+neutral in code comments; a word VADER does not score cannot be misclassified
+by it and is deliberately not listed:
 
 | Term | Context |
 |---|---|
-| `kill` | Process management |
-| `abort` | Transaction/operation cancellation |
-| `fatal` | Error severity levels |
-| `terminate` | Process/thread lifecycle |
-| `panic` | Error handling (Go, Rust) |
-| `deprecated` | API lifecycle |
-| `execute` | Command/query execution |
-| `conflict` | Merge conflicts |
-| `critical` | Severity levels |
+| `kill`, `killed`, `killing`, `kills` | process management |
+| `fatal` | error severity levels |
+| `dead` | dead code, dead letters, dead-lock |
+| `destroy`, `destroyed` | object lifecycle |
+| `panic` | error handling (Go, Rust) |
+| `obsolete` | API lifecycle |
+| `exploit` | security |
+| `conflict`, `conflicts` | merge conflicts |
+| `reject`, `rejected` | request handling, promises |
+| `critical` | severity levels, critical sections |
+| `argument`, `arguments` | function arguments |
+| `block`, `blocked` | blocks, blocking calls |
+| `interrupt`, `interrupted` | signals, threads |
+| `trap` | signal / instruction traps |
+| `dump` | core dumps, data dumps |
 
-### Terms with genuine negative sentiment
+**Genuinely negative in SE** (whole-word hits push the comment toward
+negative; none of these is scored by the VADER lexicon):
 
-These terms indicate real frustration or code quality issues:
+| Term | Shift | Indication |
+|---|---|---|
+| `hack` | −0.3 | quick-and-dirty solutions |
+| `hacky` | −0.4 | quick-and-dirty solutions |
+| `kludge` | −0.5 | inelegant fixes |
+| `workaround` | −0.2 | avoiding the root cause |
+| `technical debt` | −0.3 | accumulated shortcuts |
+| `spaghetti` | −0.4 | poor code structure |
+| `nightmare` | −0.4 | maintenance difficulty |
 
-| Term | Indication |
-|---|---|
-| `hack` / `hacky` | Quick-and-dirty solutions |
-| `kludge` | Inelegant fixes |
-| `workaround` | Avoiding root cause |
-| `spaghetti` | Poor code structure |
-| `nightmare` | Maintenance difficulty |
-| `technical debt` | Accumulated shortcuts |
+Words VADER already scores negative (`awful`, `terrible`, `horrible`, `debt`,
+`bug`, …) are not listed: they keep their lexicon valence.
+
+#### Comment length weighting
+
+Longer comments carry more weight in a tick's score, as they tend to contain
+more meaningful sentiment signal. A comment's weight is its length in characters
+over the tick's average comment length, capped at 3× to prevent a single long
+comment from dominating.
+
+#### Tick scores, trend and periods
+
+A tick's score is the length-weighted mean of its comments' scores. Only
+ticks with at least one scored comment receive a score; a tick of code-only
+commits is not "neutral" and not "negative" — it has no data and is absent
+from the time series. The trend is the least-squares line through the scored
+ticks, evaluated at the first and last scored tick and clamped to `[0, 1]`;
+the low-sentiment periods are the scored ticks at or below the negative
+threshold, worst first.
 
 ---
 
@@ -147,15 +186,16 @@ These terms indicate real frustration or code quality issues:
 ## Limitations
 
 - **Non-English scoring accuracy**: While 32 languages have lexicon coverage via the Chen-Skiena dataset, VADER's grammatical rules (negation handling, intensifiers, punctuation effects) are English-specific. Non-English comments get word-level sentiment from the lexicon but miss syntactic nuances.
-- **UAST dependency**: Requires UAST parsing support for the target language. Files in unsupported languages are skipped.
+- **UAST dependency**: Requires UAST parsing support for the target language. Files in unsupported languages are skipped (shell scripts fall back to line-wise `#` comments).
 - **Sarcasm**: Sarcasm, irony, and context-dependent meaning can mislead the classifier. Comments like "great, another production outage" may be scored as positive.
 - **Comment extraction**: Only comments that appear in the UAST are analyzed. Preprocessor directives, build file comments, and non-code files are excluded.
-- **CPU intensive**: The sentiment analyzer performs UAST parsing for every modified file in every commit. For large repositories, this is significantly slower than non-UAST analyzers. It benefits from parallel execution via the framework's worker pool.
-- **Minimum length filter**: The default minimum of 20 characters filters out many short but potentially meaningful comments (e.g., `// FIXME`, `// HACK`). Lower `MinLength` to capture these, at the cost of more noise.
+- **Whole-comment adjustment**: an SE-domain hit adjusts the whole comment's compound score, not just the matched word, so a positive remark that also mentions `kill` is pulled toward neutral.
+- **CPU intensive**: The sentiment analyzer parses both versions of every modified file in every commit. For large repositories, this is significantly slower than non-UAST analyzers; the per-commit pre-pass runs in parallel.
+- **Minimum length filter**: The default minimum of 20 characters filters out many short but potentially meaningful comments (e.g., `// FIXME`, `// HACK`). Lower `--min-comment-len` to capture these, at the cost of more noise.
 
 ---
 
 ## See also
 
-- [Sentiment reference](../analyzers/sentiment.md) — configuration keys and output schema.
+- [Sentiment reference](../analyzers/sentiment.md) — flags, tick semantics and output schema.
 - [Quick start](../getting-started/quickstart.md) — run history analysis.

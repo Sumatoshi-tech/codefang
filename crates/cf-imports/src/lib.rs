@@ -1,77 +1,65 @@
 //! Import/dependency analysis.
 //!
-//! Two related analyzers:
+//! Two related analyzers share this crate:
 //!
-//! * [`analyzer::Analyzer`] — **static** analysis that produces the `imports`
-//!   report key (the deduplicated import identifiers in a parsed file/tree) plus
-//!   a `count`, along with the derived [`metrics::ComputedMetrics`] used for
-//!   json/yaml/bin output.
-//! * [`history::HistoryAnalyzer`] — **historical** analysis
-//!   (`ImportsPerDeveloper`, stable id `history/imports`) that tracks import
-//!   usage per developer, language, and tick in a 4-level
-//!   [`history::ImportsMap`] which merges **additively**.
+//! * **`static/imports`** — [`extract_imports`] turns one parsed file into the
+//!   modules/packages/files it imports (language-aware, deduplicated per
+//!   file); [`Aggregate`] folds files into per-import file counts; [`metrics`]
+//!   classifies each import (`relative` / `stdlib` / `external`, using the
+//!   per-language tables in [`stdlib`]) and derives the [`ComputedMetrics`]
+//!   the json/yaml/bin formats serialize.
+//! * **`history/imports`** ([`history`]) — per-developer, per-language,
+//!   per-tick import usage in a 4-level [`history::ImportsMap`] that merges
+//!   additively; [`history::HistoryReport`] is the value the machine
+//!   formats encode (`tick_size`, `author_index`, developer → language →
+//!   import → tick → count).
 //!
-//! Supporting modules: [`metrics`] (classification + metric computation),
-//! [`aggregator`] (cross-file static aggregation), [`store`] (history persistence
-//! records), and [`report_section`] (terminal section data).
-//!
-//! # Compatibility and serialization
-//!
-//! Every machine-format report (json, yaml, ndjson, timeseries, compact, bin)
-//! is a frozen output contract, pinned byte-for-byte against the reference
-//! implementation by the differential gate in `tests/compat`. All such
-//! output routes through the report-format encoders `cf-gojson` / `cf-goyaml`
-//! and the CFB1 `bin` envelope from `cf-reportutil` — never raw serde. The
-//! canonical [`node::Node`] model belongs to `cf-uast-node` and the framework
-//! `Analyzer` trait / report type to `cf-framework` / `cf-analyze`.
-//!
-//! To remain self-contained and verifiable, this crate carries minimal local
-//! shims — [`node`] (the UAST node subset the analyzer reads) and [`report`]
-//! (the dynamic [`report::ReportValue`] model plus a deterministic compact-JSON
-//! / CFB1 encoder). The analyzer logic depends only on the documented shim
-//! contracts.
+//! Serialization of every machine format routes through
+//! [`ComputedMetrics::to_go_value`] / [`history::HistoryReport::to_go_value`]
+//! and the `cf-gojson` / `cf-goyaml` encoders; the dynamic [`ReportValue`]
+//! exists for the plot callers that rebuild the static report from a value
+//! tree.
 //!
 //! # Example
 //!
-//! Static analysis of a tree with two import nodes yields the deduplicated
-//! `imports` list and its `count`:
+//! Extract the imports of a Go file from its real parse tree and aggregate
+//! them:
 //!
 //! ```
-//! use cf_imports::Analyzer;
-//! use cf_imports::node::{uast, Node};
-//! use cf_imports::report::ReportValue;
+//! use cf_imports::{extract_imports, Aggregate};
+//! use cf_uast::Parser;
 //!
-//! let root = Node::new("File").with_children(vec![
-//!     Node::new(uast::IMPORT).with_token("import os"),
-//!     Node::new(uast::IMPORT).with_token("from sys import argv"),
-//! ]);
+//! let src = b"package main\n\nimport (\n\t\"fmt\"\n\tstr \"strings\"\n\t_ \"embed\"\n)\n";
+//! let parser = Parser::new();
+//! let root = parser.parse("main.go", src).unwrap();
 //!
-//! let report = Analyzer::new().analyze(&root).unwrap();
-//! let m = report.as_map().unwrap();
-//! assert_eq!(m.get("count"), Some(&ReportValue::Int(2)));
-//! let imports = m.get("imports").unwrap().as_list().unwrap();
-//! assert_eq!(imports[0], ReportValue::Str("os".into()));
-//! assert_eq!(imports[1], ReportValue::Str("sys".into()));
+//! let imports = extract_imports(&root, &parser.get_language("main.go"), src);
+//! let paths: Vec<&str> = imports.iter().map(|i| i.path.as_str()).collect();
+//! assert_eq!(paths, ["fmt", "strings", "embed"]);
+//!
+//! let mut agg = Aggregate::new();
+//! agg.add_file("go", &imports);
+//! assert_eq!(agg.total_files(), 1);
+//! assert_eq!(agg.ranked(), vec![("embed", 1), ("fmt", 1), ("strings", 1)]);
 //! ```
 
-pub mod aggregator;
-pub mod analyzer;
+pub mod aggregate;
+pub mod extract;
 pub mod history;
+pub mod language;
 pub mod metrics;
-pub mod node;
 pub mod report;
-pub mod report_section;
-pub mod store;
+pub mod section;
+pub mod statement;
+pub mod stdlib;
 
 // Re-exports for the primary public surface.
-pub use aggregator::Aggregator;
-pub use analyzer::Analyzer;
-pub use history::{CommitSummary, HistoryAnalyzer, ImportEntry, ImportsMap, TickData};
+pub use aggregate::{Aggregate, Entry};
+pub use extract::{extract_imports, Import, IMPORT_TRIGGER_TYPES};
+pub use history::{HistoryReport, ImportEntry, ImportsMap};
+pub use language::Language;
 pub use metrics::{
-    compute_all_metrics, AggregateData, ComputedMetrics, ImportCategoryData, ImportData,
-    ImportDependencyData, ReportData,
+    compute_all_metrics, compute_metrics, AggregateData, ComputedMetrics, ImportCategoryData,
+    ImportData, ImportDependencyData, ImportRecord, ReportData,
 };
-pub use node::Node;
 pub use report::ReportValue;
-pub use report_section::ReportSection;
-pub use store::{ImportUsageRecord, KIND_IMPORT_USAGE};

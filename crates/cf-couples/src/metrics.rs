@@ -1,9 +1,7 @@
-//! Couples metrics computation.
-//!
-//! These types and functions are the data-parity-critical core: they produce
-//! the numbers that appear in the machine report. The coupling-strength formula
-//! is code-maat's `co_changes / avg(revs_a, revs_b)` capped at `1.0`, where
-//! `revs` is the diagonal (self-change) count.
+//! Couples metrics computation: the numbers that appear in the report. The
+//! coupling-strength formula is code-maat's `co_changes / avg(revs_a,
+//! revs_b)` capped at `1.0`, where `revs` is the diagonal (self-change)
+//! count.
 
 use std::collections::BTreeMap;
 
@@ -132,32 +130,23 @@ pub struct ComputedMetrics {
     pub aggregate: AggregateData,
 }
 
-/// Coupling strength: `co_changes / avg(self_i, self_j)`, capped at `1.0`.
-///
-/// Public wrapper over the crate-private `coupling_strength` helper, exposed for
-/// the [`crate::store`] module so the sparse store path reuses the identical
-/// formula.
-///
-/// ```
-/// use cf_couples::metrics::coupling_strength_pub;
-///
-/// // co_changes / avg(self_i, self_j): 4 / avg(8, 8) = 0.5.
-/// assert_eq!(coupling_strength_pub(4, 8, 8), 0.5);
-/// // Capped at 1.0 even when co_changes exceeds the average.
-/// assert_eq!(coupling_strength_pub(100, 2, 2), 1.0);
-/// // avg_revs <= 0 guard yields 0.0.
-/// assert_eq!(coupling_strength_pub(5, 0, 0), 0.0);
-/// ```
-#[must_use]
-pub fn coupling_strength_pub(co_changes: i64, self_i: i64, self_j: i64) -> f64 {
-    coupling_strength(co_changes, self_i, self_j)
-}
-
 /// Coupling strength: `co_changes / avg(self_i, self_j)`, capped at `1.0`,
 /// with an `avg_revs <= 0 → 0.0` guard. Shared by every metric; the float
 /// math is part of the report contract.
+///
+/// ```
+/// use cf_couples::metrics::coupling_strength;
+///
+/// // co_changes / avg(self_i, self_j): 4 / avg(8, 8) = 0.5.
+/// assert_eq!(coupling_strength(4, 8, 8), 0.5);
+/// // Capped at 1.0 even when co_changes exceeds the average.
+/// assert_eq!(coupling_strength(100, 2, 2), 1.0);
+/// // avg_revs <= 0 guard yields 0.0.
+/// assert_eq!(coupling_strength(5, 0, 0), 0.0);
+/// ```
+#[must_use]
 #[allow(clippy::cast_precision_loss)] // contractual float math on counts
-fn coupling_strength(co_changes: i64, self_i: i64, self_j: i64) -> f64 {
+pub fn coupling_strength(co_changes: i64, self_i: i64, self_j: i64) -> f64 {
     let avg_revs = (self_i + self_j) as f64 / PAIR_COUNT;
     if avg_revs > 0.0 {
         (co_changes as f64 / avg_revs).min(1.0)
@@ -169,10 +158,8 @@ fn coupling_strength(co_changes: i64, self_i: i64, self_j: i64) -> f64 {
 /// Computes file coupling pairs from the dense files matrix.
 ///
 /// Iterates the upper triangle (`j > i`), skips zero co-changes, and sorts the
-/// result by `co_changes` descending. The reference binary uses an unstable
-/// sort here; this implementation uses a stable sort, which can differ in tie
-/// ordering — see crate TODOs on matching the reference's unstable sort for
-/// byte-identity.
+/// result by `co_changes` descending (a stable sort: ties keep the byte-sorted
+/// file order).
 #[must_use]
 pub fn compute_file_coupling(input: &ReportData) -> Vec<FileCouplingData> {
     let mut result: Vec<FileCouplingData> = Vec::new();
@@ -255,8 +242,7 @@ fn dev_name_email(idx: usize, names: &[String]) -> (String, String) {
 /// Contributor cardinality comes from per-file `HyperLogLog` sketches keyed by
 /// `LittleEndian(devID)` (memory-efficient on large repos, and the counts are
 /// part of the report contract). Without the `hll` feature it counts distinct
-/// developer IDs exactly via a set (parity-equivalent for typical inputs,
-/// exact for small ones). See crate TODOs.
+/// developer IDs exactly via a set.
 #[must_use]
 #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)] // precision is a small positive int
 pub fn compute_file_ownership(input: &ReportData, opts: MetricOptions) -> Vec<FileOwnershipData> {
@@ -324,23 +310,10 @@ fn file_contributor_counts(
     sets.iter().map(|s| s.len() as i32).collect()
 }
 
-/// Number of simulated iteration-order passes used to locate the median
-/// naive-sum for `avg_coupling_strength` (see [`median_map_order_total`]).
-const AVG_STRENGTH_ORDER_PASSES: usize = 101;
-
-/// Computes aggregate statistics from the dense files matrix.
-///
-/// `avg_coupling_strength` is a naive left-to-right f64 sum of per-pair
-/// strengths divided by the pair count. The reference implementation
-/// accumulates that sum while iterating each row as a hash map whose
-/// iteration order is randomized per process, so the reference value wobbles
-/// by a few ULPs from run to run (rows are visited in fixed ascending order;
-/// only the within-row term order varies). A deterministic port must pick one
-/// representative of that measured distribution: this implementation reports
-/// the median naive-sum over simulated within-row orders (the distribution's
-/// most probable region), computed deterministically from the input — see
-/// [`median_map_order_total`]. All integer fields are order-independent and
-/// exact.
+/// Computes aggregate statistics from the dense files matrix: the pair
+/// count, the co-change total, the highly-coupled pair count and
+/// `avg_coupling_strength`, the mean of the per-pair strengths (upper
+/// triangle, ascending index order).
 #[must_use]
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)] // report fields are i32
 #[allow(clippy::cast_precision_loss)] // contractual float math on counts
@@ -348,16 +321,11 @@ pub fn compute_aggregate(input: &ReportData, opts: MetricOptions) -> AggregateDa
     let mut total_co_changes: i64 = 0;
     let mut pair_count: i64 = 0;
     let mut highly_coupled: i32 = 0;
+    let mut total_strength: f64 = 0.0;
     let threshold = i64::from(opts.coupling_threshold_high);
-    // Per-row contributing strengths: rows in ascending file index (the
-    // reference iterates the row slice in order), within-row ascending column
-    // as the canonical starting arrangement (the reference's within-row order
-    // is what varies).
-    let mut row_strengths: Vec<Vec<f64>> = Vec::new();
 
     for (i, row) in input.files_matrix.iter().enumerate() {
         let self_i = *row.get(&i).unwrap_or(&0);
-        let mut strengths: Vec<f64> = Vec::new();
         for (&j, &co_changes) in row {
             if j <= i || co_changes <= 0 {
                 continue;
@@ -373,10 +341,7 @@ pub fn compute_aggregate(input: &ReportData, opts: MetricOptions) -> AggregateDa
             if co_changes >= threshold {
                 highly_coupled += 1;
             }
-            strengths.push(coupling_strength(co_changes, self_i, self_j));
-        }
-        if !strengths.is_empty() {
-            row_strengths.push(strengths);
+            total_strength += coupling_strength(co_changes, self_i, self_j);
         }
     }
 
@@ -385,79 +350,12 @@ pub fn compute_aggregate(input: &ReportData, opts: MetricOptions) -> AggregateDa
         total_developers: input.reversed_people_dict.len() as i32,
         total_co_changes,
         avg_coupling_strength: if pair_count > 0 {
-            median_map_order_total(&row_strengths) / pair_count as f64
+            total_strength / pair_count as f64
         } else {
             0.0
         },
         highly_coupled_pairs: highly_coupled,
     }
-}
-
-/// Median naive left-to-right f64 total of per-row strength terms over
-/// simulated within-row iteration orders.
-///
-/// The reference accumulates `total_strength` while iterating each row as a
-/// randomized-order hash map, so its total is a random draw from the
-/// distribution of naive sums over within-row permutations (float addition is
-/// not associative, so different orders round differently by a few ULPs).
-/// This helper measures that distribution deterministically: it computes the
-/// naive total under [`AVG_STRENGTH_ORDER_PASSES`] pseudo-random within-row
-/// orders (fixed seeds, Fisher–Yates over a splitmix64 stream) and returns the
-/// median — the most probable reference outcome. The result is a pure
-/// function of the input strengths: deterministic, input-varying, and exactly
-/// equal to the unique naive sum whenever ordering cannot matter (zero or one
-/// term per row).
-fn median_map_order_total(row_strengths: &[Vec<f64>]) -> f64 {
-    // Fast path: ordering cannot affect the sum when every row has a single
-    // term (the pass loop would produce identical totals).
-    if row_strengths.iter().all(|r| r.len() < 2) {
-        let mut s = 0.0;
-        for row in row_strengths {
-            for &v in row {
-                s += v;
-            }
-        }
-        return s;
-    }
-
-    let mut totals = Vec::with_capacity(AVG_STRENGTH_ORDER_PASSES);
-    let mut scratch: Vec<f64> = Vec::new();
-    for pass in 0..AVG_STRENGTH_ORDER_PASSES {
-        // splitmix64 stream with a fixed per-pass seed.
-        let mut state = (pass as u64)
-            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
-            .wrapping_add(0x2545_F491_4F6C_DD1D);
-        let mut next = move || -> u64 {
-            state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-            let mut z = state;
-            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-            z ^ (z >> 31)
-        };
-        let mut total = 0.0f64;
-        for row in row_strengths {
-            if row.len() < 2 {
-                for &v in row {
-                    total += v;
-                }
-                continue;
-            }
-            scratch.clear();
-            scratch.extend_from_slice(row);
-            // Fisher–Yates shuffle of the row's terms.
-            for k in (1..scratch.len()).rev() {
-                #[allow(clippy::cast_possible_truncation)] // index < row len
-                let pick = (next() % (k as u64 + 1)) as usize;
-                scratch.swap(k, pick);
-            }
-            for &v in &scratch {
-                total += v;
-            }
-        }
-        totals.push(total);
-    }
-    totals.sort_by(f64::total_cmp);
-    totals[totals.len() / 2]
 }
 
 /// Groups ownership data into contributor-count buckets using the default
@@ -508,50 +406,6 @@ pub fn bucket_ownership_with_thresholds(
             count: many,
         },
     ]
-}
-
-/// Returns a copy sorted by contributors ascending (highest risk first).
-#[must_use]
-pub fn sort_ownership_by_risk(ownership: &[FileOwnershipData]) -> Vec<FileOwnershipData> {
-    let mut sorted = ownership.to_vec();
-    sorted.sort_by(|a, b| a.contributors.cmp(&b.contributors));
-    sorted
-}
-
-/// Limits a developer matrix to the top-N developers by diagonal activity.
-/// Returns the input unchanged when within the limit.
-#[must_use]
-pub fn filter_top_devs(
-    matrix: &[BTreeMap<usize, i64>],
-    names: &[String],
-    limit: usize,
-) -> (Vec<BTreeMap<usize, i64>>, Vec<String>) {
-    if names.len() <= limit {
-        return (matrix.to_vec(), names.to_vec());
-    }
-    let mut devs: Vec<(usize, i64)> = (0..names.len())
-        .map(|i| (i, matrix[i].get(&i).copied().unwrap_or(0)))
-        .collect();
-    devs.sort_by(|a, b| b.1.cmp(&a.1));
-    let top_n = &devs[..limit];
-
-    let mut old_to_new = std::collections::HashMap::with_capacity(limit);
-    let mut new_names = vec![String::new(); limit];
-    for (new_idx, &(old_idx, _)) in top_n.iter().enumerate() {
-        old_to_new.insert(old_idx, new_idx);
-        new_names[new_idx].clone_from(&names[old_idx]);
-    }
-
-    let mut new_matrix: Vec<BTreeMap<usize, i64>> = vec![BTreeMap::new(); limit];
-    for &(old_i, _) in top_n {
-        let new_i = old_to_new[&old_i];
-        for (&old_j, &val) in &matrix[old_i] {
-            if let Some(&new_j) = old_to_new.get(&old_j) {
-                new_matrix[new_i].insert(new_j, val);
-            }
-        }
-    }
-    (new_matrix, new_names)
 }
 
 /// Runs all metrics with default options.
@@ -651,6 +505,24 @@ mod tests {
         assert!((agg.avg_coupling_strength - 2.0 / 3.0).abs() < 1e-12);
     }
 
+    /// Three pairs with strengths 1.0, 0.5 and 0.25 average to 7/12 (one
+    /// left-to-right sum over the upper triangle).
+    #[test]
+    fn aggregate_average_is_the_mean_of_the_pair_strengths() {
+        let input = ReportData {
+            files: vec!["a".into(), "b".into(), "c".into()],
+            files_matrix: vec![
+                row(&[(0, 2), (1, 2), (2, 1)]),
+                row(&[(0, 2), (1, 2), (2, 1)]),
+                row(&[(0, 1), (1, 1), (2, 6)]),
+            ],
+            ..Default::default()
+        };
+        let agg = compute_aggregate(&input, MetricOptions::default());
+        assert_eq!(agg.total_co_changes, 4);
+        assert!((agg.avg_coupling_strength - (1.0 + 0.25 + 0.25) / 3.0).abs() < 1e-12);
+    }
+
     #[test]
     fn ownership_buckets() {
         let own = vec![
@@ -687,16 +559,7 @@ mod tests {
         assert_eq!(buckets[3].count, 1);
     }
 
-    #[test]
-    fn filter_top_devs_keeps_within_limit() {
-        let m = vec![row(&[(0, 5)]), row(&[(1, 3)])];
-        let names = vec!["a".to_string(), "b".to_string()];
-        let (fm, fn_) = filter_top_devs(&m, &names, 5);
-        assert_eq!(fm.len(), 2);
-        assert_eq!(fn_, names);
-    }
-
-    // --- DeveloperCoupling parity tests (mirroring the reference suite) ---
+    // --- developer coupling ---
 
     #[test]
     fn developer_coupling_single_pair_strength() {
@@ -755,14 +618,5 @@ mod tests {
             ..Default::default()
         };
         assert!(compute_developer_coupling(&input).is_empty());
-    }
-
-    #[test]
-    fn filter_top_devs_ranks_by_diagonal() {
-        let m = vec![row(&[(0, 1)]), row(&[(1, 9)]), row(&[(2, 5)])];
-        let names = vec!["a".into(), "b".into(), "c".into()];
-        let (_fm, fn_) = filter_top_devs(&m, &names, 2);
-        // top by diagonal: b(9), c(5).
-        assert_eq!(fn_, vec!["b".to_string(), "c".to_string()]);
     }
 }

@@ -1,54 +1,33 @@
-//! `cf-cohesion` — static LCOM-HS cohesion analyzer (analyzer id:
-//! `static/cohesion`). Also used by the quality analyzer.
+//! `cf-cohesion` — the `static/cohesion` analyzer: LCOM-HS (Henderson-Sellers)
+//! and per-function variable-sharing cohesion over a UAST.
 //!
-//! * [`Analyzer::analyze`] walks a UAST, extracts functions and their variables, and
-//!   computes three module-level scalars — `lcom` (LCOM-HS, Henderson-Sellers),
-//!   `cohesion_score`, and `function_cohesion` — plus a per-function table.
-//! * Per-function cohesion uses a single global Bloom filter of *shared* variables
-//!   (variables appearing in more than one function); see
-//!   [`calc::build_global_variable_filter`] /
-//!   [`Analyzer::calculate_function_level_cohesion`]. Bloom false positives are
-//!   part of the defined behavior.
+//! * [`Analyzer::analyze_file`] walks one file's UAST, discovers its functions
+//!   and the distinct variables each one uses (the rules live in
+//!   [`visitor`]), and computes the file's [`FileReport`]: `lcom`,
+//!   `cohesion_score = 1 - lcom`, the mean `function_cohesion`, and a
+//!   per-function table.
+//! * [`aggregate`] folds many files into one [`Aggregate`]: every function is
+//!   kept, scalars are function-weighted, and files without functions carry no
+//!   data.
+//! * [`metrics::compute_metrics`] and [`report_section`] derive the machine
+//!   and section views the CLI renders.
 //!
-//! # Byte-identity notes
-//!
-//! * [`metrics::ComputedMetrics`] and its nested structs serialize their fields
-//!   in **declaration order**, honoring `omitempty` (report-format contract).
-//! * The `distribution` field is a string-keyed map; its keys are byte-sorted
-//!   on encode.
-//! * The dynamic [`Report`] map (the analyzer's intermediate result) has byte-sorted
-//!   keys when emitted; the per-function `functions` array order is
-//!   **nondeterministic in the reference implementation** and is therefore a
-//!   *named-canonicalizer* path in the golden harness rather than a raw-byte gate.
-//!   The scalars (`lcom`, `cohesion_score`, `function_cohesion`,
-//!   `total_functions`) are stable.
-//!
-//! Compatibility: output bytes are pinned against the reference implementation
-//! by the differential gate in `tests/compat`. See the module-level docs
-//! of [`calc`], [`metrics`], [`report_section`] and [`aggregator`].
+//! The documentation of record is `site/explanation/cohesion.md` (the model)
+//! and `site/analyzers/cohesion.md` (the output).
 //!
 //! # Example
 //!
-//! Analyze a two-function module and read the stable scalars. With `f` using
-//! `{x, y}` and `g` using `{x}`, LCOM-HS is `0.25`, so the cohesion score
-//! (`1 - lcom`) is `0.75`:
-//!
 //! ```
 //! use cf_cohesion::Analyzer;
-//! use cf_cohesion::report_value::ReportValue;
-//! use cf_cohesion::uast::TestNode;
 //!
-//! let f = TestNode::function("f", 5, vec![TestNode::variable("x"), TestNode::variable("y")]);
-//! let g = TestNode::function("g", 3, vec![TestNode::variable("x")]);
-//! let root = TestNode::block(vec![f, g]);
+//! let src = b"package a\n\nfunc f() int {\n\tx := 1\n\ty := 2\n\treturn x + y\n}\n\nfunc g() int {\n\tx := 3\n\treturn x\n}\n";
+//! let root = cf_uast::Parser::new().parse("a.go", src).unwrap();
+//! let report = Analyzer::new().analyze_file(&root);
 //!
-//! let report = Analyzer::new().analyze(&root).unwrap();
-//! assert_eq!(report.get("total_functions"), Some(&ReportValue::Int(2)));
-//!
-//! let lcom = report.get("lcom").unwrap().as_float().unwrap();
-//! assert!((lcom - 0.25).abs() < 1e-9);
-//! let score = report.get("cohesion_score").unwrap().as_float().unwrap();
-//! assert!((score - 0.75).abs() < 1e-9);
+//! // f uses {x, y}, g uses {x}: m = 2, a = 2, sum(mA) = 3 -> LCOM = 1 - 3/4.
+//! assert_eq!(report.total_functions, 2);
+//! assert!((report.lcom - 0.25).abs() < 1e-9);
+//! assert!((report.cohesion_score - 0.75).abs() < 1e-9);
 //! ```
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -59,19 +38,13 @@ pub mod calc;
 pub mod metrics;
 pub mod report_section;
 pub mod report_value;
-pub mod serialize;
 pub mod uast;
 pub mod visitor;
 
-pub use analyzer::{Analyzer, Function, FunctionReportItem};
-pub use metrics::{
-    AggregateData, ComputedMetrics, FunctionCohesionData, FunctionData, LowCohesionFunctionData,
-    ReportData,
-};
+pub use aggregator::{aggregate, Aggregate, AggregatedFunction, AnalyzedFile};
+pub use analyzer::{Analyzer, FileReport, Function, FunctionMetrics};
+pub use metrics::ComputedMetrics;
 pub use report_value::{Report, ReportValue};
-
-/// Crate name, used by smoke tests to confirm the module links.
-pub const CRATE_NAME: &str = "cf-cohesion";
 
 /// The analyzer name as it appears in reports.
 pub const ANALYZER_NAME: &str = "cohesion";

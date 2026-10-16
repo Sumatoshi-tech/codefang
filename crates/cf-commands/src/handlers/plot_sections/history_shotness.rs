@@ -1,6 +1,7 @@
-//! `history/shotness` plot sections.
-//! (`GenerateStoreSections` over the `node_data` store kind, which is exactly
-//! the run report's key-sorted `(NodeSummary, Counter)` pairs).
+//! `history/shotness` plot sections over the run report's key-sorted
+//! `(NodeSummary, Counter)` pairs (`shotness_run_report_data`): the file →
+//! entity treemap, the entity coupling heatmap and the top-entities bar
+//! chart.
 
 use std::collections::HashMap;
 
@@ -13,7 +14,7 @@ use cf_plotpage::echarts::{
 use cf_plotpage::{get_chart_palette, ChartOpts, Hint, Section, Theme};
 use cf_shotness::NodeSummary;
 
-use crate::handlers::go_sort;
+use crate::handlers::plot_sections::history_shared::by_value_then_name;
 
 /// Reference shotness plot-section constants.
 const TOP_N_NODES: usize = 20;
@@ -28,7 +29,7 @@ const BORDER_WIDTH_1: f64 = 1.0;
 const BORDER_WIDTH_2: f64 = 2.0;
 const MIN_HEAT_MAP_NODES: usize = 2;
 
-/// The reference `GenerateStoreSections`: zero nodes yield zero sections.
+/// The three sections; zero nodes yield zero sections.
 pub fn sections(nodes: &[NodeSummary], counters: &[HashMap<usize, i64>]) -> Vec<Section> {
     if nodes.is_empty() {
         return Vec::new();
@@ -139,9 +140,8 @@ fn create_tree_map(
     counters: &[HashMap<usize, i64>],
     co: &ChartOpts,
 ) -> Chart {
-    // buildFileHierarchy: per-file child nodes + totals. the reference implementation iterates the maps
-    // randomly when building rootNodes; file-name-ascending is the
-    // deterministic stand-in (ties at equal Value are reference-variant).
+    // Per-file child nodes + totals; every level ranks by value
+    // (descending), then by name.
     let mut file_map: std::collections::BTreeMap<&str, Vec<TreeMapNode>> =
         std::collections::BTreeMap::new();
     let mut file_totals: std::collections::BTreeMap<&str, i64> = std::collections::BTreeMap::new();
@@ -164,14 +164,14 @@ fn create_tree_map(
 
     let mut root_nodes: Vec<TreeMapNode> = Vec::with_capacity(file_map.len());
     for (file, mut children) in file_map {
-        go_sort::slice(&mut children, |a, b| a.value > b.value);
+        children.sort_by(by_value_then_name);
         root_nodes.push(TreeMapNode {
             name: go_filepath_base(file).to_string(),
             value: file_totals[file],
             children,
         });
     }
-    go_sort::slice(&mut root_nodes, |a, b| a.value > b.value);
+    root_nodes.sort_by(by_value_then_name);
     root_nodes.truncate(MAX_FILES);
 
     let mut tm = Chart::new(ChartKind::TreeMap);
@@ -249,7 +249,12 @@ fn create_heat_map(
             });
         }
     }
-    go_sort::slice(&mut actives, |a, b| a.count > b.count);
+    actives.sort_by(|a, b| {
+        b.count
+            .cmp(&a.count)
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.idx.cmp(&b.idx))
+    });
     actives.truncate(TOP_N_NODES);
 
     if actives.len() < MIN_HEAT_MAP_NODES {
@@ -404,8 +409,7 @@ fn create_bar_chart(
         .enumerate()
         .map(|(idx, counter)| {
             let mut coupled: i64 = 0;
-            // The reference implementation ranges the counter map randomly; addition is
-            // order-independent.
+            // Addition is independent of the map's iteration order.
             for (other, val) in counter {
                 if *other != idx && *val > 0 {
                     coupled += *val;
@@ -418,7 +422,12 @@ fn create_bar_chart(
             }
         })
         .collect();
-    go_sort::slice(&mut scores, |a, b| a.self_count > b.self_count);
+    // Stable: equal counts and names keep the node order.
+    scores.sort_by(|a, b| {
+        b.self_count
+            .cmp(&a.self_count)
+            .then_with(|| a.name.cmp(&b.name))
+    });
     scores.truncate(TOP_N_NODES);
 
     let labels: Vec<String> = scores.iter().map(|s| s.name.clone()).collect();

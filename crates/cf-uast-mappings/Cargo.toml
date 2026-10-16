@@ -17,3 +17,9 @@ cf-uast-mapping = { path = "../cf-uast-mapping" }
 # pattern as a tree_sitter::Query against the wired grammars.
 cf-uast = { path = "../cf-uast" }
 tree-sitter = { workspace = true }
+# Shape-contract tests (tests/shape_contract.rs) read lowered nodes; the
+# schema-vocabulary test (tests/schema_vocabulary.rs) checks every emitted
+# type/role against the embedded JSON schema.
+cf-uast-node = { path = "../cf-uast-node" }
+cf-uast-spec = { path = "../cf-uast-spec" }
+serde_json = { workspace = true }

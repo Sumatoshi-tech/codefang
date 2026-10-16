@@ -13,7 +13,7 @@
 //! to index reuse.
 
 use crate::timeline::{DeltaReport, TimeKey, Timeline};
-use crate::{TREE_END, TREE_MERGE_MARK};
+use crate::TREE_END;
 
 /// The initial non-zero seed for the xorshift64 PRNG.
 ///
@@ -340,9 +340,6 @@ impl TreapTimeline {
         let Some(n) = n else { return };
         let node = self.arena[n];
         self.validate_node(node.left, last_val);
-        if node.value == TREE_MERGE_MARK {
-            panic!("unmerged lines left at segment length {}", node.length);
-        }
         *last_val = node.value;
         self.validate_node(node.right, last_val);
     }

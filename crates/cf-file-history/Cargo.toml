@@ -7,16 +7,12 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
-# cf-file-history — per-file change history + file classifier
-# (analyzer id: history/file-history).
-#
-# Compatibility: machine-format report bytes (json/ndjson/timeseries/compact/bin)
-# are pinned against the reference binary by tests/compat; all report
-# serialization routes through cf-gojson.
+# cf-file-history — per-file change history metrics and the file-composition
+# breakdown (analyzer id: history/file-history). All report serialization
+# routes through cf-gojson.
 
 [dependencies]
-# Report-format JSON encoder (compatibility contract). Never serde_json for
-# report output.
+# Report-format JSON encoder. Never serde_json for report output.
 cf-gojson = { path = "../cf-gojson" }
 # Risk level string constants (CRITICAL/HIGH/MEDIUM/LOW), shared with the other
 # analyzers' hotspot logic.

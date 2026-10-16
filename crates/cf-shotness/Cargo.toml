@@ -8,13 +8,15 @@ repository.workspace = true
 publish.workspace = true
 
 # cf-shotness — structural hotspots: co-change of DSL-selected UAST entities
-# (analyzer id: history/shotness).
+# (analyzer id: history/shotness). The live entity state (touch / couple /
+# rename / end) and the metrics over its report.
 #
-# All machine-format report serialization routes through cf-gojson; the
-# json/yaml/ndjson/timeseries/compact/bin bytes are pinned against the
-# reference implementation by tests/compat. NEVER serde_json for output.
+# All machine-format report serialization routes through cf-gojson. NEVER
+# serde_json for output.
 
 [dependencies]
+# Spill encoding of finished history results (cf-commands `spill`).
+serde = { workspace = true }
 # Report-format-compatible value model + encoder. The analyzer builds its
 # report as a GoValue tree; serialization is owned by the report layer.
 # NEVER serde_json.

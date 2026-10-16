@@ -8,11 +8,9 @@ use crate::model::{CommitAnomalyData, TickMetrics};
 /// `commits_by_tick` mapping (commit hash hex -> commit data;
 /// tick -> ordered list of commit hashes).
 ///
-/// Returns an empty map when either input is empty.
-///
-/// `commits_by_tick` preserves the per-tick hash ordering via a `Vec`; the
-/// outer `BTreeMap` keys (ticks) are iterated in ascending order, matching
-/// the deterministic sorted-key consumption downstream.
+/// Lines add up across the tick's commits; files, languages and authors are
+/// merged as sets (a file touched by three commits of the tick is ONE
+/// changed file). Returns an empty map when either input is empty.
 ///
 /// ```
 /// use cf_anomaly::aggregate::aggregate_commits_to_ticks;
@@ -21,11 +19,13 @@ use crate::model::{CommitAnomalyData, TickMetrics};
 ///
 /// let commit_metrics = BTreeMap::from([
 ///     ("aaa".to_string(), CommitAnomalyData {
-///         files_changed: 3, lines_added: 20, lines_removed: 5, author_id: 1,
+///         files_changed: 2, lines_added: 20, lines_removed: 5, author_id: 1,
+///         files: vec!["f.txt".into(), "g.txt".into()],
 ///         ..Default::default()
 ///     }),
 ///     ("bbb".to_string(), CommitAnomalyData {
-///         files_changed: 2, lines_added: 10, lines_removed: 3, author_id: 2,
+///         files_changed: 1, lines_added: 10, lines_removed: 3, author_id: 2,
+///         files: vec!["f.txt".into()],
 ///         ..Default::default()
 ///     }),
 /// ]);
@@ -36,7 +36,7 @@ use crate::model::{CommitAnomalyData, TickMetrics};
 ///
 /// let ticks = aggregate_commits_to_ticks(&commit_metrics, &commits_by_tick);
 /// let tm = &ticks[&0];
-/// assert_eq!(tm.files_changed, 5);                 // additive merge
+/// assert_eq!(tm.files_changed(), 2);               // distinct files
 /// assert_eq!(tm.net_churn, 30 - 8);                // added - removed
 /// assert_eq!(tm.author_ids.len(), 2);              // distinct authors
 ///
@@ -80,7 +80,6 @@ fn aggregate_tick_from_commits(
 
         let acc = tm.get_or_insert_with(TickMetrics::default);
 
-        acc.files_changed += cm.files_changed;
         acc.lines_added += cm.lines_added;
         acc.lines_removed += cm.lines_removed;
         acc.files.extend(cm.files.iter().cloned());
@@ -139,7 +138,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let tm = &result[&0];
-        assert_eq!(tm.files_changed, 5);
+        assert_eq!(tm.files_changed(), 5);
         assert_eq!(tm.lines_added, 30);
         assert_eq!(tm.lines_removed, 8);
         assert_eq!(tm.net_churn, 22);
@@ -177,8 +176,50 @@ mod tests {
 
         let result = aggregate_commits_to_ticks(&commit_metrics, &commits_by_tick);
         assert_eq!(result.len(), 2);
-        assert_eq!(result[&0].files_changed, 3);
-        assert_eq!(result[&1].files_changed, 2);
+        assert_eq!(result[&0].files_changed(), 0);
+        assert_eq!(result[&1].files_changed(), 0);
+        assert_eq!(result[&0].lines_added, 20);
+        assert_eq!(result[&1].lines_added, 10);
+    }
+
+    #[test]
+    fn files_touched_by_several_commits_count_once() {
+        // Mirrors the audit fixture: one file modified by three commits of
+        // the same tick plus a delete — 2 distinct files, not 4 changes.
+        let mut commit_metrics = BTreeMap::new();
+        for (i, c) in (0_i64..).zip(['a', 'b', 'c']) {
+            commit_metrics.insert(
+                hash(c),
+                CommitAnomalyData {
+                    files_changed: 1,
+                    lines_added: 1,
+                    files: vec!["f.txt".into()],
+                    author_id: i,
+                    ..Default::default()
+                },
+            );
+        }
+        commit_metrics.insert(
+            hash('d'),
+            CommitAnomalyData {
+                files_changed: 1,
+                lines_removed: 2,
+                files: vec!["g.txt".into()],
+                ..Default::default()
+            },
+        );
+        let commits_by_tick =
+            BTreeMap::from([(0_i64, vec![hash('a'), hash('b'), hash('c'), hash('d')])]);
+        let result = aggregate_commits_to_ticks(&commit_metrics, &commits_by_tick);
+        let tm = &result[&0];
+        assert_eq!(tm.files_changed(), 2);
+        assert_eq!(
+            tm.files.iter().cloned().collect::<Vec<_>>(),
+            vec!["f.txt".to_string(), "g.txt".to_string()]
+        );
+        assert_eq!(tm.lines_added, 3);
+        assert_eq!(tm.lines_removed, 2);
+        assert_eq!(tm.net_churn, 1);
     }
 
     #[test]
@@ -211,6 +252,6 @@ mod tests {
 
         let result = aggregate_commits_to_ticks(&commit_metrics, &commits_by_tick);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[&0].files_changed, 3);
+        assert_eq!(result[&0].lines_added, 20);
     }
 }

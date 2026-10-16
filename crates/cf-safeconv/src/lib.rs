@@ -23,7 +23,7 @@
 //! ([`Number`]) into the requested numeric target type, and [`extract_string`]
 //! covers the string case; every non-coercible value yields `(zero, false)`.
 //! These coercion rules are part of the report compatibility contract (pinned
-//! by `tests/compat`): a float extracted as an integer truncates toward
+//! by the report e2e suites (`bins/codefang/tests`)): a float extracted as an integer truncates toward
 //! zero, and strings/bools never coerce to numbers.
 //!
 //! # Platform note

@@ -2,8 +2,8 @@
 
 This page explains the mental model behind the shotness analyzer: what
 node-level change frequency and coupling mean, how coupling strength is
-computed, and how the aggregation pipeline is structured. For configuration
-keys and the output schema, see the
+computed, and how the walk is structured. For configuration keys, the entity
+lifecycle table and the output schema, see the
 [Shotness reference](../analyzers/shotness.md).
 
 ---
@@ -15,13 +15,22 @@ individual code entities (functions, methods, classes) across Git history.
 Unlike the couples analyzer which operates at file granularity, shotness
 operates at the UAST node level, providing fine-grained co-change analysis.
 
-### Node change frequency
+### Entity change frequency
 
-For each code entity matched by the DSL query (functions by default), the analyzer counts how many commits modified lines within that entity's span. Entities that change frequently are "hot" -- they are likely volatile, complex, or central to the system.
+For each declaration the structural DSL selects (every function-role node by
+default — top-level functions, class methods, nested functions), the analyzer
+counts how many commits modified lines within that entity's span. Entities
+that change frequently are "hot" -- they are likely volatile, complex, or
+central to the system. An entity is identified by its type, its **qualified
+name** (`Class.method`, `Receiver.method`, `outer.inner`) and its file, so
+same-named methods on different types never merge.
 
-### Node co-change coupling
+### Entity co-change coupling
 
-When two code entities are modified in the same commit, their coupling counter is incremented. This produces a fine-grained coupling matrix at the function level, which is more precise than file-level coupling from the couples analyzer.
+When two entities are modified in the same commit, their coupling counter is
+incremented. This produces a fine-grained coupling matrix at the entity
+level, which is more precise than file-level coupling from the couples
+analyzer.
 
 ### Coupling strength
 
@@ -35,7 +44,7 @@ This ensures the result is always in [0, 1] and provides a meaningful confidence
 
 ### Risk classification
 
-Nodes are classified into risk levels based on absolute change counts:
+Entities are classified into risk levels based on absolute change counts:
 
 | Risk Level | Threshold | Meaning |
 |---|---|---|
@@ -45,25 +54,48 @@ Nodes are classified into risk levels based on absolute change counts:
 
 ### How it works
 
-For each commit:
+For each commit of the window, oldest first:
 
-1. Parse the before and after versions of each changed file into UAST
-2. Apply the `dsl_struct` query to select target nodes (e.g., functions)
-3. Apply the `dsl_name` query to extract the name of each node
-4. Map diff hunks to nodes using line-range overlaps
-5. Emit a per-commit TC (Transient Commit result) with touched node deltas and coupling pairs
+1. Compute the tree diff against the first parent (the whole tree for a
+   root commit); drop the commit if the raw diff exceeds
+   `--max-changes-per-commit`; apply the language / vendor / generated
+   filter.
+2. Parse the Before and After versions of each changed file into a UAST
+   (blobs above 256 KiB are skipped).
+3. Run the structural query (`dsl_struct`) over each tree to select the
+   declarations, name each one with the name query (`dsl_name`) and qualify
+   it with its enclosing declarations and receiver type.
+4. Line-diff the two versions and map every hunk to the entities whose
+   line span it overlaps.
+5. Record the commit's **effects**: the entities it touched (one change
+   each, coupled pairwise), the entities whose declaration or file
+   disappeared (ended), and the entities a file rename moved.
 
-After all commits are processed, the Aggregator accumulates TCs into a final report with sorted nodes and a sparse co-change matrix.
+Steps 1–4 are pure per-commit work and run in parallel across cores; step 5
+runs sequentially in commit order over the live entity state, so the output
+is a pure function of the repository and the flags, never of the host.
+Merge commits are skipped (their diff re-shows the side line already
+walked) unless the walk is `--first-parent`.
 
 ### Architecture
 
-The shotness analyzer follows the **TC/Aggregator** pattern:
+- **Pre-pass** (`cf-commands`, shared with the other UAST history
+  analyzers): the tree diff, the per-commit parse cache and the entity
+  extraction produce one state-independent *product* per change.
+- **Reduce** (`cf-commands` → `cf-shotness`): the reducer turns each
+  commit's products into `EntityEffect` records (touched / ended / moved
+  from) over the live `ShotnessState`, resolving file-level events into the
+  entities currently declared in the file.
+- **Report** (`cf-shotness`): replaying the effect records in walk order
+  over an empty state yields the live entity set; its key-sorted
+  `Nodes`/`Counters` matrix feeds `compute_all_metrics` (hotness, coupling,
+  hotspots, aggregate), the plot sections and the text report. The ndjson
+  and timeseries formats list the same per-commit records.
 
-- **Consume phase**: Per-commit processing builds working state (`nodes`, `files` maps for deletion/rename tracking) and emits a `TC{Data: *CommitData}` with node touch deltas and coupling pairs.
-- **Aggregation phase**: The `Aggregator` accumulates node counts and coupling matrices from the TC stream. It supports disk-backed spilling via `SpillStore` for memory-bounded operation.
-- **Serialization phase**: `SerializeTICKs()` converts aggregated tick data into the `Nodes`/`Counters` report consumed by `ComputeAllMetrics()` and plot generation.
-
-The `nodes` map remains in the analyzer as working state because `handleDeletion`, `handleInsertion`, `handleModification`, and `applyRename` read and mutate it during `Consume()`. The aggregator maintains its own separate accumulation of counts and couplings.
+There is one source of truth — the effect records and the state transition
+that replays them — so a multi-analyzer run (which shares the walk with
+imports, quality, sentiment and typos) and a standalone run produce the
+same report.
 
 ---
 
@@ -98,16 +130,17 @@ The `nodes` map remains in the analyzer as working state because `handleDeletion
 
 ## Limitations
 
-- **UAST required**: Only languages with UAST parser support are analyzed. Files in unsupported languages are skipped entirely.
-- **CPU intensive**: The analyzer performs UAST parsing on both the before and after versions of every changed file in every commit. This makes it one of the most expensive analyzers. It benefits from parallel execution.
-- **Name collisions**: If two functions in different files have the same name, they are tracked as distinct nodes (the file path is part of the key). However, if a file is renamed, the analyzer updates all associated nodes.
-- **Shallow extraction within a file**: When multiple structural nodes in the same file share the same extracted name (e.g., nested functions with identical names), only one is tracked. The last one encountered wins. Qualified paths (e.g., `OuterClass.innerMethod`) are not built.
-- **DSL limitations**: The DSL query must match nodes that have position information (`Pos` field) in the UAST. Nodes without position data cannot be mapped to diff hunks.
-- **Large functions**: A change anywhere within a function's line range counts as a change to that function. Very large functions (hundreds of lines) will have inflated change counts.
+- **UAST required**: Only languages with UAST parser support are analyzed. Files in unsupported languages, binary blobs, blobs above 256 KiB and files that fail to parse are skipped for that commit.
+- **CPU intensive**: The analyzer parses both the before and after versions of every changed file in every commit. The per-commit work is spread across cores; the reduce is sequential.
+- **The report is the present**: an entity that no longer exists at the newest commit of the window (its declaration was removed or its file deleted) is dropped, together with its couplings. An in-place rename of a declaration (`f` → `f2`) is an end plus a birth: the history of `f` does not carry over. A file rename does carry everything over. `--shotness-keep-ended` keeps the past instead: ended entities stay with their counts and couplings, marked `ended`, while hotspots and the plot pages still show only live entities.
+- **Qualification follows the mapping**: Rust `impl` methods are not qualified by the `impl` target, and a language whose mapping sets no declaration names yields no entities. Two selected nodes in one file that resolve to the same type and qualified name are one entity.
+- **Position required**: a selected node without position information cannot be mapped to diff hunks and is never touched.
+- **Large entities**: A change anywhere within an entity's line range counts as a change to that entity. Very large functions (hundreds of lines) will have inflated change counts, and a change inside a method also touches the enclosing class when classes are selected.
+- **Merge commits** are not counted (see the lifecycle table in the reference), so a side line's work is attributed to its own commits.
 
 ---
 
 ## See also
 
-- [Shotness reference](../analyzers/shotness.md) — configuration keys and output schema.
+- [Shotness reference](../analyzers/shotness.md) — configuration keys, the entity lifecycle and the output schema.
 - [Quick start](../getting-started/quickstart.md) — run history analysis.

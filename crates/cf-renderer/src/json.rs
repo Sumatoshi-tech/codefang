@@ -2,7 +2,7 @@
 //!
 //! These structs are the machine model for the static-analysis report. Two
 //! report-format behaviors are load-bearing here (pinned by
-//! `tests/compat`):
+//! the report e2e suites (`bins/codefang/tests`)):
 //!
 //! 1. **Score-last field ordering.** `score` / `overall_score` is always the
 //!    *last* field emitted in JSON. The

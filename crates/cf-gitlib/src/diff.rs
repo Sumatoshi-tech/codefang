@@ -29,7 +29,7 @@ pub enum LineOp {
 /// devs churn, …) flow straight into reports, and libgit2's Myers diff and
 /// `diffmatchpatch`'s line diff group changed-vs-added-vs-removed lines
 /// differently, so the two are not interchangeable. Pinned by the differential
-/// gate in `tests/compat`.
+/// report e2e suites (`bins/codefang/tests`).
 ///
 /// The op stream rules (reference-implementation behavior):
 /// * libgit2 default diff options (3 context lines) via

@@ -252,9 +252,8 @@ produce clean changelogs and enable automated versioning.
     ```
     feat(analyzers): add anomaly detection analyzer
 
-    Implements Z-score and IQR based anomaly detection for commit-level
-    metrics. Integrates with the streaming pipeline and supports
-    checkpointing for crash recovery.
+    Implements Z-score anomaly detection over per-tick commit metrics,
+    with a configurable trailing window and threshold.
 
     Closes #142
     ```
@@ -329,7 +328,7 @@ The project `Makefile` provides a comprehensive set of targets for development:
 Found a bug? Please [open a GitHub Issue](https://github.com/Sumatoshi-tech/codefang/issues/new)
 with the following information:
 
-1. **Codefang version** -- output of `codefang --version`
+1. **Codefang version** -- output of `codefang version`
 2. **Operating system and architecture** -- e.g., `Linux x86_64`, `macOS arm64`
 3. **Steps to reproduce** -- minimal command or configuration to trigger the bug
 4. **Expected behavior** -- what you expected to happen
@@ -337,9 +336,9 @@ with the following information:
 6. **Repository** (if applicable) -- a public repository or minimal reproducer
 
 !!! tip "Debugging tips"
-    Run with `--debug-trace` and set `OTEL_EXPORTER_OTLP_ENDPOINT` to capture
-    a full trace of the analysis run. This helps maintainers diagnose issues
-    faster.
+    Run with `-v` to print the configuration file and the resolved analyzers
+    on stderr, and with `--profile` to log memory samples; attach that stderr
+    output to the report. This helps maintainers diagnose issues faster.
 
 ---
 

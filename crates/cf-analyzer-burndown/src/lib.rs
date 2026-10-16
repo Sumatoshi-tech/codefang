@@ -1,18 +1,21 @@
-//! `cf-analyzer-burndown` — burndown analyzer metrics + serialization.
+//! `cf-analyzer-burndown` — burndown report model, survival arithmetic and
+//! serialization.
 //!
-//! The full history walk lives in the command layer; [`metrics`] owns the
-//! `ComputedMetrics` model, the sparse→dense history densification, and the
-//! serialization emitted for the `json` / `yaml` / `bin` machine formats.
-//!
-//! Compatibility: output bytes are pinned against the reference implementation
-//! by `tests/compat`.
+//! The history walk (line-survival treaps per file, identity, ticks) lives in
+//! the command layer; this crate turns the walk's sparse histories into the
+//! report: [`metrics`] owns the [`ComputedMetrics`] model and its machine
+//! encoding, [`survival`] the sparse → dense densification and every figure
+//! derived from it (global, per-file and per-developer survival, the
+//! developer interaction matrix).
 
 pub mod metrics;
+pub mod survival;
 
 pub use metrics::{
-    compute_global_metrics, group_sparse_history, AggregateData, ComputedMetrics, DenseHistory,
-    SparseHistory, SurvivalData,
+    AggregateData, ComputedMetrics, DeveloperSurvival, FileOwnership, FileSurvival, Interaction,
+    SurvivalData,
 };
-
-/// Crate name, used by smoke tests to confirm the module links.
-pub const CRATE_NAME: &str = "cf-analyzer-burndown";
+pub use survival::{
+    compute_metrics, compute_survival_sample, find_peak_lines, group_sparse_history, DenseHistory,
+    Grid, MetricsInput, SparseHistory,
+};

@@ -12,15 +12,15 @@ publish.workspace = true
 # show codefang/uast invocations, rewrites placeholder paths to the hercules
 # fixture, runs each against the freshly built Rust binary, and asserts rc 0.
 #
-# Depending on the two binaries as dev-deps makes `cargo test -p doc-examples`
-# build them first; the test discovers them in target/{release,debug}.
+# The test discovers the binaries in target/{release,debug} and builds them
+# with cargo when they are absent (a bin-only package cannot be a dependency).
 [dependencies]
-
-[dev-dependencies]
-codefang = { path = "../../bins/codefang" }
-uast = { path = "../../bins/uast" }
 
 # No library or binary target: this crate exists only to host the integration
 # test under tests/. An empty lib keeps cargo happy without shipping code.
 [lib]
 path = "src/lib.rs"
+
+[dev-dependencies]
+# An empty HOME for every documented command (no ~/.codefang.yaml leaks in).
+tempfile = { workspace = true }
