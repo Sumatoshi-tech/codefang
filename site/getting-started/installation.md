@@ -11,7 +11,7 @@ Before you begin, make sure the following tools are available on your system:
 
 | Requirement | Minimum Version | Notes |
 |-------------|-----------------|-------|
-| **Rust** | stable (recent) | The project is a Cargo workspace under `rust/` |
+| **Rust** | pinned by `rust-toolchain.toml` | The repository root is a Cargo workspace |
 | **Git** | 2.x | Used to clone (with submodules) and by history analyzers |
 | **C compiler** | GCC or Clang | Builds the vendored libgit2 via the `git2` crate |
 | **CMake** | 3.14+ | Needed by the `git2` crate's build of vendored libgit2 |
@@ -32,7 +32,7 @@ both binaries with Cargo:
 
 ```bash
 git clone --recurse-submodules https://github.com/Sumatoshi-tech/codefang.git
-cd codefang/rust
+cd codefang
 cargo build --release -p codefang -p uast
 ```
 
@@ -92,6 +92,27 @@ After building, confirm both binaries work:
     ```console
     $ uast version
     ```
+
+### Empty Kotlin analysis
+
+If a Kotlin repository reports zero functions, check a source file directly:
+
+```bash
+uast parse path/to/Calculator.kt --format json
+```
+
+An error containing `no tree-sitter grammar wired for language kotlin` identifies
+an older parser build without the Kotlin grammar. From the current checkout,
+install both tools and verify the executables selected by your shell:
+
+```bash
+make install
+command -v codefang
+command -v uast
+codefang run -a static/complexity --format json --per-file /path/to/repo
+```
+
+Both `.kt` sources and `.kts` scripts are supported by the current build.
 
 ---
 

@@ -1,0 +1,21 @@
+   Compiling cf-uast v0.0.0 (/home/dmitriy/sources/codefang/crates/cf-uast)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.43s
+     Running tests/lowering_contract.rs (target/debug/deps/lowering_contract-71240999b4bed43d)
+
+running 1 test
+
+thread 'mapping_capture_matches_the_current_node_before_nested_expressions' (917359) panicked at crates/cf-uast/tests/lowering_contract.rs:191:5:
+assertion `left == right` failed
+  left: "111"
+ right: "probe"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test mapping_capture_matches_the_current_node_before_nested_expressions ... FAILED
+
+failures:
+
+failures:
+    mapping_capture_matches_the_current_node_before_nested_expressions
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p cf-uast --test lowering_contract`

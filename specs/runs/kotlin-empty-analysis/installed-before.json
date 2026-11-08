@@ -1,0 +1,30 @@
+{
+  "metrics": [
+    {
+      "label": "Total Functions",
+      "value": "0"
+    },
+    {
+      "label": "Avg Complexity",
+      "value": "0.0"
+    },
+    {
+      "label": "Max Complexity",
+      "value": "0"
+    },
+    {
+      "label": "Total Complexity",
+      "value": "0"
+    },
+    {
+      "label": "Cognitive Total",
+      "value": "0"
+    },
+    {
+      "label": "Decision Points",
+      "value": "0"
+    }
+  ],
+  "files_analyzed": 20,
+  "status": "Excellent complexity - functions are simple and maintainable"
+}

@@ -1,0 +1,33 @@
+{
+  "metrics": [
+    {
+      "label": "Total Functions",
+      "value": "96"
+    },
+    {
+      "label": "Avg Complexity",
+      "value": "1.2"
+    },
+    {
+      "label": "Max Complexity",
+      "value": "5"
+    },
+    {
+      "label": "Total Complexity",
+      "value": "120"
+    },
+    {
+      "label": "Cognitive Total",
+      "value": "30"
+    },
+    {
+      "label": "Max Nesting",
+      "value": "3"
+    },
+    {
+      "label": "Decision Points",
+      "value": "24"
+    }
+  ],
+  "files_analyzed": 73
+}

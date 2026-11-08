@@ -1,0 +1,2 @@
+432f854d036d602c911ac677237dddc8f98d8e217b6ac1f47faacf2ecb5f165f  /home/dmitriy/.cargo/bin/codefang
+f4727d49da9bd9dd90051ee7faf7b9f020d4154567503cdb7682edd3e4cd44b1  /home/dmitriy/.cargo/bin/uast

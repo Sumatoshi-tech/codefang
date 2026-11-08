@@ -1,0 +1,1 @@
+Error: failed to parse /tmp/codefang-kotlin-repro/Calculator.kt: parse /tmp/codefang-kotlin-repro/Calculator.kt: no tree-sitter grammar wired for language kotlin (grammar vendoring pending; see crate docs)

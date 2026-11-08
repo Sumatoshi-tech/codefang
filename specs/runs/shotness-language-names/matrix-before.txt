@@ -1,0 +1,167 @@
+   Compiling codefang v0.0.0 (/home/dmitriy/sources/codefang/bins/codefang)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.25s
+     Running tests/shotness_languages_e2e.rs (target/debug/deps/shotness_languages_e2e-f8d9b0204da043f4)
+
+running 40 tests
+test clojure ... FAILED
+test elm ... FAILED
+test fish ... ok
+test gotmpl ... ok
+test graphql ... FAILED
+test lua ... ok
+test cmake ... FAILED
+test make ... FAILED
+test groovy ... FAILED
+test go ... ok
+test commonlisp ... FAILED
+test javascript ... ok
+test prql ... ok
+test rego ... FAILED
+test proto ... FAILED
+test powershell ... FAILED
+test tcl ... ok
+test r ... FAILED
+test bash ... ok
+test zig ... ok
+test elixir ... FAILED
+test java ... ok
+test perl ... ok
+test c ... ok
+test fortran ... FAILED
+test dart ... ok
+test php ... ok
+test rust ... ok
+test tsx ... ok
+test haskell ... ok
+test scala ... ok
+test typescript ... ok
+test ruby ... ok
+test sql ... FAILED
+test swift ... ok
+test kotlin ... ok
+test cpp ... ok
+test nim ... ok
+test c_sharp ... ok
+test crystal ... ok
+
+failures:
+
+---- clojure stdout ----
+
+thread 'clojure' (815306) panicked at bins/codefang/tests/shotness_languages_e2e.rs:41:5:
+assertion `left == right` failed: clojure.clj: {"node_hotness":[],"node_coupling":null,"hotspot_nodes":null,"aggregate":{"total_nodes":0,"total_changes":0,"total_couplings":0,"avg_changes_per_node":0,"avg_coupling_strength":0,"hot_nodes":0}}
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- elm stdout ----
+
+thread 'elm' (815313) panicked at bins/codefang/tests/shotness_languages_e2e.rs:41:5:
+assertion `left == right` failed: elm.elm: {"node_hotness":[],"node_coupling":null,"hotspot_nodes":null,"aggregate":{"total_nodes":0,"total_changes":0,"total_couplings":0,"avg_changes_per_node":0,"avg_coupling_strength":0,"hot_nodes":0}}
+  left: 0
+ right: 1
+
+---- graphql stdout ----
+
+thread 'graphql' (815318) panicked at bins/codefang/tests/shotness_languages_e2e.rs:41:5:
+assertion `left == right` failed: graphql.graphql: {"node_hotness":[],"node_coupling":null,"hotspot_nodes":null,"aggregate":{"total_nodes":0,"total_changes":0,"total_couplings":0,"avg_changes_per_node":0,"avg_coupling_strength":0,"hot_nodes":0}}
+  left: 0
+ right: 1
+
+---- cmake stdout ----
+
+thread 'cmake' (815307) panicked at bins/codefang/tests/shotness_languages_e2e.rs:41:5:
+assertion `left == right` failed: cmake.cmake: {"node_hotness":[],"node_coupling":null,"hotspot_nodes":null,"aggregate":{"total_nodes":0,"total_changes":0,"total_couplings":0,"avg_changes_per_node":0,"avg_coupling_strength":0,"hot_nodes":0}}
+  left: 0
+ right: 1
+
+---- make stdout ----
+
+thread 'make' (815325) panicked at bins/codefang/tests/shotness_languages_e2e.rs:41:5:
+assertion `left == right` failed: make.makefile: {"node_hotness":[],"node_coupling":null,"hotspot_nodes":null,"aggregate":{"total_nodes":0,"total_changes":0,"total_couplings":0,"avg_changes_per_node":0,"avg_coupling_strength":0,"hot_nodes":0}}
+  left: 0
+ right: 1
+
+---- groovy stdout ----
+
+thread 'groovy' (815319) panicked at bins/codefang/tests/shotness_languages_e2e.rs:41:5:
+assertion `left == right` failed: groovy.groovy: {"node_hotness":[],"node_coupling":null,"hotspot_nodes":null,"aggregate":{"total_nodes":0,"total_changes":0,"total_couplings":0,"avg_changes_per_node":0,"avg_coupling_strength":0,"hot_nodes":0}}
+  left: 0
+ right: 1
+
+---- commonlisp stdout ----
+
+thread 'commonlisp' (815308) panicked at bins/codefang/tests/shotness_languages_e2e.rs:41:5:
+assertion `left == right` failed: commonlisp.lisp: {"node_hotness":[],"node_coupling":null,"hotspot_nodes":null,"aggregate":{"total_nodes":0,"total_changes":0,"total_couplings":0,"avg_changes_per_node":0,"avg_coupling_strength":0,"hot_nodes":0}}
+  left: 0
+ right: 1
+
+---- rego stdout ----
+
+thread 'rego' (815477) panicked at bins/codefang/tests/shotness_languages_e2e.rs:41:5:
+assertion `left == right` failed: rego.rego: {"node_hotness":[],"node_coupling":null,"hotspot_nodes":null,"aggregate":{"total_nodes":0,"total_changes":0,"total_couplings":0,"avg_changes_per_node":0,"avg_coupling_strength":0,"hot_nodes":0}}
+  left: 0
+ right: 1
+
+---- proto stdout ----
+
+thread 'proto' (815435) panicked at bins/codefang/tests/shotness_languages_e2e.rs:41:5:
+assertion `left == right` failed: proto.proto: {"node_hotness":[],"node_coupling":null,"hotspot_nodes":null,"aggregate":{"total_nodes":0,"total_changes":0,"total_couplings":0,"avg_changes_per_node":0,"avg_coupling_strength":0,"hot_nodes":0}}
+  left: 0
+ right: 1
+
+---- powershell stdout ----
+
+thread 'powershell' (815415) panicked at bins/codefang/tests/shotness_languages_e2e.rs:41:5:
+assertion `left == right` failed: powershell.ps1: {"node_hotness":[],"node_coupling":null,"hotspot_nodes":null,"aggregate":{"total_nodes":0,"total_changes":0,"total_couplings":0,"avg_changes_per_node":0,"avg_coupling_strength":0,"hot_nodes":0}}
+  left: 0
+ right: 1
+
+---- r stdout ----
+
+thread 'r' (815474) panicked at bins/codefang/tests/shotness_languages_e2e.rs:42:5:
+assertion `left == right` failed: r.r: {"node_hotness":[{"name":"function","type":"Function","file":"r.r","change_count":2,"coupled_nodes":0,"hotness_score":1}],"node_coupling":null,"hotspot_nodes":null,"aggregate":{"total_nodes":1,"total_changes":2,"total_couplings":0,"avg_changes_per_node":2,"avg_coupling_strength":0,"hot_nodes":0}}
+  left: String("function")
+ right: "probe"
+
+---- elixir stdout ----
+
+thread 'elixir' (815312) panicked at bins/codefang/tests/shotness_languages_e2e.rs:41:5:
+assertion `left == right` failed: elixir.ex: {"node_hotness":[],"node_coupling":null,"hotspot_nodes":null,"aggregate":{"total_nodes":0,"total_changes":0,"total_couplings":0,"avg_changes_per_node":0,"avg_coupling_strength":0,"hot_nodes":0}}
+  left: 0
+ right: 1
+
+---- fortran stdout ----
+
+thread 'fortran' (815315) panicked at bins/codefang/tests/shotness_languages_e2e.rs:43:5:
+assertion `left == right` failed: body edit missing in fortran.f90: {"node_hotness":[{"name":"probe","type":"Function","file":"fortran.f90","change_count":1,"coupled_nodes":0,"hotness_score":1}],"node_coupling":null,"hotspot_nodes":null,"aggregate":{"total_nodes":1,"total_changes":1,"total_couplings":0,"avg_changes_per_node":1,"avg_coupling_strength":0,"hot_nodes":0}}
+  left: Number(1)
+ right: 2
+
+---- sql stdout ----
+
+thread 'sql' (815510) panicked at bins/codefang/tests/shotness_languages_e2e.rs:41:5:
+assertion `left == right` failed: sql.sql: {"node_hotness":[],"node_coupling":null,"hotspot_nodes":null,"aggregate":{"total_nodes":0,"total_changes":0,"total_couplings":0,"avg_changes_per_node":0,"avg_coupling_strength":0,"hot_nodes":0}}
+  left: 0
+ right: 1
+
+
+failures:
+    clojure
+    cmake
+    commonlisp
+    elixir
+    elm
+    fortran
+    graphql
+    groovy
+    make
+    powershell
+    proto
+    r
+    rego
+    sql
+
+test result: FAILED. 26 passed; 14 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.61s
+
+error: test failed, to rerun pass `-p codefang --test shotness_languages_e2e`

@@ -1,0 +1,8 @@
+syntax = "proto3";
+service Box {
+ rpc probe (Input) returns (Output) {
+  option (note) = "111";
+ }
+}
+message Input {}
+message Output {}

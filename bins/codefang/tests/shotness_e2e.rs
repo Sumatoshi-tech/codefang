@@ -110,6 +110,129 @@ fn commit(repo: &TestRepo, day: i64, files: &[(&str, &[u8])]) {
     commit_files(repo, &format!("day {day}"), T0 + day * DAY, files).expect("commit");
 }
 
+// BUG: specs/bugs/BUG-kotlin-shotness-empty.md
+#[test]
+fn kotlin_shotness_with_limit_and_text_reports_functions() {
+    let repo = init_repo().expect("init");
+    commit(
+        &repo,
+        0,
+        &[("Calculator.kt", b"fun sum(a: Int, b: Int): Int = a + b\n")],
+    );
+    let text = stdout_ok(&[
+        "-a",
+        SHOTNESS,
+        "--limit",
+        "200",
+        "--format",
+        "text",
+        path(&repo),
+    ]);
+    assert!(text.contains("1 nodes"), "{text}");
+    assert!(text.contains("sum"), "{text}");
+}
+
+#[test]
+fn kotlin_shotness_qualifies_class_methods() {
+    let repo = init_repo().expect("init");
+    commit(
+        &repo,
+        0,
+        &[(
+            "Calculator.kt",
+            b"class Calculator { fun sum(a: Int, b: Int): Int = a + b }\n",
+        )],
+    );
+    assert_eq!(
+        entities(&shotness(&repo, &[])),
+        vec![(
+            "Calculator.sum".into(),
+            "Function".into(),
+            "Calculator.kt".into()
+        )]
+    );
+}
+
+#[test]
+fn kotlin_shotness_qualifies_object_methods() {
+    let repo = init_repo().expect("init");
+    commit(
+        &repo,
+        0,
+        &[("Service.kt", b"object Service { fun work() = 1 }\n")],
+    );
+    assert_eq!(
+        entities(&shotness(&repo, &[])),
+        vec![(
+            "Service.work".into(),
+            "Function".into(),
+            "Service.kt".into()
+        )]
+    );
+}
+
+#[test]
+fn kotlin_shotness_qualifies_implicit_companion_methods() {
+    let repo = init_repo().expect("init");
+    commit(
+        &repo,
+        0,
+        &[(
+            "Service.kt",
+            b"class Service {\ncompanion object {\nfun work() = 1\n}\n}\n",
+        )],
+    );
+    assert_eq!(
+        entities(&shotness(&repo, &[])),
+        vec![(
+            "Service.Companion.work".into(),
+            "Function".into(),
+            "Service.kt".into()
+        )]
+    );
+}
+
+#[test]
+fn kotlin_shotness_qualifies_named_companion_methods() {
+    let repo = init_repo().expect("init");
+    commit(
+        &repo,
+        0,
+        &[(
+            "Service.kt",
+            b"class Service {\ncompanion object Factory {\nfun work() = 1\n}\n}\n",
+        )],
+    );
+    assert_eq!(
+        entities(&shotness(&repo, &[])),
+        vec![(
+            "Service.Factory.work".into(),
+            "Function".into(),
+            "Service.kt".into()
+        )]
+    );
+}
+
+#[test]
+fn kotlin_script_shotness_counts_body_changes_and_couplings() {
+    let repo = init_repo().expect("init");
+    commit(
+        &repo,
+        0,
+        &[("script.kts", b"fun first() = 1\nfun second() = 2\n")],
+    );
+    commit(
+        &repo,
+        1,
+        &[("script.kts", b"fun first() = 10\nfun second() = 2\n")],
+    );
+    let report = shotness(&repo, &["--limit", "200"]);
+    assert_eq!(total_nodes(&report), 2);
+    assert_eq!(change_count(&report, "first", "script.kts"), 2);
+    assert_eq!(change_count(&report, "second", "script.kts"), 1);
+    assert_eq!(co_changes(&report, "first", "second"), 1);
+}
+
 /// `(name, type, file)` of every entity in the report, key-sorted.
 fn entities(report: &Value) -> Vec<(String, String, String)> {
     let mut out: Vec<(String, String, String)> = report["node_hotness"]

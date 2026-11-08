@@ -1,0 +1,2 @@
+:root { --value: 111; }
+p { width: calc(var(--value) * 1px); }
