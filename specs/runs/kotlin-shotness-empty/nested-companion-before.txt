@@ -1,0 +1,21 @@
+   Compiling cf-uast-mappings v0.0.0 (/home/dmitriy/sources/codefang/crates/cf-uast-mappings)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.64s
+     Running tests/shape_contract.rs (target/debug/deps/shape_contract-83039fdd067aa872)
+
+running 1 test
+
+thread 'kotlin_implicit_companion_does_not_take_a_nested_companion_name' (3211708) panicked at crates/cf-uast-mappings/tests/shape_contract.rs:57:5:
+assertion `left == right` failed
+  left: ["Outer", "Factory", "Inner", "Factory"]
+ right: ["Outer", "Companion", "Inner", "Factory"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test kotlin_implicit_companion_does_not_take_a_nested_companion_name ... FAILED
+
+failures:
+
+failures:
+    kotlin_implicit_companion_does_not_take_a_nested_companion_name
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 26 filtered out; finished in 3.91s
+
+error: test failed, to rerun pass `-p cf-uast-mappings --test shape_contract`

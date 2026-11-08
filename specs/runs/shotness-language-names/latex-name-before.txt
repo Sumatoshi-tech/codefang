@@ -1,0 +1,24 @@
+   Compiling cf-uast-mappings v0.0.0 (/home/dmitriy/sources/codefang/crates/cf-uast-mappings)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.54s
+     Running tests/shotness_fixtures.rs (target/debug/deps/shotness_fixtures-9c99731ba5a4c900)
+
+running 1 test
+test latex_old_definition_exposes_its_declared_name ... FAILED
+
+failures:
+
+---- latex_old_definition_exposes_its_declared_name stdout ----
+
+thread 'latex_old_definition_exposes_its_declared_name' (967189) panicked at crates/cf-uast-mappings/tests/shotness_fixtures.rs:33:5:
+assertion `left == right` failed
+  left: None
+ right: Some("\\probe")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    latex_old_definition_exposes_its_declared_name
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 2.49s
+
+error: test failed, to rerun pass `-p cf-uast-mappings --test shotness_fixtures`

@@ -1,0 +1,6 @@
+(defmacro macro-probe (x)
+ `(+ ,x 111))
+(defgeneric generic-probe (x)
+ (:documentation "111"))
+(defmethod method-probe ((x integer))
+ (+ x 111))

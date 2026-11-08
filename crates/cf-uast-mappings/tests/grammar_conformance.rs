@@ -732,9 +732,6 @@ const DEAD_RULE_ALLOW_LIST: &[(&str, &str)] = &[
     // compiled at runtime either — the lowering stores query None and
     // falls through, which is the frozen behavior). Regenerate with the
     // conformance test output when wiring more grammars.
-    ("commonlisp", "defgeneric"),
-    ("commonlisp", "defmacro"),
-    ("commonlisp", "defmethod"),
     ("commonlisp", "finally"),
     ("commonlisp", "return"),
     ("crystal", "abstract"),

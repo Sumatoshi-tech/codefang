@@ -1,0 +1,16 @@
+codefang (v2):
+  version: 0
+  hash: <unknown>
+history/shotness:
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Shotness Analysis                                                    0 nodes ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  Summary
+  ────────────────────────────────────────────────────────────────────────────
+  Total Nodes            0
+  Total Changes          0
+  Avg Changes/Node       0.0
+  Total Couplings        0
+  Avg Coupling Strength  0%
+  Hot Nodes              0

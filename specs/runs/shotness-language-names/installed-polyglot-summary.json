@@ -1,0 +1,21 @@
+{
+  "files_checked": 63,
+  "before": {
+    "total_nodes": 37,
+    "total_changes": 72,
+    "total_couplings": 666,
+    "avg_changes_per_node": 1.945945945945946,
+    "avg_coupling_strength": 0.9474474474474475,
+    "hot_nodes": 0
+  },
+  "after": {
+    "total_nodes": 71,
+    "total_changes": 141,
+    "total_couplings": 2485,
+    "avg_changes_per_node": 1.9859154929577465,
+    "avg_coupling_strength": 0.9859154929577465,
+    "hot_nodes": 0
+  },
+  "names_and_counts_match_fixtures": true,
+  "old_latex_header_body_only_change_count": 1
+}

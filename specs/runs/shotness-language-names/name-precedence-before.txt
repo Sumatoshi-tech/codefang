@@ -1,0 +1,27 @@
+   Compiling cf-uast-mappings v0.0.0 (/home/dmitriy/sources/codefang/crates/cf-uast-mappings)
+   Compiling cf-uast v0.0.0 (/home/dmitriy/sources/codefang/crates/cf-uast)
+   Compiling cf-commands v0.0.0 (/home/dmitriy/sources/codefang/crates/cf-commands)
+   Compiling codefang v0.0.0 (/home/dmitriy/sources/codefang/bins/codefang)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.68s
+     Running tests/shotness_languages_e2e.rs (target/debug/deps/shotness_languages_e2e-f8d9b0204da043f4)
+
+running 1 test
+test latex_environment ... FAILED
+
+failures:
+
+---- latex_environment stdout ----
+
+thread 'latex_environment' (972254) panicked at bins/codefang/tests/shotness_languages_e2e.rs:48:5:
+assertion `left == right` failed: latex_environment.tex: {"node_hotness":[{"name":"{probe}","type":"Function","file":"latex_environment.tex","change_count":2,"coupled_nodes":0,"hotness_score":1}],"node_coupling":null,"hotspot_nodes":null,"aggregate":{"total_nodes":1,"total_changes":2,"total_couplings":0,"avg_changes_per_node":2,"avg_coupling_strength":0,"hot_nodes":0}}
+  left: ["{probe}"]
+ right: ["probe"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    latex_environment
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 61 filtered out; finished in 2.09s
+
+error: test failed, to rerun pass `-p codefang --test shotness_languages_e2e`

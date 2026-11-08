@@ -176,3 +176,22 @@ fn parent_conditions_select_rules_by_enclosing_node() {
     assert_eq!(of_type(&root, "Lambda").len(), 1);
     assert_eq!(of_type(&root, "Function").len(), 1);
 }
+
+// BUG: specs/bugs/BUG-shotness-language-names.md
+#[test]
+fn mapping_capture_matches_the_current_node_before_nested_expressions() {
+    let lang = cf_uast::languages::get_language("r").expect("R grammar");
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&lang).expect("set language");
+    let source = b"(function(x) { x + 111 }) -> probe\n";
+    let tree = parser.parse(source, None).expect("parse");
+    let root = tree.root_node().named_child(0).expect("assignment");
+    let matcher = cf_uast_mapping::PatternMatcher::new(lang);
+    let query = matcher
+        .compile_and_cache("(binary_operator rhs: (_) @name)")
+        .expect("query");
+    assert_eq!(
+        matcher.match_pattern(&query, root, source).expect("match")["name"],
+        "probe"
+    );
+}

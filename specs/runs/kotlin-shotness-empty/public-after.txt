@@ -1,0 +1,44 @@
+codefang (v2):
+  version: 0
+  hash: <unknown>
+history/shotness:
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Shotness Analysis                                                   14 nodes ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  Summary
+  ────────────────────────────────────────────────────────────────────────────
+  Total Nodes            14
+  Total Changes          21
+  Avg Changes/Node       1.5
+  Total Couplings        29
+  Avg Coupling Strength  52%
+  Hot Nodes              0
+
+  Hottest Functions
+  ────────────────────────────────────────────────────────────────────────────
+  OwnerControllerTest.s... [████████████████████] 1.0  (3 changes)
+  OwnerControllerTest.t... [████████████████████] 1.0  (3 changes)
+  CrashControllerTest.t... [█████████████░░░░░░░] 0.7  (2 changes)
+  PetTypeFormatterTest.... [█████████████░░░░░░░] 0.7  (2 changes)
+  VetControllerTest.tes... [█████████████░░░░░░░] 0.7  (2 changes)
+  MockMvcValidationConf... [██████░░░░░░░░░░░░░░] 0.3  (1 changes)
+  Owner.getPet (Owner.kt)  [██████░░░░░░░░░░░░░░] 0.3  (1 changes)
+  OwnerController.showO... [██████░░░░░░░░░░░░░░] 0.3  (1 changes)
+  PetRepositoryTest.sho... [██████░░░░░░░░░░░░░░] 0.3  (1 changes)
+  PetTypeFormatterTest.... [██████░░░░░░░░░░░░░░] 0.3  (1 changes)
+    ... and 4 more
+
+  Strongest Couplings
+  ────────────────────────────────────────────────────────────────────────────
+  OwnerCont... ↔ OwnerCont...  67%  (2 co-changes)
+  CrashCont... ↔ MockMvcVa...  50%  (1 co-changes)
+  CrashCont... ↔ PetTypeFo...  50%  (1 co-changes)
+  CrashCont... ↔ VetContro...  50%  (1 co-changes)
+  MockMvcVa... ↔ PetTypeFo...  50%  (1 co-changes)
+  MockMvcVa... ↔ VetContro...  50%  (1 co-changes)
+  Owner.getPet ↔ OwnerCont...  33%  (1 co-changes)
+  Owner.getPet ↔ PetReposi... 100%  (1 co-changes)
+  OwnerCont... ↔ OwnerCont...  33%  (1 co-changes)
+  OwnerCont... ↔ OwnerCont...  33%  (1 co-changes)
+    ... and 19 more

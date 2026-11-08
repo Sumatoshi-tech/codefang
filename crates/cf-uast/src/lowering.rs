@@ -735,8 +735,11 @@ impl<'a> Lowering<'a> {
         rule.uast_spec.roles.clone()
     }
 
-    /// Fills `props["name"]` from the node's `name` field, when present.
+    /// Falls back to the grammar's `name` field after explicit mapping props.
     fn extract_name(&self, root: TsNode<'_>, _rule: &Rule, props: &mut HashMap<String, String>) {
+        if props.contains_key("name") {
+            return;
+        }
         let name = self.extract_name_from_field(root, "name");
         if !name.is_empty() {
             props.insert("name".to_string(), name);

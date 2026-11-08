@@ -32,12 +32,31 @@ receiver type of a method declared as `func (a *A) String()` (`A.String`).
 Two `String()` methods on two receivers are therefore two entities. A node
 whose name DSL yields nothing (an anonymous lambda) is not an entity.
 
+Kotlin `.kt` sources and `.kts` scripts expose names for functions, classes and
+objects. Companion methods include the companion name in their qualification:
+`Service.Companion.work` for an implicit companion and `Service.Factory.work`
+for `companion object Factory`. Older Kotlin mappings omitted `props.name`,
+which made the default Shotness query yield zero nodes even when static
+complexity found functions. Rebuild from the updated source if affected.
+
 Rust `impl` methods are qualified only by their enclosing module-level
 declarations: the mapping does not expose the `impl` target, so `fn m` in
-`impl A` is the entity `m`. Mappings that set no `props.name` on
-declarations (the real-world set in the
-[shape contract](../architecture/uast.md#shape-contract) does) yield no
-entities for that language.
+`impl A` is the entity `m`. A selected declaration whose name query yields
+nothing is excluded.
+
+The cross-language regression matrix exercises representative named declarations
+in all 42 filename-selected mappings that declare functions, methods or structural
+entry points. It verifies introduction and body edits through the real history
+CLI, with text and JSON output, and includes private definitions, macros, guards
+and anonymous-value exclusions. A registry test requires a fixture when another
+function-declaring mapping becomes selectable. CSS function references have
+zero declaration entities. Helm YAML currently selects the YAML mapping;
+`rust_with_rstml` has no filename extension.
+
+LaTeX new-style commands, environments, theorems and paired delimiters have
+body-edit coverage. The pinned grammar exposes only the header of old-style
+`\def` commands: their names and introduction are tracked, while body-only edits
+on later lines are not attributable to the header.
 
 ## Entity lifecycle
 

@@ -1,0 +1,8 @@
+{
+  "total_nodes": 14,
+  "total_changes": 21,
+  "total_couplings": 29,
+  "avg_changes_per_node": 1.5,
+  "avg_coupling_strength": 0.5229885057471265,
+  "hot_nodes": 0
+}

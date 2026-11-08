@@ -271,6 +271,10 @@ of relying on either.
 
 ### Names
 
+Mapping queries match at the CST node being lowered. Descendant captures
+explicitly included in the pattern are allowed; an independent match inside
+a body cannot supply the current declaration's name.
+
 Every `Function`, `Method`, `Class`, `Struct`, `Interface` and `Enum`
 declaration carries `props.name`, and there is exactly **one** such node per
 declaration: bodies are `Block`s, declarators and parameter-type lists are

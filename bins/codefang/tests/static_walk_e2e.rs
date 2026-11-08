@@ -309,3 +309,19 @@ fn static_walk_output_is_deterministic() {
     let yaml_second = run("static/*", "yaml", &[], dir.path());
     assert!(yaml_first.1 == yaml_second.1, "yaml runs differ");
 }
+
+// BUG: specs/bugs/BUG-kotlin-empty-analysis.md
+#[test]
+fn kotlin_sources_and_scripts_produce_function_metrics() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let source = "class Calculator { companion object { fun sum(a: Int, b: Int): Int = a + b } }\n";
+    for path in ["src/main/kotlin/Calculator.kt", "build.gradle.kts"] {
+        write(dir.path(), path, source);
+        let report = per_file_json("static/complexity", &[], &dir.path().join(path));
+        assert_eq!(report["sections"][0]["metrics"][0]["value"], "1");
+        assert_eq!(report["sections"][0]["issues"][0]["name"], "sum");
+    }
+    let report = per_file_json("static/complexity", &[], dir.path());
+    assert_eq!(report["sections"][0]["metrics"][0]["value"], "2");
+    assert_eq!(file_paths(&report).len(), 2);
+}

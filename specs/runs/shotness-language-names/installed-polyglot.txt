@@ -1,0 +1,44 @@
+codefang (v2):
+  version: 0
+  hash: <unknown>
+history/shotness:
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Shotness Analysis                                                   71 nodes ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  Summary
+  ────────────────────────────────────────────────────────────────────────────
+  Total Nodes            71
+  Total Changes          141
+  Avg Changes/Node       2.0
+  Total Couplings        2485
+  Avg Coupling Strength  99%
+  Hot Nodes              0
+
+  Hottest Functions
+  ────────────────────────────────────────────────────────────────────────────
+  "probe" (gotmpl.gotmpl)  [████████████████████] 1.0  (2 changes)
+  Box.guarded (elixir_g... [████████████████████] 1.0  (2 changes)
+  Box.macro_guarded (el... [████████████████████] 1.0  (2 changes)
+  Box.macro_probe (elix... [████████████████████] 1.0  (2 changes)
+  Box.private_guarded (... [████████████████████] 1.0  (2 changes)
+  Box.private_macro (el... [████████████████████] 1.0  (2 changes)
+  Box.private_macro_gua... [████████████████████] 1.0  (2 changes)
+  Box.private_probe (el... [████████████████████] 1.0  (2 changes)
+  Box.probe (elixir.ex)    [████████████████████] 1.0  (2 changes)
+  Box.probe (groovy_cla... [████████████████████] 1.0  (2 changes)
+    ... and 61 more
+
+  Strongest Couplings
+  ────────────────────────────────────────────────────────────────────────────
+  "probe"      ↔ Box.guarded  100%  (2 co-changes)
+  "probe"      ↔ Box.macro... 100%  (2 co-changes)
+  "probe"      ↔ Box.macro... 100%  (2 co-changes)
+  "probe"      ↔ Box.priva... 100%  (2 co-changes)
+  "probe"      ↔ Box.priva... 100%  (2 co-changes)
+  "probe"      ↔ Box.priva... 100%  (2 co-changes)
+  "probe"      ↔ Box.priva... 100%  (2 co-changes)
+  "probe"      ↔ Box.probe    100%  (2 co-changes)
+  "probe"      ↔ Box.probe    100%  (2 co-changes)
+  "probe"      ↔ Box.probe    100%  (2 co-changes)
+    ... and 2475 more

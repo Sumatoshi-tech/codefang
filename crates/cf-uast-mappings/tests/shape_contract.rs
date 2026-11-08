@@ -41,6 +41,25 @@ fn names(nodes: &[&Node]) -> Vec<String> {
         .collect()
 }
 
+// BUG: specs/bugs/BUG-kotlin-shotness-empty.md
+#[test]
+fn kotlin_names_exclude_annotation_receiver_and_body_identifiers() {
+    let root = parse(
+        "Names.kt",
+        "@Suppress(\"unused\")\nfun <T> List<T>.head(): T = first()\nfun regular() = 1\n",
+    );
+    assert_eq!(names(&of_type(&root, "Function")), ["head", "regular"]);
+}
+
+#[test]
+fn kotlin_implicit_companion_does_not_take_a_nested_companion_name() {
+    let root = parse("Nested.kt", "class Outer {\ncompanion object {\nclass Inner {\ncompanion object Factory {\nfun work() = 1\n}\n}\n}\n}\n");
+    assert_eq!(
+        names(&of_type(&root, "Class")),
+        ["Outer", "Companion", "Inner", "Factory"]
+    );
+}
+
 fn operator(n: &Node) -> &str {
     n.props.get(PROP_OPERATOR).map_or("", String::as_str)
 }

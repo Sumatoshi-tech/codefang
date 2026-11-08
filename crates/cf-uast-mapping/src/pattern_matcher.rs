@@ -8,7 +8,7 @@
 //!   a tree-sitter [`Query`] and memoizes it by pattern text, tracking
 //!   hit/miss counters.
 //! - [`PatternMatcher::match_pattern`] runs a compiled query against a node
-//!   and returns the captures of the **first** match.
+//!   and returns the captures of the **first match rooted at that node**.
 //!
 //! Cursors are recycled through a small mutex-guarded free list; the cache is
 //! a mutex-guarded map sharing compiled queries via `Arc<Query>`.
@@ -101,7 +101,7 @@ impl PatternMatcher {
     }
 
     /// Matches a compiled query against a node and returns the captures of the
-    /// first match as a name→text map (a [`BTreeMap`] for deterministic
+    /// first match rooted at that node as a name→text map (a [`BTreeMap`] for deterministic
     /// ordering).
     ///
     /// # Errors
@@ -140,6 +140,8 @@ fn match_tree_sitter_query(
     source: &[u8],
 ) -> Result<BTreeMap<String, String>, MatchError> {
     let capture_names = query.capture_names();
+    // A declaration's captures must not come from a nested declaration/body.
+    cursor.set_max_start_depth(Some(0));
     let mut matches = cursor.matches(query, node, source);
 
     let first = match matches.next() {

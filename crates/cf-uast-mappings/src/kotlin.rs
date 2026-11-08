@@ -216,9 +216,12 @@ pub static KOTLIN: LanguageMapping = uast_language! {
         finally => {
             type: Synthetic,
         },
-        function_declaration => {
+        // Kotlin has no `name` field: capture the direct declaration child,
+        // excluding identifiers inside annotations, receivers and bodies.
+        function_declaration ("(function_declaration (simple_identifier) @name)") => {
             type: Function,
             roles: [Function, Declaration],
+            props: { "name": "@name" },
         },
         anonymous_function => {
             type: Function,
@@ -267,9 +270,10 @@ pub static KOTLIN: LanguageMapping = uast_language! {
         type_parameters => {
             type: Synthetic,
         },
-        class_declaration => {
+        class_declaration ("(class_declaration (type_identifier) @name)") => {
             type: Class,
             roles: [Class, Declaration],
+            props: { "name": "@name" },
         },
         class_body => {
             type: Block,
@@ -282,13 +286,21 @@ pub static KOTLIN: LanguageMapping = uast_language! {
         class => {
             type: Synthetic,
         },
-        object_declaration => {
+        object_declaration ("(object_declaration (type_identifier) @name)") => {
             type: Class,
             roles: [Class, Declaration],
+            props: { "name": "@name" },
+        },
+        named_companion_object ("(companion_object (type_identifier) @name)") => {
+            type: Class,
+            roles: [Class, Static],
+            props: { "name": "@name" },
+            when: ["type_identifier != \"\""],
         },
         companion_object => {
             type: Class,
             roles: [Class, Static],
+            props: { "name": "Companion" },
         },
         object => {
             type: Synthetic,
